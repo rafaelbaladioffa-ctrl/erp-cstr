@@ -194,3 +194,14 @@ class ProjectTask(TimestampedModel):
             self.actual_hours = round(max(total_seconds, 0) / 3600, 2)
 
         super().save(*args, **kwargs)
+
+    @property
+    def worked_hours(self):
+        """Horas trabalhadas para exibição: usa `actual_hours` quando
+        registrado; se a tarefa foi concluída sem apontamento real, cai
+        para a duração prevista (planned_start/planned_end) como estimativa."""
+        if self.actual_hours is not None:
+            return float(self.actual_hours)
+        if self.status == self.STATUS_COMPLETED and self.planned_start and self.planned_end:
+            return round(max((self.planned_end - self.planned_start).total_seconds(), 0) / 3600, 2)
+        return 0.0

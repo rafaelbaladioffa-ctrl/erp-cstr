@@ -222,7 +222,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         return len([t for t in self._tasks(obj) if t.status == "completed"])
 
     def get_worked_hours(self, obj):
-        return float(sum(float(t.actual_hours or 0) for t in self._tasks(obj)))
+        return float(sum(t.worked_hours for t in self._tasks(obj)))
 
     def get_progress_percent(self, obj):
         tasks = self._tasks(obj)

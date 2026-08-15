@@ -543,11 +543,11 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
             raise PermissionDenied
 
         tasks = project.project_tasks.select_related("task").prefetch_related("collaborators").order_by("order", "id")
-        totals = tasks.aggregate(estimated=Sum("estimated_hours"), worked=Sum("actual_hours"))
+        totals = tasks.aggregate(estimated=Sum("estimated_hours"))
         total_tasks = tasks.count()
         completed_tasks = tasks.filter(status=ProjectTask.STATUS_COMPLETED).count()
         progress = round((completed_tasks / total_tasks) * 100) if total_tasks else 0
-        worked_seconds = float(totals["worked"] or 0) * 3600
+        worked_seconds = sum(project_task.worked_hours for project_task in tasks) * 3600
         task_rows = []
         team = []
         seen_collaborators = set()
@@ -559,8 +559,8 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                     "visible_collaborators": collaborators[:2],
                     "extra_collaborators": collaborators[2:],
                     "extra_count": max(0, len(collaborators) - 2),
-                    "worked_hours": self._format_hours(project_task.actual_hours)
-                    if project_task.actual_hours is not None
+                    "worked_hours": self._format_hours(project_task.worked_hours)
+                    if project_task.worked_hours
                     else "—",
                     "edit_url": reverse("admin:projects_projecttask_change", args=(project_task.pk,)),
                 }
