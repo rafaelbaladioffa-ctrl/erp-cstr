@@ -513,6 +513,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .field-label {
@@ -523,6 +524,8 @@ textarea {
 
 .input,
 .select {
+  width: 100%;
+  max-width: 100%;
   padding: 9px 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
