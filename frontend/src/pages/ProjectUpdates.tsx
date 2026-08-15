@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { collaboratorsApi, projectsApi, projectUpdatesApi } from "../api/resources";
 import type { Collaborator, Project, ProjectDailyUpdate } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import Icon from "../components/ui/Icon";
+import PageHeader from "../components/ui/PageHeader";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 export default function ProjectUpdates() {
@@ -48,84 +50,91 @@ export default function ProjectUpdates() {
   }
 
   return (
-    <div style={{ display: "flex", gap: 24 }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h1 style={{ fontSize: 22, color: "#172033" }}>Atualizações de Projeto</h1>
-          {canCreate && (
-            <button onClick={() => setCreating((v) => !v)} style={primaryButton}>
+    <div>
+      <PageHeader
+        eyebrow="Área Operacional"
+        title="Atualizações de Projeto"
+        subtitle="Gere, edite e envie o status consolidado de cada projeto."
+        actions={
+          canCreate ? (
+            <button className="btn btn-primary" onClick={() => setCreating((v) => !v)}>
+              <Icon name={creating ? "close" : "add"} style={{ fontSize: 18 }} />
               {creating ? "Cancelar" : "Nova Atualização"}
             </button>
+          ) : undefined
+        }
+      />
+
+      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {creating && canCreate && (
+            <div className="form-card">
+              <label className="form-label">Projeto</label>
+              <select className="input" value={newProjectId} onChange={(e) => setNewProjectId(Number(e.target.value))}>
+                <option value="">Selecione...</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} — {p.name}
+                  </option>
+                ))}
+              </select>
+
+              <label className="form-label">Data</label>
+              <input type="date" className="input" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+
+              <label className="form-label">Observações (opcional)</label>
+              <textarea className="input" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} style={{ height: 80 }} />
+
+              <button className="btn btn-primary" onClick={handleGenerate} style={{ marginTop: 14 }}>
+                Gerar Atualização
+              </button>
+            </div>
+          )}
+
+          {loading ? (
+            <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {updates.map((update) => (
+                <div
+                  key={update.id}
+                  onClick={() => setSelected(update)}
+                  className="card"
+                  style={{
+                    padding: 14,
+                    cursor: "pointer",
+                    borderColor: selected?.id === update.id ? "var(--orange)" : undefined,
+                    borderWidth: selected?.id === update.id ? 2 : undefined,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <strong style={{ color: "var(--text)" }}>{update.project_name}</strong>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: update.is_sent ? "var(--green)" : "var(--amber)" }}>
+                      {update.is_sent ? "Enviado" : "Não enviado"}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                    {new Date(update.date + "T00:00:00").toLocaleDateString("pt-BR")} · {update.completion_percent}%
+                  </div>
+                </div>
+              ))}
+              {updates.length === 0 && <div className="empty-state">Nenhuma atualização registrada.</div>}
+            </div>
           )}
         </div>
 
-        {creating && canCreate && (
-          <div style={{ background: "#fff", border: "1px solid #DDE3EA", borderRadius: 12, padding: 20, marginBottom: 20 }}>
-            <label style={label}>Projeto</label>
-            <select value={newProjectId} onChange={(e) => setNewProjectId(Number(e.target.value))} style={input}>
-              <option value="">Selecione...</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.name}
-                </option>
-              ))}
-            </select>
-
-            <label style={label}>Data</label>
-            <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} style={input} />
-
-            <label style={label}>Observações (opcional)</label>
-            <textarea value={newSummary} onChange={(e) => setNewSummary(e.target.value)} style={{ ...input, height: 80 }} />
-
-            <button onClick={handleGenerate} style={{ ...primaryButton, marginTop: 12 }}>
-              Gerar Atualização
-            </button>
-          </div>
-        )}
-
-        {loading ? (
-          <p>Carregando...</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {updates.map((update) => (
-              <div
-                key={update.id}
-                onClick={() => setSelected(update)}
-                style={{
-                  background: "#fff",
-                  border: selected?.id === update.id ? "2px solid #F16023" : "1px solid #DDE3EA",
-                  borderRadius: 12,
-                  padding: 14,
-                  cursor: "pointer",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <strong style={{ color: "#172033" }}>{update.project_name}</strong>
-                  <span style={{ fontSize: 12, color: update.is_sent ? "#16A34A" : "#D97706" }}>
-                    {update.is_sent ? "Enviado" : "Não enviado"}
-                  </span>
-                </div>
-                <div style={{ fontSize: 13, color: "#526174" }}>
-                  {new Date(update.date + "T00:00:00").toLocaleDateString("pt-BR")} · {update.completion_percent}%
-                </div>
-              </div>
-            ))}
-            {updates.length === 0 && <p>Nenhuma atualização registrada.</p>}
-          </div>
+        {selected && (
+          <ProjectUpdateEditor
+            update={selected}
+            collaborators={collaborators}
+            canEdit={canEdit}
+            onChange={(u) => {
+              setSelected(u);
+              setUpdates((prev) => prev.map((item) => (item.id === u.id ? u : item)));
+            }}
+          />
         )}
       </div>
-
-      {selected && (
-        <ProjectUpdateEditor
-          update={selected}
-          collaborators={collaborators}
-          canEdit={canEdit}
-          onChange={(u) => {
-            setSelected(u);
-            setUpdates((prev) => prev.map((item) => (item.id === u.id ? u : item)));
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -179,20 +188,21 @@ function ProjectUpdateEditor({
   }
 
   return (
-    <div style={{ flex: 1, background: "#fff", border: "1px solid #DDE3EA", borderRadius: 12, padding: 20, maxWidth: 460 }}>
-      <h2 style={{ fontSize: 16, color: "#172033", marginBottom: 4 }}>{update.project_name}</h2>
-      <p style={{ fontSize: 13, color: "#526174", marginBottom: 16 }}>{update.project_code}</p>
+    <div className="card" style={{ flex: 1, padding: 20, maxWidth: 440, flexShrink: 0 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>{update.project_name}</h2>
+      <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>{update.project_code}</p>
 
-      <label style={label}>Colaboradores</label>
+      <label className="form-label">Colaboradores</label>
       <select
         multiple
         disabled={!canEdit}
+        className="input"
         value={update.collaborators.map((c) => String(c.id))}
         onChange={(e) => {
           const ids = Array.from(e.target.selectedOptions).map((o) => Number(o.value));
           save({ collaborators: collaborators.filter((c) => ids.includes(c.id)) });
         }}
-        style={{ ...input, height: 100 }}
+        style={{ height: 100 }}
       >
         {collaborators.map((c) => (
           <option key={c.id} value={c.id}>
@@ -201,28 +211,29 @@ function ProjectUpdateEditor({
         ))}
       </select>
 
-      <label style={label}>Percentual de Conclusão</label>
+      <label className="form-label">Percentual de Conclusão</label>
       <input
         type="number"
         min={0}
         max={100}
         disabled={!canEdit}
+        className="input"
         value={update.completion_percent}
         onChange={(e) => onChange({ ...update, completion_percent: Number(e.target.value) })}
         onBlur={(e) => save({ completion_percent: Number(e.target.value) })}
-        style={input}
       />
 
-      <label style={label}>Atividades Executadas</label>
+      <label className="form-label">Atividades Executadas</label>
       <textarea
         disabled={!canEdit}
+        className="input"
         value={update.activities_text}
         onChange={(e) => onChange({ ...update, activities_text: e.target.value })}
         onBlur={(e) => save({ activities_text: e.target.value })}
-        style={{ ...input, height: 90 }}
+        style={{ height: 90 }}
       />
 
-      <div style={{ display: "flex", gap: 16, margin: "12px 0" }}>
+      <div style={{ display: "flex", gap: 16, margin: "14px 0" }}>
         <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
           <input
             type="checkbox"
@@ -243,33 +254,34 @@ function ProjectUpdateEditor({
         </label>
       </div>
 
-      <label style={label}>Observações</label>
+      <label className="form-label">Observações</label>
       <textarea
         disabled={!canEdit}
+        className="input"
         value={update.summary}
         onChange={(e) => onChange({ ...update, summary: e.target.value })}
         onBlur={(e) => save({ summary: e.target.value })}
-        style={{ ...input, height: 70 }}
+        style={{ height: 70 }}
       />
 
-      {saving && <p style={{ fontSize: 12, color: "#526174" }}>Salvando...</p>}
+      {saving && <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Salvando...</p>}
 
-      <div style={{ background: "#F7F9FB", border: "1px solid #DDE3EA", borderRadius: 8, padding: 12, marginTop: 16, fontSize: 12, whiteSpace: "pre-wrap", maxHeight: 220, overflowY: "auto" }}>
+      <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginTop: 16, fontSize: 12, whiteSpace: "pre-wrap", maxHeight: 220, overflowY: "auto" }}>
         {update.preview}
       </div>
 
-      {feedback && <p style={{ fontSize: 12, color: "#16A34A", marginTop: 8 }}>{feedback}</p>}
+      {feedback && <p style={{ fontSize: 12, color: "var(--green)", marginTop: 8, fontWeight: 600 }}>{feedback}</p>}
 
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-        <button onClick={copyText} style={secondaryButton}>
+        <button onClick={copyText} className="btn btn-secondary">
           {copied ? "Copiado!" : "Copiar Texto"}
         </button>
         {canEdit && (
           <>
-            <a href={projectUpdatesApi.pdfUrl(update.id)} target="_blank" rel="noreferrer" style={secondaryButton}>
+            <a href={projectUpdatesApi.pdfUrl(update.id)} target="_blank" rel="noreferrer" className="btn btn-secondary">
               Baixar PDF
             </a>
-            <button onClick={handleSendEmail} style={primaryButton}>
+            <button onClick={handleSendEmail} className="btn btn-primary">
               Enviar por E-mail
             </button>
           </>
@@ -278,32 +290,3 @@ function ProjectUpdateEditor({
     </div>
   );
 }
-
-const label = { display: "block", fontSize: 12, fontWeight: 700, color: "#526174", margin: "12px 0 6px" };
-const input = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 8,
-  border: "1px solid #DDE3EA",
-  fontSize: 14,
-  boxSizing: "border-box" as const,
-};
-const primaryButton = {
-  background: "#F16023",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "8px 16px",
-  fontWeight: 700,
-  fontSize: 13,
-  cursor: "pointer",
-};
-const secondaryButton = {
-  ...primaryButton,
-  background: "#fff",
-  color: "#F16023",
-  border: "1px solid #F16023",
-  textDecoration: "none",
-  display: "inline-flex",
-  alignItems: "center",
-};

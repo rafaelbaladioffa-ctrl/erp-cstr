@@ -255,6 +255,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         "project_type",
         "status",
         "responsible_cstr",
+        "link_count",
         "is_active",
     )
     list_display_links = ()
@@ -271,7 +272,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     readonly_fields = ("code", "created_at", "updated_at")
     inlines = (ProjectTaskInline,)
     fieldsets = (
-        ("Identificação", {"fields": ("code", "company", "name", "po", "status", "is_active")}),
+        ("Identificação", {"fields": ("code", "company", "name", "po", "link_count", "status", "is_active")}),
         (
             "Vinculações",
             {
@@ -374,6 +375,19 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                 continue
         raise ValueError(f'Data inválida: "{value}". Use DD/MM/AAAA.')
 
+    @staticmethod
+    def _csv_int(value, field_label):
+        value = (value or "").strip()
+        if not value:
+            return 0
+        try:
+            parsed = int(value)
+        except ValueError:
+            raise ValueError(f'{field_label} inválido: "{value}".')
+        if parsed < 0:
+            raise ValueError(f'{field_label} não pode ser negativo: "{value}".')
+        return parsed
+
     def export_csv_view(self, request):
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="projetos.csv"'
@@ -383,7 +397,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
             [
                 "codigo", "nome", "po", "empresa", "cliente", "site", "tipo_projeto", "categoria",
                 "responsavel_cstr", "responsavel_cliente", "status", "inicio_previsto", "termino_previsto",
-                "descricao", "observacoes", "ativo",
+                "quantidade_links", "descricao", "observacoes", "ativo",
             ]
         )
         queryset = self.get_queryset(request).select_related(
@@ -405,6 +419,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                     project.get_status_display(),
                     project.planned_start.strftime("%d/%m/%Y") if project.planned_start else "",
                     project.planned_end.strftime("%d/%m/%Y") if project.planned_end else "",
+                    project.link_count,
                     project.description,
                     project.notes,
                     "Sim" if project.is_active else "Não",
@@ -464,6 +479,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                                 status=status_map[status_text],
                                 planned_start=self._csv_date(row.get("inicio_previsto")),
                                 planned_end=self._csv_date(row.get("termino_previsto")),
+                                link_count=self._csv_int(row.get("quantidade_links"), "Quantidade de links"),
                                 description=(row.get("descricao") or "").strip(),
                                 notes=(row.get("observacoes") or "").strip(),
                                 is_active=active_text not in {"não", "nao", "0", "false", "inativo"},

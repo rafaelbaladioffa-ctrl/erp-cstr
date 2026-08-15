@@ -13,6 +13,16 @@ router.register("collaborators", views.CollaboratorViewSet, basename="collaborat
 router.register("daily-updates", views.DailyUpdateViewSet, basename="daily-update")
 router.register("project-updates", views.ProjectDailyUpdateViewSet, basename="project-update")
 router.register("my-tasks", views.MyTaskViewSet, basename="my-task")
+router.register("registry/companies", views.CompanyViewSet, basename="registry-company")
+router.register("registry/categories", views.CategoryViewSet, basename="registry-category")
+router.register("registry/project-types", views.ProjectTypeViewSet, basename="registry-project-type")
+router.register("registry/job-titles", views.JobTitleViewSet, basename="registry-job-title")
+router.register("registry/sites", views.SiteRegistryViewSet, basename="registry-site")
+router.register("registry/clients", views.ClientRegistryViewSet, basename="registry-client")
+router.register("registry/client-responsibles", views.ClientResponsibleViewSet, basename="registry-client-responsible")
+router.register("registry/responsibles", views.ResponsibleViewSet, basename="registry-responsible")
+router.register("registry/collaborators", views.CollaboratorRegistryViewSet, basename="registry-collaborator")
+router.register("registry/tasks", views.TaskViewSet, basename="registry-task")
 
 urlpatterns = [
     path("token/", TokenObtainPairView.as_view(), name="token-obtain-pair"),

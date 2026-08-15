@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from core.models import Client, Collaborator, Site
+from core.models import Category, Client, ClientResponsible, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
 from projects.models import Project, ProjectTask
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
@@ -29,22 +29,167 @@ class CollaboratorSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "registration", "email", "is_active")
 
 
+# ---------------------------------------------------------------------------
+# Cadastros Gerais (CRUD completo usado pelo módulo Cadastros do frontend)
+# ---------------------------------------------------------------------------
+
+
+class CompanyCrudSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Company
+        fields = ("id", "legal_name", "trade_name", "tax_id", "email", "phone", "is_active", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+
+class CategoryCrudSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ("id", "name", "description", "is_active", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+
+class ProjectTypeCrudSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectType
+        fields = ("id", "name", "description", "is_active", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+
+class JobTitleCrudSerializer(serializers.ModelSerializer):
+    company_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JobTitle
+        fields = ("id", "company", "company_name", "name", "description", "is_active", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_company_name(self, obj):
+        return str(obj.company) if obj.company_id else None
+
+
+class SiteCrudSerializer(serializers.ModelSerializer):
+    company_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Site
+        fields = (
+            "id", "company", "company_name", "name", "code", "address", "city", "state",
+            "latitude", "longitude", "is_active", "created_at", "updated_at",
+        )
+        read_only_fields = ("latitude", "longitude", "created_at", "updated_at")
+
+    def get_company_name(self, obj):
+        return str(obj.company) if obj.company_id else None
+
+
+class ClientCrudSerializer(serializers.ModelSerializer):
+    company_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Client
+        fields = (
+            "id", "company", "company_name", "person_type", "legal_name", "trade_name", "tax_id",
+            "email", "phone", "address", "city", "state", "notes", "is_active", "created_at", "updated_at",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_company_name(self, obj):
+        return str(obj.company) if obj.company_id else None
+
+
+class ClientResponsibleCrudSerializer(serializers.ModelSerializer):
+    client_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClientResponsible
+        fields = ("id", "client", "client_name", "name", "email", "phone", "job_title", "is_active", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_client_name(self, obj):
+        return str(obj.client) if obj.client_id else None
+
+
+class ResponsibleCrudSerializer(serializers.ModelSerializer):
+    company_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Responsible
+        fields = ("id", "company", "company_name", "name", "email", "phone", "is_active", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_company_name(self, obj):
+        return str(obj.company) if obj.company_id else None
+
+
+class CollaboratorCrudSerializer(serializers.ModelSerializer):
+    company_name = serializers.SerializerMethodField()
+    job_title_name = serializers.SerializerMethodField()
+    manager_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Collaborator
+        fields = (
+            "id", "company", "company_name", "name", "registration", "yellow_badge", "job_title",
+            "job_title_name", "email", "phone", "sites", "manager", "manager_name", "is_active",
+            "created_at", "updated_at",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_company_name(self, obj):
+        return str(obj.company) if obj.company_id else None
+
+    def get_job_title_name(self, obj):
+        return str(obj.job_title) if obj.job_title_id else None
+
+    def get_manager_name(self, obj):
+        return str(obj.manager) if obj.manager_id else None
+
+
+class TaskCrudSerializer(serializers.ModelSerializer):
+    project_type_names = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Task
+        fields = (
+            "id", "code", "name", "description", "estimated_hours", "project_types",
+            "project_type_names", "is_active", "created_at", "updated_at",
+        )
+        read_only_fields = ("code", "created_at", "updated_at")
+
+    def get_project_type_names(self, obj):
+        return [str(pt) for pt in obj.project_types.all()]
+
+
 class ProjectSerializer(serializers.ModelSerializer):
     client_name = serializers.SerializerMethodField()
     site_name = serializers.SerializerMethodField()
+    category_name = serializers.SerializerMethodField()
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    total_tasks = serializers.SerializerMethodField()
+    completed_tasks = serializers.SerializerMethodField()
+    worked_hours = serializers.SerializerMethodField()
+    progress_percent = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
         fields = (
             "id",
             "code",
+            "company",
             "name",
             "po",
+            "link_count",
             "client",
             "client_name",
             "site",
             "site_name",
+            "category",
+            "category_name",
+            "project_type",
+            "responsible_cstr",
+            "responsible_client",
+            "description",
+            "notes",
             "status",
             "status_display",
             "planned_start",
@@ -52,6 +197,10 @@ class ProjectSerializer(serializers.ModelSerializer):
             "actual_start",
             "actual_end",
             "is_active",
+            "total_tasks",
+            "completed_tasks",
+            "worked_hours",
+            "progress_percent",
         )
 
     def get_client_name(self, obj):
@@ -59,6 +208,49 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     def get_site_name(self, obj):
         return str(obj.site) if obj.site_id else None
+
+    def get_category_name(self, obj):
+        return str(obj.category) if obj.category_id else None
+
+    def _tasks(self, obj):
+        return list(obj.project_tasks.all())
+
+    def get_total_tasks(self, obj):
+        return len(self._tasks(obj))
+
+    def get_completed_tasks(self, obj):
+        return len([t for t in self._tasks(obj) if t.status == "completed"])
+
+    def get_worked_hours(self, obj):
+        return float(sum(float(t.actual_hours or 0) for t in self._tasks(obj)))
+
+    def get_progress_percent(self, obj):
+        tasks = self._tasks(obj)
+        if not tasks:
+            return 0
+        completed = len([t for t in tasks if t.status == "completed"])
+        return round((completed / len(tasks)) * 100)
+
+    def _run_model_clean(self, instance):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
+
+    def create(self, validated_data):
+        instance = Project(**validated_data)
+        self._run_model_clean(instance)
+        instance.save()
+        return instance
+
+    def update(self, instance, validated_data):
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        self._run_model_clean(instance)
+        instance.save()
+        return instance
 
 
 class ProjectTaskSerializer(serializers.ModelSerializer):

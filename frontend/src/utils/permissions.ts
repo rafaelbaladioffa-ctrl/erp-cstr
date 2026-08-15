@@ -6,6 +6,12 @@ export function hasPerm(user: Me | null, permission: string): boolean {
   return user.permissions.includes(permission);
 }
 
+export function hasAnyPerm(user: Me | null, permissions: string[]): boolean {
+  if (!user) return false;
+  if (user.is_superuser) return true;
+  return permissions.some((p) => user.permissions.includes(p));
+}
+
 export const PERMS = {
   viewProject: "projects.view_project",
   viewDailyUpdate: "updates.view_dailyupdate",
@@ -16,4 +22,27 @@ export const PERMS = {
   changeProjectUpdate: "updates.change_projectdailyupdate",
   viewMyTasks: "technical.view_mytask",
   changeMyTasks: "technical.change_mytask",
+  viewCompany: "core.view_company",
+  viewClient: "core.view_client",
+  viewSite: "core.view_site",
+  viewCategory: "core.view_category",
+  viewProjectType: "core.view_projecttype",
+  viewJobTitle: "core.view_jobtitle",
+  viewCollaborator: "core.view_collaborator",
+  viewResponsible: "core.view_responsible",
+  viewClientResponsible: "core.view_clientresponsible",
+  viewTask: "core.view_task",
 };
+
+export const CADASTROS_PERMS = [
+  PERMS.viewCompany,
+  PERMS.viewClient,
+  PERMS.viewSite,
+  PERMS.viewCategory,
+  PERMS.viewProjectType,
+  PERMS.viewJobTitle,
+  PERMS.viewCollaborator,
+  PERMS.viewResponsible,
+  PERMS.viewClientResponsible,
+  PERMS.viewTask,
+];

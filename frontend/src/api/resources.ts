@@ -1,5 +1,47 @@
 import { apiClient } from "./client";
-import type { Collaborator, DailyUpdate, Me, Paginated, Project, ProjectDailyUpdate, ProjectTask } from "./types";
+import type {
+  Category,
+  ClientFull,
+  ClientResponsibleFull,
+  Collaborator,
+  CollaboratorFull,
+  Company,
+  DailyUpdate,
+  JobTitle,
+  Me,
+  Paginated,
+  Project,
+  ProjectDailyUpdate,
+  ProjectTask,
+  ProjectType,
+  ResponsibleFull,
+  SiteFull,
+  TaskFull,
+} from "./types";
+
+function crud<T extends { id: number }>(basePath: string) {
+  return {
+    list: (params?: Record<string, string>) =>
+      apiClient.get<Paginated<T>>(`${basePath}/`, { params }).then((r) => r.data),
+    get: (id: number) => apiClient.get<T>(`${basePath}/${id}/`).then((r) => r.data),
+    create: (payload: Partial<T>) => apiClient.post<T>(`${basePath}/`, payload).then((r) => r.data),
+    update: (id: number, payload: Partial<T>) => apiClient.patch<T>(`${basePath}/${id}/`, payload).then((r) => r.data),
+    remove: (id: number) => apiClient.delete(`${basePath}/${id}/`),
+  };
+}
+
+export const registryApi = {
+  companies: crud<Company>("/registry/companies"),
+  categories: crud<Category>("/registry/categories"),
+  projectTypes: crud<ProjectType>("/registry/project-types"),
+  jobTitles: crud<JobTitle>("/registry/job-titles"),
+  sites: crud<SiteFull>("/registry/sites"),
+  clients: crud<ClientFull>("/registry/clients"),
+  clientResponsibles: crud<ClientResponsibleFull>("/registry/client-responsibles"),
+  responsibles: crud<ResponsibleFull>("/registry/responsibles"),
+  collaborators: crud<CollaboratorFull>("/registry/collaborators"),
+  tasks: crud<TaskFull>("/registry/tasks"),
+};
 
 export interface Client {
   id: number;
@@ -25,6 +67,9 @@ export const projectsApi = {
   list: (params?: Record<string, string>) =>
     apiClient.get<Paginated<Project>>("/projects/", { params }).then((r) => r.data),
   get: (id: number) => apiClient.get<Project>(`/projects/${id}/`).then((r) => r.data),
+  create: (payload: Partial<Project>) => apiClient.post<Project>("/projects/", payload).then((r) => r.data),
+  update: (id: number, payload: Partial<Project>) =>
+    apiClient.patch<Project>(`/projects/${id}/`, payload).then((r) => r.data),
   tasks: (id: number) => apiClient.get<ProjectTask[]>(`/projects/${id}/tasks/`).then((r) => r.data),
 };
 

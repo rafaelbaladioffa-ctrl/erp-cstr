@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { collaboratorsApi, dailyUpdatesApi, projectsApi } from "../api/resources";
 import type { Collaborator, DailyUpdate, Project } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import Icon from "../components/ui/Icon";
+import PageHeader from "../components/ui/PageHeader";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 export default function DailyUpdates() {
@@ -51,24 +53,33 @@ export default function DailyUpdates() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, color: "#172033" }}>Atualizações Diárias</h1>
-        {canCreate && (
-          <button onClick={() => setCreating((v) => !v)} style={primaryButton}>
-            {creating ? "Cancelar" : "Nova Atualização"}
-          </button>
-        )}
-      </div>
+      <PageHeader
+        eyebrow="Área Operacional"
+        title="Atualizações Diárias"
+        subtitle="Registre e envie o consolidado diário de alocação da equipe."
+        actions={
+          canCreate ? (
+            <button className="btn btn-primary" onClick={() => setCreating((v) => !v)}>
+              <Icon name={creating ? "close" : "add"} style={{ fontSize: 18 }} />
+              {creating ? "Cancelar" : "Nova Atualização"}
+            </button>
+          ) : undefined
+        }
+      />
 
-      {feedback && <p style={{ color: "#16A34A", marginBottom: 12 }}>{feedback}</p>}
+      {feedback && (
+        <div className="card" style={{ padding: 12, marginBottom: 16, color: "var(--green)", fontSize: 13, fontWeight: 600 }}>
+          {feedback}
+        </div>
+      )}
 
       {creating && canCreate && (
-        <div style={{ background: "#fff", border: "1px solid #DDE3EA", borderRadius: 12, padding: 20, marginBottom: 20 }}>
-          <label style={label}>Data da alocação</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
+        <div className="form-card">
+          <label className="form-label">Data da alocação</label>
+          <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
 
-          <label style={label}>Projeto</label>
-          <select value={projectId} onChange={(e) => setProjectId(Number(e.target.value))} style={input}>
+          <label className="form-label">Projeto</label>
+          <select className="input" value={projectId} onChange={(e) => setProjectId(Number(e.target.value))}>
             <option value="">Selecione...</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
@@ -77,14 +88,15 @@ export default function DailyUpdates() {
             ))}
           </select>
 
-          <label style={label}>Colaboradores</label>
+          <label className="form-label">Colaboradores</label>
           <select
             multiple
+            className="input"
             value={selectedCollaborators.map(String)}
             onChange={(e) =>
               setSelectedCollaborators(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))
             }
-            style={{ ...input, height: 120 }}
+            style={{ height: 120 }}
           >
             {collaborators.map((c) => (
               <option key={c.id} value={c.id}>
@@ -93,70 +105,41 @@ export default function DailyUpdates() {
             ))}
           </select>
 
-          <button onClick={handleCreate} style={{ ...primaryButton, marginTop: 12 }}>
+          <button className="btn btn-primary" onClick={handleCreate} style={{ marginTop: 14 }}>
             Salvar
           </button>
         </div>
       )}
 
       {loading ? (
-        <p>Carregando...</p>
+        <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {updates.map((update) => (
-            <div key={update.id} style={{ background: "#fff", border: "1px solid #DDE3EA", borderRadius: 12, padding: 16 }}>
+            <div key={update.id} className="card" style={{ padding: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <strong style={{ color: "#172033" }}>
+                <strong style={{ color: "var(--text)" }}>
                   {new Date(update.allocation_date + "T00:00:00").toLocaleDateString("pt-BR")}
                 </strong>
                 {canSend && (
                   <div style={{ display: "flex", gap: 8 }}>
-                    <a href={dailyUpdatesApi.pdfUrl(update.id)} target="_blank" rel="noreferrer" style={linkButton}>
+                    <a href={dailyUpdatesApi.pdfUrl(update.id)} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">
                       PDF
                     </a>
-                    <button onClick={() => handleSendEmail(update.id)} style={primaryButton}>
+                    <button onClick={() => handleSendEmail(update.id)} className="btn btn-primary btn-sm">
                       Enviar e-mail
                     </button>
                   </div>
                 )}
               </div>
-              <pre style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "#526174", marginTop: 10, fontFamily: "inherit" }}>
+              <pre style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "var(--text-muted)", marginTop: 10, fontFamily: "inherit" }}>
                 {update.description}
               </pre>
             </div>
           ))}
-          {updates.length === 0 && <p>Nenhuma atualização registrada.</p>}
+          {updates.length === 0 && <div className="empty-state">Nenhuma atualização registrada.</div>}
         </div>
       )}
     </div>
   );
 }
-
-const label = { display: "block", fontSize: 12, fontWeight: 700, color: "#526174", margin: "12px 0 6px" };
-const input = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 8,
-  border: "1px solid #DDE3EA",
-  fontSize: 14,
-  boxSizing: "border-box" as const,
-};
-const primaryButton = {
-  background: "#F16023",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "8px 16px",
-  fontWeight: 700,
-  fontSize: 13,
-  cursor: "pointer",
-};
-const linkButton = {
-  ...primaryButton,
-  background: "#fff",
-  color: "#F16023",
-  border: "1px solid #F16023",
-  textDecoration: "none",
-  display: "inline-flex",
-  alignItems: "center",
-};

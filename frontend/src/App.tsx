@@ -1,15 +1,17 @@
+import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RequirePermission from "./components/RequirePermission";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import CadastrosPage from "./pages/cadastros/CadastrosPage";
 import DailyUpdates from "./pages/DailyUpdates";
 import Login from "./pages/Login";
 import MyTasks from "./pages/MyTasks";
 import ProjectDetail from "./pages/ProjectDetail";
 import ProjectsList from "./pages/ProjectsList";
 import ProjectUpdates from "./pages/ProjectUpdates";
-import { PERMS, hasPerm } from "./utils/permissions";
+import { CADASTROS_PERMS, PERMS, hasAnyPerm, hasPerm } from "./utils/permissions";
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -17,7 +19,16 @@ function HomeRedirect() {
   if (hasPerm(user, PERMS.viewDailyUpdate)) return <Navigate to="/atualizacoes-diarias" replace />;
   if (hasPerm(user, PERMS.viewProjectUpdate)) return <Navigate to="/atualizacoes-projeto" replace />;
   if (hasPerm(user, PERMS.viewMyTasks)) return <Navigate to="/minhas-tarefas" replace />;
+  if (hasAnyPerm(user, CADASTROS_PERMS)) return <Navigate to="/cadastros" replace />;
   return <p style={{ padding: 32, color: "#526174" }}>Seu usuário não tem acesso a nenhum módulo.</p>;
+}
+
+function RequireAnyPermission({ permissions, children }: { permissions: string[]; children: ReactNode }) {
+  const { user } = useAuth();
+  if (!hasAnyPerm(user, permissions)) {
+    return <p style={{ padding: 32, color: "#526174" }}>Você não tem permissão para acessar este módulo.</p>;
+  }
+  return <>{children}</>;
 }
 
 export default function App() {
@@ -71,6 +82,14 @@ export default function App() {
               <RequirePermission permission={PERMS.viewMyTasks}>
                 <MyTasks />
               </RequirePermission>
+            }
+          />
+          <Route
+            path="/cadastros"
+            element={
+              <RequireAnyPermission permissions={CADASTROS_PERMS}>
+                <CadastrosPage />
+              </RequireAnyPermission>
             }
           />
         </Route>

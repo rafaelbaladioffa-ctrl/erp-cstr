@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Client, Collaborator, Site
+from core.models import Category, Client, ClientResponsible, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
 from projects.models import Project, ProjectTask
 from technical.models import MyTask
 from updates.mail import send_daily_update_emails
@@ -15,16 +15,50 @@ from updates.project_pdf import build_project_daily_update_pdf
 
 from .permissions import RequireChangePermissionForActions, ViewAwareModelPermissions
 from .serializers import (
+    ClientCrudSerializer,
+    ClientResponsibleCrudSerializer,
     ClientSerializer,
+    CollaboratorCrudSerializer,
     CollaboratorSerializer,
+    CompanyCrudSerializer,
+    CategoryCrudSerializer,
     DailyUpdateSerializer,
+    JobTitleCrudSerializer,
     MyTaskUpdateSerializer,
     ProjectDailyUpdateCreateSerializer,
     ProjectDailyUpdateSerializer,
     ProjectSerializer,
     ProjectTaskSerializer,
+    ProjectTypeCrudSerializer,
+    ResponsibleCrudSerializer,
+    SiteCrudSerializer,
     SiteSerializer,
+    TaskCrudSerializer,
 )
+
+
+class RegistryViewSet(viewsets.ModelViewSet):
+    """Base para os cadastros gerais: CRUD completo com busca simples por
+    nome e filtro opcional por is_active, protegido pelas permissões
+    padrão do Django (view/add/change/delete) por modelo."""
+
+    permission_classes = [ViewAwareModelPermissions]
+    search_fields: tuple[str, ...] = ("name",)
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        is_active = self.request.query_params.get("is_active")
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() in ("1", "true", "yes"))
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+
+            condition = Q()
+            for field in self.search_fields:
+                condition |= Q(**{f"{field}__icontains": search})
+            queryset = queryset.filter(condition)
+        return queryset
 
 
 class MeView(APIView):
@@ -61,8 +95,12 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CollaboratorSerializer
 
 
-class ProjectViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Project.objects.select_related("client", "site").order_by("-created_at")
+class ProjectViewSet(viewsets.ModelViewSet):
+    queryset = (
+        Project.objects.select_related("client", "site", "category")
+        .prefetch_related("project_tasks")
+        .order_by("-created_at")
+    )
     serializer_class = ProjectSerializer
     permission_classes = [ViewAwareModelPermissions]
 
@@ -94,6 +132,78 @@ class ProjectTaskViewSet(viewsets.ReadOnlyModelViewSet):
         if project_id:
             queryset = queryset.filter(project_id=project_id)
         return queryset.order_by("order", "id")
+
+
+# ---------------------------------------------------------------------------
+# Cadastros Gerais
+# ---------------------------------------------------------------------------
+
+
+class CompanyViewSet(RegistryViewSet):
+    queryset = Company.objects.order_by("legal_name")
+    serializer_class = CompanyCrudSerializer
+    search_fields = ("legal_name", "trade_name", "tax_id")
+
+
+class CategoryViewSet(RegistryViewSet):
+    queryset = Category.objects.order_by("name")
+    serializer_class = CategoryCrudSerializer
+    search_fields = ("name",)
+
+
+class ProjectTypeViewSet(RegistryViewSet):
+    queryset = ProjectType.objects.order_by("name")
+    serializer_class = ProjectTypeCrudSerializer
+    search_fields = ("name",)
+
+
+class JobTitleViewSet(RegistryViewSet):
+    queryset = JobTitle.objects.select_related("company").order_by("name")
+    serializer_class = JobTitleCrudSerializer
+    search_fields = ("name",)
+
+
+class SiteRegistryViewSet(RegistryViewSet):
+    queryset = Site.objects.select_related("company").order_by("name")
+    serializer_class = SiteCrudSerializer
+    search_fields = ("name", "code", "city")
+
+
+class ClientRegistryViewSet(RegistryViewSet):
+    queryset = Client.objects.select_related("company").order_by("legal_name")
+    serializer_class = ClientCrudSerializer
+    search_fields = ("legal_name", "trade_name", "tax_id")
+
+
+class ClientResponsibleViewSet(RegistryViewSet):
+    queryset = ClientResponsible.objects.select_related("client").order_by("name")
+    serializer_class = ClientResponsibleCrudSerializer
+    search_fields = ("name", "email")
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        client_id = self.request.query_params.get("client")
+        if client_id:
+            queryset = queryset.filter(client_id=client_id)
+        return queryset
+
+
+class ResponsibleViewSet(RegistryViewSet):
+    queryset = Responsible.objects.select_related("company").order_by("name")
+    serializer_class = ResponsibleCrudSerializer
+    search_fields = ("name", "email")
+
+
+class CollaboratorRegistryViewSet(RegistryViewSet):
+    queryset = Collaborator.objects.select_related("company", "job_title", "manager").order_by("name")
+    serializer_class = CollaboratorCrudSerializer
+    search_fields = ("name", "registration", "yellow_badge")
+
+
+class TaskViewSet(RegistryViewSet):
+    queryset = Task.objects.prefetch_related("project_types").order_by("name")
+    serializer_class = TaskCrudSerializer
+    search_fields = ("name", "code")
 
 
 class DailyUpdateViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):

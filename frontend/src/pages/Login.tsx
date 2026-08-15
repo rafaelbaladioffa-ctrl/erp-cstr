@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -31,63 +31,46 @@ export default function Login() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#F7F9FB",
-        fontFamily: "Manrope, Arial, sans-serif",
+        background: "var(--navy)",
       }}
     >
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          background: "#fff",
-          padding: 32,
-          borderRadius: 12,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-          width: 340,
-        }}
-      >
-        <h1 style={{ fontSize: 20, color: "#172033", marginBottom: 4 }}>ERP CSTR</h1>
-        <p style={{ fontSize: 13, color: "#526174", marginBottom: 24 }}>Entre com seu usuário do sistema</p>
-        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Usuário</label>
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          style={inputStyle}
-          autoFocus
-        />
-        <label style={{ display: "block", fontSize: 13, fontWeight: 600, margin: "14px 0 6px" }}>Senha</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={inputStyle}
-        />
-        {error && <p style={{ color: "#DC2626", fontSize: 13, marginTop: 12 }}>{error}</p>}
-        <button type="submit" disabled={loading} style={buttonStyle}>
+      <form onSubmit={handleSubmit} className="card" style={{ padding: 36, width: 360, background: "#fff" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+          <div
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              background: "var(--orange)",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              fontSize: 15,
+            }}
+          >
+            CS
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)", lineHeight: 1.1 }}>CONSULTIMER</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--orange)", letterSpacing: "0.1em" }}>ERP CSTR</div>
+          </div>
+        </div>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 22 }}>Entre com seu usuário do sistema</p>
+
+        <label className="form-label" style={{ margin: "0 0 6px" }}>Usuário</label>
+        <input className="input" style={{ width: "100%" }} value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
+
+        <label className="form-label">Senha</label>
+        <input type="password" className="input" style={{ width: "100%" }} value={password} onChange={(e) => setPassword(e.target.value)} />
+
+        {error && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 12 }}>{error}</p>}
+
+        <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 24 }}>
           {loading ? "Entrando..." : "Entrar"}
         </button>
       </form>
     </div>
   );
 }
-
-const inputStyle: CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 8,
-  border: "1px solid #DDE3EA",
-  fontSize: 14,
-  boxSizing: "border-box",
-};
-
-const buttonStyle: CSSProperties = {
-  width: "100%",
-  marginTop: 24,
-  padding: "10px 12px",
-  borderRadius: 8,
-  border: "none",
-  background: "#F16023",
-  color: "#fff",
-  fontWeight: 700,
-  fontSize: 14,
-  cursor: "pointer",
-};

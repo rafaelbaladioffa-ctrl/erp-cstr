@@ -1,102 +1,131 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { PERMS, hasPerm } from "../utils/permissions";
+import { CADASTROS_PERMS, PERMS, hasAnyPerm, hasPerm } from "../utils/permissions";
+import Icon from "./ui/Icon";
 
-const NAV_GROUPS = [
+interface NavItem {
+  to: string;
+  label: string;
+  icon: string;
+  permission?: string;
+  permissions?: string[];
+}
+
+const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
+    title: "Menu Principal",
     items: [
-      { to: "/projetos", label: "Projetos", permission: PERMS.viewProject },
-      { to: "/atualizacoes-diarias", label: "Atualizações Diárias", permission: PERMS.viewDailyUpdate },
-      { to: "/atualizacoes-projeto", label: "Atualizações de Projeto", permission: PERMS.viewProjectUpdate },
+      { to: "/projetos", label: "Projetos", icon: "folder", permission: PERMS.viewProject },
+      { to: "/atualizacoes-diarias", label: "Atualizações Diárias", icon: "event_note", permission: PERMS.viewDailyUpdate },
+      { to: "/atualizacoes-projeto", label: "Atualizações de Projeto", icon: "description", permission: PERMS.viewProjectUpdate },
+      { to: "/cadastros", label: "Cadastros Gerais", icon: "inventory_2", permissions: CADASTROS_PERMS },
     ],
   },
   {
     title: "Técnico",
-    items: [{ to: "/minhas-tarefas", label: "Minhas Tarefas", permission: PERMS.viewMyTasks }],
+    items: [{ to: "/minhas-tarefas", label: "Minhas Tarefas", icon: "checklist", permission: PERMS.viewMyTasks }],
   },
 ];
 
+const AREA_LABELS: Record<string, { area: string; page: string }> = {
+  "/projetos": { area: "Área Operacional", page: "Projetos" },
+  "/atualizacoes-diarias": { area: "Área Operacional", page: "Atualizações Diárias" },
+  "/atualizacoes-projeto": { area: "Área Operacional", page: "Atualizações de Projeto" },
+  "/cadastros": { area: "Base de Dados", page: "Cadastros Gerais" },
+  "/minhas-tarefas": { area: "Área Técnica", page: "Minhas Tarefas" },
+};
+
+function currentBreadcrumb(pathname: string) {
+  const match = Object.keys(AREA_LABELS).find((key) => pathname.startsWith(key));
+  if (match) return AREA_LABELS[match];
+  if (pathname.startsWith("/projetos/")) return { area: "Área Operacional", page: "Detalhe do Projeto" };
+  return { area: "ERP CSTR", page: "" };
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
+  const location = useLocation();
+  const breadcrumb = currentBreadcrumb(location.pathname);
+
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => hasPerm(user, item.permission)),
+    items: group.items.filter((item) =>
+      item.permissions ? hasAnyPerm(user, item.permissions) : hasPerm(user, item.permission!)
+    ),
   })).filter((group) => group.items.length > 0);
 
+  const displayName = user?.full_name || user?.username || "";
+  const email = user?.email || user?.username || "";
+  const role = user?.is_superuser ? "Admin" : "Usuário";
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "Manrope, Arial, sans-serif" }}>
-      <aside
-        style={{
-          width: 240,
-          background: "#172033",
-          color: "#fff",
-          padding: "24px 16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
-      >
-        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 24, color: "#F16023" }}>ERP CSTR</div>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <div className="sidebar-logo-mark">CS</div>
+          <div className="sidebar-logo-text">
+            CONSULTIMER
+            <small>ERP CSTR</small>
+          </div>
+        </div>
+
         {groups.length === 0 && (
-          <p style={{ fontSize: 13, color: "#DDE3EA" }}>Seu usuário não tem acesso a nenhum módulo.</p>
+          <p style={{ fontSize: 13, color: "#DDE3EA", padding: "0 10px" }}>
+            Seu usuário não tem acesso a nenhum módulo.
+          </p>
         )}
+
         {groups.map((group, idx) => (
-          <div key={group.title || idx} style={{ marginBottom: 8 }}>
-            {group.title && (
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "#526174",
-                  textTransform: "uppercase",
-                  margin: "12px 12px 6px",
-                }}
-              >
-                {group.title}
-              </div>
-            )}
+          <div key={group.title || idx}>
+            <div className="sidebar-group-title">{group.title}</div>
             {group.items.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
-                style={({ isActive }) => ({
-                  display: "block",
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  color: "#fff",
-                  textDecoration: "none",
-                  background: isActive ? "#F16023" : "transparent",
-                  fontSize: 14,
-                  fontWeight: 600,
-                })}
+                className={({ isActive }) => `sidebar-link${isActive ? " active" : ""}`}
               >
+                <Icon name={item.icon} />
                 {item.label}
               </NavLink>
             ))}
           </div>
         ))}
-        <div style={{ flex: 1 }} />
-        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>
-          {user?.full_name || user?.username}
+
+        <div className="sidebar-spacer" />
+
+        <div className="sidebar-footer">
+          <div className="sidebar-user">{displayName}</div>
+          <div className="sidebar-org">Consultimer Group</div>
+          <button className="sidebar-logout" onClick={logout}>
+            <Icon name="logout" style={{ fontSize: 16 }} />
+            Sair
+          </button>
         </div>
-        <button
-          onClick={logout}
-          style={{
-            background: "transparent",
-            border: "1px solid #526174",
-            color: "#fff",
-            borderRadius: 8,
-            padding: "8px 12px",
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          Sair
-        </button>
       </aside>
-      <main style={{ flex: 1, background: "#F7F9FB", padding: 32, overflowY: "auto" }}>
-        <Outlet />
-      </main>
+
+      <div className="app-main">
+        <header className="topbar">
+          <div>
+            <div className="topbar-breadcrumb-eyebrow">{breadcrumb.area}</div>
+            <div className="topbar-breadcrumb-title">{breadcrumb.page}</div>
+          </div>
+          <div className="topbar-right">
+            <button className="topbar-icon-btn" aria-label="Notificações">
+              <Icon name="lightbulb" style={{ fontSize: 18 }} />
+            </button>
+            <button className="topbar-icon-btn" aria-label="Configurações">
+              <Icon name="settings" style={{ fontSize: 18 }} />
+            </button>
+            <div className="topbar-user">
+              <div className="topbar-user-email">{email}</div>
+              <div className="topbar-user-role">{role}</div>
+            </div>
+          </div>
+        </header>
+        <main className="app-content">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { projectsApi } from "../api/resources";
 import type { Project, ProjectTask } from "../api/types";
+import Icon from "../components/ui/Icon";
+import PageHeader from "../components/ui/PageHeader";
+import StatusBadge from "../components/ui/StatusBadge";
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -20,49 +23,65 @@ export default function ProjectDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <p>Carregando...</p>;
-  if (!project) return <p>Projeto não encontrado.</p>;
+  if (loading) return <p style={{ color: "var(--text-muted)" }}>Carregando...</p>;
+  if (!project) return <p style={{ color: "var(--text-muted)" }}>Projeto não encontrado.</p>;
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, color: "#172033", marginBottom: 4 }}>{project.name}</h1>
-      <p style={{ color: "#526174", marginBottom: 20 }}>
-        {project.code} · {project.status_display}
-      </p>
+      <Link to="/projetos" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--text-muted)", textDecoration: "none", fontSize: 13, marginBottom: 12 }}>
+        <Icon name="arrow_back" style={{ fontSize: 16 }} />
+        Voltar para Projetos
+      </Link>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+      <PageHeader
+        eyebrow={project.code}
+        title={project.name}
+        subtitle={undefined}
+        actions={<StatusBadge status={project.status} label={project.status_display} />}
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
         <Info label="PO" value={project.po || "—"} />
         <Info label="Cliente" value={project.client_name || "—"} />
         <Info label="Site" value={project.site_name || "—"} />
+        <Info label="Quantidade de Links" value={String(project.link_count)} />
+        <Info label="Categoria" value={project.category_name || "Sem categoria"} />
+        <Info label="Prazo previsto" value={project.planned_end ? new Date(project.planned_end + "T00:00:00").toLocaleDateString("pt-BR") : "—"} />
+        <Info label="Tarefas" value={`${project.completed_tasks} / ${project.total_tasks}`} />
+        <Info label="Progresso" value={`${project.progress_percent}%`} />
       </div>
 
-      <h2 style={{ fontSize: 16, color: "#172033", marginBottom: 12 }}>Tarefas</h2>
-      <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", border: "1px solid #DDE3EA" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: "#F7F9FB", textAlign: "left" }}>
-              <th style={th}>Tarefa</th>
-              <th style={th}>Status</th>
-              <th style={th}>Colaboradores</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map((task) => (
-              <tr key={task.id} style={{ borderTop: "1px solid #DDE3EA" }}>
-                <td style={td}>{task.task_name}</td>
-                <td style={td}>{task.status_display}</td>
-                <td style={td}>{task.collaborators.map((c) => c.name).join(", ") || "—"}</td>
-              </tr>
-            ))}
-            {tasks.length === 0 && (
+      <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", marginBottom: 12 }}>Tarefas</h2>
+      <div className="card">
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
               <tr>
-                <td style={td} colSpan={3}>
-                  Nenhuma tarefa cadastrada.
-                </td>
+                <th>Tarefa</th>
+                <th>Status</th>
+                <th>Colaboradores</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {tasks.map((task) => (
+                <tr key={task.id}>
+                  <td>{task.task_name}</td>
+                  <td>
+                    <StatusBadge status={task.status} label={task.status_display} />
+                  </td>
+                  <td>{task.collaborators.map((c) => c.name).join(", ") || "—"}</td>
+                </tr>
+              ))}
+              {tasks.length === 0 && (
+                <tr>
+                  <td colSpan={3}>
+                    <div className="table-empty">Nenhuma tarefa cadastrada.</div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -70,12 +89,9 @@ export default function ProjectDetail() {
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid #DDE3EA", borderRadius: 10, padding: 14 }}>
-      <div style={{ fontSize: 11, color: "#526174", fontWeight: 700, marginBottom: 4 }}>{label.toUpperCase()}</div>
-      <div style={{ fontSize: 14, color: "#172033" }}>{value}</div>
+    <div className="info-box">
+      <div className="info-box-label">{label}</div>
+      <div className="info-box-value">{value}</div>
     </div>
   );
 }
-
-const th = { padding: "10px 14px", fontSize: 12, color: "#526174" };
-const td = { padding: "10px 14px" };

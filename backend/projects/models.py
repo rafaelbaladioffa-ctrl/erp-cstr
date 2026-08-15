@@ -34,6 +34,7 @@ class Project(TimestampedModel):
     company = models.ForeignKey(Company, verbose_name="empresa", on_delete=models.PROTECT, related_name="projects")
     name = models.CharField("nome do projeto", max_length=200)
     po = models.CharField("PO", max_length=100, blank=True)
+    link_count = models.PositiveIntegerField("quantidade de links", default=0, blank=True)
     client = models.ForeignKey(Client, verbose_name="cliente", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
     site = models.ForeignKey(Site, verbose_name="site", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
     project_type = models.ForeignKey(ProjectType, verbose_name="Tipo de Projeto", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
