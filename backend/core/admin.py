@@ -29,13 +29,16 @@ class CompanyScopedAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePa
 
 
 @admin.register(Site)
-class SiteAdmin(CompanyScopedAdmin):
+class SiteAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
     change_list_template = "admin/core/site/change_list.html"
-    list_display = ("code", "name", "company", "city", "state", "geocode_status", "is_active")
+    list_display = ("code", "name", "client", "city", "state", "geocode_status", "is_active")
+    list_filter = ("client", "is_active")
     search_fields = ("code", "name", "city")
+    autocomplete_fields = ("client",)
+    readonly_fields = ("created_at", "updated_at")
     actions = ("regeocode_selected",)
     fieldsets = (
-        (None, {"fields": ("company", "name", "code", "is_active")}),
+        (None, {"fields": ("client", "name", "code", "is_active")}),
         ("Endereço", {"fields": ("address", "city", "state")}),
         (
             "Geolocalização",
@@ -98,7 +101,7 @@ class SiteAdmin(CompanyScopedAdmin):
         sites = (
             self.get_queryset(request)
             .filter(is_active=True, latitude__isnull=False, longitude__isnull=False)
-            .select_related("company")
+            .select_related("client")
         )
         active_projects = (
             Project.objects.filter(site__in=sites, status=Project.STATUS_IN_PROGRESS)
@@ -119,7 +122,7 @@ class SiteAdmin(CompanyScopedAdmin):
         points = [
             {
                 "name": str(site),
-                "company": str(site.company) if site.company_id else "",
+                "client": str(site.client) if site.client_id else "",
                 "address": site.full_address,
                 "lat": float(site.latitude),
                 "lng": float(site.longitude),

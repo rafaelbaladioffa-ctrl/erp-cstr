@@ -89,7 +89,14 @@ export default function ProjectFormModal({
       { name: "company", label: "Empresa", type: "select", required: true, options: companies.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
       { name: "status", label: "Status", type: "select", required: true, options: STATUS_OPTIONS },
       { name: "client", label: "Cliente", type: "select", options: clients.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
-      { name: "site", label: "Site", type: "select", options: sites.map((s) => ({ value: s.id, label: s.code || s.name })) },
+      {
+        name: "site",
+        label: "Site",
+        type: "select",
+        options: sites
+          .filter((s) => !selectedClientId || s.client === selectedClientId)
+          .map((s) => ({ value: s.id, label: s.code || s.name })),
+      },
       { name: "project_type", label: "Tipo de Projeto", type: "select", options: projectTypes.map((p) => ({ value: p.id, label: p.name })) },
       { name: "category", label: "Categoria", type: "select", options: categories.map((c) => ({ value: c.id, label: c.name })) },
       { name: "responsible_cstr", label: "Responsável CSTR", type: "select", options: responsibles.map((r) => ({ value: r.id, label: r.name })) },

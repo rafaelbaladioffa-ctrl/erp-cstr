@@ -27,11 +27,12 @@ class CompanyTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
 
-    def test_site_code_is_unique_inside_company(self):
+    def test_site_code_is_unique_inside_client(self):
         company = Company.objects.create(legal_name="Empresa A", tax_id="11.111.111/0001-11")
-        Site.objects.create(company=company, code="SP", name="Sao Paulo")
+        client = Client.objects.create(company=company, legal_name="Cliente A", tax_id="11.111.111/0002-11")
+        Site.objects.create(client=client, code="SP", name="Sao Paulo")
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Site.objects.create(company=company, code="SP", name="Outro site")
+            Site.objects.create(client=client, code="SP", name="Outro site")
 
     def test_category_and_client_labels(self):
         company = Company.objects.create(legal_name="Empresa B", tax_id="22.222.222/0001-22")
@@ -48,10 +49,10 @@ class CompanyTests(TestCase):
     def test_incomplete_records_can_be_saved(self):
         Company.objects.create()
         company = Company.objects.create()
-        Site.objects.create(company=company)
-        Site.objects.create(company=company)
+        client = Client.objects.create(company=company)
+        Site.objects.create(client=client)
+        Site.objects.create(client=client)
         Category.objects.create()
-        Client.objects.create(company=company)
 
     def test_collaborator_selects_registered_job_title(self):
         company = Company.objects.create(legal_name="Empresa C", tax_id="44.444.444/0001-44")

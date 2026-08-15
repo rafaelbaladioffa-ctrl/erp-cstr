@@ -450,7 +450,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                         with transaction.atomic():
                             company = self._csv_relation(Company, row.get("empresa"), "legal_name", "trade_name")
                             client = self._csv_relation(Client, row.get("cliente"), "legal_name", "trade_name")
-                            site_queryset = Site.objects.filter(company=client.company) if client else Site.objects.all()
+                            site_queryset = Site.objects.filter(client=client) if client else Site.objects.all()
                             site = self._csv_relation(Site, row.get("site"), "name", "code", queryset=site_queryset)
                             project_type = self._csv_relation(ProjectType, row.get("tipo_projeto"), "name")
                             category = self._csv_relation(Category, row.get("categoria"), "name")

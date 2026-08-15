@@ -84,13 +84,14 @@ export interface JobTitle {
 
 export interface SiteFull {
   id: number;
-  company: number | null;
-  company_name: string | null;
+  client: number | null;
+  client_name: string | null;
   name: string;
   code: string;
   address: string;
   city: string;
   state: string;
+  manual_coordinates: boolean;
   latitude: string | null;
   longitude: string | null;
   is_active: boolean;

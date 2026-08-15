@@ -68,18 +68,18 @@ class JobTitleCrudSerializer(serializers.ModelSerializer):
 
 
 class SiteCrudSerializer(serializers.ModelSerializer):
-    company_name = serializers.SerializerMethodField()
+    client_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Site
         fields = (
-            "id", "company", "company_name", "name", "code", "address", "city", "state",
-            "latitude", "longitude", "is_active", "created_at", "updated_at",
+            "id", "client", "client_name", "name", "code", "address", "city", "state",
+            "manual_coordinates", "latitude", "longitude", "is_active", "created_at", "updated_at",
         )
-        read_only_fields = ("latitude", "longitude", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
 
-    def get_company_name(self, obj):
-        return str(obj.company) if obj.company_id else None
+    def get_client_name(self, obj):
+        return str(obj.client) if obj.client_id else None
 
 
 class ClientCrudSerializer(serializers.ModelSerializer):

@@ -48,7 +48,14 @@ class ActiveCompanyModel(TimestampedModel):
         abstract = True
 
 
-class Site(ActiveCompanyModel):
+class Site(TimestampedModel):
+    client = models.ForeignKey(
+        "Client",
+        verbose_name="cliente",
+        on_delete=models.PROTECT,
+        related_name="sites",
+    )
+    is_active = models.BooleanField("ativo", default=True)
     name = models.CharField("nome", max_length=150, blank=True)
     code = models.CharField("código", max_length=30, blank=True)
     address = models.CharField("endereço", max_length=255, blank=True)
@@ -79,9 +86,9 @@ class Site(ActiveCompanyModel):
         ordering = ("name",)
         constraints = [
             models.UniqueConstraint(
-                fields=("company", "code"),
+                fields=("client", "code"),
                 condition=~models.Q(code=""),
-                name="unique_site_code_per_company",
+                name="unique_site_code_per_client",
             )
         ]
 
@@ -111,9 +118,9 @@ class Site(ActiveCompanyModel):
 
         needs_geocoding = address != self.geocoded_address or self.latitude is None or self.longitude is None
         if needs_geocoding:
-            from .geocoding import geocode_address
+            from .geocoding import geocode_site_address
 
-            result = geocode_address(address)
+            result = geocode_site_address(self.address, self.city, self.state)
             if result:
                 self.latitude, self.longitude = result
                 self.geocoded_address = address

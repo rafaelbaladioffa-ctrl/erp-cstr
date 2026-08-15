@@ -55,6 +55,10 @@ function companyOptions(refs: ReferenceData) {
   return refs.companies.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name }));
 }
 
+function clientOptions(refs: ReferenceData) {
+  return refs.clients.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name }));
+}
+
 export const ENTITIES: EntityConfig<any>[] = [
   {
     key: "companies",
@@ -134,19 +138,31 @@ export const ENTITIES: EntityConfig<any>[] = [
     columns: [
       { key: "code", label: "Código" },
       { key: "name", label: "Nome" },
-      { key: "company_name", label: "Empresa" },
+      { key: "client_name", label: "Cliente" },
       { key: "city", label: "Cidade" },
     ],
     fields: (refs) => [
       { name: "code", label: "Código", type: "text", required: true },
       { name: "name", label: "Nome", type: "text" },
-      { name: "company", label: "Empresa", type: "select", required: true, options: companyOptions(refs) },
+      { name: "client", label: "Cliente", type: "select", required: true, options: clientOptions(refs) },
       { name: "city", label: "Cidade", type: "text" },
       { name: "state", label: "UF", type: "text" },
       { name: "address", label: "Endereço", type: "text", span: 2 },
+      {
+        name: "manual_coordinates",
+        label: "Coordenadas Manuais",
+        type: "checkbox",
+        placeholder: "Informar latitude/longitude manualmente (sem geocodificação automática)",
+        span: 2,
+      },
+      { name: "latitude", label: "Latitude", type: "text" },
+      { name: "longitude", label: "Longitude", type: "text" },
       { name: "is_active", label: "Situação", type: "checkbox", placeholder: "Ativo", span: 2 },
     ],
-    emptyValues: { code: "", name: "", company: null, city: "", state: "", address: "", is_active: true },
+    emptyValues: {
+      code: "", name: "", client: null, city: "", state: "", address: "",
+      manual_coordinates: false, latitude: null, longitude: null, is_active: true,
+    },
     rowLabel: (row: SiteFull) => row.code || row.name,
   } as EntityConfig<SiteFull>,
   {

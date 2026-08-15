@@ -164,7 +164,7 @@
                 marker.bindPopup(
                     "<strong>" + point.name + "</strong>" +
                     '<span class="project-count-pill">' + countLabel + "</span><br/>" +
-                    (point.company ? point.company + "<br/>" : "") +
+                    (point.client ? point.client + "<br/>" : "") +
                     (point.address || "")
                 );
                 marker.on("click", () => openSidebar(point));

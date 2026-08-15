@@ -113,21 +113,21 @@ class ProjectTests(TestCase):
         self.assertEqual(project.responsible_client, responsible_client)
         self.assertEqual(project.responsible_cstr, responsible_cstr)
 
-    def test_project_allows_client_and_site_from_customer_company(self):
+    def test_project_allows_client_and_site_from_same_client(self):
         cstr = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
         customer = Company.objects.create(legal_name="A100 ROW SERVICOS DE DADOS BRASIL LTDA", trade_name="AWS")
         client = Client.objects.create(company=customer, legal_name=customer.legal_name, trade_name="AWS")
-        site = Site.objects.create(company=customer, name="GRU65", code="GRU65")
+        site = Site.objects.create(client=client, name="GRU65", code="GRU65")
 
         project = Project(company=cstr, name="Projeto AWS", client=client, site=site)
         project.full_clean()
 
-    def test_project_rejects_site_from_company_other_than_client(self):
+    def test_project_rejects_site_from_client_other_than_project_client(self):
         cstr = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
         customer = Company.objects.create(legal_name="Cliente AWS")
-        another_customer = Company.objects.create(legal_name="Outro Cliente")
         client = Client.objects.create(company=customer, legal_name="AWS")
-        site = Site.objects.create(company=another_customer, name="Site externo", code="EXT")
+        another_client = Client.objects.create(company=customer, legal_name="Outro Cliente")
+        site = Site.objects.create(client=another_client, name="Site externo", code="EXT")
 
         with self.assertRaises(ValidationError):
             Project(company=cstr, name="Projeto inválido", client=client, site=site).full_clean()

@@ -79,8 +79,8 @@ class Project(TimestampedModel):
     def clean(self):
         super().clean()
         errors = {}
-        if self.client_id and self.site_id and self.site.company_id != self.client.company_id:
-            errors["site"] = "O Site selecionado deve pertencer à mesma empresa do Cliente."
+        if self.client_id and self.site_id and self.site.client_id != self.client_id:
+            errors["site"] = "O Site selecionado deve pertencer ao Cliente do projeto."
         if self.responsible_cstr_id and "CONSULTIMER" not in (
             f"{self.responsible_cstr.company.legal_name} {self.responsible_cstr.company.trade_name}".upper()
         ):

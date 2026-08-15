@@ -4,7 +4,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from audit.models import AuditLog
-from core.models import Collaborator, Company, Site
+from core.models import Client, Collaborator, Company, Site
 from projects.models import Project
 from users.models import User
 from .models import DailyUpdate, DailyUpdateAllocation
@@ -18,7 +18,8 @@ class DailyUpdateTests(TestCase):
             password="test-password",
         )
         self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
-        self.site = Site.objects.create(company=self.company, name="GRU65", code="GRU65")
+        self.client_record = Client.objects.create(company=self.company, legal_name="Cliente Teste")
+        self.site = Site.objects.create(client=self.client_record, name="GRU65", code="GRU65")
         self.project = Project.objects.create(
             company=self.company,
             site=self.site,

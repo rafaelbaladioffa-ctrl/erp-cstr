@@ -164,7 +164,7 @@ class JobTitleViewSet(RegistryViewSet):
 
 
 class SiteRegistryViewSet(RegistryViewSet):
-    queryset = Site.objects.select_related("company").order_by("name")
+    queryset = Site.objects.select_related("client").order_by("name")
     serializer_class = SiteCrudSerializer
     search_fields = ("name", "code", "city")
 
