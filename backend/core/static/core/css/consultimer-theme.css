@@ -151,3 +151,23 @@ nav[aria-label="Breadcrumbs"] a, .breadcrumbs a { color: var(--consultimer-orang
 }
 
 @media (max-width: 767px) { aside img { max-width: 155px !important; } }
+
+/* Corrige o menu de tema (Claro/Escuro/Sistema) do usuário estourando a
+   largura do dropdown: a fonte Manrope, mais larga que a padrão do
+   Unfold, faz os itens flex ("grow") não encolherem por padrão (sem
+   min-width: 0), empurrando o texto "Sistema" para fora do quadrado. */
+.flex.flex-row.gap-1.mb-1.pb-1 > a.grow {
+    min-width: 0;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+}
+
+.flex.flex-row.gap-1.mb-1.pb-1 > a.grow .material-symbols-outlined {
+    margin-right: 4px !important;
+}
+
+.flex.flex-row.gap-1.mb-1.pb-1 > a.grow .leading-none {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
