@@ -452,13 +452,13 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
         if request.resolver_match and request.resolver_match.url_name == "projects_project_changelist":
-            queryset = queryset.filter(
-                status__in=(
-                    Project.STATUS_IN_PROGRESS,
-                    Project.STATUS_PLANNING,
-                    Project.STATUS_PAUSED,
-                )
-            )
+            # A listagem padrão de Projetos mostra os "ativos" — mesmo
+            # critério usado no frontend (tudo exceto Concluído/Cancelado).
+            # Projetos "Não Iniciado" já deveriam aparecer aqui: antes de
+            # incluir esse status na lista, um projeto recém-criado ficava
+            # "escondido" do Admin (embora existisse e aparecesse no
+            # frontend), pois seu status inicial nem sempre é Planejamento.
+            queryset = queryset.exclude(status__in=(Project.STATUS_COMPLETED, Project.STATUS_CANCELED))
         return queryset
 
     def get_urls(self):

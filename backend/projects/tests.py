@@ -27,7 +27,11 @@ class ProjectTests(TestCase):
         self.assertNotContains(admin_home, 'href="/admin/projects/projecttask/"')
         self.assertNotContains(projects_home, 'href="/admin/projects/projecttask/"')
 
-    def test_project_admin_only_lists_active_planning_and_paused_statuses(self):
+    def test_project_admin_lists_all_statuses_except_completed_and_canceled(self):
+        """A listagem padrão de Projetos usa o mesmo critério de "ativos" do
+        frontend: tudo exceto Concluído/Cancelado. Um projeto "Não Iniciado"
+        precisa aparecer aqui — antes ficava escondido do Admin mesmo
+        existindo no banco e aparecendo no frontend (bug reportado)."""
         admin_user = User.objects.create_superuser(
             username="project_list_admin",
             email="project-list@example.com",
@@ -38,9 +42,9 @@ class ProjectTests(TestCase):
             Project.objects.create(company=company, name="Projeto Ativo", status=Project.STATUS_IN_PROGRESS),
             Project.objects.create(company=company, name="Projeto Planejado", status=Project.STATUS_PLANNING),
             Project.objects.create(company=company, name="Projeto Pausado", status=Project.STATUS_PAUSED),
+            Project.objects.create(company=company, name="Projeto Não Iniciado", status=Project.STATUS_NOT_STARTED),
         ]
         hidden_projects = [
-            Project.objects.create(company=company, name="Projeto Não Iniciado", status=Project.STATUS_NOT_STARTED),
             Project.objects.create(company=company, name="Projeto Concluído", status=Project.STATUS_COMPLETED),
             Project.objects.create(company=company, name="Projeto Cancelado", status=Project.STATUS_CANCELED),
         ]
