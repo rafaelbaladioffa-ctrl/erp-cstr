@@ -43,7 +43,10 @@ export default function CadastrosPage() {
   const canDelete = entity ? hasPerm(user, entity.perms.delete) : false;
 
   useEffect(() => {
-    Promise.all([
+    // Promise.allSettled: falta de permissão de visualização em um desses
+    // models (ex: sem core.view_collaborator) não deve impedir os campos
+    // de outras abas para as quais o usuário tem permissão de carregar.
+    Promise.allSettled([
       registryApi.companies.list({ page_size: "200" } as never),
       registryApi.jobTitles.list({ page_size: "200" } as never),
       registryApi.sites.list({ page_size: "500" } as never),
@@ -53,12 +56,12 @@ export default function CadastrosPage() {
     ])
       .then(([companies, jobTitles, sites, clients, projectTypes, collaborators]) => {
         setRefs({
-          companies: companies.results,
-          jobTitles: jobTitles.results,
-          sites: sites.results,
-          clients: clients.results,
-          projectTypes: projectTypes.results,
-          collaborators: collaborators.results,
+          companies: companies.status === "fulfilled" ? companies.value.results : [],
+          jobTitles: jobTitles.status === "fulfilled" ? jobTitles.value.results : [],
+          sites: sites.status === "fulfilled" ? sites.value.results : [],
+          clients: clients.status === "fulfilled" ? clients.value.results : [],
+          projectTypes: projectTypes.status === "fulfilled" ? projectTypes.value.results : [],
+          collaborators: collaborators.status === "fulfilled" ? collaborators.value.results : [],
         });
       })
       .finally(() => setRefsLoaded(true));

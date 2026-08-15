@@ -55,7 +55,11 @@ export default function ProjectFormModal({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    Promise.all([
+    // Promise.allSettled (em vez de Promise.all): se o usuário não tiver
+    // permissão de visualização em um desses models (ex: sem
+    // core.view_responsible), só aquele dropdown fica vazio — os demais,
+    // para os quais ele tem permissão, continuam carregando normalmente.
+    Promise.allSettled([
       registryApi.companies.list({ page_size: "200" } as never),
       registryApi.clients.list({ page_size: "500" } as never),
       registryApi.sites.list({ page_size: "500" } as never),
@@ -65,13 +69,13 @@ export default function ProjectFormModal({
       registryApi.clientResponsibles.list({ page_size: "500" } as never),
     ])
       .then(([c, cl, s, cat, pt, resp, clResp]) => {
-        setCompanies(c.results);
-        setClients(cl.results);
-        setSites(s.results);
-        setCategories(cat.results);
-        setProjectTypes(pt.results);
-        setResponsibles(resp.results);
-        setClientResponsibles(clResp.results);
+        if (c.status === "fulfilled") setCompanies(c.value.results);
+        if (cl.status === "fulfilled") setClients(cl.value.results);
+        if (s.status === "fulfilled") setSites(s.value.results);
+        if (cat.status === "fulfilled") setCategories(cat.value.results);
+        if (pt.status === "fulfilled") setProjectTypes(pt.value.results);
+        if (resp.status === "fulfilled") setResponsibles(resp.value.results);
+        if (clResp.status === "fulfilled") setClientResponsibles(clResp.value.results);
       })
       .finally(() => setLoadingRefs(false));
   }, []);
