@@ -60,6 +60,13 @@ class SiteAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdm
             return "Sem coordenadas"
         return "Manual" if obj.manual_coordinates else "Localizado"
 
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        if request.GET.get("field_name") == "site":
+            client_id = request.GET.get("client_id")
+            queryset = queryset.filter(client_id=client_id) if client_id else queryset.none()
+        return queryset, use_distinct
+
     @admin.action(description="Reprocessar geocodificação (endereço → coordenadas)")
     def regeocode_selected(self, request, queryset):
         import time

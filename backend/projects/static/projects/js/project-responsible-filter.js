@@ -1,13 +1,15 @@
 (function () {
     "use strict";
 
+    const CLIENT_SCOPED_FIELDS = ["responsible_client", "site"];
+
     const originalOpen = XMLHttpRequest.prototype.open;
 
     XMLHttpRequest.prototype.open = function (method, url) {
         let requestUrl = url;
         if (typeof requestUrl === "string" && requestUrl.includes("/admin/autocomplete/")) {
             const parsedUrl = new URL(requestUrl, window.location.origin);
-            if (parsedUrl.searchParams.get("field_name") === "responsible_client") {
+            if (CLIENT_SCOPED_FIELDS.includes(parsedUrl.searchParams.get("field_name"))) {
                 const clientField = document.getElementById("id_client");
                 parsedUrl.searchParams.set("client_id", clientField ? clientField.value : "");
                 requestUrl = parsedUrl.pathname + parsedUrl.search;
@@ -20,13 +22,17 @@
 
     document.addEventListener("DOMContentLoaded", function () {
         const clientField = document.getElementById("id_client");
-        const responsibleField = document.getElementById("id_responsible_client");
-        if (!clientField || !responsibleField) {
+        if (!clientField) {
             return;
         }
         clientField.addEventListener("change", function () {
-            responsibleField.value = "";
-            responsibleField.dispatchEvent(new Event("change", {bubbles: true}));
+            CLIENT_SCOPED_FIELDS.forEach(function (fieldName) {
+                const field = document.getElementById("id_" + fieldName);
+                if (field) {
+                    field.value = "";
+                    field.dispatchEvent(new Event("change", {bubbles: true}));
+                }
+            });
         });
     });
 })();
