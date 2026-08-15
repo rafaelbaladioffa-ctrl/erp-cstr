@@ -33,11 +33,55 @@ class SiteAdmin(CompanyScopedAdmin):
     change_list_template = "admin/core/site/change_list.html"
     list_display = ("code", "name", "company", "city", "state", "geocode_status", "is_active")
     search_fields = ("code", "name", "city")
-    readonly_fields = CompanyScopedAdmin.readonly_fields + ("latitude", "longitude")
+    actions = ("regeocode_selected",)
+    fieldsets = (
+        (None, {"fields": ("company", "name", "code", "is_active")}),
+        ("Endereço", {"fields": ("address", "city", "state")}),
+        (
+            "Geolocalização",
+            {
+                "fields": ("manual_coordinates", "latitude", "longitude"),
+                "description": (
+                    "Por padrão, latitude/longitude são preenchidas automaticamente a partir do endereço "
+                    "(via OpenStreetMap/Nominatim) ao salvar. Marque \"coordenadas manuais\" para digitar "
+                    "os valores você mesmo — nesse caso a geocodificação automática não roda."
+                ),
+            },
+        ),
+        ("Auditoria", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )
 
     @admin.display(description="Geolocalização")
     def geocode_status(self, obj):
-        return "Localizado" if obj.latitude is not None else "Sem coordenadas"
+        if obj.latitude is None or obj.longitude is None:
+            return "Sem coordenadas"
+        return "Manual" if obj.manual_coordinates else "Localizado"
+
+    @admin.action(description="Reprocessar geocodificação (endereço → coordenadas)")
+    def regeocode_selected(self, request, queryset):
+        import time
+
+        updated = 0
+        skipped_manual = 0
+        failed = 0
+        candidates = list(queryset.exclude(manual_coordinates=True))
+        skipped_manual = queryset.filter(manual_coordinates=True).count()
+        for index, site in enumerate(candidates):
+            if index:
+                time.sleep(1)  # respeita o limite de 1 req/s do Nominatim
+            site.geocoded_address = ""
+            site.save()
+            site.refresh_from_db()
+            if site.latitude is not None and site.longitude is not None:
+                updated += 1
+            else:
+                failed += 1
+        message = f"{updated} site(s) geocodificado(s) com sucesso."
+        if failed:
+            message += f" {failed} não foram encontrados pelo serviço de geocodificação."
+        if skipped_manual:
+            message += f" {skipped_manual} ignorado(s) por ter coordenadas manuais."
+        self.message_user(request, message)
 
     def get_urls(self):
         return [

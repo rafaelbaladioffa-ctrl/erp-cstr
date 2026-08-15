@@ -54,11 +54,19 @@ class Site(ActiveCompanyModel):
     address = models.CharField("endereço", max_length=255, blank=True)
     city = models.CharField("cidade", max_length=100, blank=True)
     state = models.CharField("UF", max_length=2, blank=True)
+    manual_coordinates = models.BooleanField(
+        "coordenadas manuais",
+        default=False,
+        help_text="Marque para informar latitude/longitude manualmente. Enquanto marcado, a geocodificação "
+        "automática não sobrescreve os valores digitados.",
+    )
     latitude = models.DecimalField(
-        "latitude", max_digits=9, decimal_places=6, null=True, blank=True, editable=False
+        "latitude", max_digits=9, decimal_places=6, null=True, blank=True,
+        help_text="Preenchida automaticamente a partir do endereço, a menos que 'coordenadas manuais' esteja marcado.",
     )
     longitude = models.DecimalField(
-        "longitude", max_digits=9, decimal_places=6, null=True, blank=True, editable=False
+        "longitude", max_digits=9, decimal_places=6, null=True, blank=True,
+        help_text="Preenchida automaticamente a partir do endereço, a menos que 'coordenadas manuais' esteja marcado.",
     )
     geocoded_address = models.CharField(
         "endereço geocodificado", max_length=400, blank=True, editable=False,
@@ -86,17 +94,33 @@ class Site(ActiveCompanyModel):
 
     def save(self, *args, **kwargs):
         address = self.full_address
-        if address and address != self.geocoded_address:
+
+        if self.manual_coordinates:
+            # Respeita as coordenadas digitadas no admin; não chama a
+            # geocodificação automática nem as sobrescreve.
+            self.geocoded_address = address
+            super().save(*args, **kwargs)
+            return
+
+        if not address:
+            self.latitude = None
+            self.longitude = None
+            self.geocoded_address = ""
+            super().save(*args, **kwargs)
+            return
+
+        needs_geocoding = address != self.geocoded_address or self.latitude is None or self.longitude is None
+        if needs_geocoding:
             from .geocoding import geocode_address
 
             result = geocode_address(address)
             if result:
                 self.latitude, self.longitude = result
-            self.geocoded_address = address
-        elif not address:
-            self.latitude = None
-            self.longitude = None
-            self.geocoded_address = ""
+                self.geocoded_address = address
+            # Se a geocodificação falhar (rate limit, endereço não
+            # encontrado, erro de rede), NÃO marcamos geocoded_address como
+            # concluído — assim o próximo save() tenta de novo, em vez de
+            # deixar o site permanentemente "Sem coordenadas".
         super().save(*args, **kwargs)
 
 
