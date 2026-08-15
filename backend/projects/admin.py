@@ -16,7 +16,7 @@ from unfold.admin import ModelAdmin, TabularInline
 
 from core.admin_mixins import SelectablePageSizeAdminMixin
 from core.models import Category, Client, ClientResponsible, Collaborator, Company, ProjectType, Responsible, Site, Task
-from .models import Project, ProjectHistory, ProjectTask
+from .models import Project, ProjectHistory, ProjectTask, RackPosition
 
 
 class ProjectTaskMultipleChoiceField(forms.ModelMultipleChoiceField):
@@ -96,6 +96,26 @@ class ProjectAdminForm(forms.ModelForm):
         max_digits=8,
         decimal_places=2,
     )
+    bulk_rack_position = forms.ModelChoiceField(
+        label="Rack Position",
+        required=False,
+        queryset=RackPosition.objects.none(),
+        empty_label="Manter Rack Position atual",
+    )
+    bulk_rack_positions = forms.CharField(
+        label="Adicionar Rack Positions em Massa",
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 6,
+                "placeholder": "RACK01;DH1;24;48\nRACK02;DH2;12;24\nRACK03",
+            }
+        ),
+        help_text=(
+            "Um Rack Position por linha, no formato Rack Position;DH;Links;UTP "
+            "(DH, Links e UTP são opcionais — ex.: apenas \"RACK03\" também é válido)."
+        ),
+    )
 
     class Meta:
         model = Project
@@ -108,6 +128,41 @@ class ProjectAdminForm(forms.ModelForm):
         self.fields["bulk_collaborators"].queryset = queryset.filter(company_id=company_id) if company_id else queryset.none()
         if self.instance and self.instance.pk:
             self.fields["bulk_tasks"].queryset = self.instance.project_tasks.select_related("task").order_by("order", "id")
+            self.fields["bulk_rack_position"].queryset = self.instance.rack_positions.all()
+
+    @staticmethod
+    def _parse_bulk_rack_positions(raw_text):
+        """Converte o texto colado em 'bulk_rack_positions' numa lista de
+        dicts {position, dh, links, utp}, uma linha por Rack Position no
+        formato 'Rack Position;DH;Links;UTP' (campos após o primeiro são
+        opcionais). Levanta ValueError com a linha problemática."""
+        rows = []
+        for line_number, raw_line in enumerate((raw_text or "").splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            parts = [part.strip() for part in line.split(";")]
+            position = parts[0]
+            if not position:
+                raise ValueError(f"Linha {line_number}: informe o Rack Position.")
+            dh = parts[1] if len(parts) > 1 else ""
+
+            def _parse_count(raw_value, field_label):
+                raw_value = (raw_value or "").strip()
+                if not raw_value:
+                    return 0
+                try:
+                    value = int(raw_value)
+                except ValueError:
+                    raise ValueError(f'Linha {line_number}: {field_label} inválido "{raw_value}".')
+                if value < 0:
+                    raise ValueError(f"Linha {line_number}: {field_label} não pode ser negativo.")
+                return value
+
+            links = _parse_count(parts[2] if len(parts) > 2 else "", "Links")
+            utp = _parse_count(parts[3] if len(parts) > 3 else "", "UTP")
+            rows.append({"position": position, "dh": dh, "links": links, "utp": utp})
+        return rows
 
     def clean(self):
         cleaned_data = super().clean()
@@ -118,7 +173,25 @@ class ProjectAdminForm(forms.ModelForm):
                 self.add_error("bulk_end", "O Término não pode ser anterior ao Início.")
         if cleaned_data.get("bulk_task_action") and not cleaned_data.get("bulk_tasks"):
             self.add_error("bulk_tasks", "Selecione ao menos uma Tarefa para executar a ação em massa.")
+        bulk_rack_positions_text = cleaned_data.get("bulk_rack_positions")
+        if bulk_rack_positions_text:
+            if not cleaned_data.get("has_rack_positions"):
+                self.add_error("bulk_rack_positions", 'Marque "Rack Position" para poder cadastrar Rack Positions.')
+            else:
+                try:
+                    self._parsed_rack_positions = self._parse_bulk_rack_positions(bulk_rack_positions_text)
+                except ValueError as exc:
+                    self.add_error("bulk_rack_positions", str(exc))
         return cleaned_data
+
+
+class RackPositionInline(TabularInline):
+    model = RackPosition
+    extra = 0
+    classes = ("collapse",)
+    fields = ("position", "dh", "links", "utp")
+    verbose_name = "Rack Position"
+    verbose_name_plural = "Rack Positions"
 
 
 class ProjectTaskBulkActionForm(forms.Form):
@@ -193,9 +266,18 @@ class ProjectTaskBulkActionForm(forms.Form):
         max_digits=8,
         decimal_places=2,
     )
+    bulk_rack_position = forms.ModelChoiceField(
+        label="Rack Position",
+        required=False,
+        queryset=RackPosition.objects.none(),
+        empty_label="Manter Rack Position atual",
+    )
 
     def __init__(self, *args, project=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["bulk_rack_position"].queryset = (
+            project.rack_positions.all() if project else RackPosition.objects.none()
+        )
         self.fields["bulk_collaborators"].queryset = Collaborator.objects.filter(
             is_active=True, company_id=project.company_id
         ).order_by("name") if project else Collaborator.objects.none()
@@ -228,6 +310,7 @@ class ProjectTaskInline(TabularInline):
     fields = (
         "order",
         "task",
+        "rack_position",
         "collaborators",
         "status",
         "planned_start",
@@ -239,6 +322,16 @@ class ProjectTaskInline(TabularInline):
     )
     readonly_fields = ("actual_start", "actual_end", "actual_hours")
     show_change_link = True
+
+    def get_formset(self, request, obj=None, **kwargs):
+        self._parent_obj = obj
+        return super().get_formset(request, obj, **kwargs)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "rack_position":
+            project = getattr(self, "_parent_obj", None)
+            kwargs["queryset"] = project.rack_positions.all() if project else RackPosition.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 @admin.register(Project)
@@ -270,7 +363,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     )
     autocomplete_fields = ("client", "site", "project_type", "category", "responsible_cstr", "responsible_client")
     readonly_fields = ("code", "created_at", "updated_at")
-    inlines = (ProjectTaskInline,)
+    inlines = (RackPositionInline, ProjectTaskInline)
     fieldsets = (
         ("Identificação", {"fields": ("code", "company", "name", "po", "link_count", "status", "is_active")}),
         (
@@ -288,12 +381,24 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         ("Cronograma", {"fields": (("planned_start", "planned_end"), ("actual_start", "actual_end"))}),
         ("Detalhes", {"fields": ("description", "notes")}),
         (
+            "Rack Position",
+            {
+                "fields": ("has_rack_positions", "bulk_rack_positions"),
+                "description": (
+                    "Ative para controlar Rack Position (DH, Links, UTP) neste projeto. As posições já "
+                    "cadastradas podem ser editadas na seção \"Rack Positions\" abaixo; use o campo de "
+                    "texto para cadastrar várias de uma vez."
+                ),
+            },
+        ),
+        (
             "Ações em Massa das Tarefas",
             {
                 "fields": (
                     "bulk_task_action",
                     "bulk_tasks",
                     "bulk_collaborators",
+                    "bulk_rack_position",
                     "bulk_status",
                     ("bulk_start", "bulk_end"),
                     "bulk_estimated_hours",
@@ -629,6 +734,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                 "bulk_start": "planned_start",
                 "bulk_end": "planned_end",
                 "bulk_estimated_hours": "estimated_hours",
+                "bulk_rack_position": "rack_position",
             }
             for form_field, model_field in field_map.items():
                 value = cleaned_data.get(form_field)
@@ -696,6 +802,25 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                     "Nenhuma nova Tarefa foi adicionada. Verifique os vínculos do Tipo de Projeto ou as tarefas já existentes.",
                     level=messages.WARNING,
                 )
+
+        parsed_rack_positions = getattr(form, "_parsed_rack_positions", None)
+        if parsed_rack_positions:
+            created = 0
+            skipped = 0
+            for row in parsed_rack_positions:
+                _, was_created = RackPosition.objects.get_or_create(
+                    project=project,
+                    position=row["position"],
+                    defaults={"dh": row["dh"], "links": row["links"], "utp": row["utp"]},
+                )
+                if was_created:
+                    created += 1
+                else:
+                    skipped += 1
+            message = f"{created} Rack Position(s) cadastrado(s) em massa."
+            if skipped:
+                message += f" {skipped} já existia(m) e foi(ram) ignorado(s)."
+            self.message_user(request, message)
 
         self._apply_bulk_task_action(request, project, form.cleaned_data)
 
@@ -767,11 +892,27 @@ class ProjectHistoryAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         return format_html('<a href="{}">Editar</a>', url)
 
 
+class ProjectTaskAdminForm(forms.ModelForm):
+    class Meta:
+        model = ProjectTask
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        project = getattr(self.instance, "project", None)
+        if not (project and project.pk):
+            project_id = self.data.get("project") or self.initial.get("project")
+            if project_id:
+                project = Project.objects.filter(pk=project_id).first()
+        self.fields["rack_position"].queryset = project.rack_positions.all() if project else RackPosition.objects.none()
+
+
 @admin.register(ProjectTask)
 class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("project", "task", "collaborators_display", "status", "order", "planned_start", "planned_end")
-    list_filter = ("status", "project__company", "project")
-    search_fields = ("project__code", "project__name", "task__code", "task__name", "collaborators__name")
+    form = ProjectTaskAdminForm
+    list_display = ("project", "task", "rack_position", "collaborators_display", "status", "order", "planned_start", "planned_end")
+    list_filter = ("status", "project__company", "project", "rack_position")
+    search_fields = ("project__code", "project__name", "task__code", "task__name", "collaborators__name", "rack_position__position")
     autocomplete_fields = ("project", "task", "collaborators")
     readonly_fields = ("created_at", "updated_at")
 

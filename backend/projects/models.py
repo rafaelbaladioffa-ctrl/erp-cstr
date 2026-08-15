@@ -35,6 +35,12 @@ class Project(TimestampedModel):
     name = models.CharField("nome do projeto", max_length=200)
     po = models.CharField("PO", max_length=100, blank=True)
     link_count = models.PositiveIntegerField("quantidade de links", default=0, blank=True)
+    has_rack_positions = models.BooleanField(
+        "Rack Position",
+        default=False,
+        blank=True,
+        help_text="Ative para controlar Rack Position (DH, Links, UTP por posição) neste projeto.",
+    )
     client = models.ForeignKey(Client, verbose_name="cliente", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
     site = models.ForeignKey(Site, verbose_name="site", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
     project_type = models.ForeignKey(ProjectType, verbose_name="Tipo de Projeto", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
@@ -121,6 +127,30 @@ class ProjectHistory(Project):
         verbose_name_plural = "Histórico de Projetos"
 
 
+class RackPosition(TimestampedModel):
+    project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="rack_positions")
+    position = models.CharField("Rack Position", max_length=50)
+    dh = models.CharField("DH", max_length=50, blank=True)
+    links = models.PositiveIntegerField("Links", default=0, blank=True)
+    utp = models.PositiveIntegerField("UTP", default=0, blank=True)
+
+    class Meta:
+        verbose_name = "Rack Position"
+        verbose_name_plural = "Rack Positions"
+        ordering = ("position",)
+        constraints = [
+            models.UniqueConstraint(fields=("project", "position"), name="unique_rack_position_per_project")
+        ]
+
+    def __str__(self):
+        return self.position
+
+    def clean(self):
+        super().clean()
+        if self.project_id and not self.project.has_rack_positions:
+            raise ValidationError({"project": "O projeto selecionado não tem Rack Position ativado."})
+
+
 class ProjectTask(TimestampedModel):
     STATUS_NOT_STARTED = "not_started"
     STATUS_IN_PROGRESS = "in_progress"
@@ -137,6 +167,14 @@ class ProjectTask(TimestampedModel):
 
     project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="project_tasks")
     task = models.ForeignKey(Task, verbose_name="tarefa", on_delete=models.PROTECT, related_name="project_tasks")
+    rack_position = models.ForeignKey(
+        RackPosition,
+        verbose_name="Rack Position",
+        on_delete=models.SET_NULL,
+        related_name="project_tasks",
+        null=True,
+        blank=True,
+    )
     collaborators = models.ManyToManyField(
         Collaborator,
         verbose_name="responsáveis",
@@ -171,6 +209,8 @@ class ProjectTask(TimestampedModel):
             errors["planned_end"] = "O término previsto não pode ser anterior ao início previsto."
         if self.actual_start and self.actual_end and self.actual_end < self.actual_start:
             errors["actual_end"] = "O término real não pode ser anterior ao início real."
+        if self.rack_position_id and self.project_id and self.rack_position.project_id != self.project_id:
+            errors["rack_position"] = "O Rack Position selecionado deve pertencer a este projeto."
         if errors:
             raise ValidationError(errors)
 

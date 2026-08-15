@@ -23,6 +23,7 @@ export interface Project {
   name: string;
   po: string;
   link_count: number;
+  has_rack_positions: boolean;
   client: number | null;
   client_name: string | null;
   site: number | null;
@@ -45,6 +46,15 @@ export interface Project {
   completed_tasks: number;
   worked_hours: number;
   progress_percent: number;
+}
+
+export interface RackPosition {
+  id: number;
+  project: number;
+  position: string;
+  dh: string;
+  links: number;
+  utp: number;
 }
 
 /* ---------- Cadastros Gerais ---------- */
@@ -170,6 +180,8 @@ export interface ProjectTask {
   project_code?: string;
   task: number;
   task_name: string;
+  rack_position: number | null;
+  rack_position_label: string | null;
   collaborators: Collaborator[];
   status: string;
   status_display: string;

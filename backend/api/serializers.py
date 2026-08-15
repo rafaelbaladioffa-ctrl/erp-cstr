@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from core.models import Category, Client, ClientResponsible, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
-from projects.models import Project, ProjectTask
+from projects.models import Project, ProjectTask, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
 
@@ -179,6 +179,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             "name",
             "po",
             "link_count",
+            "has_rack_positions",
             "client",
             "client_name",
             "site",
@@ -253,11 +254,19 @@ class ProjectSerializer(serializers.ModelSerializer):
         return instance
 
 
+class RackPositionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RackPosition
+        fields = ("id", "project", "position", "dh", "links", "utp", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+
 class ProjectTaskSerializer(serializers.ModelSerializer):
     task_name = serializers.CharField(source="task.name", read_only=True)
     project_name = serializers.CharField(source="project.name", read_only=True)
     project_code = serializers.CharField(source="project.code", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    rack_position_label = serializers.CharField(source="rack_position.position", read_only=True, default=None)
     collaborators = CollaboratorSerializer(many=True, read_only=True)
 
     class Meta:
@@ -269,6 +278,8 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "project_code",
             "task",
             "task_name",
+            "rack_position",
+            "rack_position_label",
             "collaborators",
             "status",
             "status_display",

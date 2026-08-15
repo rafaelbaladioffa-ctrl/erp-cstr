@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { projectsApi } from "../api/resources";
-import type { Project, ProjectTask } from "../api/types";
+import type { Project, ProjectTask, RackPosition } from "../api/types";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatusBadge from "../components/ui/StatusBadge";
@@ -10,6 +10,7 @@ export default function ProjectDetail() {
   const { id } = useParams();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const [rackPositions, setRackPositions] = useState<RackPosition[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,6 +20,11 @@ export default function ProjectDetail() {
       .then(([projectData, taskData]) => {
         setProject(projectData);
         setTasks(taskData);
+        if (projectData.has_rack_positions) {
+          projectsApi.rackPositions(Number(id)).then(setRackPositions);
+        } else {
+          setRackPositions([]);
+        }
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -51,6 +57,46 @@ export default function ProjectDetail() {
         <Info label="Progresso" value={`${project.progress_percent}%`} />
       </div>
 
+      {project.has_rack_positions && (
+        <>
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", marginBottom: 12 }}>Rack Positions</h2>
+          <div className="card" style={{ marginBottom: 24 }}>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Rack Position</th>
+                    <th>DH</th>
+                    <th>Links</th>
+                    <th>UTP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rackPositions.map((rp) => (
+                    <tr key={rp.id}>
+                      <td>{rp.position}</td>
+                      <td>{rp.dh || "—"}</td>
+                      <td>{rp.links}</td>
+                      <td>{rp.utp}</td>
+                    </tr>
+                  ))}
+                  {rackPositions.length === 0 && (
+                    <tr>
+                      <td colSpan={4}>
+                        <div className="table-empty">
+                          Nenhuma Rack Position cadastrada ainda. Cadastre individualmente ou em massa na edição
+                          do projeto no Admin.
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
       <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", marginBottom: 12 }}>Tarefas</h2>
       <div className="card">
         <div className="table-wrap">
@@ -58,6 +104,7 @@ export default function ProjectDetail() {
             <thead>
               <tr>
                 <th>Tarefa</th>
+                {project.has_rack_positions && <th>Rack Position</th>}
                 <th>Status</th>
                 <th>Colaboradores</th>
               </tr>
@@ -66,6 +113,7 @@ export default function ProjectDetail() {
               {tasks.map((task) => (
                 <tr key={task.id}>
                   <td>{task.task_name}</td>
+                  {project.has_rack_positions && <td>{task.rack_position_label || "—"}</td>}
                   <td>
                     <StatusBadge status={task.status} label={task.status_display} />
                   </td>
@@ -74,7 +122,7 @@ export default function ProjectDetail() {
               ))}
               {tasks.length === 0 && (
                 <tr>
-                  <td colSpan={3}>
+                  <td colSpan={project.has_rack_positions ? 4 : 3}>
                     <div className="table-empty">Nenhuma tarefa cadastrada.</div>
                   </td>
                 </tr>

@@ -46,7 +46,7 @@ export default function ProjectFormModal({
     project
       ? { ...project }
       : {
-          company: null, name: "", po: "", link_count: 0, client: null, site: null, category: null,
+          company: null, name: "", po: "", link_count: 0, has_rack_positions: false, client: null, site: null, category: null,
           project_type: null, responsible_cstr: null, responsible_client: null, status: "planning",
           planned_start: null, planned_end: null, description: "", notes: "", is_active: true,
         }
@@ -86,6 +86,13 @@ export default function ProjectFormModal({
       { name: "name", label: "Nome do Projeto", type: "text", required: true, span: 2 },
       { name: "po", label: "PO", type: "text" },
       { name: "link_count", label: "Quantidade de Links", type: "number" },
+      {
+        name: "has_rack_positions",
+        label: "Rack Position",
+        type: "checkbox",
+        placeholder: "Ativar controle de Rack Position (DH, Links, UTP)",
+        span: 2,
+      },
       { name: "company", label: "Empresa", type: "select", required: true, options: companies.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
       { name: "status", label: "Status", type: "select", required: true, options: STATUS_OPTIONS },
       { name: "client", label: "Cliente", type: "select", options: clients.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
@@ -167,6 +174,12 @@ export default function ProjectFormModal({
               })
             }
           />
+          {values.has_rack_positions && (
+            <p style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: -6, marginBottom: 12 }}>
+              Depois de salvar, cadastre as Rack Positions (individualmente ou em massa, com DH/Links/UTP) e
+              aloque as tarefas por Rack Position na tela de edição do projeto no Admin.
+            </p>
+          )}
           {errors.non_field_errors && (
             <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{errors.non_field_errors.join(" ")}</p>
           )}

@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from users.models import User
 from core.models import Client, ClientResponsible, Collaborator, Company, ProjectType, Responsible, Site, Task
-from .models import Project, ProjectHistory, ProjectTask
+from .models import Project, ProjectHistory, ProjectTask, RackPosition
 
 
 class ProjectTests(TestCase):
@@ -173,6 +173,10 @@ class ProjectTests(TestCase):
                 "import_tasks_from_project_type": "on",
                 "status": Project.STATUS_PLANNING,
                 "is_active": "on",
+                "rack_positions-TOTAL_FORMS": "0",
+                "rack_positions-INITIAL_FORMS": "0",
+                "rack_positions-MIN_NUM_FORMS": "0",
+                "rack_positions-MAX_NUM_FORMS": "1000",
                 "project_tasks-TOTAL_FORMS": "0",
                 "project_tasks-INITIAL_FORMS": "0",
                 "project_tasks-MIN_NUM_FORMS": "0",
@@ -238,6 +242,10 @@ class ProjectTests(TestCase):
                 "bulk_start": "2026-08-17T08:30",
                 "bulk_end": "2026-08-17T17:45",
                 "bulk_estimated_hours": "8.50",
+                "rack_positions-TOTAL_FORMS": "0",
+                "rack_positions-INITIAL_FORMS": "0",
+                "rack_positions-MIN_NUM_FORMS": "0",
+                "rack_positions-MAX_NUM_FORMS": "1000",
                 "project_tasks-TOTAL_FORMS": "1",
                 "project_tasks-INITIAL_FORMS": "1",
                 "project_tasks-MIN_NUM_FORMS": "0",
@@ -356,3 +364,132 @@ class ProjectTests(TestCase):
         self.assertContains(response, 'for="id_csv_file"')
         self.assertContains(response, "Selecionar arquivo")
         self.assertContains(response, 'accept=".csv,text/csv"')
+
+    def test_bulk_rack_positions_are_created_from_pasted_text(self):
+        admin_user = User.objects.create_superuser(
+            username="rack_bulk_admin",
+            email="rack-bulk@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        project = Project.objects.create(company=company, name="Projeto Rack", has_rack_positions=True)
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            f"/admin/projects/project/{project.pk}/change/",
+            {
+                "company": str(company.pk),
+                "name": project.name,
+                "status": Project.STATUS_PLANNING,
+                "is_active": "on",
+                "has_rack_positions": "on",
+                "bulk_rack_positions": "RACK01;DH1;24;48\nRACK02;;12;\nRACK03",
+                "rack_positions-TOTAL_FORMS": "0",
+                "rack_positions-INITIAL_FORMS": "0",
+                "rack_positions-MIN_NUM_FORMS": "0",
+                "rack_positions-MAX_NUM_FORMS": "1000",
+                "project_tasks-TOTAL_FORMS": "0",
+                "project_tasks-INITIAL_FORMS": "0",
+                "project_tasks-MIN_NUM_FORMS": "0",
+                "project_tasks-MAX_NUM_FORMS": "1000",
+                "_save": "Salvar",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        positions = {rp.position: rp for rp in project.rack_positions.all()}
+        self.assertEqual(set(positions), {"RACK01", "RACK02", "RACK03"})
+        self.assertEqual(positions["RACK01"].dh, "DH1")
+        self.assertEqual(positions["RACK01"].links, 24)
+        self.assertEqual(positions["RACK01"].utp, 48)
+        self.assertEqual(positions["RACK02"].links, 12)
+        self.assertEqual(positions["RACK03"].links, 0)
+
+    def test_bulk_rack_positions_requires_has_rack_positions_enabled(self):
+        admin_user = User.objects.create_superuser(
+            username="rack_bulk_admin2",
+            email="rack-bulk2@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        project = Project.objects.create(company=company, name="Projeto Sem Rack")
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            f"/admin/projects/project/{project.pk}/change/",
+            {
+                "company": str(company.pk),
+                "name": project.name,
+                "status": Project.STATUS_PLANNING,
+                "is_active": "on",
+                "bulk_rack_positions": "RACK01",
+                "rack_positions-TOTAL_FORMS": "0",
+                "rack_positions-INITIAL_FORMS": "0",
+                "rack_positions-MIN_NUM_FORMS": "0",
+                "rack_positions-MAX_NUM_FORMS": "1000",
+                "project_tasks-TOTAL_FORMS": "0",
+                "project_tasks-INITIAL_FORMS": "0",
+                "project_tasks-MIN_NUM_FORMS": "0",
+                "project_tasks-MAX_NUM_FORMS": "1000",
+                "_save": "Salvar",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(project.rack_positions.exists())
+
+    def test_rack_position_must_belong_to_same_project(self):
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        project_a = Project.objects.create(company=company, name="Projeto A", has_rack_positions=True)
+        project_b = Project.objects.create(company=company, name="Projeto B", has_rack_positions=True)
+        rack_position_b = RackPosition.objects.create(project=project_b, position="RACK01")
+        task = Task.objects.create(name="Instalação")
+        project_task = ProjectTask(project=project_a, task=task, rack_position=rack_position_b)
+
+        with self.assertRaises(ValidationError):
+            project_task.full_clean()
+
+    def test_bulk_task_action_assigns_rack_position(self):
+        admin_user = User.objects.create_superuser(
+            username="rack_task_admin",
+            email="rack-task@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        project = Project.objects.create(company=company, name="Projeto Rack Tarefas", has_rack_positions=True)
+        rack_position = RackPosition.objects.create(project=project, position="RACK01")
+        task = Task.objects.create(name="Lançamento de Cabos")
+        project_task = ProjectTask.objects.create(project=project, task=task, order=1)
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            f"/admin/projects/project/{project.pk}/change/",
+            {
+                "company": str(company.pk),
+                "name": project.name,
+                "status": Project.STATUS_PLANNING,
+                "is_active": "on",
+                "has_rack_positions": "on",
+                "bulk_task_action": "update",
+                "bulk_tasks": [str(project_task.pk)],
+                "bulk_rack_position": str(rack_position.pk),
+                "rack_positions-TOTAL_FORMS": "0",
+                "rack_positions-INITIAL_FORMS": "0",
+                "rack_positions-MIN_NUM_FORMS": "0",
+                "rack_positions-MAX_NUM_FORMS": "1000",
+                "project_tasks-TOTAL_FORMS": "1",
+                "project_tasks-INITIAL_FORMS": "1",
+                "project_tasks-MIN_NUM_FORMS": "0",
+                "project_tasks-MAX_NUM_FORMS": "1000",
+                "project_tasks-0-id": str(project_task.pk),
+                "project_tasks-0-task": str(task.pk),
+                "project_tasks-0-order": "1",
+                "project_tasks-0-status": ProjectTask.STATUS_NOT_STARTED,
+                "project_tasks-0-estimated_hours": "0.00",
+                "_save": "Salvar",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        project_task.refresh_from_db()
+        self.assertEqual(project_task.rack_position, rack_position)

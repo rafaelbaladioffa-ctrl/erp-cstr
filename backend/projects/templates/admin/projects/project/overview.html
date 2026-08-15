@@ -71,7 +71,7 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Ordem</th><th>Tarefa</th><th>Responsável</th><th>Status</th><th>Horas Trabalhadas</th><th>Editar</th>
+                            <th>Ordem</th><th>Tarefa</th>{% if project.has_rack_positions %}<th>Rack Position</th>{% endif %}<th>Responsável</th><th>Status</th><th>Horas Trabalhadas</th><th>Editar</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -79,6 +79,7 @@
                         <tr>
                             <td>{{ row.project_task.order }}</td>
                             <td>{{ row.project_task.task.name }}</td>
+                            {% if project.has_rack_positions %}<td>{{ row.project_task.rack_position|default:"—" }}</td>{% endif %}
                             <td>
                                 <div class="project-overview__task-people">
                                     {% for collaborator in row.visible_collaborators %}
@@ -130,6 +131,12 @@
                     <label for="{{ bulk_form.bulk_collaborators.id_for_label }}">{{ bulk_form.bulk_collaborators.label }}</label>
                     {{ bulk_form.bulk_collaborators }}
                 </div>
+                {% if project.has_rack_positions %}
+                <div class="project-overview__bulk-field">
+                    <label for="{{ bulk_form.bulk_rack_position.id_for_label }}">{{ bulk_form.bulk_rack_position.label }}</label>
+                    {{ bulk_form.bulk_rack_position }}
+                </div>
+                {% endif %}
                 <div class="project-overview__bulk-field">
                     <label for="{{ bulk_form.bulk_status.id_for_label }}">{{ bulk_form.bulk_status.label }}</label>
                     {{ bulk_form.bulk_status }}

@@ -30,6 +30,7 @@ from .serializers import (
     ProjectSerializer,
     ProjectTaskSerializer,
     ProjectTypeCrudSerializer,
+    RackPositionSerializer,
     ResponsibleCrudSerializer,
     SiteCrudSerializer,
     SiteSerializer,
@@ -117,13 +118,24 @@ class ProjectViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def tasks(self, request, pk=None):
         project = self.get_object()
-        tasks = project.project_tasks.select_related("task").prefetch_related("collaborators").order_by("order", "id")
+        tasks = (
+            project.project_tasks.select_related("task", "rack_position")
+            .prefetch_related("collaborators")
+            .order_by("order", "id")
+        )
         serializer = ProjectTaskSerializer(tasks, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], url_path="rack-positions")
+    def rack_positions(self, request, pk=None):
+        project = self.get_object()
+        positions = project.rack_positions.all().order_by("position")
+        serializer = RackPositionSerializer(positions, many=True)
         return Response(serializer.data)
 
 
 class ProjectTaskViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = ProjectTask.objects.select_related("task", "project").prefetch_related("collaborators")
+    queryset = ProjectTask.objects.select_related("task", "project", "rack_position").prefetch_related("collaborators")
     serializer_class = ProjectTaskSerializer
 
     def get_queryset(self):

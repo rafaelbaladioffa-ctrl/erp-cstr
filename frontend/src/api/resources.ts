@@ -14,6 +14,7 @@ import type {
   ProjectDailyUpdate,
   ProjectTask,
   ProjectType,
+  RackPosition,
   ResponsibleFull,
   SiteFull,
   TaskFull,
@@ -71,6 +72,7 @@ export const projectsApi = {
   update: (id: number, payload: Partial<Project>) =>
     apiClient.patch<Project>(`/projects/${id}/`, payload).then((r) => r.data),
   tasks: (id: number) => apiClient.get<ProjectTask[]>(`/projects/${id}/tasks/`).then((r) => r.data),
+  rackPositions: (id: number) => apiClient.get<RackPosition[]>(`/projects/${id}/rack-positions/`).then((r) => r.data),
 };
 
 export const clientsApi = {
