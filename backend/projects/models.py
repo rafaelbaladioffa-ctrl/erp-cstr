@@ -167,12 +167,10 @@ class ProjectTask(TimestampedModel):
 
     project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="project_tasks")
     task = models.ForeignKey(Task, verbose_name="tarefa", on_delete=models.PROTECT, related_name="project_tasks")
-    rack_position = models.ForeignKey(
+    rack_positions = models.ManyToManyField(
         RackPosition,
-        verbose_name="Rack Position",
-        on_delete=models.SET_NULL,
+        verbose_name="Rack Positions",
         related_name="project_tasks",
-        null=True,
         blank=True,
     )
     collaborators = models.ManyToManyField(
@@ -209,10 +207,18 @@ class ProjectTask(TimestampedModel):
             errors["planned_end"] = "O término previsto não pode ser anterior ao início previsto."
         if self.actual_start and self.actual_end and self.actual_end < self.actual_start:
             errors["actual_end"] = "O término real não pode ser anterior ao início real."
-        if self.rack_position_id and self.project_id and self.rack_position.project_id != self.project_id:
-            errors["rack_position"] = "O Rack Position selecionado deve pertencer a este projeto."
         if errors:
             raise ValidationError(errors)
+
+    def validate_rack_positions(self, rack_positions):
+        """Confere que todos os Rack Positions informados pertencem a este
+        projeto. M2M não dá para validar em clean() (só existe após salvar
+        a instância), então isso é chamado explicitamente por quem atribui
+        os valores (admin, API) depois de resolver o project_id."""
+        invalid = [rp for rp in rack_positions if rp.project_id != self.project_id]
+        if invalid:
+            names = ", ".join(rp.position for rp in invalid)
+            raise ValidationError({"rack_positions": f"Rack Position(s) que não pertencem a este projeto: {names}."})
 
     def save(self, *args, **kwargs):
         previous = ProjectTask.objects.filter(pk=self.pk).first() if self.pk else None

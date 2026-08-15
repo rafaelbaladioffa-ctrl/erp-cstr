@@ -119,8 +119,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def tasks(self, request, pk=None):
         project = self.get_object()
         tasks = (
-            project.project_tasks.select_related("task", "rack_position")
-            .prefetch_related("collaborators")
+            project.project_tasks.select_related("task")
+            .prefetch_related("collaborators", "rack_positions")
             .order_by("order", "id")
         )
         serializer = ProjectTaskSerializer(tasks, many=True)
@@ -135,7 +135,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
 
 class ProjectTaskViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = ProjectTask.objects.select_related("task", "project", "rack_position").prefetch_related("collaborators")
+    queryset = ProjectTask.objects.select_related("task", "project").prefetch_related("collaborators", "rack_positions")
     serializer_class = ProjectTaskSerializer
 
     def get_queryset(self):

@@ -113,7 +113,7 @@ export default function ProjectDetail() {
               {tasks.map((task) => (
                 <tr key={task.id}>
                   <td>{task.task_name}</td>
-                  {project.has_rack_positions && <td>{task.rack_position_label || "—"}</td>}
+                  {project.has_rack_positions && <td>{task.rack_position_labels.join(", ") || "—"}</td>}
                   <td>
                     <StatusBadge status={task.status} label={task.status_display} />
                   </td>

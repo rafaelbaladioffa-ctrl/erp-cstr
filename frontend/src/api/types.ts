@@ -180,8 +180,8 @@ export interface ProjectTask {
   project_code?: string;
   task: number;
   task_name: string;
-  rack_position: number | null;
-  rack_position_label: string | null;
+  rack_positions: number[];
+  rack_position_labels: string[];
   collaborators: Collaborator[];
   status: string;
   status_display: string;

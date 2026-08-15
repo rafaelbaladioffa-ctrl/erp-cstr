@@ -266,7 +266,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source="project.name", read_only=True)
     project_code = serializers.CharField(source="project.code", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
-    rack_position_label = serializers.CharField(source="rack_position.position", read_only=True, default=None)
+    rack_position_labels = serializers.SerializerMethodField()
     collaborators = CollaboratorSerializer(many=True, read_only=True)
 
     class Meta:
@@ -278,8 +278,8 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "project_code",
             "task",
             "task_name",
-            "rack_position",
-            "rack_position_label",
+            "rack_positions",
+            "rack_position_labels",
             "collaborators",
             "status",
             "status_display",
@@ -292,6 +292,9 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "actual_hours",
             "notes",
         )
+
+    def get_rack_position_labels(self, obj):
+        return [rp.position for rp in obj.rack_positions.all()]
 
 
 class MyTaskUpdateSerializer(serializers.ModelSerializer):

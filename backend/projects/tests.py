@@ -442,18 +442,24 @@ class ProjectTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(project.rack_positions.exists())
 
-    def test_rack_position_must_belong_to_same_project(self):
+    def test_rack_positions_must_belong_to_same_project(self):
         company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
         project_a = Project.objects.create(company=company, name="Projeto A", has_rack_positions=True)
         project_b = Project.objects.create(company=company, name="Projeto B", has_rack_positions=True)
-        rack_position_b = RackPosition.objects.create(project=project_b, position="RACK01")
+        rack_position_a = RackPosition.objects.create(project=project_a, position="RACK-A")
+        rack_position_b = RackPosition.objects.create(project=project_b, position="RACK-B")
         task = Task.objects.create(name="Instalação")
-        project_task = ProjectTask(project=project_a, task=task, rack_position=rack_position_b)
+        project_task = ProjectTask.objects.create(project=project_a, task=task)
 
         with self.assertRaises(ValidationError):
-            project_task.full_clean()
+            project_task.validate_rack_positions([rack_position_a, rack_position_b])
 
-    def test_bulk_task_action_assigns_rack_position(self):
+        # Não levanta erro quando todos pertencem ao projeto da tarefa.
+        project_task.validate_rack_positions([rack_position_a])
+
+    def test_bulk_task_action_assigns_multiple_rack_positions(self):
+        """A tarefa pode ser alocada em vários Rack Positions ao mesmo
+        tempo (M2M), não só um."""
         admin_user = User.objects.create_superuser(
             username="rack_task_admin",
             email="rack-task@example.com",
@@ -461,7 +467,8 @@ class ProjectTests(TestCase):
         )
         company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
         project = Project.objects.create(company=company, name="Projeto Rack Tarefas", has_rack_positions=True)
-        rack_position = RackPosition.objects.create(project=project, position="RACK01")
+        rack_position_1 = RackPosition.objects.create(project=project, position="RACK01")
+        rack_position_2 = RackPosition.objects.create(project=project, position="RACK02")
         task = Task.objects.create(name="Lançamento de Cabos")
         project_task = ProjectTask.objects.create(project=project, task=task, order=1)
         self.client.force_login(admin_user)
@@ -476,7 +483,7 @@ class ProjectTests(TestCase):
                 "has_rack_positions": "on",
                 "bulk_task_action": "update",
                 "bulk_tasks": [str(project_task.pk)],
-                "bulk_rack_position": str(rack_position.pk),
+                "bulk_task_rack_positions": [str(rack_position_1.pk), str(rack_position_2.pk)],
                 "rack_positions-TOTAL_FORMS": "0",
                 "rack_positions-INITIAL_FORMS": "0",
                 "rack_positions-MIN_NUM_FORMS": "0",
@@ -496,7 +503,9 @@ class ProjectTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         project_task.refresh_from_db()
-        self.assertEqual(project_task.rack_position, rack_position)
+        self.assertQuerySetEqual(
+            project_task.rack_positions.order_by("position"), [rack_position_1, rack_position_2]
+        )
 
     def test_admin_add_with_blank_link_count_defaults_to_zero(self):
         """Regressão: link_count é opcional no formulário (blank=True) mas a

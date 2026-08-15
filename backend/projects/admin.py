@@ -96,11 +96,17 @@ class ProjectAdminForm(forms.ModelForm):
         max_digits=8,
         decimal_places=2,
     )
-    bulk_rack_position = forms.ModelChoiceField(
-        label="Rack Position",
+    bulk_task_rack_positions = forms.ModelMultipleChoiceField(
+        label="Rack Positions",
         required=False,
         queryset=RackPosition.objects.none(),
-        empty_label="Manter Rack Position atual",
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "project-bulk-multiselect",
+                "data-placeholder": "Selecione um ou mais Rack Positions",
+            }
+        ),
+        help_text="Substitui os Rack Positions das tarefas selecionadas pelos escolhidos aqui.",
     )
     bulk_rack_positions = forms.CharField(
         label="Adicionar Rack Positions em Massa",
@@ -128,7 +134,7 @@ class ProjectAdminForm(forms.ModelForm):
         self.fields["bulk_collaborators"].queryset = queryset.filter(company_id=company_id) if company_id else queryset.none()
         if self.instance and self.instance.pk:
             self.fields["bulk_tasks"].queryset = self.instance.project_tasks.select_related("task").order_by("order", "id")
-            self.fields["bulk_rack_position"].queryset = self.instance.rack_positions.all()
+            self.fields["bulk_task_rack_positions"].queryset = self.instance.rack_positions.all()
 
     @staticmethod
     def _parse_bulk_rack_positions(raw_text):
@@ -290,16 +296,22 @@ class ProjectTaskBulkActionForm(forms.Form):
         max_digits=8,
         decimal_places=2,
     )
-    bulk_rack_position = forms.ModelChoiceField(
-        label="Rack Position",
+    bulk_task_rack_positions = forms.ModelMultipleChoiceField(
+        label="Rack Positions",
         required=False,
         queryset=RackPosition.objects.none(),
-        empty_label="Manter Rack Position atual",
+        widget=forms.SelectMultiple(
+            attrs={
+                "class": "project-bulk-multiselect",
+                "data-placeholder": "Selecione um ou mais Rack Positions",
+            }
+        ),
+        help_text="Substitui os Rack Positions das tarefas selecionadas pelos escolhidos aqui.",
     )
 
     def __init__(self, *args, project=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["bulk_rack_position"].queryset = (
+        self.fields["bulk_task_rack_positions"].queryset = (
             project.rack_positions.all() if project else RackPosition.objects.none()
         )
         self.fields["bulk_collaborators"].queryset = Collaborator.objects.filter(
@@ -334,7 +346,7 @@ class ProjectTaskInline(TabularInline):
     fields = (
         "order",
         "task",
-        "rack_position",
+        "rack_positions",
         "collaborators",
         "status",
         "planned_start",
@@ -351,11 +363,11 @@ class ProjectTaskInline(TabularInline):
         self._parent_obj = obj
         return super().get_formset(request, obj, **kwargs)
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "rack_position":
+    def formfield_for_manytomany(self, db_field, request, **kwargs):
+        if db_field.name == "rack_positions":
             project = getattr(self, "_parent_obj", None)
             kwargs["queryset"] = project.rack_positions.all() if project else RackPosition.objects.none()
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+        return super().formfield_for_manytomany(db_field, request, **kwargs)
 
 
 @admin.register(Project)
@@ -422,7 +434,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                     "bulk_task_action",
                     "bulk_tasks",
                     "bulk_collaborators",
-                    "bulk_rack_position",
+                    "bulk_task_rack_positions",
                     "bulk_status",
                     ("bulk_start", "bulk_end"),
                     "bulk_estimated_hours",
@@ -671,7 +683,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
 
             raise PermissionDenied
 
-        tasks = project.project_tasks.select_related("task").prefetch_related("collaborators").order_by("order", "id")
+        tasks = project.project_tasks.select_related("task").prefetch_related("collaborators", "rack_positions").order_by("order", "id")
         totals = tasks.aggregate(estimated=Sum("estimated_hours"))
         total_tasks = tasks.count()
         completed_tasks = tasks.filter(status=ProjectTask.STATUS_COMPLETED).count()
@@ -682,12 +694,14 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         seen_collaborators = set()
         for project_task in tasks:
             collaborators = list(project_task.collaborators.all())
+            rack_position_names = [rp.position for rp in project_task.rack_positions.all()]
             task_rows.append(
                 {
                     "project_task": project_task,
                     "visible_collaborators": collaborators[:2],
                     "extra_collaborators": collaborators[2:],
                     "extra_count": max(0, len(collaborators) - 2),
+                    "rack_positions_display": ", ".join(rack_position_names) if rack_position_names else "—",
                     "worked_hours": self._format_hours(project_task.worked_hours)
                     if project_task.worked_hours
                     else "—",
@@ -758,13 +772,13 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                 "bulk_start": "planned_start",
                 "bulk_end": "planned_end",
                 "bulk_estimated_hours": "estimated_hours",
-                "bulk_rack_position": "rack_position",
             }
             for form_field, model_field in field_map.items():
                 value = cleaned_data.get(form_field)
                 if value not in (None, ""):
                     updates[model_field] = value
             selected_collaborators = cleaned_data.get("bulk_collaborators")
+            selected_rack_positions = cleaned_data.get("bulk_task_rack_positions")
             project_tasks = target_tasks
             if updates:
                 updated = project_tasks.update(**updates)
@@ -774,7 +788,11 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                 for project_task in project_tasks:
                     project_task.collaborators.set(selected_collaborators)
                 updated = project_tasks.count()
-            if updates or selected_collaborators:
+            if selected_rack_positions:
+                for project_task in project_tasks:
+                    project_task.rack_positions.set(selected_rack_positions)
+                updated = project_tasks.count()
+            if updates or selected_collaborators or selected_rack_positions:
                 self.message_user(request, f"{updated} Tarefa(s) atualizada(s) em massa.")
             else:
                 self.message_user(request, "Informe ao menos um valor para a atualização em massa.", level=messages.WARNING)
@@ -928,15 +946,15 @@ class ProjectTaskAdminForm(forms.ModelForm):
             project_id = self.data.get("project") or self.initial.get("project")
             if project_id:
                 project = Project.objects.filter(pk=project_id).first()
-        self.fields["rack_position"].queryset = project.rack_positions.all() if project else RackPosition.objects.none()
+        self.fields["rack_positions"].queryset = project.rack_positions.all() if project else RackPosition.objects.none()
 
 
 @admin.register(ProjectTask)
 class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     form = ProjectTaskAdminForm
-    list_display = ("project", "task", "rack_position", "collaborators_display", "status", "order", "planned_start", "planned_end")
-    list_filter = ("status", "project__company", "project", "rack_position")
-    search_fields = ("project__code", "project__name", "task__code", "task__name", "collaborators__name", "rack_position__position")
+    list_display = ("project", "task", "rack_positions_display", "collaborators_display", "status", "order", "planned_start", "planned_end")
+    list_filter = ("status", "project__company", "project", "rack_positions")
+    search_fields = ("project__code", "project__name", "task__code", "task__name", "collaborators__name", "rack_positions__position")
     autocomplete_fields = ("project", "task", "collaborators")
     readonly_fields = ("created_at", "updated_at")
 
@@ -945,8 +963,13 @@ class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         names = [collaborator.name for collaborator in obj.collaborators.all()]
         return ", ".join(names) if names else "-"
 
+    @admin.display(description="Rack Positions")
+    def rack_positions_display(self, obj):
+        names = [rp.position for rp in obj.rack_positions.all()]
+        return ", ".join(names) if names else "-"
+
     def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related("collaborators")
+        return super().get_queryset(request).prefetch_related("collaborators", "rack_positions")
 
     def get_model_perms(self, request):
         """Mantém as rotas para os links internos, mas oculta o submódulo do menu."""
