@@ -1,0 +1,136 @@
+from django.conf import settings
+from django.core.mail import EmailMessage
+from django.utils import timezone
+
+from core.models import ClientResponsible
+from projects.models import ProjectTask
+
+WORKDAY_START = "07:30"
+WORKDAY_END = "16:40"
+
+STATUS_LABELS = {
+    ProjectTask.STATUS_NOT_STARTED: "Não Iniciada",
+    ProjectTask.STATUS_IN_PROGRESS: "Em Andamento",
+    ProjectTask.STATUS_PAUSED: "Pausada",
+    ProjectTask.STATUS_COMPLETED: "Concluída",
+    ProjectTask.STATUS_CANCELED: "Cancelada",
+}
+
+
+def compute_progress_defaults(project, date):
+    """Calcula os valores padrão (percentual, atividades, certificação,
+    finalização e colaboradores) a partir das ProjectTask do projeto.
+    Usado apenas para preencher automaticamente uma Atualização Diária de
+    Projeto recém-criada — depois disso os campos ficam editáveis livremente.
+    """
+    all_tasks = list(project.project_tasks.select_related("task").prefetch_related("collaborators"))
+
+    total = len(all_tasks)
+    completed = [pt for pt in all_tasks if pt.status == ProjectTask.STATUS_COMPLETED]
+    percent = round((len(completed) / total) * 100) if total else 0
+
+    executed_today = [pt for pt in all_tasks if pt.actual_end == date]
+    activities_text = "\n".join(
+        f"{pt.task.name} — {STATUS_LABELS.get(pt.status, pt.status)}" for pt in executed_today
+    )
+
+    certification_done = any(
+        pt.status == ProjectTask.STATUS_COMPLETED and "certifica" in pt.task.name.lower()
+        for pt in all_tasks
+    )
+    project_finished = total > 0 and percent == 100
+
+    collaborator_ids = sorted(
+        {collaborator.pk for pt in all_tasks for collaborator in pt.collaborators.all()}
+    )
+
+    return {
+        "percent": percent,
+        "activities_text": activities_text,
+        "certification_done": certification_done,
+        "project_finished": project_finished,
+        "collaborator_ids": collaborator_ids,
+    }
+
+
+def build_project_update_body(project_update):
+    project = project_update.project
+
+    responsible_aws = project.responsible_client.name if project.responsible_client_id else "Não informado"
+    responsible_cstr = project.responsible_cstr.name if project.responsible_cstr_id else "Não informado"
+    collaborators_line = (
+        ", ".join(project_update.collaborators.order_by("name").values_list("name", flat=True))
+        or "Não informados"
+    )
+
+    lines = [
+        "📋 Atualização Diária de Projeto",
+        "",
+        f"Nome do Projeto: {project.name}",
+        f"PO: {project.po or 'Não informada'}",
+        f"Responsável AWS: {responsible_aws}",
+        f"Responsável CSTR: {responsible_cstr}",
+        "",
+        f"👷 Colaboradores: {collaborators_line}",
+        "",
+        f"📅 Data: {project_update.date:%d/%m/%Y}",
+        f"Hora de início: {WORKDAY_START}",
+        f"Hora de término: {WORKDAY_END}",
+        "",
+        f"📊 Percentual de Conclusão: {project_update.completion_percent}%",
+        "",
+        "🛠️ Atividades Executadas:",
+        project_update.activities_text.strip() or "Nenhuma atividade concluída registrada nesta data.",
+        "",
+        f"✅ Certificação Finalizada: {'Sim' if project_update.certification_done else 'Não'}",
+        f"🏁 Projeto finalizado: {'Sim' if project_update.project_finished else 'Não'}",
+        "",
+        "⚠️ Observações:",
+        project_update.summary.strip() or "Nenhuma observação.",
+    ]
+
+    return "\n".join(lines)
+
+
+def send_project_daily_update_email(project_update):
+    """Envia a Atualização Diária de Projeto para todos os ClientResponsible
+    ativos do cliente vinculado ao projeto.
+
+    Retorna uma tupla (enviados, sem_email) com os nomes em cada caso.
+    """
+    project = project_update.project
+    responsibles = []
+    if project.client_id:
+        responsibles = list(
+            ClientResponsible.objects.filter(client_id=project.client_id, is_active=True)
+        )
+
+    subject = f"Atualização de Projeto — {project.name} ({project_update.date:%d/%m/%Y})"
+    body = build_project_update_body(project_update)
+
+    # Import tardio para evitar import circular (project_pdf importa deste módulo).
+    from .project_pdf import build_project_daily_update_pdf
+
+    pdf_bytes = build_project_daily_update_pdf(project_update).read()
+    pdf_filename = f"atualizacao-projeto-{project.code or project.pk}-{project_update.date:%Y-%m-%d}.pdf"
+
+    sent, skipped = [], []
+    for responsible in responsibles:
+        if not responsible.email:
+            skipped.append(responsible.name)
+            continue
+        email = EmailMessage(
+            subject=subject,
+            body=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[responsible.email],
+        )
+        email.attach(pdf_filename, pdf_bytes, "application/pdf")
+        email.send(fail_silently=False)
+        sent.append(responsible.name)
+
+    if sent:
+        type(project_update).objects.filter(pk=project_update.pk).update(sent_at=timezone.now())
+        project_update.sent_at = timezone.now()
+
+    return sent, skipped

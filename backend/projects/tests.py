@@ -1,0 +1,358 @@
+from datetime import datetime
+
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
+from django.utils import timezone
+
+from users.models import User
+from core.models import Client, ClientResponsible, Collaborator, Company, ProjectType, Responsible, Site, Task
+from .models import Project, ProjectHistory, ProjectTask
+
+
+class ProjectTests(TestCase):
+    def test_project_tasks_are_hidden_from_admin_modules(self):
+        admin_user = User.objects.create_superuser(
+            username="hidden_tasks_admin",
+            email="hidden-tasks@example.com",
+            password="test-password",
+        )
+        self.client.force_login(admin_user)
+
+        admin_home = self.client.get("/admin/")
+        projects_home = self.client.get("/admin/projects/")
+
+        self.assertEqual(admin_home.status_code, 200)
+        self.assertEqual(projects_home.status_code, 200)
+        self.assertNotContains(admin_home, 'href="/admin/projects/projecttask/"')
+        self.assertNotContains(projects_home, 'href="/admin/projects/projecttask/"')
+
+    def test_project_admin_only_lists_active_planning_and_paused_statuses(self):
+        admin_user = User.objects.create_superuser(
+            username="project_list_admin",
+            email="project-list@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="Empresa dos Projetos")
+        visible_projects = [
+            Project.objects.create(company=company, name="Projeto Ativo", status=Project.STATUS_IN_PROGRESS),
+            Project.objects.create(company=company, name="Projeto Planejado", status=Project.STATUS_PLANNING),
+            Project.objects.create(company=company, name="Projeto Pausado", status=Project.STATUS_PAUSED),
+        ]
+        hidden_projects = [
+            Project.objects.create(company=company, name="Projeto Não Iniciado", status=Project.STATUS_NOT_STARTED),
+            Project.objects.create(company=company, name="Projeto Concluído", status=Project.STATUS_COMPLETED),
+            Project.objects.create(company=company, name="Projeto Cancelado", status=Project.STATUS_CANCELED),
+        ]
+        self.client.force_login(admin_user)
+
+        response = self.client.get("/admin/projects/project/")
+
+        self.assertEqual(response.status_code, 200)
+        for project in visible_projects:
+            self.assertContains(response, project.name)
+        for project in hidden_projects:
+            self.assertNotContains(response, project.name)
+        self.assertContains(response, "Ativo")
+
+    def test_project_history_admin_only_lists_completed_projects(self):
+        admin_user = User.objects.create_superuser(
+            username="history_admin",
+            email="history@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        completed = Project.objects.create(
+            company=company,
+            name="Projeto Finalizado",
+            status=Project.STATUS_COMPLETED,
+        )
+        Project.objects.create(
+            company=company,
+            name="Projeto em Planejamento",
+            status=Project.STATUS_PLANNING,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get("/admin/projects/projecthistory/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Histórico de Projetos")
+        self.assertContains(response, "Projeto Finalizado")
+        self.assertNotContains(response, "Projeto em Planejamento")
+        self.assertContains(response, f"/admin/projects/project/{completed.pk}/overview/")
+        self.assertContains(response, f"/admin/projects/project/{completed.pk}/change/")
+        self.assertEqual(ProjectHistory.objects.count(), 2)
+        self.assertEqual(
+            self.client.get(f"/admin/projects/project/{completed.pk}/overview/").status_code,
+            200,
+        )
+
+    def test_project_code_is_generated_sequentially_per_year(self):
+        company = Company.objects.create(legal_name="Empresa de Projetos")
+        first = Project.objects.create(company=company, name="Projeto A")
+        second = Project.objects.create(company=company, name="Projeto B")
+        year = timezone.localdate().year
+        self.assertEqual(first.code, f"CSTR-PROJ-{year}0001")
+        self.assertEqual(second.code, f"CSTR-PROJ-{year}0002")
+
+    def test_project_has_po_and_two_responsible_fields(self):
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        client = Client.objects.create(company=company, legal_name="Cliente")
+        responsible_client = ClientResponsible.objects.create(client=client, name="Responsável do Cliente")
+        responsible_cstr = Responsible.objects.create(company=company, name="Responsável CSTR")
+        project = Project.objects.create(
+            company=company,
+            name="Projeto com PO",
+            po="PO-12345",
+            client=client,
+            responsible_client=responsible_client,
+            responsible_cstr=responsible_cstr,
+        )
+        self.assertEqual(project.po, "PO-12345")
+        self.assertEqual(project.responsible_client, responsible_client)
+        self.assertEqual(project.responsible_cstr, responsible_cstr)
+
+    def test_project_allows_client_and_site_from_customer_company(self):
+        cstr = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        customer = Company.objects.create(legal_name="A100 ROW SERVICOS DE DADOS BRASIL LTDA", trade_name="AWS")
+        client = Client.objects.create(company=customer, legal_name=customer.legal_name, trade_name="AWS")
+        site = Site.objects.create(company=customer, name="GRU65", code="GRU65")
+
+        project = Project(company=cstr, name="Projeto AWS", client=client, site=site)
+        project.full_clean()
+
+    def test_project_rejects_site_from_company_other_than_client(self):
+        cstr = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        customer = Company.objects.create(legal_name="Cliente AWS")
+        another_customer = Company.objects.create(legal_name="Outro Cliente")
+        client = Client.objects.create(company=customer, legal_name="AWS")
+        site = Site.objects.create(company=another_customer, name="Site externo", code="EXT")
+
+        with self.assertRaises(ValidationError):
+            Project(company=cstr, name="Projeto inválido", client=client, site=site).full_clean()
+
+    def test_project_task_links_catalog_task_and_collaborator(self):
+        company = Company.objects.create(legal_name="Empresa Tarefas")
+        project = Project.objects.create(company=company, name="Projeto Operacional")
+        task = Task.objects.create(name="Instalação")
+        collaborator = Collaborator.objects.create(company=company, name="Colaborador")
+        project_task = ProjectTask(project=project, task=task)
+        project_task.full_clean()
+        project_task.save()
+        project_task.collaborators.add(collaborator)
+        self.assertEqual(project_task.task, task)
+
+    def test_project_task_accepts_multiple_collaborators(self):
+        company_a = Company.objects.create(legal_name="Empresa A")
+        project = Project.objects.create(company=company_a, name="Projeto")
+        task = Task.objects.create(name="Tarefa")
+        first = Collaborator.objects.create(company=company_a, name="Primeiro Responsável")
+        second = Collaborator.objects.create(company=company_a, name="Segundo Responsável")
+        project_task = ProjectTask.objects.create(project=project, task=task)
+        project_task.collaborators.set([first, second])
+        self.assertEqual(project_task.collaborators.count(), 2)
+
+    def test_admin_can_import_all_tasks_from_project_type(self):
+        admin_user = User.objects.create_superuser(username="project_admin", email="project@example.com", password="test-password")
+        company = Company.objects.create(legal_name="Empresa de Importação")
+        project_type = ProjectType.objects.create(name="BRICK")
+        first_task = Task.objects.create(name="Primeira Tarefa", estimated_hours=2)
+        second_task = Task.objects.create(name="Segunda Tarefa", estimated_hours=4)
+        unrelated_task = Task.objects.create(name="Outra Tarefa")
+        first_task.project_types.add(project_type)
+        second_task.project_types.add(project_type)
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            "/admin/projects/project/add/",
+            {
+                "company": str(company.pk),
+                "name": "Projeto com Tarefas",
+                "project_type": str(project_type.pk),
+                "import_tasks_from_project_type": "on",
+                "status": Project.STATUS_PLANNING,
+                "is_active": "on",
+                "project_tasks-TOTAL_FORMS": "0",
+                "project_tasks-INITIAL_FORMS": "0",
+                "project_tasks-MIN_NUM_FORMS": "0",
+                "project_tasks-MAX_NUM_FORMS": "1000",
+                "_save": "Salvar",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        project = Project.objects.get(name="Projeto com Tarefas")
+        self.assertQuerySetEqual(
+            project.project_tasks.order_by("order").values_list("task", flat=True),
+            [first_task.pk, second_task.pk],
+        )
+        self.assertFalse(project.project_tasks.filter(task=unrelated_task).exists())
+
+    def test_project_overview_links_to_full_edit_form(self):
+        admin_user = User.objects.create_superuser(
+            username="overview_admin",
+            email="overview@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        project = Project.objects.create(company=company, name="Projeto Visão Geral")
+        self.client.force_login(admin_user)
+
+        response = self.client.get(f"/admin/projects/project/{project.pk}/overview/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Visão Geral")
+        self.assertContains(response, "Editar Projeto")
+        self.assertContains(response, f'/admin/projects/project/{project.pk}/change/')
+
+        changelist_response = self.client.get("/admin/projects/project/")
+        overview_url = f"/admin/projects/project/{project.pk}/overview/"
+        self.assertContains(changelist_response, overview_url, count=2)
+        self.assertNotContains(changelist_response, ">Visão Geral</th>")
+
+    def test_admin_bulk_updates_all_project_tasks(self):
+        admin_user = User.objects.create_superuser(
+            username="bulk_admin",
+            email="bulk@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        collaborator = Collaborator.objects.create(company=company, name="Responsável em Massa")
+        project = Project.objects.create(company=company, name="Projeto em Massa")
+        task = Task.objects.create(name="Tarefa em Massa")
+        project_task = ProjectTask.objects.create(project=project, task=task, order=1)
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            f"/admin/projects/project/{project.pk}/change/",
+            {
+                "company": str(company.pk),
+                "name": project.name,
+                "status": Project.STATUS_PLANNING,
+                "is_active": "on",
+                "bulk_task_action": "update",
+                "bulk_tasks": [str(project_task.pk)],
+                "bulk_collaborators": [str(collaborator.pk)],
+                "bulk_status": ProjectTask.STATUS_IN_PROGRESS,
+                "bulk_start": "2026-08-17T08:30",
+                "bulk_end": "2026-08-17T17:45",
+                "bulk_estimated_hours": "8.50",
+                "project_tasks-TOTAL_FORMS": "1",
+                "project_tasks-INITIAL_FORMS": "1",
+                "project_tasks-MIN_NUM_FORMS": "0",
+                "project_tasks-MAX_NUM_FORMS": "1000",
+                "project_tasks-0-id": str(project_task.pk),
+                "project_tasks-0-task": str(task.pk),
+                "project_tasks-0-order": "1",
+                "project_tasks-0-status": ProjectTask.STATUS_NOT_STARTED,
+                "project_tasks-0-estimated_hours": "0.00",
+                "_save": "Salvar",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        project_task.refresh_from_db()
+        self.assertQuerySetEqual(project_task.collaborators.all(), [collaborator])
+        self.assertEqual(project_task.status, ProjectTask.STATUS_IN_PROGRESS)
+        self.assertEqual(project_task.planned_start, timezone.make_aware(datetime(2026, 8, 17, 8, 30)))
+        self.assertEqual(project_task.planned_end, timezone.make_aware(datetime(2026, 8, 17, 17, 45)))
+        self.assertEqual(str(project_task.estimated_hours), "8.50")
+
+    def test_overview_calculates_worked_hours_from_completed_tasks(self):
+        admin_user = User.objects.create_superuser(
+            username="hours_admin",
+            email="hours@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        project = Project.objects.create(company=company, name="Projeto com Horas")
+        completed_catalog_task = Task.objects.create(name="Tarefa Concluída")
+        open_catalog_task = Task.objects.create(name="Tarefa Aberta")
+        completed_project_task = ProjectTask.objects.create(
+            project=project,
+            task=completed_catalog_task,
+            order=1,
+            status=ProjectTask.STATUS_COMPLETED,
+            planned_start=timezone.make_aware(datetime(2026, 8, 17, 8, 30)),
+            planned_end=timezone.make_aware(datetime(2026, 8, 17, 17, 45)),
+        )
+        collaborators = [
+            Collaborator.objects.create(company=company, name=f"Responsável {number}")
+            for number in range(1, 4)
+        ]
+        completed_project_task.collaborators.set(collaborators)
+        ProjectTask.objects.create(
+            project=project,
+            task=open_catalog_task,
+            order=2,
+            status=ProjectTask.STATUS_IN_PROGRESS,
+            planned_start=timezone.make_aware(datetime(2026, 8, 18, 8, 0)),
+            planned_end=timezone.make_aware(datetime(2026, 8, 18, 18, 0)),
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(f"/admin/projects/project/{project.pk}/overview/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "9h15min")
+        self.assertNotContains(response, "19h15min")
+        self.assertContains(response, "Horas Trabalhadas")
+        self.assertContains(response, ">+1</summary>")
+        self.assertContains(response, 'data-project-panel="tarefas" role="tabpanel" hidden')
+        self.assertContains(response, 'data-project-panel="equipe" role="tabpanel" hidden')
+
+    def test_admin_exports_projects_as_csv(self):
+        admin_user = User.objects.create_superuser(
+            username="csv_export_admin",
+            email="csv-export@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        Project.objects.create(company=company, name="Projeto Exportado", po="PO-CSV")
+        self.client.force_login(admin_user)
+
+        response = self.client.get("/admin/projects/project/export-csv/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn("Projeto Exportado", response.content.decode("utf-8-sig"))
+
+    def test_admin_imports_projects_from_csv(self):
+        admin_user = User.objects.create_superuser(
+            username="csv_import_admin",
+            email="csv-import@example.com",
+            password="test-password",
+        )
+        Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.client.force_login(admin_user)
+        csv_content = (
+            "nome;po;empresa;status;ativo\n"
+            "Projeto Importado;PO-IMPORT;CONSULTIMER BRASIL LTDA;Planejamento;Sim\n"
+        )
+        uploaded_file = SimpleUploadedFile("projetos.csv", csv_content.encode("utf-8"), content_type="text/csv")
+
+        response = self.client.post(
+            "/admin/projects/project/import-csv/",
+            {"csv_file": uploaded_file},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        imported = Project.objects.get(name="Projeto Importado")
+        self.assertEqual(imported.po, "PO-IMPORT")
+        self.assertTrue(imported.code.startswith("CSTR-PROJ-"))
+
+    def test_csv_import_page_has_explicit_file_picker(self):
+        admin_user = User.objects.create_superuser(
+            username="csv_picker_admin",
+            email="csv-picker@example.com",
+            password="test-password",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get("/admin/projects/project/import-csv/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'for="id_csv_file"')
+        self.assertContains(response, "Selecionar arquivo")
+        self.assertContains(response, 'accept=".csv,text/csv"')

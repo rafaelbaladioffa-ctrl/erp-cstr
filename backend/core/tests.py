@@ -1,0 +1,177 @@
+from django.core.exceptions import ValidationError
+from django.test import TestCase
+from django.utils.translation import gettext, override
+from django.utils import timezone
+from django.urls import reverse
+from django.db import IntegrityError, transaction
+from users.models import User
+from .models import Category, Client, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
+
+
+class UnfoldTranslationTests(TestCase):
+    def test_global_unfold_messages_are_translated_to_brazilian_portuguese(self):
+        with override("pt-br"):
+            self.assertEqual(gettext("Type to search"), "Digite para pesquisar")
+            self.assertEqual(gettext("No results found"), "Nenhum resultado encontrado")
+            self.assertEqual(gettext("Apply Filters"), "Aplicar filtros")
+            self.assertEqual(gettext("Select value"), "Selecione um valor")
+
+
+class CompanyTests(TestCase):
+    def test_company_uses_trade_name_as_label(self):
+        company = Company.objects.create(legal_name="Empresa Teste Ltda", trade_name="Empresa Teste", tax_id="00.000.000/0001-00")
+        self.assertEqual(str(company), "Empresa Teste")
+
+    def test_health_check(self):
+        response = self.client.get(reverse("health-check"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
+
+    def test_site_code_is_unique_inside_company(self):
+        company = Company.objects.create(legal_name="Empresa A", tax_id="11.111.111/0001-11")
+        Site.objects.create(company=company, code="SP", name="Sao Paulo")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Site.objects.create(company=company, code="SP", name="Outro site")
+
+    def test_category_and_client_labels(self):
+        company = Company.objects.create(legal_name="Empresa B", tax_id="22.222.222/0001-22")
+        category = Category.objects.create(name="Implantacao")
+        client = Client.objects.create(
+            company=company,
+            legal_name="Cliente Exemplo Ltda",
+            trade_name="Cliente Exemplo",
+            tax_id="33.333.333/0001-33",
+        )
+        self.assertEqual(str(category), "Implantacao")
+        self.assertEqual(str(client), "Cliente Exemplo")
+
+    def test_incomplete_records_can_be_saved(self):
+        Company.objects.create()
+        company = Company.objects.create()
+        Site.objects.create(company=company)
+        Site.objects.create(company=company)
+        Category.objects.create()
+        Client.objects.create(company=company)
+
+    def test_collaborator_selects_registered_job_title(self):
+        company = Company.objects.create(legal_name="Empresa C", tax_id="44.444.444/0001-44")
+        job_title = JobTitle.objects.create(company=company, name="Analista")
+        collaborator = Collaborator.objects.create(company=company, name="Pessoa Teste", job_title=job_title)
+        self.assertEqual(collaborator.job_title, job_title)
+        self.assertEqual(str(collaborator.job_title), "Analista")
+
+    def test_only_leadership_roles_are_available_as_managers(self):
+        company = Company.objects.create(legal_name="Empresa D", tax_id="55.555.555/0001-55")
+        manager_role = JobTitle.objects.create(company=company, name="Supervisor de Operacoes")
+        regular_role = JobTitle.objects.create(company=company, name="Analista")
+        manager = Collaborator.objects.create(company=company, name="Gestor Teste", job_title=manager_role)
+        Collaborator.objects.create(company=company, name="Pessoa Regular", job_title=regular_role)
+
+        manager_field = Collaborator._meta.get_field("manager")
+        eligible_managers = Collaborator.objects.complex_filter(manager_field.get_limit_choices_to())
+        self.assertQuerySetEqual(eligible_managers, [manager])
+
+    def test_manager_must_belong_to_same_company(self):
+        company_a = Company.objects.create(legal_name="Empresa E", tax_id="66.666.666/0001-66")
+        company_b = Company.objects.create(legal_name="Empresa F", tax_id="77.777.777/0001-77")
+        role = JobTitle.objects.create(company=company_b, name="Gerente")
+        manager = Collaborator.objects.create(company=company_b, name="Gestor Externo", job_title=role)
+        collaborator = Collaborator(company=company_a, name="Pessoa Teste", manager=manager)
+        with self.assertRaises(ValidationError):
+            collaborator.full_clean()
+
+    def test_responsible_links_to_user_from_same_company(self):
+        company = Company.objects.create(legal_name="Empresa G", tax_id="88.888.888/0001-88")
+        user = User.objects.create_user(username="responsavel", email="responsavel@example.com", company=company)
+        responsible = Responsible(company=company, name="Responsavel Teste", user=user)
+        responsible.full_clean()
+        responsible.save()
+        self.assertEqual(responsible.user, user)
+
+    def test_responsible_rejects_user_from_another_company(self):
+        company_a = Company.objects.create(legal_name="Empresa H", tax_id="99.999.999/0001-99")
+        company_b = Company.objects.create(legal_name="Empresa I", tax_id="10.000.000/0001-10")
+        user = User.objects.create_user(username="outra_empresa", email="outra@example.com", company=company_b)
+        responsible = Responsible(company=company_a, user=user)
+        with self.assertRaises(ValidationError):
+            responsible.full_clean()
+
+    def test_project_types_can_be_created_in_bulk_through_admin(self):
+        admin_user = User.objects.create_superuser(username="bulk_admin", email="bulk@example.com", password="test-password")
+        self.client.force_login(admin_user)
+        response = self.client.post(
+            "/admin/core/projecttype/add/",
+            {
+                "name": "",
+                "bulk_names": "AZNG\nBLOCO\nBRICK",
+                "description": "",
+                "is_active": "on",
+                "_save": "Salvar",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertQuerySetEqual(ProjectType.objects.order_by("name").values_list("name", flat=True), ["AZNG", "BLOCO", "BRICK"])
+
+    def test_project_type_list_has_explicit_edit_link(self):
+        admin_user = User.objects.create_superuser(username="edit_admin", email="edit@example.com", password="test-password")
+        project_type = ProjectType.objects.create(name="TURNKEY")
+        self.client.force_login(admin_user)
+        response = self.client.get("/admin/core/projecttype/")
+        self.assertContains(response, f'/admin/core/projecttype/{project_type.pk}/change/')
+        self.assertContains(response, "Editar")
+
+    def test_admin_lists_allow_selecting_page_size(self):
+        admin_user = User.objects.create_superuser(username="page_admin", email="page@example.com", password="test-password")
+        ProjectType.objects.bulk_create(ProjectType(name=f"Tipo {index:02d}") for index in range(12))
+        self.client.force_login(admin_user)
+
+        default_response = self.client.get("/admin/core/projecttype/")
+        self.assertEqual(len(default_response.context["cl"].result_list), 10)
+        self.assertContains(default_response, "Por Página")
+
+        fifty_response = self.client.get("/admin/core/projecttype/?per_page=50")
+        self.assertEqual(len(fifty_response.context["cl"].result_list), 12)
+
+        all_response = self.client.get("/admin/core/projecttype/?per_page=all")
+        self.assertEqual(len(all_response.context["cl"].result_list), 12)
+
+    def test_task_codes_are_generated_sequentially_per_year(self):
+        first = Task.objects.create(name="Primeira tarefa")
+        second = Task.objects.create(name="Segunda tarefa")
+        year = timezone.localdate().year
+        self.assertEqual(first.code, f"CSTR-TASK-{year}0001")
+        self.assertEqual(second.code, f"CSTR-TASK-{year}0002")
+
+    def test_tasks_can_be_created_in_bulk_with_sequential_codes(self):
+        admin_user = User.objects.create_superuser(username="task_admin", email="task_admin@example.com", password="test-password")
+        project_type = ProjectType.objects.create(name="FITOUT")
+        self.client.force_login(admin_user)
+        response = self.client.post(
+            "/admin/core/task/add/",
+            {
+                "name": "",
+                "bulk_names": "Levantamento\nInstalacao\nValidacao",
+                "description": "Etapa padrao",
+                "estimated_hours": "8.00",
+                "project_types": [str(project_type.pk)],
+                "is_active": "on",
+                "_save": "Salvar",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        tasks = list(Task.objects.order_by("code"))
+        year = timezone.localdate().year
+        self.assertEqual([task.code for task in tasks], [f"CSTR-TASK-{year}0001", f"CSTR-TASK-{year}0002", f"CSTR-TASK-{year}0003"])
+        self.assertTrue(all(task.project_types.filter(pk=project_type.pk).exists() for task in tasks))
+
+    def test_task_list_displays_linked_project_types(self):
+        admin_user = User.objects.create_superuser(username="task_list_admin", email="task_list@example.com", password="test-password")
+        project_type = ProjectType.objects.create(name="BRICK ML")
+        task = Task.objects.create(name="Conexao Brick")
+        task.project_types.add(project_type)
+        self.client.force_login(admin_user)
+        response = self.client.get("/admin/core/task/")
+        self.assertContains(response, "BRICK ML")
+        self.assertContains(response, "Tipos de Projeto")
+        self.assertContains(response, f'/admin/core/task/{task.pk}/change/')
+        self.assertContains(response, "Editar")
