@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from . import views
 from .auth_views import ThrottledTokenObtainPairView, ThrottledTokenRefreshView
+from .dashboard import ProjectsPerformanceView, TechnicalPerformanceView
 
 router = DefaultRouter()
 router.register("projects", views.ProjectViewSet, basename="project")
@@ -28,5 +29,7 @@ urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),
     path("token/refresh/", ThrottledTokenRefreshView.as_view(), name="token-refresh"),
     path("me/", views.MeView.as_view(), name="me"),
+    path("dashboard/projects/", ProjectsPerformanceView.as_view(), name="dashboard-projects"),
+    path("dashboard/technical/", TechnicalPerformanceView.as_view(), name="dashboard-technical"),
     path("", include(router.urls)),
 ]
