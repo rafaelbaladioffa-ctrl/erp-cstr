@@ -144,7 +144,28 @@ export default function ProjectFormModal({
             fields={fields}
             values={values}
             errors={errors}
-            onChange={(name, value) => setValues((prev) => ({ ...prev, [name]: value }))}
+            onChange={(name, value) =>
+              setValues((prev) => {
+                const next = { ...prev, [name]: value };
+                if (name === "client") {
+                  // Trocar o Cliente invalida qualquer Site/Responsável do
+                  // Cliente já selecionado que pertença a outro cliente —
+                  // sem isso, o valor antigo ficava "preso" no formulário
+                  // (visualmente sumia da lista, mas ainda era enviado ao
+                  // salvar, causando erro de validação no backend).
+                  const newClientId = value as number | null;
+                  const currentSite = sites.find((s) => s.id === prev.site);
+                  if (currentSite && currentSite.client !== newClientId) {
+                    next.site = null;
+                  }
+                  const currentResponsible = clientResponsibles.find((r) => r.id === prev.responsible_client);
+                  if (currentResponsible && currentResponsible.client !== newClientId) {
+                    next.responsible_client = null;
+                  }
+                }
+                return next;
+              })
+            }
           />
           {errors.non_field_errors && (
             <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{errors.non_field_errors.join(" ")}</p>
