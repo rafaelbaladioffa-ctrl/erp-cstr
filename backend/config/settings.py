@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
+    "axes",
     "audit.apps.AuditConfig",
     "core",
     "users",
@@ -52,6 +53,17 @@ MIDDLEWARE = [
     "audit.middleware.AuditContextMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Precisa ser o último middleware (exigência do django-axes).
+    "axes.middleware.AxesMiddleware",
+]
+
+# django-axes intercepta o authenticate() padrão do Django — usado tanto
+# pelo login do Django Admin quanto pelo TokenObtainPairView do
+# simplejwt (que chama authenticate() internamente) — então uma única
+# configuração cobre o brute force nos dois pontos de entrada.
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
+    "django.contrib.auth.backends.ModelBackend",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -147,6 +159,15 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "api.pagination.DefaultPagination",
     "PAGE_SIZE": 25,
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.ScopedRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        # Camada extra de defesa (além do django-axes) especificamente no
+        # endpoint de login: barra rajadas rápidas por IP antes mesmo de o
+        # axes contar as tentativas falhas no banco.
+        "login": "5/min",
+    },
 }
 
 SIMPLE_JWT = {
@@ -154,6 +175,18 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
 }
+
+# --- Proteção contra brute force (django-axes) ---------------------------
+# Bloqueia por combinação de IP + usuário após N tentativas de login
+# falhas, tanto no Django Admin quanto no endpoint de login da API
+# (/api/token/), já que ambos passam pelo authenticate() padrão do Django.
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = timedelta(minutes=30)
+AXES_LOCKOUT_PARAMETERS = ["ip_address", "username"]
+AXES_RESET_ON_SUCCESS = True
+AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = True
+AXES_LOCKOUT_TEMPLATE = None
+AXES_VERBOSE = True
 
 CORS_ALLOWED_ORIGINS = [
     item.strip()

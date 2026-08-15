@@ -1,8 +1,8 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from . import views
+from .auth_views import ThrottledTokenObtainPairView, ThrottledTokenRefreshView
 
 router = DefaultRouter()
 router.register("projects", views.ProjectViewSet, basename="project")
@@ -25,8 +25,8 @@ router.register("registry/collaborators", views.CollaboratorRegistryViewSet, bas
 router.register("registry/tasks", views.TaskViewSet, basename="registry-task")
 
 urlpatterns = [
-    path("token/", TokenObtainPairView.as_view(), name="token-obtain-pair"),
-    path("token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
+    path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),
+    path("token/refresh/", ThrottledTokenRefreshView.as_view(), name="token-refresh"),
     path("me/", views.MeView.as_view(), name="me"),
     path("", include(router.urls)),
 ]
