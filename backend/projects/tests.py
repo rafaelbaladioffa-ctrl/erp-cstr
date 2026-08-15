@@ -493,3 +493,81 @@ class ProjectTests(TestCase):
         self.assertEqual(response.status_code, 302)
         project_task.refresh_from_db()
         self.assertEqual(project_task.rack_position, rack_position)
+
+    def test_admin_add_with_blank_link_count_defaults_to_zero(self):
+        """Regressão: link_count é opcional no formulário (blank=True) mas a
+        coluna não aceita NULL — deixar em branco não pode gerar
+        IntegrityError, deve cair para 0."""
+        admin_user = User.objects.create_superuser(
+            username="link_count_admin",
+            email="link-count@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            "/admin/projects/project/add/",
+            {
+                "company": str(company.pk),
+                "name": "Projeto Sem Quantidade de Links",
+                "link_count": "",
+                "status": Project.STATUS_PLANNING,
+                "is_active": "on",
+                "rack_positions-TOTAL_FORMS": "0",
+                "rack_positions-INITIAL_FORMS": "0",
+                "rack_positions-MIN_NUM_FORMS": "0",
+                "rack_positions-MAX_NUM_FORMS": "1000",
+                "project_tasks-TOTAL_FORMS": "0",
+                "project_tasks-INITIAL_FORMS": "0",
+                "project_tasks-MIN_NUM_FORMS": "0",
+                "project_tasks-MAX_NUM_FORMS": "1000",
+                "_save": "Salvar",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        project = Project.objects.get(name="Projeto Sem Quantidade de Links")
+        self.assertEqual(project.link_count, 0)
+
+    def test_admin_add_rack_position_with_blank_links_utp_defaults_to_zero(self):
+        """Regressão: mesmo caso de link_count, mas para RackPosition.links
+        e RackPosition.utp preenchidos via inline do Projeto."""
+        admin_user = User.objects.create_superuser(
+            username="rack_blank_admin",
+            email="rack-blank@example.com",
+            password="test-password",
+        )
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        project = Project.objects.create(company=company, name="Projeto Rack Vazio", has_rack_positions=True)
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            f"/admin/projects/project/{project.pk}/change/",
+            {
+                "company": str(company.pk),
+                "name": project.name,
+                "status": Project.STATUS_PLANNING,
+                "is_active": "on",
+                "has_rack_positions": "on",
+                "rack_positions-TOTAL_FORMS": "1",
+                "rack_positions-INITIAL_FORMS": "0",
+                "rack_positions-MIN_NUM_FORMS": "0",
+                "rack_positions-MAX_NUM_FORMS": "1000",
+                "rack_positions-0-project": str(project.pk),
+                "rack_positions-0-position": "RACKVAZIO",
+                "rack_positions-0-dh": "",
+                "rack_positions-0-links": "",
+                "rack_positions-0-utp": "",
+                "project_tasks-TOTAL_FORMS": "0",
+                "project_tasks-INITIAL_FORMS": "0",
+                "project_tasks-MIN_NUM_FORMS": "0",
+                "project_tasks-MAX_NUM_FORMS": "1000",
+                "_save": "Salvar",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        rack_position = RackPosition.objects.get(project=project, position="RACKVAZIO")
+        self.assertEqual(rack_position.links, 0)
+        self.assertEqual(rack_position.utp, 0)

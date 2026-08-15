@@ -164,6 +164,14 @@ class ProjectAdminForm(forms.ModelForm):
             rows.append({"position": position, "dh": dh, "links": links, "utp": utp})
         return rows
 
+    def clean_link_count(self):
+        # O campo é opcional no formulário (blank=True), mas a coluna no
+        # banco não aceita NULL — se o usuário deixar em branco, Django
+        # normaliza para None em vez de aplicar o default=0 do model
+        # (o default só se aplica quando o atributo nunca é setado, e o
+        # ModelForm sempre define explicitamente o valor limpo).
+        return self.cleaned_data.get("link_count") or 0
+
     def clean(self):
         cleaned_data = super().clean()
         if cleaned_data.get("import_tasks_from_project_type") and not cleaned_data.get("project_type"):
@@ -185,8 +193,24 @@ class ProjectAdminForm(forms.ModelForm):
         return cleaned_data
 
 
+class RackPositionInlineForm(forms.ModelForm):
+    class Meta:
+        model = RackPosition
+        fields = "__all__"
+
+    def clean_links(self):
+        # Mesmo caso de link_count: campo opcional (blank=True) mas a
+        # coluna não aceita NULL — em branco vira None em vez do
+        # default=0, então normalizamos aqui.
+        return self.cleaned_data.get("links") or 0
+
+    def clean_utp(self):
+        return self.cleaned_data.get("utp") or 0
+
+
 class RackPositionInline(TabularInline):
     model = RackPosition
+    form = RackPositionInlineForm
     extra = 0
     classes = ("collapse",)
     fields = ("position", "dh", "links", "utp")
