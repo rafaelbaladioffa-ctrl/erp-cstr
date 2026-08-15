@@ -8,6 +8,8 @@ import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
 import StatCard from "../components/ui/StatCard";
 import StatusBadge from "../components/ui/StatusBadge";
+import { useAuth } from "../context/AuthContext";
+import { PERMS, hasPerm } from "../utils/permissions";
 
 type TabKey = "active" | "history";
 
@@ -56,6 +58,9 @@ function exportCsv(projects: Project[]) {
 }
 
 export default function ProjectsList() {
+  const { user } = useAuth();
+  const canAdd = hasPerm(user, PERMS.addProject);
+  const canChange = hasPerm(user, PERMS.changeProject);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabKey>("active");
@@ -136,10 +141,12 @@ export default function ProjectsList() {
         title="Projetos"
         subtitle="Acompanhe o portfólio, prazos e evolução operacional."
         actions={
-          <button className="btn btn-primary" onClick={openCreate}>
-            <Icon name="add" style={{ fontSize: 18 }} />
-            Novo projeto
-          </button>
+          canAdd ? (
+            <button className="btn btn-primary" onClick={openCreate}>
+              <Icon name="add" style={{ fontSize: 18 }} />
+              Novo projeto
+            </button>
+          ) : undefined
         }
       />
 
@@ -292,9 +299,11 @@ export default function ProjectsList() {
                           <Link to={`/projetos/${p.id}`} className="btn btn-outline btn-sm">
                             Abrir
                           </Link>
-                          <button className="btn btn-outline btn-sm" onClick={() => openEdit(p)}>
-                            <Icon name="edit" style={{ fontSize: 14 }} />
-                          </button>
+                          {canChange && (
+                            <button className="btn btn-outline btn-sm" onClick={() => openEdit(p)}>
+                              <Icon name="edit" style={{ fontSize: 14 }} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -315,7 +324,7 @@ export default function ProjectsList() {
         <Pagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
       </div>
 
-      {formOpen && (
+      {formOpen && (editingProject ? canChange : canAdd) && (
         <ProjectFormModal project={editingProject} onClose={() => setFormOpen(false)} onSaved={handleSaved} />
       )}
     </div>

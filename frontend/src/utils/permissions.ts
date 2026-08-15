@@ -12,8 +12,30 @@ export function hasAnyPerm(user: Me | null, permissions: string[]): boolean {
   return permissions.some((p) => user.permissions.includes(p));
 }
 
+export interface ModelPerms {
+  view: string;
+  add: string;
+  change: string;
+  delete: string;
+}
+
+/** Monta os 4 codenames padrão do Django (view/add/change/delete) para um
+ * model — espelha exatamente o que o Django cria automaticamente para
+ * cada model e o que os Grupos concedem no Admin. */
+export function modelPerms(app: string, model: string): ModelPerms {
+  return {
+    view: `${app}.view_${model}`,
+    add: `${app}.add_${model}`,
+    change: `${app}.change_${model}`,
+    delete: `${app}.delete_${model}`,
+  };
+}
+
 export const PERMS = {
   viewProject: "projects.view_project",
+  addProject: "projects.add_project",
+  changeProject: "projects.change_project",
+  deleteProject: "projects.delete_project",
   viewDailyUpdate: "updates.view_dailyupdate",
   addDailyUpdate: "updates.add_dailyupdate",
   changeDailyUpdate: "updates.change_dailyupdate",

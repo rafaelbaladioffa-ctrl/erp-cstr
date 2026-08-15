@@ -5,12 +5,17 @@ import Icon from "../../components/ui/Icon";
 import Modal from "../../components/ui/Modal";
 import PageHeader from "../../components/ui/PageHeader";
 import Pagination from "../../components/ui/Pagination";
+import { useAuth } from "../../context/AuthContext";
+import { hasPerm } from "../../utils/permissions";
 import { ENTITIES, type ReferenceData } from "./registryConfig";
 
 type ApiErrors = Record<string, string[]>;
 
 export default function CadastrosPage() {
-  const [activeKey, setActiveKey] = useState(ENTITIES[0].key);
+  const { user } = useAuth();
+  const visibleEntities = useMemo(() => ENTITIES.filter((e) => hasPerm(user, e.perms.view)), [user]);
+
+  const [activeKey, setActiveKey] = useState(visibleEntities[0]?.key ?? "");
   const [refs, setRefs] = useState<ReferenceData>({
     companies: [], jobTitles: [], sites: [], clients: [], projectTypes: [], collaborators: [],
   });
@@ -28,7 +33,14 @@ export default function CadastrosPage() {
   const [formErrors, setFormErrors] = useState<ApiErrors>({});
   const [saving, setSaving] = useState(false);
 
-  const entity = useMemo(() => ENTITIES.find((e) => e.key === activeKey)!, [activeKey]);
+  const entity = useMemo(
+    () => visibleEntities.find((e) => e.key === activeKey) ?? visibleEntities[0],
+    [activeKey, visibleEntities]
+  );
+
+  const canAdd = entity ? hasPerm(user, entity.perms.add) : false;
+  const canChange = entity ? hasPerm(user, entity.perms.change) : false;
+  const canDelete = entity ? hasPerm(user, entity.perms.delete) : false;
 
   useEffect(() => {
     Promise.all([
@@ -53,6 +65,7 @@ export default function CadastrosPage() {
   }, []);
 
   function reload() {
+    if (!entity) return;
     setLoading(true);
     entity.api
       .list()
@@ -64,7 +77,8 @@ export default function CadastrosPage() {
     reload();
     setSearch("");
     setPage(1);
-  }, [activeKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity?.key]);
 
   const filtered = useMemo(() => {
     if (!search) return rows;
@@ -75,6 +89,7 @@ export default function CadastrosPage() {
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   function openCreate() {
+    if (!entity || !canAdd) return;
     setEditingId(null);
     setFormValues(entity.emptyValues);
     setFormErrors({});
@@ -82,6 +97,7 @@ export default function CadastrosPage() {
   }
 
   function openEdit(row: Record<string, unknown>) {
+    if (!entity || !canChange) return;
     setEditingId(row.id as number);
     setFormValues({ ...row });
     setFormErrors({});
@@ -89,6 +105,9 @@ export default function CadastrosPage() {
   }
 
   async function handleSave() {
+    if (!entity) return;
+    if (editingId && !canChange) return;
+    if (!editingId && !canAdd) return;
     setSaving(true);
     setFormErrors({});
     try {
@@ -110,13 +129,26 @@ export default function CadastrosPage() {
   }
 
   async function handleDelete(row: Record<string, unknown>) {
+    if (!entity || !canDelete) return;
     const label = entity.rowLabel(row as never);
     if (!window.confirm(`Excluir "${label}"? Esta ação não pode ser desfeita.`)) return;
     await entity.api.remove(row.id as number);
     reload();
   }
 
-  const fields = refsLoaded ? entity.fields(refs) : [];
+  const fields = refsLoaded && entity ? entity.fields(refs) : [];
+
+  if (!entity) {
+    return (
+      <div>
+        <PageHeader eyebrow="Base de Dados" title="Cadastros Gerais" />
+        <div className="empty-state">
+          Seu usuário não tem permissão de visualização em nenhum cadastro. Peça a um administrador para
+          conceder acesso no grupo de permissões.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -127,10 +159,10 @@ export default function CadastrosPage() {
       />
 
       <div className="tabs" style={{ flexWrap: "wrap", rowGap: 4 }}>
-        {ENTITIES.map((e) => (
+        {visibleEntities.map((e) => (
           <button
             key={e.key}
-            className={`tab-btn${activeKey === e.key ? " active" : ""}`}
+            className={`tab-btn${entity.key === e.key ? " active" : ""}`}
             onClick={() => setActiveKey(e.key)}
             style={{ display: "flex", alignItems: "center", gap: 6 }}
           >
@@ -146,10 +178,12 @@ export default function CadastrosPage() {
             <div className="toolbar-title">{entity.label}</div>
             <div className="toolbar-subtitle">{filtered.length} registro(s) encontrado(s)</div>
           </div>
-          <button className="btn btn-primary" onClick={openCreate}>
-            <Icon name="add" style={{ fontSize: 18 }} />
-            {entity.createLabel}
-          </button>
+          {canAdd && (
+            <button className="btn btn-primary" onClick={openCreate}>
+              <Icon name="add" style={{ fontSize: 18 }} />
+              {entity.createLabel}
+            </button>
+          )}
         </div>
 
         <div className="filter-row">
@@ -178,7 +212,7 @@ export default function CadastrosPage() {
                     <th key={col.key}>{col.label}</th>
                   ))}
                   <th>Situação</th>
-                  <th>Ações</th>
+                  {(canChange || canDelete) && <th>Ações</th>}
                 </tr>
               </thead>
               <tbody>
@@ -198,16 +232,26 @@ export default function CadastrosPage() {
                         {row.is_active ? "Ativo" : "Inativo"}
                       </span>
                     </td>
-                    <td>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button className="btn btn-outline btn-sm" onClick={() => openEdit(row)}>
-                          <Icon name="edit" style={{ fontSize: 14 }} />
-                        </button>
-                        <button className="btn btn-outline btn-sm" onClick={() => handleDelete(row)} style={{ color: "var(--red)" }}>
-                          <Icon name="delete" style={{ fontSize: 14 }} />
-                        </button>
-                      </div>
-                    </td>
+                    {(canChange || canDelete) && (
+                      <td>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          {canChange && (
+                            <button className="btn btn-outline btn-sm" onClick={() => openEdit(row)}>
+                              <Icon name="edit" style={{ fontSize: 14 }} />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => handleDelete(row)}
+                              style={{ color: "var(--red)" }}
+                            >
+                              <Icon name="delete" style={{ fontSize: 14 }} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {paged.length === 0 && (
@@ -225,7 +269,7 @@ export default function CadastrosPage() {
         <Pagination page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={() => {}} />
       </div>
 
-      {modalOpen && (
+      {modalOpen && (editingId ? canChange : canAdd) && (
         <Modal
           title={editingId ? `Editar ${entity.singular}` : entity.createLabel}
           onClose={() => setModalOpen(false)}

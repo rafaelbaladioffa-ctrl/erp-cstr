@@ -13,6 +13,7 @@ import type {
   TaskFull,
 } from "../../api/types";
 import type { FieldConfig } from "../../components/ui/DynamicForm";
+import { modelPerms, type ModelPerms } from "../../utils/permissions";
 
 export interface ColumnConfig<T> {
   key: string;
@@ -25,6 +26,9 @@ export interface EntityConfig<T extends { id: number; is_active?: boolean }> {
   label: string;
   icon: string;
   singular: string;
+  /** Codenames reais do Django (view/add/change/delete) para este model —
+   * a UI só mostra o que o Grupo do usuário realmente permite. */
+  perms: ModelPerms;
   api: {
     list: (params?: Record<string, string>) => Promise<Paginated<T>>;
     create: (payload: Partial<T>) => Promise<T>;
@@ -58,6 +62,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "apartment",
     singular: "Empresa",
     createLabel: "Nova Empresa",
+    perms: modelPerms("core", "company"),
     api: registryApi.companies,
     columns: [
       { key: "trade_name", label: "Nome Fantasia" },
@@ -82,6 +87,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "handshake",
     singular: "Cliente",
     createLabel: "Novo Cliente",
+    perms: modelPerms("core", "client"),
     api: registryApi.clients,
     columns: [
       { key: "trade_name", label: "Nome Fantasia" },
@@ -123,6 +129,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "location_on",
     singular: "Site",
     createLabel: "Novo Site",
+    perms: modelPerms("core", "site"),
     api: registryApi.sites,
     columns: [
       { key: "code", label: "Código" },
@@ -148,6 +155,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "sell",
     singular: "Categoria",
     createLabel: "Nova Categoria",
+    perms: modelPerms("core", "category"),
     api: registryApi.categories,
     columns: [
       { key: "name", label: "Nome" },
@@ -167,6 +175,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "category",
     singular: "Tipo de Projeto",
     createLabel: "Novo Tipo de Projeto",
+    perms: modelPerms("core", "projecttype"),
     api: registryApi.projectTypes,
     columns: [
       { key: "name", label: "Nome" },
@@ -186,6 +195,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "badge",
     singular: "Cargo",
     createLabel: "Novo Cargo",
+    perms: modelPerms("core", "jobtitle"),
     api: registryApi.jobTitles,
     columns: [
       { key: "name", label: "Nome" },
@@ -206,6 +216,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "groups",
     singular: "Colaborador",
     createLabel: "Novo Colaborador",
+    perms: modelPerms("core", "collaborator"),
     api: registryApi.collaborators,
     columns: [
       { key: "name", label: "Nome" },
@@ -242,6 +253,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "assignment_ind",
     singular: "Responsável",
     createLabel: "Novo Responsável",
+    perms: modelPerms("core", "responsible"),
     api: registryApi.responsibles,
     columns: [
       { key: "name", label: "Nome" },
@@ -264,6 +276,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "contact_page",
     singular: "Responsável do Cliente",
     createLabel: "Novo Responsável do Cliente",
+    perms: modelPerms("core", "clientresponsible"),
     api: registryApi.clientResponsibles,
     columns: [
       { key: "name", label: "Nome" },
@@ -287,6 +300,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     icon: "task",
     singular: "Tarefa",
     createLabel: "Nova Tarefa",
+    perms: modelPerms("core", "task"),
     api: registryApi.tasks,
     columns: [
       { key: "code", label: "Código" },
