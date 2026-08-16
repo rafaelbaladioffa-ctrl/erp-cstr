@@ -57,6 +57,48 @@ export interface RackPosition {
   utp: number;
 }
 
+export interface SiteMapProject {
+  id: number;
+  code: string;
+  name: string;
+  client: string;
+}
+
+export interface SiteMapPoint {
+  id: number;
+  name: string;
+  client: string;
+  address: string;
+  lat: number;
+  lng: number;
+  projects: SiteMapProject[];
+}
+
+export interface SiteMapData {
+  points: SiteMapPoint[];
+  points_count: number;
+  without_coords: number;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  created_at: string;
+  actor: number | null;
+  actor_name: string | null;
+  app_label: string;
+  model_name: string;
+  object_pk: string;
+  object_repr: string;
+  action: string;
+  action_display: string;
+  field_name: string;
+  old_value: string;
+  new_value: string;
+  origin: string;
+  path: string;
+  ip_address: string | null;
+}
+
 /* ---------- Cadastros Gerais ---------- */
 
 export interface Company {
@@ -183,6 +225,7 @@ export interface ProjectTask {
   rack_positions: number[];
   rack_position_labels: string[];
   collaborators: Collaborator[];
+  collaborator_ids?: number[];
   status: string;
   status_display: string;
   order: number;
@@ -193,6 +236,29 @@ export interface ProjectTask {
   estimated_hours: string | null;
   actual_hours: string | null;
   notes: string;
+}
+
+export interface ProjectTaskBulkPayload {
+  action: "update" | "delete" | "add";
+  task_ids?: number[];
+  add_task_ids?: number[];
+  status?: string;
+  planned_start?: string | null;
+  planned_end?: string | null;
+  estimated_hours?: number | string | null;
+  collaborator_ids?: number[];
+  rack_position_ids?: number[];
+}
+
+export interface ProjectTaskCreatePayload {
+  task: number;
+  rack_position_ids?: number[];
+  status?: string;
+  planned_start?: string | null;
+  planned_end?: string | null;
+  estimated_hours?: number | string | null;
+  collaborator_ids?: number[];
+  notes?: string;
 }
 
 export interface Collaborator {

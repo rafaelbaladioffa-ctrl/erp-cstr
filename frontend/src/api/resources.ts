@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
 import type {
+  AuditLogEntry,
   Category,
   ClientFull,
   ClientResponsibleFull,
@@ -13,10 +14,13 @@ import type {
   Project,
   ProjectDailyUpdate,
   ProjectTask,
+  ProjectTaskBulkPayload,
+  ProjectTaskCreatePayload,
   ProjectType,
   RackPosition,
   ResponsibleFull,
   SiteFull,
+  SiteMapData,
   TaskFull,
 } from "./types";
 
@@ -28,6 +32,16 @@ function crud<T extends { id: number }>(basePath: string) {
     create: (payload: Partial<T>) => apiClient.post<T>(`${basePath}/`, payload).then((r) => r.data),
     update: (id: number, payload: Partial<T>) => apiClient.patch<T>(`${basePath}/${id}/`, payload).then((r) => r.data),
     remove: (id: number) => apiClient.delete(`${basePath}/${id}/`),
+    exportCsv: () => apiClient.get<Blob>(`${basePath}/export-csv/`, { responseType: "blob" }).then((r) => r.data),
+    importCsv: (file: File) => {
+      const form = new FormData();
+      form.append("csv_file", file);
+      return apiClient
+        .post<{ created: number; errors: string[] }>(`${basePath}/import-csv/`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        })
+        .then((r) => r.data);
+    },
   };
 }
 
@@ -42,6 +56,27 @@ export const registryApi = {
   responsibles: crud<ResponsibleFull>("/registry/responsibles"),
   collaborators: crud<CollaboratorFull>("/registry/collaborators"),
   tasks: crud<TaskFull>("/registry/tasks"),
+};
+
+export const auditLogApi = {
+  list: (params?: Record<string, string>) =>
+    apiClient.get<Paginated<AuditLogEntry>>("/audit-logs/", { params }).then((r) => r.data),
+};
+
+export const sitesMapApi = {
+  mapData: () => apiClient.get<SiteMapData>("/registry/sites/map-data/").then((r) => r.data),
+  regeocode: (id: number) => apiClient.post<SiteFull>(`/registry/sites/${id}/regeocode/`).then((r) => r.data),
+  regeocodeBulk: (ids?: number[]) =>
+    apiClient
+      .post<{ updated: number; failed: number; skipped_manual: number }>("/registry/sites/regeocode-bulk/", ids ? { ids } : {})
+      .then((r) => r.data),
+};
+
+export const bulkCreateApi = {
+  projectTypes: (names: string[], extra: Record<string, unknown>) =>
+    apiClient.post<{ created: number }>("/registry/project-types/bulk-create/", { names, ...extra }).then((r) => r.data),
+  tasks: (names: string[], extra: Record<string, unknown>) =>
+    apiClient.post<{ created: number }>("/registry/tasks/bulk-create/", { names, ...extra }).then((r) => r.data),
 };
 
 export interface Client {
@@ -71,8 +106,40 @@ export const projectsApi = {
   create: (payload: Partial<Project>) => apiClient.post<Project>("/projects/", payload).then((r) => r.data),
   update: (id: number, payload: Partial<Project>) =>
     apiClient.patch<Project>(`/projects/${id}/`, payload).then((r) => r.data),
+  remove: (id: number) => apiClient.delete(`/projects/${id}/`),
   tasks: (id: number) => apiClient.get<ProjectTask[]>(`/projects/${id}/tasks/`).then((r) => r.data),
   rackPositions: (id: number) => apiClient.get<RackPosition[]>(`/projects/${id}/rack-positions/`).then((r) => r.data),
+  rackPositionsBulk: (id: number, text: string) =>
+    apiClient
+      .post<{ created: number; skipped: number }>(`/projects/${id}/rack-positions/bulk/`, { text })
+      .then((r) => r.data),
+  importTasks: (id: number) =>
+    apiClient.post<{ created: number }>(`/projects/${id}/import-tasks/`).then((r) => r.data),
+  tasksBulk: (id: number, payload: ProjectTaskBulkPayload) =>
+    apiClient
+      .post<{ updated?: number; created?: number; deleted?: number }>(`/projects/${id}/tasks/bulk/`, payload)
+      .then((r) => r.data),
+  createTasks: (id: number, payload: ProjectTaskCreatePayload) =>
+    apiClient
+      .post<{ created: number; skipped: number; tasks: ProjectTask[] }>(`/projects/${id}/tasks/create/`, payload)
+      .then((r) => r.data),
+};
+
+export const rackPositionsApi = {
+  list: (projectId: number) =>
+    apiClient.get<Paginated<RackPosition>>("/rack-positions/", { params: { project: String(projectId) } }).then((r) => r.data),
+  create: (payload: Partial<RackPosition>) =>
+    apiClient.post<RackPosition>("/rack-positions/", payload).then((r) => r.data),
+  update: (id: number, payload: Partial<RackPosition>) =>
+    apiClient.patch<RackPosition>(`/rack-positions/${id}/`, payload).then((r) => r.data),
+  remove: (id: number) => apiClient.delete(`/rack-positions/${id}/`),
+};
+
+export const projectTasksApi = {
+  create: (payload: Partial<ProjectTask>) => apiClient.post<ProjectTask>("/project-tasks/", payload).then((r) => r.data),
+  update: (id: number, payload: Partial<ProjectTask>) =>
+    apiClient.patch<ProjectTask>(`/project-tasks/${id}/`, payload).then((r) => r.data),
+  remove: (id: number) => apiClient.delete(`/project-tasks/${id}/`),
 };
 
 export const clientsApi = {
@@ -97,7 +164,8 @@ export const dailyUpdatesApi = {
     apiClient.put<DailyUpdate>(`/daily-updates/${id}/`, payload).then((r) => r.data),
   sendEmail: (id: number) =>
     apiClient.post<{ sent: string[]; skipped: string[] }>(`/daily-updates/${id}/send-email/`).then((r) => r.data),
-  pdfUrl: (id: number) => `${apiClient.defaults.baseURL}/daily-updates/${id}/pdf/`,
+  pdfPath: (id: number) => `/daily-updates/${id}/pdf/`,
+  consolidatedPdfPath: (date: string) => `/daily-updates/pdf-consolidado/?date=${date}`,
 };
 
 export const projectUpdatesApi = {
@@ -112,7 +180,7 @@ export const projectUpdatesApi = {
     apiClient
       .post<{ sent: string[]; skipped: string[]; detail?: string }>(`/project-updates/${id}/send-email/`)
       .then((r) => r.data),
-  pdfUrl: (id: number) => `${apiClient.defaults.baseURL}/project-updates/${id}/pdf/`,
+  pdfPath: (id: number) => `/project-updates/${id}/pdf/`,
 };
 
 export const myTasksApi = {

@@ -127,6 +127,14 @@ class ProjectHistory(Project):
         verbose_name_plural = "Histórico de Projetos"
 
 
+class DashboardProxy(Project):
+    class Meta:
+        proxy = True
+        default_permissions = ()
+        verbose_name = "Dashboard"
+        verbose_name_plural = "Dashboard"
+
+
 class RackPosition(TimestampedModel):
     project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="rack_positions")
     position = models.CharField("Rack Position", max_length=50)
@@ -195,7 +203,6 @@ class ProjectTask(TimestampedModel):
         verbose_name = "Tarefa do Projeto"
         verbose_name_plural = "Tarefas do Projeto"
         ordering = ("order", "id")
-        constraints = [models.UniqueConstraint(fields=("project", "task"), name="unique_task_per_project")]
 
     def __str__(self):
         return f"{self.project} - {self.task}"
@@ -219,6 +226,26 @@ class ProjectTask(TimestampedModel):
         if invalid:
             names = ", ".join(rp.position for rp in invalid)
             raise ValidationError({"rack_positions": f"Rack Position(s) que não pertencem a este projeto: {names}."})
+
+    def validate_unique_for_rack_positions(self, rack_positions):
+        """Uma mesma Tarefa do catálogo pode se repetir no projeto, desde
+        que cada repetição cubra um Rack Position diferente (uma tarefa por
+        Rack Position — ex: 'Aplicação de Label' em 3 Rack Positions vira 3
+        ProjectTask, uma por posição, não uma só com os 3 vinculados). Sem
+        Rack Position envolvido, continua só podendo haver uma tarefa igual
+        por projeto. Assim como validate_rack_positions, precisa ser chamado
+        explicitamente por quem atribui os valores (M2M só existe após
+        salvar)."""
+        queryset = ProjectTask.objects.filter(project_id=self.project_id, task_id=self.task_id)
+        if self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+        if rack_positions:
+            conflicting = queryset.filter(rack_positions__in=rack_positions).distinct()
+            if conflicting.exists():
+                names = ", ".join(sorted({rp.position for pt in conflicting for rp in pt.rack_positions.all() if rp in rack_positions}))
+                raise ValidationError({"rack_positions": f"Esta tarefa já existe para o(s) Rack Position(s): {names}."})
+        elif queryset.exists():
+            raise ValidationError({"task": f'A tarefa "{self.task}" já foi adicionada a este projeto.'})
 
     def save(self, *args, **kwargs):
         previous = ProjectTask.objects.filter(pk=self.pk).first() if self.pk else None

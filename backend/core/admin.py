@@ -6,6 +6,14 @@ from django.db import models
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from unfold.admin import ModelAdmin, TabularInline
+from .access_scope import (
+    deny_if_client_scoped,
+    get_scope_for_user,
+    scope_category_queryset,
+    scope_client_queryset,
+    scope_site_queryset,
+    user_can_access_category,
+)
 from .admin_mixins import CSVImportExportMixin, SelectablePageSizeAdminMixin
 from .models import Category, Client, ClientResponsible, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
 
@@ -15,8 +23,34 @@ class PhoneMaskAdminMixin:
         js = ("core/js/phone-mask.js",)
 
 
+class DenyClientScopedAdminMixin:
+    """Nega acesso total no Admin a um usuário-cliente (User.client
+    preenchido) — para cadastros internos (Empresas, Colaboradores, Cargos,
+    Responsáveis, Tipos de Projeto, Tarefas do catálogo) que não fazem
+    sentido para o portal do cliente. Mesma regra de core/access_scope.py
+    aplicada pela API (ver deny_if_client_scoped)."""
+
+    def get_queryset(self, request):
+        return deny_if_client_scoped(super().get_queryset(request), request.user)
+
+    def _client_scoped(self, request):
+        return get_scope_for_user(request.user) is not None
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(request, obj) and not self._client_scoped(request)
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and not self._client_scoped(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and not self._client_scoped(request)
+
+    def has_add_permission(self, request):
+        return super().has_add_permission(request) and not self._client_scoped(request)
+
+
 @admin.register(Company)
-class CompanyAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+class CompanyAdmin(DenyClientScopedAdminMixin, CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
     list_display = ("legal_name", "trade_name", "tax_id", "is_active", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("legal_name", "trade_name", "tax_id")
@@ -31,6 +65,30 @@ class CompanyScopedAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePa
 @admin.register(Site)
 class SiteAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
     change_list_template = "admin/core/site/change_list.html"
+
+    def get_queryset(self, request):
+        return scope_site_queryset(super().get_queryset(request), request.user)
+
+    def _site_accessible(self, request, obj):
+        if obj is None:
+            return True
+        scope = get_scope_for_user(request.user)
+        if scope is None:
+            return True
+        if obj.client_id not in scope["clients"]:
+            return False
+        if scope["sites"] is not None and obj.id not in scope["sites"]:
+            return False
+        return True
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(request, obj) and self._site_accessible(request, obj)
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and self._site_accessible(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and self._site_accessible(request, obj)
     list_display = ("code", "name", "client", "city", "state", "geocode_status", "is_active")
     list_filter = ("client", "is_active")
     search_fields = ("code", "name", "city")
@@ -152,7 +210,7 @@ class SiteAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdm
 
 
 @admin.register(Collaborator)
-class CollaboratorAdmin(CompanyScopedAdmin):
+class CollaboratorAdmin(DenyClientScopedAdminMixin, CompanyScopedAdmin):
     list_display = ("registration", "yellow_badge", "name", "job_title", "manager", "user", "company", "email", "is_active")
     search_fields = (
         "registration",
@@ -194,13 +252,13 @@ class CollaboratorAdmin(CompanyScopedAdmin):
 
 
 @admin.register(JobTitle)
-class JobTitleAdmin(CompanyScopedAdmin):
+class JobTitleAdmin(DenyClientScopedAdminMixin, CompanyScopedAdmin):
     list_display = ("name", "company", "is_active", "updated_at")
     search_fields = ("name", "description")
 
 
 @admin.register(Responsible)
-class ResponsibleAdmin(CompanyScopedAdmin):
+class ResponsibleAdmin(DenyClientScopedAdminMixin, CompanyScopedAdmin):
     list_display = ("name", "company", "user", "email", "phone", "is_active")
     search_fields = ("name", "email", "phone", "user__username", "user__first_name", "user__last_name", "user__email")
     autocomplete_fields = ("user",)
@@ -215,6 +273,18 @@ class CategoryAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdm
     list_filter = ("is_active",)
     search_fields = ("name", "description")
     readonly_fields = ("created_at", "updated_at")
+
+    def get_queryset(self, request):
+        return scope_category_queryset(super().get_queryset(request), request.user)
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(request, obj) and user_can_access_category(request.user, obj)
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and user_can_access_category(request.user, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and user_can_access_category(request.user, obj)
 
 
 class ProjectTypeAdminForm(forms.ModelForm):
@@ -242,7 +312,7 @@ class ProjectTypeAdminForm(forms.ModelForm):
 
 
 @admin.register(ProjectType)
-class ProjectTypeAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+class ProjectTypeAdmin(DenyClientScopedAdminMixin, CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
     form = ProjectTypeAdminForm
     list_display = ("name", "is_active")
     list_display_links = ("name",)
@@ -292,7 +362,7 @@ class TaskAdminForm(forms.ModelForm):
 
 
 @admin.register(Task)
-class TaskAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+class TaskAdmin(DenyClientScopedAdminMixin, CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
     form = TaskAdminForm
     list_display = ("code", "name", "project_types_display", "estimated_hours", "is_active")
     list_display_links = ("code", "name")
@@ -334,6 +404,26 @@ class ClientAdmin(CompanyScopedAdmin):
     search_fields = ("legal_name", "trade_name", "tax_id", "email", "phone")
     inlines = ()
 
+    def get_queryset(self, request):
+        return scope_client_queryset(super().get_queryset(request), request.user)
+
+    def _client_accessible(self, request, obj):
+        if obj is None:
+            return True
+        scope = get_scope_for_user(request.user)
+        if scope is None:
+            return True
+        return obj.id in scope["clients"]
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(request, obj) and self._client_accessible(request, obj)
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and self._client_accessible(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and self._client_accessible(request, obj)
+
 
 class ClientResponsibleInline(TabularInline):
     model = ClientResponsible
@@ -354,6 +444,26 @@ class ClientResponsibleAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, Selectab
     search_fields = ("name", "email", "phone", "job_title", "client__legal_name", "client__trade_name")
     autocomplete_fields = ("client",)
     readonly_fields = ("created_at", "updated_at")
+
+    def get_queryset(self, request):
+        return scope_client_queryset(super().get_queryset(request), request.user, client_field="client_id")
+
+    def _responsible_accessible(self, request, obj):
+        if obj is None:
+            return True
+        scope = get_scope_for_user(request.user)
+        if scope is None:
+            return True
+        return obj.client_id in scope["clients"]
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(request, obj) and self._responsible_accessible(request, obj)
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and self._responsible_accessible(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and self._responsible_accessible(request, obj)
 
     def get_search_results(self, request, queryset, search_term):
         queryset, use_distinct = super().get_search_results(request, queryset, search_term)

@@ -1,4 +1,4 @@
-import { registryApi } from "../../api/resources";
+import { bulkCreateApi, registryApi } from "../../api/resources";
 import type {
   Category,
   ClientFull,
@@ -12,7 +12,7 @@ import type {
   SiteFull,
   TaskFull,
 } from "../../api/types";
-import type { FieldConfig } from "../../components/ui/DynamicForm";
+import type { FieldConfig, FormValues } from "../../components/ui/DynamicForm";
 import { modelPerms, type ModelPerms } from "../../utils/permissions";
 
 export interface ColumnConfig<T> {
@@ -26,6 +26,8 @@ export interface EntityConfig<T extends { id: number; is_active?: boolean }> {
   label: string;
   icon: string;
   singular: string;
+  /** Frase curta para o card do catálogo, ex: "Cadastre e gerencie as empresas." */
+  description: string;
   /** Codenames reais do Django (view/add/change/delete) para este model —
    * a UI só mostra o que o Grupo do usuário realmente permite. */
   perms: ModelPerms;
@@ -34,12 +36,23 @@ export interface EntityConfig<T extends { id: number; is_active?: boolean }> {
     create: (payload: Partial<T>) => Promise<T>;
     update: (id: number, payload: Partial<T>) => Promise<T>;
     remove: (id: number) => Promise<unknown>;
+    exportCsv: () => Promise<Blob>;
+    importCsv: (file: File) => Promise<{ created: number; errors: string[] }>;
   };
   columns: ColumnConfig<T>[];
   fields: (refs: ReferenceData) => FieldConfig[];
   emptyValues: Partial<T>;
   rowLabel: (row: T) => string;
   createLabel: string;
+  /** Padrão "Adicionar Vários" do Admin: textarea com um nome por linha,
+   * cada linha vira um registro separado com os mesmos dados complementares. */
+  bulkCreate?: {
+    label: string;
+    helpText: string;
+    extraFields: (refs: ReferenceData) => FieldConfig[];
+    extraValues: (refs: ReferenceData) => FormValues;
+    api: (names: string[], extra: FormValues) => Promise<{ created: number }>;
+  };
 }
 
 export interface ReferenceData {
@@ -65,6 +78,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     label: "Empresas",
     icon: "apartment",
     singular: "Empresa",
+    description: "Cadastre e gerencie as empresas.",
     createLabel: "Nova Empresa",
     perms: modelPerms("core", "company"),
     api: registryApi.companies,
@@ -90,6 +104,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     label: "Clientes",
     icon: "handshake",
     singular: "Cliente",
+    description: "Cadastre e gerencie os clientes.",
     createLabel: "Novo Cliente",
     perms: modelPerms("core", "client"),
     api: registryApi.clients,
@@ -132,6 +147,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     label: "Sites",
     icon: "location_on",
     singular: "Site",
+    description: "Cadastre e gerencie os sites.",
     createLabel: "Novo Site",
     perms: modelPerms("core", "site"),
     api: registryApi.sites,
@@ -170,6 +186,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     label: "Categorias",
     icon: "sell",
     singular: "Categoria",
+    description: "Cadastre e gerencie as categorias.",
     createLabel: "Nova Categoria",
     perms: modelPerms("core", "category"),
     api: registryApi.categories,
@@ -190,6 +207,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     label: "Tipos de Projeto",
     icon: "category",
     singular: "Tipo de Projeto",
+    description: "Cadastre e gerencie os tipos de projeto.",
     createLabel: "Novo Tipo de Projeto",
     perms: modelPerms("core", "projecttype"),
     api: registryApi.projectTypes,
@@ -204,12 +222,23 @@ export const ENTITIES: EntityConfig<any>[] = [
     ],
     emptyValues: { name: "", description: "", is_active: true },
     rowLabel: (row: ProjectType) => row.name,
+    bulkCreate: {
+      label: "Adicionar Vários",
+      helpText: "Cada linha será cadastrada como um Tipo de Projeto separado, usando a mesma descrição.",
+      extraFields: () => [
+        { name: "description", label: "Descrição", type: "textarea", span: 2 },
+        { name: "is_active", label: "Situação", type: "checkbox", placeholder: "Ativo", span: 2 },
+      ],
+      extraValues: () => ({ description: "", is_active: true }),
+      api: bulkCreateApi.projectTypes,
+    },
   } as EntityConfig<ProjectType>,
   {
     key: "job-titles",
     label: "Cargos",
     icon: "badge",
     singular: "Cargo",
+    description: "Cadastre e gerencie os cargos.",
     createLabel: "Novo Cargo",
     perms: modelPerms("core", "jobtitle"),
     api: registryApi.jobTitles,
@@ -231,6 +260,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     label: "Colaboradores",
     icon: "groups",
     singular: "Colaborador",
+    description: "Cadastre e gerencie os colaboradores.",
     createLabel: "Novo Colaborador",
     perms: modelPerms("core", "collaborator"),
     api: registryApi.collaborators,
@@ -268,6 +298,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     label: "Responsáveis",
     icon: "assignment_ind",
     singular: "Responsável",
+    description: "Cadastre e gerencie os responsáveis.",
     createLabel: "Novo Responsável",
     perms: modelPerms("core", "responsible"),
     api: registryApi.responsibles,
@@ -291,6 +322,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     label: "Responsáveis do Cliente",
     icon: "contact_page",
     singular: "Responsável do Cliente",
+    description: "Cadastre e gerencie os responsáveis do cliente.",
     createLabel: "Novo Responsável do Cliente",
     perms: modelPerms("core", "clientresponsible"),
     api: registryApi.clientResponsibles,
@@ -315,6 +347,7 @@ export const ENTITIES: EntityConfig<any>[] = [
     label: "Tarefas",
     icon: "task",
     singular: "Tarefa",
+    description: "Cadastre e gerencie as tarefas.",
     createLabel: "Nova Tarefa",
     perms: modelPerms("core", "task"),
     api: registryApi.tasks,
@@ -338,5 +371,23 @@ export const ENTITIES: EntityConfig<any>[] = [
     ],
     emptyValues: { name: "", estimated_hours: null, project_types: [], description: "", is_active: true },
     rowLabel: (row: TaskFull) => row.name || row.code,
+    bulkCreate: {
+      label: "Adicionar Várias",
+      helpText: "Cada linha será cadastrada como uma Tarefa separada, com código automático e os mesmos dados complementares.",
+      extraFields: (refs) => [
+        { name: "estimated_hours", label: "Horas Estimadas", type: "number" },
+        {
+          name: "project_types",
+          label: "Tipos de Projeto",
+          type: "multiselect",
+          span: 2,
+          options: refs.projectTypes.map((pt) => ({ value: pt.id, label: pt.name })),
+        },
+        { name: "description", label: "Descrição", type: "textarea", span: 2 },
+        { name: "is_active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+      ],
+      extraValues: () => ({ estimated_hours: null, project_types: [], description: "", is_active: true }),
+      api: bulkCreateApi.tasks,
+    },
   } as EntityConfig<TaskFull>,
 ];

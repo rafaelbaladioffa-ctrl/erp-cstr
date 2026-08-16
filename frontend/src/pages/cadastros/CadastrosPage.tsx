@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { registryApi } from "../../api/resources";
+import { Link } from "react-router-dom";
+import { registryApi, sitesMapApi } from "../../api/resources";
+import BulkNamesModal from "../../components/ui/BulkNamesModal";
+import CsvImportModal from "../../components/ui/CsvImportModal";
 import DynamicForm, { type FormValues } from "../../components/ui/DynamicForm";
 import Icon from "../../components/ui/Icon";
 import Modal from "../../components/ui/Modal";
-import PageHeader from "../../components/ui/PageHeader";
 import Pagination from "../../components/ui/Pagination";
 import { useAuth } from "../../context/AuthContext";
-import { hasPerm } from "../../utils/permissions";
+import { PERMS, hasPerm } from "../../utils/permissions";
+import CatalogGrid, { type RecentRecord } from "./CatalogGrid";
 import { ENTITIES, type ReferenceData } from "./registryConfig";
 
 type ApiErrors = Record<string, string[]>;
@@ -15,11 +18,16 @@ export default function CadastrosPage() {
   const { user } = useAuth();
   const visibleEntities = useMemo(() => ENTITIES.filter((e) => hasPerm(user, e.perms.view)), [user]);
 
+  const [view, setView] = useState<"catalog" | "entity">("catalog");
   const [activeKey, setActiveKey] = useState(visibleEntities[0]?.key ?? "");
   const [refs, setRefs] = useState<ReferenceData>({
     companies: [], jobTitles: [], sites: [], clients: [], projectTypes: [], collaborators: [],
   });
   const [refsLoaded, setRefsLoaded] = useState(false);
+
+  const [counts, setCounts] = useState<Record<string, number | null>>({});
+  const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
 
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +40,23 @@ export default function CadastrosPage() {
   const [formValues, setFormValues] = useState<FormValues>({});
   const [formErrors, setFormErrors] = useState<ApiErrors>({});
   const [saving, setSaving] = useState(false);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+  const [regeocodingId, setRegeocodingId] = useState<number | null>(null);
+  const canChangeSite = hasPerm(user, PERMS.changeSite);
+
+  async function handleRegeocode(siteId: number) {
+    setRegeocodingId(siteId);
+    try {
+      await sitesMapApi.regeocode(siteId);
+      reload();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      alert(axiosErr.response?.data?.detail || "Não foi possível regeocodificar este site.");
+    } finally {
+      setRegeocodingId(null);
+    }
+  }
 
   const entity = useMemo(
     () => visibleEntities.find((e) => e.key === activeKey) ?? visibleEntities[0],
@@ -67,6 +92,48 @@ export default function CadastrosPage() {
       .finally(() => setRefsLoaded(true));
   }, []);
 
+  useEffect(() => {
+    // Catálogo: contagem por entidade + registros recentes (mais atualizados
+    // primeiro, entre todas as entidades visíveis).
+    let cancelled = false;
+    setRecentLoading(true);
+    Promise.allSettled(
+      visibleEntities.map((e) => e.api.list({ page_size: "5", ordering: "-updated_at" } as never))
+    ).then((results) => {
+      if (cancelled) return;
+      const nextCounts: Record<string, number | null> = {};
+      const merged: RecentRecord[] = [];
+      results.forEach((result, index) => {
+        const e = visibleEntities[index];
+        if (result.status !== "fulfilled") {
+          nextCounts[e.key] = null;
+          return;
+        }
+        nextCounts[e.key] = result.value.count;
+        result.value.results.forEach((row) => {
+          const r = row as Record<string, unknown>;
+          merged.push({
+            entityKey: e.key,
+            entityLabel: e.label,
+            icon: e.icon,
+            name: e.rowLabel(r as never),
+            code: (r.code as string) || "",
+            isActive: r.is_active !== false,
+            updatedAt: (r.updated_at as string) || null,
+          });
+        });
+      });
+      merged.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+      setCounts(nextCounts);
+      setRecentRecords(merged.slice(0, 8));
+      setRecentLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function reload() {
     if (!entity) return;
     setLoading(true);
@@ -77,11 +144,45 @@ export default function CadastrosPage() {
   }
 
   useEffect(() => {
+    if (view !== "entity") return;
     reload();
     setSearch("");
     setPage(1);
+    setCsvImportOpen(false);
+    setBulkCreateOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entity?.key]);
+  }, [entity?.key, view]);
+
+  function openCatalog() {
+    setView("catalog");
+  }
+
+  function openEntity(key: string) {
+    setActiveKey(key);
+    setView("entity");
+  }
+
+  function quickCreate(key: string) {
+    const target = visibleEntities.find((e) => e.key === key);
+    if (!target || !hasPerm(user, target.perms.add)) return;
+    setActiveKey(key);
+    setView("entity");
+    setEditingId(null);
+    setFormValues(target.emptyValues);
+    setFormErrors({});
+    setModalOpen(true);
+  }
+
+  async function handleExportCsv() {
+    if (!entity) return;
+    const blob = await entity.api.exportCsv();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${entity.key}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   const filtered = useMemo(() => {
     if (!search) return rows;
@@ -144,7 +245,7 @@ export default function CadastrosPage() {
   if (!entity) {
     return (
       <div>
-        <PageHeader eyebrow="Base de Dados" title="Cadastros Gerais" />
+        <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", marginBottom: 16 }}>Cadastros Gerais</div>
         <div className="empty-state">
           Seu usuário não tem permissão de visualização em nenhum cadastro. Peça a um administrador para
           conceder acesso no grupo de permissões.
@@ -153,27 +254,38 @@ export default function CadastrosPage() {
     );
   }
 
+  if (view === "catalog") {
+    return (
+      <CatalogGrid
+        entities={visibleEntities}
+        counts={counts}
+        recentRecords={recentLoading ? [] : recentRecords}
+        onSelect={openEntity}
+        onQuickCreate={quickCreate}
+      />
+    );
+  }
+
   return (
     <div>
-      <PageHeader
-        eyebrow="Base de Dados"
-        title="Cadastros Gerais"
-        subtitle="Gerencie empresas, clientes, sites, colaboradores e demais cadastros do sistema."
-      />
-
-      <div className="tabs" style={{ flexWrap: "wrap", rowGap: 4 }}>
-        {visibleEntities.map((e) => (
-          <button
-            key={e.key}
-            className={`tab-btn${entity.key === e.key ? " active" : ""}`}
-            onClick={() => setActiveKey(e.key)}
-            style={{ display: "flex", alignItems: "center", gap: 6 }}
-          >
-            <Icon name={e.icon} style={{ fontSize: 16 }} />
-            {e.label}
-          </button>
-        ))}
-      </div>
+      <button
+        onClick={openCatalog}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          color: "var(--text-muted)",
+          background: "none",
+          border: 0,
+          cursor: "pointer",
+          fontSize: 13,
+          marginBottom: 12,
+          padding: 0,
+        }}
+      >
+        <Icon name="arrow_back" style={{ fontSize: 16 }} />
+        Voltar ao catálogo
+      </button>
 
       <div className="card">
         <div className="toolbar">
@@ -181,12 +293,36 @@ export default function CadastrosPage() {
             <div className="toolbar-title">{entity.label}</div>
             <div className="toolbar-subtitle">{filtered.length} registro(s) encontrado(s)</div>
           </div>
-          {canAdd && (
-            <button className="btn btn-primary" onClick={openCreate}>
-              <Icon name="add" style={{ fontSize: 18 }} />
-              {entity.createLabel}
+          <div style={{ display: "flex", gap: 8 }}>
+            {entity.key === "sites" && (
+              <Link to="/sites/mapa" className="btn btn-outline">
+                <Icon name="map" style={{ fontSize: 16 }} />
+                Ver Mapa
+              </Link>
+            )}
+            <button className="btn btn-outline" onClick={handleExportCsv}>
+              <Icon name="download" style={{ fontSize: 16 }} />
+              Exportar CSV
             </button>
-          )}
+            {canAdd && (
+              <button className="btn btn-outline" onClick={() => setCsvImportOpen(true)}>
+                <Icon name="upload" style={{ fontSize: 16 }} />
+                Importar CSV
+              </button>
+            )}
+            {canAdd && entity.bulkCreate && (
+              <button className="btn btn-outline" onClick={() => setBulkCreateOpen(true)}>
+                <Icon name="playlist_add" style={{ fontSize: 16 }} />
+                {entity.bulkCreate.label}
+              </button>
+            )}
+            {canAdd && (
+              <button className="btn btn-primary" onClick={openCreate}>
+                <Icon name="add" style={{ fontSize: 18 }} />
+                {entity.createLabel}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="filter-row">
@@ -252,6 +388,16 @@ export default function CadastrosPage() {
                               <Icon name="delete" style={{ fontSize: 14 }} />
                             </button>
                           )}
+                          {entity.key === "sites" && canChangeSite && !row.manual_coordinates && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => handleRegeocode(row.id as number)}
+                              disabled={regeocodingId === row.id}
+                              title="Regeocodificar"
+                            >
+                              <Icon name="my_location" style={{ fontSize: 14 }} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}
@@ -296,6 +442,30 @@ export default function CadastrosPage() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {csvImportOpen && entity && canAdd && (
+        <CsvImportModal
+          title={`Importar ${entity.label} via CSV`}
+          onClose={() => setCsvImportOpen(false)}
+          onImport={entity.api.importCsv}
+          onImported={reload}
+        />
+      )}
+
+      {bulkCreateOpen && entity && canAdd && entity.bulkCreate && refsLoaded && (
+        <BulkNamesModal
+          title={`${entity.bulkCreate.label} — ${entity.label}`}
+          helpText={entity.bulkCreate.helpText}
+          extraFields={entity.bulkCreate.extraFields(refs)}
+          extraValues={entity.bulkCreate.extraValues(refs)}
+          onSave={entity.bulkCreate.api}
+          onClose={() => setBulkCreateOpen(false)}
+          onSaved={() => {
+            setBulkCreateOpen(false);
+            reload();
+          }}
+        />
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 export type FieldOption = { value: string | number; label: string };
 
-export type FieldType = "text" | "textarea" | "number" | "checkbox" | "select" | "multiselect" | "email" | "date";
+export type FieldType = "text" | "textarea" | "number" | "checkbox" | "select" | "multiselect" | "email" | "date" | "datetime";
 
 export interface FieldConfig {
   name: string;
@@ -116,6 +116,15 @@ function renderInput(field: FieldConfig, value: unknown, onChange: (name: string
       return (
         <input
           type="date"
+          className="input"
+          value={(value as string) ?? ""}
+          onChange={(e) => onChange(field.name, e.target.value || null)}
+        />
+      );
+    case "datetime":
+      return (
+        <input
+          type="datetime-local"
           className="input"
           value={(value as string) ?? ""}
           onChange={(e) => onChange(field.name, e.target.value || null)}

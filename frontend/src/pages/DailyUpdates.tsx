@@ -4,7 +4,14 @@ import type { Collaborator, DailyUpdate, Project } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
+import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
+
+function tomorrowIso() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 export default function DailyUpdates() {
   const { user } = useAuth();
@@ -19,6 +26,8 @@ export default function DailyUpdates() {
   const [projectId, setProjectId] = useState<number | "">("");
   const [selectedCollaborators, setSelectedCollaborators] = useState<number[]>([]);
   const [feedback, setFeedback] = useState("");
+  const [consolidatedDate, setConsolidatedDate] = useState(tomorrowIso);
+  const [downloadingId, setDownloadingId] = useState<number | "consolidated" | null>(null);
 
   function reload() {
     setLoading(true);
@@ -51,6 +60,27 @@ export default function DailyUpdates() {
     setFeedback(`${result.sent.length} e-mail(s) enviado(s).${result.skipped.length ? ` Sem e-mail: ${result.skipped.join(", ")}` : ""}`);
   }
 
+  async function handleDownloadPdf(id: number, date: string) {
+    setDownloadingId(id);
+    try {
+      await downloadAuthenticatedFile(dailyUpdatesApi.pdfPath(id), `atualizacao-diaria-${date}.pdf`);
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  async function handleDownloadConsolidated() {
+    if (!consolidatedDate) return;
+    setDownloadingId("consolidated");
+    try {
+      await downloadAuthenticatedFile(dailyUpdatesApi.consolidatedPdfPath(consolidatedDate), `atualizacao-diaria-${consolidatedDate}.pdf`);
+    } catch {
+      alert("Não foi possível gerar o PDF consolidado. Verifique se existem Atualizações Diárias para a data selecionada.");
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -66,6 +96,19 @@ export default function DailyUpdates() {
           ) : undefined
         }
       />
+
+      {canSend && (
+        <div className="card" style={{ padding: 14, marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 10 }}>
+          <div className="field-group">
+            <span className="field-label">Gerar PDF Consolidado do dia</span>
+            <input type="date" className="input" value={consolidatedDate} onChange={(e) => setConsolidatedDate(e.target.value)} />
+          </div>
+          <button className="btn btn-outline" onClick={handleDownloadConsolidated} disabled={downloadingId === "consolidated"}>
+            <Icon name="picture_as_pdf" style={{ fontSize: 16 }} />
+            {downloadingId === "consolidated" ? "Gerando..." : "Gerar PDF Consolidado"}
+          </button>
+        </div>
+      )}
 
       {feedback && (
         <div className="card" style={{ padding: 12, marginBottom: 16, color: "var(--green)", fontSize: 13, fontWeight: 600 }}>
@@ -123,9 +166,13 @@ export default function DailyUpdates() {
                 </strong>
                 {canSend && (
                   <div style={{ display: "flex", gap: 8 }}>
-                    <a href={dailyUpdatesApi.pdfUrl(update.id)} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">
-                      PDF
-                    </a>
+                    <button
+                      onClick={() => handleDownloadPdf(update.id, update.allocation_date)}
+                      disabled={downloadingId === update.id}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      {downloadingId === update.id ? "Gerando..." : "PDF"}
+                    </button>
                     <button onClick={() => handleSendEmail(update.id)} className="btn btn-primary btn-sm">
                       Enviar e-mail
                     </button>

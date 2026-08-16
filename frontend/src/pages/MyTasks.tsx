@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { myTasksApi } from "../api/resources";
 import type { ProjectTask } from "../api/types";
 import { useAuth } from "../context/AuthContext";
-import PageHeader from "../components/ui/PageHeader";
+import Icon from "../components/ui/Icon";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -13,12 +13,20 @@ const STATUS_LABELS: Record<string, string> = {
   canceled: "Cancelada",
 };
 
+const STATUS_TONE: Record<string, string> = {
+  not_started: "var(--text-faint)",
+  in_progress: "var(--blue)",
+  paused: "var(--amber)",
+  completed: "var(--green)",
+  canceled: "var(--red)",
+};
+
 type TabKey = "pending" | "in_progress" | "completed";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "pending", label: "Tarefas Pendentes" },
-  { key: "in_progress", label: "Tarefas em Andamento" },
-  { key: "completed", label: "Tarefas Finalizadas" },
+const TABS: { key: TabKey; label: string; short: string }[] = [
+  { key: "pending", label: "Pendentes", short: "Pendentes" },
+  { key: "in_progress", label: "Em Andamento", short: "Em curso" },
+  { key: "completed", label: "Finalizadas", short: "Finalizadas" },
 ];
 
 function tabOf(status: string): TabKey | null {
@@ -36,7 +44,7 @@ function formatDateTime(value: string | null) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 export default function MyTasks() {
@@ -46,12 +54,22 @@ export default function MyTasks() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("pending");
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
     myTasksApi
       .list()
-      .then((data) => setTasks(data.results))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (!cancelled) setTasks(data.results);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function save(id: number, patch: Partial<ProjectTask>) {
@@ -73,15 +91,16 @@ export default function MyTasks() {
   }
 
   function completeTask(t: ProjectTask) {
+    if (!confirm(`Concluir "${t.task_name}"?`)) return;
     save(t.id, { status: "completed", actual_end: t.actual_end || nowISO() });
   }
 
-  if (loading) return <p style={{ color: "var(--text-muted)" }}>Carregando...</p>;
+  if (loading) return <p style={{ color: "var(--text-muted)", padding: 20 }}>Carregando...</p>;
 
   if (!user?.has_collaborator_profile) {
     return (
       <div>
-        <PageHeader eyebrow="Área Técnica" title="Minhas Tarefas" />
+        <div className="mt-title">Minhas Tarefas</div>
         <div className="empty-state">
           Seu usuário ainda não está vinculado a um Colaborador. Peça para o administrador vincular seu
           usuário no cadastro de Colaboradores.
@@ -93,87 +112,103 @@ export default function MyTasks() {
   const visibleTasks = tasks.filter((t) => tabOf(t.status) === activeTab);
 
   return (
-    <div>
-      <PageHeader eyebrow="Área Técnica" title="Minhas Tarefas" subtitle="Acompanhe e atualize o andamento das suas atividades." />
+    <div className="mt-screen">
+      <div className="mt-title">Minhas Tarefas</div>
 
-      <div className="tabs">
+      <div className="mt-tabs">
         {TABS.map((tab) => {
           const count = tasks.filter((t) => tabOf(t.status) === tab.key).length;
           return (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`tab-btn${activeTab === tab.key ? " active" : ""}`}
+              className={`mt-tab${activeTab === tab.key ? " active" : ""}`}
             >
-              {tab.label} ({count})
+              {tab.short}
+              <span className="mt-tab-count">{count}</span>
             </button>
           );
         })}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {visibleTasks.map((t) => (
-          <div key={t.id} className="card" style={{ padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <div>
-                <strong style={{ color: "var(--text)" }}>{t.task_name}</strong>
-                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                  {t.project_name} {t.project_code ? `(${t.project_code})` : ""}
+      <div className="mt-list">
+        {visibleTasks.map((t) => {
+          const expanded = expandedId === t.id;
+          const saving = savingId === t.id;
+          return (
+            <div key={t.id} className="mt-card" style={{ borderLeftColor: STATUS_TONE[t.status] || "var(--border)" }}>
+              <button className="mt-card-header" onClick={() => setExpandedId(expanded ? null : t.id)}>
+                <div className="mt-card-heading">
+                  <div className="mt-task-name">{t.task_name}</div>
+                  <div className="mt-project-name">
+                    {t.project_name} {t.project_code ? `· ${t.project_code}` : ""}
+                  </div>
                 </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {savingId === t.id && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Salvando...</span>}
-                <span className="badge" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>
+                <div className="mt-card-status" style={{ color: STATUS_TONE[t.status] || "var(--text-muted)" }}>
                   {STATUS_LABELS[t.status] || t.status_display}
-                </span>
-              </div>
-            </div>
+                  <Icon name={expanded ? "expand_less" : "expand_more"} style={{ fontSize: 20 }} />
+                </div>
+              </button>
 
-            {canEdit && (
-              <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-                {(t.status === "not_started" || t.status === "paused") && (
-                  <button onClick={() => startTask(t)} disabled={savingId === t.id} className="btn" style={{ background: "var(--blue)", color: "#fff" }}>
-                    Iniciar Tarefa
-                  </button>
-                )}
-                {t.status === "in_progress" && (
-                  <>
-                    <button onClick={() => pauseTask(t)} disabled={savingId === t.id} className="btn" style={{ background: "var(--amber)", color: "#fff" }}>
-                      Pausar Tarefa
+              {canEdit && (
+                <div className="mt-actions">
+                  {(t.status === "not_started" || t.status === "paused") && (
+                    <button onClick={() => startTask(t)} disabled={saving} className="mt-btn mt-btn-start">
+                      <Icon name="play_arrow" style={{ fontSize: 20 }} />
+                      {saving ? "Salvando..." : "Iniciar"}
                     </button>
-                    <button onClick={() => completeTask(t)} disabled={savingId === t.id} className="btn" style={{ background: "var(--green)", color: "#fff" }}>
-                      Concluir Tarefa
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
+                  )}
+                  {t.status === "in_progress" && (
+                    <>
+                      <button onClick={() => pauseTask(t)} disabled={saving} className="mt-btn mt-btn-pause">
+                        <Icon name="pause" style={{ fontSize: 20 }} />
+                        Pausar
+                      </button>
+                      <button onClick={() => completeTask(t)} disabled={saving} className="mt-btn mt-btn-complete">
+                        <Icon name="check" style={{ fontSize: 20 }} />
+                        Concluir
+                      </button>
+                    </>
+                  )}
+                  {t.status === "completed" && (
+                    <div className="mt-done-note">
+                      <Icon name="task_alt" style={{ fontSize: 18 }} />
+                      Concluída em {formatDateTime(t.actual_end)}
+                    </div>
+                  )}
+                </div>
+              )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-              <div>
-                <div className="field-label" style={{ marginBottom: 4 }}>Início Real</div>
-                <div className="input" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>{formatDateTime(t.actual_start)}</div>
-              </div>
-              <div>
-                <div className="field-label" style={{ marginBottom: 4 }}>Término Real</div>
-                <div className="input" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>{formatDateTime(t.actual_end)}</div>
-              </div>
-              <div>
-                <div className="field-label" style={{ marginBottom: 4 }}>Horas Realizadas</div>
-                <div className="input" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>{t.actual_hours ? `${t.actual_hours}h` : "—"}</div>
-              </div>
+              {expanded && (
+                <div className="mt-details">
+                  <div className="mt-meta-grid">
+                    <div className="mt-meta">
+                      <span className="mt-meta-label">Início real</span>
+                      <span className="mt-meta-value">{formatDateTime(t.actual_start)}</span>
+                    </div>
+                    <div className="mt-meta">
+                      <span className="mt-meta-label">Término real</span>
+                      <span className="mt-meta-value">{formatDateTime(t.actual_end)}</span>
+                    </div>
+                    <div className="mt-meta">
+                      <span className="mt-meta-label">Horas realizadas</span>
+                      <span className="mt-meta-value">{t.actual_hours ? `${t.actual_hours}h` : "—"}</span>
+                    </div>
+                  </div>
+
+                  <label className="mt-notes-label">Observações</label>
+                  <textarea
+                    disabled={!canEdit}
+                    className="input mt-notes"
+                    defaultValue={t.notes}
+                    onBlur={(e) => save(t.id, { notes: e.target.value })}
+                    placeholder="Anote algo sobre esta tarefa..."
+                  />
+                </div>
+              )}
             </div>
-
-            <label className="form-label">Observações</label>
-            <textarea
-              disabled={!canEdit}
-              className="input"
-              defaultValue={t.notes}
-              onBlur={(e) => save(t.id, { notes: e.target.value })}
-              style={{ height: 60 }}
-            />
-          </div>
-        ))}
+          );
+        })}
         {visibleTasks.length === 0 && <div className="empty-state">Nenhuma tarefa nesta aba.</div>}
       </div>
     </div>

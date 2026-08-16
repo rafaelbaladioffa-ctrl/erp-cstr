@@ -1,4 +1,13 @@
-from rest_framework.permissions import SAFE_METHODS, DjangoModelPermissions
+from rest_framework.permissions import SAFE_METHODS, BasePermission, DjangoModelPermissions
+
+
+class IsSuperUser(BasePermission):
+    """Restringe o acesso a superusuários — usado no Log de Auditoria, que
+    no Django Admin só é visível (leitura) para superusuário, sem exceção
+    por grupo/permissão."""
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_superuser)
 
 
 class ViewAwareModelPermissions(DjangoModelPermissions):

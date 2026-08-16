@@ -4,6 +4,7 @@ import type { Collaborator, Project, ProjectDailyUpdate } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
+import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 export default function ProjectUpdates() {
@@ -153,6 +154,16 @@ function ProjectUpdateEditor({
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [copied, setCopied] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  async function handleDownloadPdf() {
+    setDownloadingPdf(true);
+    try {
+      await downloadAuthenticatedFile(projectUpdatesApi.pdfPath(update.id), `atualizacao-projeto-${update.project}-${update.date}.pdf`);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
 
   async function save(patch: Partial<ProjectDailyUpdate>) {
     setSaving(true);
@@ -278,9 +289,9 @@ function ProjectUpdateEditor({
         </button>
         {canEdit && (
           <>
-            <a href={projectUpdatesApi.pdfUrl(update.id)} target="_blank" rel="noreferrer" className="btn btn-secondary">
-              Baixar PDF
-            </a>
+            <button onClick={handleDownloadPdf} disabled={downloadingPdf} className="btn btn-secondary">
+              {downloadingPdf ? "Gerando..." : "Baixar PDF"}
+            </button>
             <button onClick={handleSendEmail} className="btn btn-primary">
               Enviar por E-mail
             </button>

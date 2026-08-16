@@ -1,5 +1,7 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from audit.models import AuditLog
 from core.models import Category, Client, ClientResponsible, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
 from projects.models import Project, ProjectTask, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
@@ -268,6 +270,9 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     rack_position_labels = serializers.SerializerMethodField()
     collaborators = CollaboratorSerializer(many=True, read_only=True)
+    collaborator_ids = serializers.PrimaryKeyRelatedField(
+        source="collaborators", queryset=Collaborator.objects.filter(is_active=True), many=True, write_only=True, required=False
+    )
 
     class Meta:
         model = ProjectTask
@@ -281,6 +286,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "rack_positions",
             "rack_position_labels",
             "collaborators",
+            "collaborator_ids",
             "status",
             "status_display",
             "order",
@@ -295,6 +301,74 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
 
     def get_rack_position_labels(self, obj):
         return [rp.position for rp in obj.rack_positions.all()]
+
+    def validate(self, attrs):
+        rack_positions = attrs.get("rack_positions")
+        project = attrs.get("project") or getattr(self.instance, "project", None)
+        task = attrs.get("task") or getattr(self.instance, "task", None)
+        if rack_positions:
+            invalid = [rp for rp in rack_positions if rp.project_id != project.pk]
+            if invalid:
+                names = ", ".join(rp.position for rp in invalid)
+                raise serializers.ValidationError({"rack_positions": f"Rack Position(s) que não pertencem a este projeto: {names}."})
+        if project and task:
+            probe = self.instance or ProjectTask(project_id=project.pk, task_id=task.pk)
+            try:
+                probe.validate_unique_for_rack_positions(rack_positions or [])
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(getattr(exc, "message_dict", None) or {"non_field_errors": exc.messages})
+        return attrs
+
+
+class ProjectTaskCreateSerializer(serializers.Serializer):
+    """Cria uma ProjectTask a partir de uma Tarefa do catálogo — uma por
+    Rack Position em `rack_position_ids` (ver services.create_task_instances),
+    ou uma única sem Rack Position se vier vazio. Usado pelo formulário
+    'Nova Tarefa' do frontend, que permite selecionar vários Rack Positions
+    de uma vez."""
+
+    task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.filter(is_active=True))
+    rack_position_ids = serializers.PrimaryKeyRelatedField(queryset=RackPosition.objects.all(), many=True, required=False, default=list)
+    status = serializers.ChoiceField(choices=ProjectTask.STATUS_CHOICES, required=False, default=ProjectTask.STATUS_NOT_STARTED)
+    planned_start = serializers.DateTimeField(required=False, allow_null=True, default=None)
+    planned_end = serializers.DateTimeField(required=False, allow_null=True, default=None)
+    estimated_hours = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True, default=None)
+    collaborator_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Collaborator.objects.filter(is_active=True), many=True, required=False, default=list
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate(self, attrs):
+        if attrs.get("planned_start") and attrs.get("planned_end") and attrs["planned_end"] < attrs["planned_start"]:
+            raise serializers.ValidationError({"planned_end": "O término não pode ser anterior ao início."})
+        return attrs
+
+
+class ProjectTaskBulkActionSerializer(serializers.Serializer):
+    ACTION_UPDATE = "update"
+    ACTION_DELETE = "delete"
+    ACTION_ADD = "add"
+
+    action = serializers.ChoiceField(choices=(ACTION_UPDATE, ACTION_DELETE, ACTION_ADD))
+    task_ids = serializers.PrimaryKeyRelatedField(queryset=ProjectTask.objects.all(), many=True, required=False, default=list)
+    add_task_ids = serializers.PrimaryKeyRelatedField(queryset=Task.objects.filter(is_active=True), many=True, required=False, default=list)
+    status = serializers.ChoiceField(choices=ProjectTask.STATUS_CHOICES, required=False, allow_blank=True, default="")
+    planned_start = serializers.DateTimeField(required=False, allow_null=True, default=None)
+    planned_end = serializers.DateTimeField(required=False, allow_null=True, default=None)
+    estimated_hours = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True, default=None)
+    collaborator_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Collaborator.objects.filter(is_active=True), many=True, required=False, default=list
+    )
+    rack_position_ids = serializers.PrimaryKeyRelatedField(queryset=RackPosition.objects.all(), many=True, required=False, default=list)
+
+    def validate(self, attrs):
+        if attrs.get("planned_start") and attrs.get("planned_end") and attrs["planned_end"] < attrs["planned_start"]:
+            raise serializers.ValidationError({"planned_end": "O término não pode ser anterior ao início."})
+        return attrs
+
+
+class RackPositionBulkCreateSerializer(serializers.Serializer):
+    text = serializers.CharField(allow_blank=False)
 
 
 class MyTaskUpdateSerializer(serializers.ModelSerializer):
@@ -422,3 +496,18 @@ class ProjectDailyUpdateCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context["request"]
         return ProjectDailyUpdate.objects.create(created_by=request.user, **validated_data)
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+    action_display = serializers.CharField(source="get_action_display", read_only=True)
+
+    class Meta:
+        model = AuditLog
+        fields = (
+            "id", "created_at", "actor", "actor_name", "app_label", "model_name", "object_pk", "object_repr",
+            "action", "action_display", "field_name", "old_value", "new_value", "origin", "path", "ip_address",
+        )
+
+    def get_actor_name(self, obj):
+        return str(obj.actor) if obj.actor_id else None

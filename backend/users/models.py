@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -12,7 +13,41 @@ class User(AbstractUser):
         null=True,
         blank=True,
     )
+    client = models.ForeignKey(
+        "core.Client",
+        verbose_name="cliente vinculado",
+        on_delete=models.SET_NULL,
+        related_name="portal_users",
+        null=True,
+        blank=True,
+        help_text=(
+            "Vincule um Cliente para transformar este usuário num usuário-cliente: ele só verá/editará/"
+            "excluirá os Projetos deste Cliente (e dos Sites abaixo, se algum for marcado)."
+        ),
+    )
+    client_sites = models.ManyToManyField(
+        "core.Site",
+        verbose_name="sites permitidos",
+        blank=True,
+        related_name="portal_users",
+        help_text="Restringe o usuário-cliente a estes Sites do Cliente vinculado. Vazio = todos os Sites do Cliente.",
+    )
+    client_categories = models.ManyToManyField(
+        "core.Category",
+        verbose_name="categorias permitidas",
+        blank=True,
+        related_name="portal_users",
+        help_text="Restringe quais Categorias (cadastro) o usuário-cliente vê/edita/exclui. Vazio = sem restrição.",
+    )
 
     class Meta:
         verbose_name = "usuário"
         verbose_name_plural = "usuários"
+
+    def clean(self):
+        super().clean()
+        if self.pk and self.client_id:
+            invalid = [site for site in self.client_sites.all() if site.client_id != self.client_id]
+            if invalid:
+                names = ", ".join(str(site) for site in invalid)
+                raise ValidationError({"client_sites": f"Site(s) que não pertencem ao Cliente vinculado: {names}."})

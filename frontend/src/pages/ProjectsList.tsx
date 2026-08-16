@@ -33,6 +33,10 @@ function daysDiff(value: string | null) {
   return Math.round((target - today.getTime()) / 86400000);
 }
 
+function neutralizeFormula(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 function exportCsv(projects: Project[]) {
   const header = ["Codigo", "Projeto", "Site", "Cliente", "Categoria", "Horas", "Tarefas", "Progresso", "Status", "Prazo"];
   const rows = projects.map((p) => [
@@ -47,7 +51,9 @@ function exportCsv(projects: Project[]) {
     p.status_display,
     p.planned_end || "",
   ]);
-  const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n");
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => `"${neutralizeFormula(String(cell)).replace(/"/g, '""')}"`).join(";"))
+    .join("\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -153,7 +159,7 @@ export default function ProjectsList() {
       <div className="stat-grid">
         <StatCard label="Projetos ativos" value={activeCount} hint={`${inProgressCount} em andamento`} icon="folder" tone="orange" />
         <StatCard label="Progresso médio" value={`${avgProgress}%`} hint="do portfólio exibido" icon="bar_chart" tone="blue" />
-        <StatCard label="Horas registradas" value={formatHours(totalHours)} hint="tempo acumulado" icon="schedule" tone="green" />
+        <StatCard label="Horas registradas" value={formatHours(totalHours)} hint="tempo acumulado" icon="schedule" tone="teal" />
         <StatCard label="Requer atenção" value={pausedCount} hint="projetos pausados" icon="warning" tone="amber" />
       </div>
 

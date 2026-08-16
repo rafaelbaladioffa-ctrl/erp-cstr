@@ -6,7 +6,7 @@ from django import forms
 from django.contrib import admin
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Max, Q, Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -14,9 +14,79 @@ from django.shortcuts import redirect
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin, TabularInline
 
+from core.access_scope import scope_project_queryset, user_can_access_project
 from core.admin_mixins import SelectablePageSizeAdminMixin
+from core.csv_io import MAX_CSV_UPLOAD_BYTES, neutralize_formula
 from core.models import Category, Client, ClientResponsible, Collaborator, Company, ProjectType, Responsible, Site, Task
-from .models import Project, ProjectHistory, ProjectTask, RackPosition
+from .analytics import build_projects_performance, build_technical_performance, parse_date
+from .models import DashboardProxy, Project, ProjectHistory, ProjectTask, RackPosition
+from .services import (
+    BulkActionError,
+    add_tasks_to_project,
+    apply_bulk_task_update,
+    create_rack_positions_bulk,
+    import_tasks_from_project_type,
+    parse_bulk_rack_positions,
+)
+
+
+def _format_hours(value):
+    total_minutes = round(float(value or 0) * 60)
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{hours}h{minutes:02d}min"
+
+
+def _build_dashboard_context(request, admin_site):
+    can_view_projects = request.user.has_perm("projects.view_project")
+    can_view_technical = request.user.has_perm("core.view_collaborator")
+    if not (can_view_projects or can_view_technical):
+        from django.core.exceptions import PermissionDenied
+
+        raise PermissionDenied
+
+    date_from = parse_date(request.GET.get("date_from"))
+    date_to = parse_date(request.GET.get("date_to"))
+    company_id = request.GET.get("company") or None
+
+    projects_data = None
+    if can_view_projects:
+        projects_data = build_projects_performance(
+            company_id=company_id, date_from=date_from, date_to=date_to
+        )
+        for row in projects_data["projects"]:
+            row["worked_hours_display"] = _format_hours(row["worked_hours"])
+        for row in projects_data["top_projects_by_hours"]:
+            row["worked_hours_display"] = _format_hours(row["worked_hours"])
+        projects_data["summary"]["total_worked_hours_display"] = _format_hours(
+            projects_data["summary"]["total_worked_hours"]
+        )
+
+    technical_data = None
+    if can_view_technical:
+        technical_data = build_technical_performance(
+            company_id=company_id, date_from=date_from, date_to=date_to
+        )
+        for row in technical_data["collaborators"]:
+            row["hours_worked_display"] = _format_hours(row["hours_worked"])
+        technical_data["summary"]["total_hours_worked_display"] = _format_hours(
+            technical_data["summary"]["total_hours_worked"]
+        )
+
+    return {
+        **admin_site.each_context(request),
+        "title": "Dashboard",
+        "opts": DashboardProxy._meta,
+        "can_view_projects": can_view_projects,
+        "can_view_technical": can_view_technical,
+        "projects_data": projects_data,
+        "technical_data": technical_data,
+        "companies": Company.objects.filter(is_active=True).order_by("legal_name"),
+        "filters": {
+            "date_from": request.GET.get("date_from", ""),
+            "date_to": request.GET.get("date_to", ""),
+            "company": company_id or "",
+        },
+    }
 
 
 class ProjectTaskMultipleChoiceField(forms.ModelMultipleChoiceField):
@@ -136,40 +206,6 @@ class ProjectAdminForm(forms.ModelForm):
             self.fields["bulk_tasks"].queryset = self.instance.project_tasks.select_related("task").order_by("order", "id")
             self.fields["bulk_task_rack_positions"].queryset = self.instance.rack_positions.all()
 
-    @staticmethod
-    def _parse_bulk_rack_positions(raw_text):
-        """Converte o texto colado em 'bulk_rack_positions' numa lista de
-        dicts {position, dh, links, utp}, uma linha por Rack Position no
-        formato 'Rack Position;DH;Links;UTP' (campos após o primeiro são
-        opcionais). Levanta ValueError com a linha problemática."""
-        rows = []
-        for line_number, raw_line in enumerate((raw_text or "").splitlines(), start=1):
-            line = raw_line.strip()
-            if not line:
-                continue
-            parts = [part.strip() for part in line.split(";")]
-            position = parts[0]
-            if not position:
-                raise ValueError(f"Linha {line_number}: informe o Rack Position.")
-            dh = parts[1] if len(parts) > 1 else ""
-
-            def _parse_count(raw_value, field_label):
-                raw_value = (raw_value or "").strip()
-                if not raw_value:
-                    return 0
-                try:
-                    value = int(raw_value)
-                except ValueError:
-                    raise ValueError(f'Linha {line_number}: {field_label} inválido "{raw_value}".')
-                if value < 0:
-                    raise ValueError(f"Linha {line_number}: {field_label} não pode ser negativo.")
-                return value
-
-            links = _parse_count(parts[2] if len(parts) > 2 else "", "Links")
-            utp = _parse_count(parts[3] if len(parts) > 3 else "", "UTP")
-            rows.append({"position": position, "dh": dh, "links": links, "utp": utp})
-        return rows
-
     def clean_link_count(self):
         # O campo é opcional no formulário (blank=True), mas a coluna no
         # banco não aceita NULL — se o usuário deixar em branco, Django
@@ -193,8 +229,8 @@ class ProjectAdminForm(forms.ModelForm):
                 self.add_error("bulk_rack_positions", 'Marque "Rack Position" para poder cadastrar Rack Positions.')
             else:
                 try:
-                    self._parsed_rack_positions = self._parse_bulk_rack_positions(bulk_rack_positions_text)
-                except ValueError as exc:
+                    self._parsed_rack_positions = parse_bulk_rack_positions(bulk_rack_positions_text)
+                except BulkActionError as exc:
                     self.add_error("bulk_rack_positions", str(exc))
         return cleaned_data
 
@@ -222,6 +258,24 @@ class RackPositionInline(TabularInline):
     fields = ("position", "dh", "links", "utp")
     verbose_name = "Rack Position"
     verbose_name_plural = "Rack Positions"
+
+
+def _available_catalog_tasks_for_project(project):
+    """Tarefas do catálogo ainda selecionáveis para 'Adicionar do Catálogo':
+    com Rack Position, uma Tarefa só fica indisponível quando já cobre TODOS
+    os Rack Positions do projeto (senão ainda falta cobrir algum). Sem Rack
+    Position, continua só podendo ser adicionada uma vez."""
+    rack_position_count = project.rack_positions.count() if project.has_rack_positions else 0
+    if rack_position_count:
+        fully_covered = (
+            Task.objects.filter(project_tasks__project=project)
+            .annotate(covered=Count("project_tasks__rack_positions", distinct=True))
+            .filter(covered__gte=rack_position_count)
+            .values_list("pk", flat=True)
+        )
+        return Task.objects.filter(is_active=True).exclude(pk__in=list(fully_covered)).order_by("name")
+    already_added = project.project_tasks.values_list("task_id", flat=True)
+    return Task.objects.filter(is_active=True).exclude(pk__in=already_added).order_by("name")
 
 
 class ProjectTaskBulkActionForm(forms.Form):
@@ -321,8 +375,7 @@ class ProjectTaskBulkActionForm(forms.Form):
             project.project_tasks.select_related("task").order_by("order", "id") if project else ProjectTask.objects.none()
         )
         if project:
-            already_added = project.project_tasks.values_list("task_id", flat=True)
-            self.fields["add_tasks"].queryset = Task.objects.filter(is_active=True).exclude(pk__in=already_added).order_by("name")
+            self.fields["add_tasks"].queryset = _available_catalog_tasks_for_project(project)
 
     def clean(self):
         cleaned_data = super().clean()
@@ -471,7 +524,16 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
             # "escondido" do Admin (embora existisse e aparecesse no
             # frontend), pois seu status inicial nem sempre é Planejamento.
             queryset = queryset.exclude(status__in=(Project.STATUS_COMPLETED, Project.STATUS_CANCELED))
-        return queryset
+        return scope_project_queryset(queryset, request.user)
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(request, obj) and user_can_access_project(request.user, obj)
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and user_can_access_project(request.user, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and user_can_access_project(request.user, obj)
 
     def get_urls(self):
         custom_urls = [
@@ -547,22 +609,22 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         for project in queryset:
             writer.writerow(
                 [
-                    project.code,
-                    project.name,
-                    project.po,
-                    project.company.trade_name or project.company.legal_name,
-                    project.client.trade_name or project.client.legal_name if project.client else "",
-                    project.site.name if project.site else "",
-                    project.project_type.name if project.project_type else "",
-                    project.category.name if project.category else "",
-                    project.responsible_cstr.name if project.responsible_cstr else "",
-                    project.responsible_client.name if project.responsible_client else "",
+                    neutralize_formula(project.code),
+                    neutralize_formula(project.name),
+                    neutralize_formula(project.po),
+                    neutralize_formula(project.company.trade_name or project.company.legal_name),
+                    neutralize_formula(project.client.trade_name or project.client.legal_name) if project.client else "",
+                    neutralize_formula(project.site.name) if project.site else "",
+                    neutralize_formula(project.project_type.name) if project.project_type else "",
+                    neutralize_formula(project.category.name) if project.category else "",
+                    neutralize_formula(project.responsible_cstr.name) if project.responsible_cstr else "",
+                    neutralize_formula(project.responsible_client.name) if project.responsible_client else "",
                     project.get_status_display(),
                     project.planned_start.strftime("%d/%m/%Y") if project.planned_start else "",
                     project.planned_end.strftime("%d/%m/%Y") if project.planned_end else "",
                     project.link_count,
-                    project.description,
-                    project.notes,
+                    neutralize_formula(project.description),
+                    neutralize_formula(project.notes),
                     "Sim" if project.is_active else "Não",
                 ]
             )
@@ -573,6 +635,8 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         if request.method == "POST" and form.is_valid():
             uploaded_file = form.cleaned_data["csv_file"]
             try:
+                if uploaded_file.size > MAX_CSV_UPLOAD_BYTES:
+                    raise ValueError(f"Arquivo CSV muito grande (máximo {MAX_CSV_UPLOAD_BYTES // (1024 * 1024)} MB).")
                 content = uploaded_file.read().decode("utf-8-sig")
                 sample = content[:4096]
                 delimiter = csv.Sniffer().sniff(sample, delimiters=";,\t").delimiter
@@ -666,15 +730,14 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
 
     @staticmethod
     def _format_hours(value):
-        total_minutes = round(float(value or 0) * 60)
-        hours, minutes = divmod(total_minutes, 60)
-        return f"{hours}h{minutes:02d}min"
+        return _format_hours(value)
 
     @staticmethod
     def _format_duration(total_seconds):
         total_minutes = max(0, round(total_seconds / 60))
         hours, minutes = divmod(total_minutes, 60)
         return f"{hours}h{minutes:02d}min"
+
 
     def overview_view(self, request, object_id):
         project = self.get_object(request, object_id)
@@ -750,49 +813,28 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
             if not add_tasks:
                 self.message_user(request, "Selecione ao menos uma Tarefa do catálogo para adicionar.", level=messages.WARNING)
                 return
-            next_order = (project.project_tasks.aggregate(highest=Max("order"))["highest"] or 0) + 1
-            created = 0
-            for task in add_tasks:
-                _, was_created = ProjectTask.objects.get_or_create(
-                    project=project,
-                    task=task,
-                    defaults={"order": next_order, "estimated_hours": task.estimated_hours},
-                )
-                if was_created:
-                    created += 1
-                    next_order += 1
+            created = add_tasks_to_project(project, add_tasks)
             self.message_user(request, f"{created} Tarefa(s) adicionada(s) ao Projeto.")
         elif bulk_action == ProjectTaskBulkActionForm.BULK_ACTION_DELETE:
             deleted, _ = target_tasks.delete()
             self.message_user(request, f"{deleted} Tarefa(s) excluída(s) do Projeto.", level=messages.WARNING)
         elif bulk_action == ProjectTaskBulkActionForm.BULK_ACTION_UPDATE:
-            updates = {}
-            field_map = {
-                "bulk_status": "status",
-                "bulk_start": "planned_start",
-                "bulk_end": "planned_end",
-                "bulk_estimated_hours": "estimated_hours",
-            }
-            for form_field, model_field in field_map.items():
-                value = cleaned_data.get(form_field)
-                if value not in (None, ""):
-                    updates[model_field] = value
             selected_collaborators = cleaned_data.get("bulk_collaborators")
             selected_rack_positions = cleaned_data.get("bulk_task_rack_positions")
-            project_tasks = target_tasks
-            if updates:
-                updated = project_tasks.update(**updates)
-            else:
-                updated = 0
-            if selected_collaborators:
-                for project_task in project_tasks:
-                    project_task.collaborators.set(selected_collaborators)
-                updated = project_tasks.count()
-            if selected_rack_positions:
-                for project_task in project_tasks:
-                    project_task.rack_positions.set(selected_rack_positions)
-                updated = project_tasks.count()
-            if updates or selected_collaborators or selected_rack_positions:
+            has_input = any(
+                cleaned_data.get(field) not in (None, "")
+                for field in ("bulk_status", "bulk_start", "bulk_end", "bulk_estimated_hours")
+            ) or selected_collaborators or selected_rack_positions
+            updated = apply_bulk_task_update(
+                target_tasks,
+                status=cleaned_data.get("bulk_status") or None,
+                planned_start=cleaned_data.get("bulk_start"),
+                planned_end=cleaned_data.get("bulk_end"),
+                estimated_hours=cleaned_data.get("bulk_estimated_hours"),
+                collaborators=selected_collaborators,
+                rack_positions=selected_rack_positions,
+            )
+            if has_input:
                 self.message_user(request, f"{updated} Tarefa(s) atualizada(s) em massa.")
             else:
                 self.message_user(request, "Informe ao menos um valor para a atualização em massa.", level=messages.WARNING)
@@ -824,18 +866,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         super().save_related(request, form, formsets, change)
         project = form.instance
         if form.cleaned_data.get("import_tasks_from_project_type"):
-            tasks = project.project_type.tasks.filter(is_active=True).order_by("name", "id")
-            next_order = (project.project_tasks.aggregate(highest=Max("order"))["highest"] or 0) + 1
-            created = 0
-            for task in tasks:
-                _, was_created = ProjectTask.objects.get_or_create(
-                    project=project,
-                    task=task,
-                    defaults={"order": next_order, "estimated_hours": task.estimated_hours},
-                )
-                if was_created:
-                    created += 1
-                    next_order += 1
+            created = import_tasks_from_project_type(project)
             if created:
                 self.message_user(request, f"{created} Tarefa(s) do Tipo de Projeto adicionada(s) com sucesso.")
             else:
@@ -845,20 +876,9 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                     level=messages.WARNING,
                 )
 
-        parsed_rack_positions = getattr(form, "_parsed_rack_positions", None)
-        if parsed_rack_positions:
-            created = 0
-            skipped = 0
-            for row in parsed_rack_positions:
-                _, was_created = RackPosition.objects.get_or_create(
-                    project=project,
-                    position=row["position"],
-                    defaults={"dh": row["dh"], "links": row["links"], "utp": row["utp"]},
-                )
-                if was_created:
-                    created += 1
-                else:
-                    skipped += 1
+        bulk_rack_positions_text = form.cleaned_data.get("bulk_rack_positions")
+        if getattr(form, "_parsed_rack_positions", None):
+            created, skipped = create_rack_positions_bulk(project, bulk_rack_positions_text)
             message = f"{created} Rack Position(s) cadastrado(s) em massa."
             if skipped:
                 message += f" {skipped} já existia(m) e foi(ram) ignorado(s)."
@@ -895,15 +915,22 @@ class ProjectHistoryAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     ordering = ("-actual_end", "-updated_at")
 
     def get_queryset(self, request):
-        return (
+        queryset = (
             super()
             .get_queryset(request)
             .filter(status=Project.STATUS_COMPLETED)
             .select_related("company", "client", "site", "project_type", "responsible_cstr")
         )
+        return scope_project_queryset(queryset, request.user)
 
     def has_add_permission(self, request):
         return False
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(request, obj) and user_can_access_project(request.user, obj)
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and user_can_access_project(request.user, obj)
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -932,6 +959,30 @@ class ProjectHistoryAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     def edit_link(self, obj):
         url = reverse("admin:projects_project_change", args=(obj.pk,))
         return format_html('<a href="{}">Editar</a>', url)
+
+
+@admin.register(DashboardProxy)
+class DashboardAdmin(ModelAdmin):
+    def has_module_permission(self, request):
+        return request.user.is_active and (
+            request.user.has_perm("projects.view_project") or request.user.has_perm("core.view_collaborator")
+        )
+
+    def has_view_permission(self, request, obj=None):
+        return self.has_module_permission(request)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        context = _build_dashboard_context(request, self.admin_site)
+        return TemplateResponse(request, "admin/projects/project/dashboard.html", context)
 
 
 class ProjectTaskAdminForm(forms.ModelForm):

@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RequirePermission from "./components/RequirePermission";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import AuditLog from "./pages/AuditLog";
 import CadastrosPage from "./pages/cadastros/CadastrosPage";
 import DailyUpdates from "./pages/DailyUpdates";
 import Login from "./pages/Login";
@@ -11,7 +12,16 @@ import MyTasks from "./pages/MyTasks";
 import ProjectDetail from "./pages/ProjectDetail";
 import ProjectsList from "./pages/ProjectsList";
 import ProjectUpdates from "./pages/ProjectUpdates";
+import SitesMap from "./pages/SitesMap";
 import { CADASTROS_PERMS, PERMS, hasAnyPerm, hasPerm } from "./utils/permissions";
+
+function RequireSuperuser({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (!user?.is_superuser) {
+    return <p style={{ padding: 32, color: "#526174" }}>Acesso restrito a superusuários.</p>;
+  }
+  return <>{children}</>;
+}
 
 function HomeRedirect() {
   const { user } = useAuth();
@@ -90,6 +100,22 @@ export default function App() {
               <RequireAnyPermission permissions={CADASTROS_PERMS}>
                 <CadastrosPage />
               </RequireAnyPermission>
+            }
+          />
+          <Route
+            path="/sites/mapa"
+            element={
+              <RequirePermission permission={PERMS.viewSite}>
+                <SitesMap />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/auditoria"
+            element={
+              <RequireSuperuser>
+                <AuditLog />
+              </RequireSuperuser>
             }
           />
         </Route>

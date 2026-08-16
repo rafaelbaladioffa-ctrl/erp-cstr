@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { CADASTROS_PERMS, PERMS, hasAnyPerm, hasPerm } from "../utils/permissions";
@@ -9,6 +10,7 @@ interface NavItem {
   icon: string;
   permission?: string;
   permissions?: string[];
+  superuserOnly?: boolean;
 }
 
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
@@ -25,6 +27,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "Técnico",
     items: [{ to: "/minhas-tarefas", label: "Minhas Tarefas", icon: "checklist", permission: PERMS.viewMyTasks }],
   },
+  {
+    title: "Segurança",
+    items: [{ to: "/auditoria", label: "Log de Auditoria", icon: "history", superuserOnly: true }],
+  },
 ];
 
 const AREA_LABELS: Record<string, { area: string; page: string }> = {
@@ -33,6 +39,7 @@ const AREA_LABELS: Record<string, { area: string; page: string }> = {
   "/atualizacoes-projeto": { area: "Área Operacional", page: "Atualizações de Projeto" },
   "/cadastros": { area: "Base de Dados", page: "Cadastros Gerais" },
   "/minhas-tarefas": { area: "Área Técnica", page: "Minhas Tarefas" },
+  "/auditoria": { area: "Segurança", page: "Log de Auditoria" },
 };
 
 function currentBreadcrumb(pathname: string) {
@@ -46,12 +53,18 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const breadcrumb = currentBreadcrumb(location.pathname);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) =>
-      item.permissions ? hasAnyPerm(user, item.permissions) : hasPerm(user, item.permission!)
-    ),
+    items: group.items.filter((item) => {
+      if (item.superuserOnly) return Boolean(user?.is_superuser);
+      return item.permissions ? hasAnyPerm(user, item.permissions) : hasPerm(user, item.permission!);
+    }),
   })).filter((group) => group.items.length > 0);
 
   const displayName = user?.full_name || user?.username || "";
@@ -60,13 +73,17 @@ export default function Layout() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {mobileMenuOpen && <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />}
+      <aside className={`sidebar${mobileMenuOpen ? " sidebar-open" : ""}`}>
         <div className="sidebar-logo">
           <div className="sidebar-logo-mark">CS</div>
           <div className="sidebar-logo-text">
             CONSULTIMER
             <small>ERP CSTR</small>
           </div>
+          <button className="sidebar-close-btn" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}>
+            <Icon name="close" style={{ fontSize: 18 }} />
+          </button>
         </div>
 
         {groups.length === 0 && (
@@ -105,9 +122,14 @@ export default function Layout() {
 
       <div className="app-main">
         <header className="topbar">
-          <div>
-            <div className="topbar-breadcrumb-eyebrow">{breadcrumb.area}</div>
-            <div className="topbar-breadcrumb-title">{breadcrumb.page}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button className="mobile-menu-btn" aria-label="Abrir menu" onClick={() => setMobileMenuOpen(true)}>
+              <Icon name="menu" style={{ fontSize: 22 }} />
+            </button>
+            <div>
+              <div className="topbar-breadcrumb-eyebrow">{breadcrumb.area}</div>
+              <div className="topbar-breadcrumb-title">{breadcrumb.page}</div>
+            </div>
           </div>
           <div className="topbar-right">
             <button className="topbar-icon-btn" aria-label="Notificações">
