@@ -2,8 +2,21 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from audit.models import AuditLog
-from core.models import Category, Client, ClientResponsible, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
-from projects.models import Project, ProjectTask, RackPosition
+from core.models import (
+    Category,
+    Client,
+    Collaborator,
+    Company,
+    JobTitle,
+    Notification,
+    ProjectType,
+    Responsible,
+    Site,
+    Task,
+    get_or_create_person,
+    update_person,
+)
+from projects.models import Project, ProjectOccurrence, ProjectTask, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
 
@@ -25,7 +38,20 @@ class SiteSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "code", "city", "state")
 
 
+def _get_or_create_person(*, name="", email="", phone="", company=None):
+    return get_or_create_person(name=name, email=email, phone=phone, company=company)
+
+
+def _update_person_from_data(instance, person_data):
+    if not person_data:
+        return
+    update_person(instance.person, **person_data)
+
+
 class CollaboratorSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="person.name", read_only=True)
+    email = serializers.EmailField(source="person.email", read_only=True)
+
     class Meta:
         model = Collaborator
         fields = ("id", "name", "registration", "email", "is_active")
@@ -99,31 +125,55 @@ class ClientCrudSerializer(serializers.ModelSerializer):
         return str(obj.company) if obj.company_id else None
 
 
-class ClientResponsibleCrudSerializer(serializers.ModelSerializer):
+class ResponsibleCrudSerializer(serializers.ModelSerializer):
+    """Responsável unificado — Tipo (`kind`) define se é CSTR (usa
+    `company`, via Person) ou Cliente (usa `client` + `job_title`)."""
+
+    name = serializers.CharField(source="person.name", required=False, allow_blank=True)
+    email = serializers.EmailField(source="person.email", required=False, allow_blank=True)
+    phone = serializers.CharField(source="person.phone", required=False, allow_blank=True)
+    company = serializers.PrimaryKeyRelatedField(source="person.company", queryset=Company.objects.all(), required=False, allow_null=True)
+    company_name = serializers.SerializerMethodField()
     client_name = serializers.SerializerMethodField()
 
     class Meta:
-        model = ClientResponsible
-        fields = ("id", "client", "client_name", "name", "email", "phone", "job_title", "is_active", "created_at", "updated_at")
+        model = Responsible
+        fields = (
+            "id", "kind", "company", "company_name", "client", "client_name",
+            "name", "email", "phone", "job_title", "is_active", "created_at", "updated_at",
+        )
         read_only_fields = ("created_at", "updated_at")
+
+    def get_company_name(self, obj):
+        return str(obj.person.company) if obj.person_id and obj.person.company_id else None
 
     def get_client_name(self, obj):
         return str(obj.client) if obj.client_id else None
 
+    def validate(self, attrs):
+        kind = attrs.get("kind", getattr(self.instance, "kind", Responsible.KIND_CSTR))
+        client = attrs.get("client", getattr(self.instance, "client", None))
+        if kind == Responsible.KIND_CLIENT and not client:
+            raise serializers.ValidationError({"client": "Obrigatório para Responsável do Cliente."})
+        if kind == Responsible.KIND_CSTR and client:
+            raise serializers.ValidationError({"client": "Deve ficar em branco para Responsável CSTR."})
+        return attrs
 
-class ResponsibleCrudSerializer(serializers.ModelSerializer):
-    company_name = serializers.SerializerMethodField()
+    def create(self, validated_data):
+        person_data = validated_data.pop("person")
+        validated_data["person"] = _get_or_create_person(**person_data)
+        return super().create(validated_data)
 
-    class Meta:
-        model = Responsible
-        fields = ("id", "company", "company_name", "name", "email", "phone", "is_active", "created_at", "updated_at")
-        read_only_fields = ("created_at", "updated_at")
-
-    def get_company_name(self, obj):
-        return str(obj.company) if obj.company_id else None
+    def update(self, instance, validated_data):
+        _update_person_from_data(instance, validated_data.pop("person", None))
+        return super().update(instance, validated_data)
 
 
 class CollaboratorCrudSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="person.name", required=False, allow_blank=True)
+    email = serializers.EmailField(source="person.email", required=False, allow_blank=True)
+    phone = serializers.CharField(source="person.phone", required=False, allow_blank=True)
+    company = serializers.PrimaryKeyRelatedField(source="person.company", queryset=Company.objects.all())
     company_name = serializers.SerializerMethodField()
     job_title_name = serializers.SerializerMethodField()
     manager_name = serializers.SerializerMethodField()
@@ -138,7 +188,16 @@ class CollaboratorCrudSerializer(serializers.ModelSerializer):
         read_only_fields = ("created_at", "updated_at")
 
     def get_company_name(self, obj):
-        return str(obj.company) if obj.company_id else None
+        return str(obj.person.company) if obj.person_id and obj.person.company_id else None
+
+    def create(self, validated_data):
+        person_data = validated_data.pop("person")
+        validated_data["person"] = _get_or_create_person(**person_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        _update_person_from_data(instance, validated_data.pop("person", None))
+        return super().update(instance, validated_data)
 
     def get_job_title_name(self, obj):
         return str(obj.job_title) if obj.job_title_id else None
@@ -166,6 +225,8 @@ class ProjectSerializer(serializers.ModelSerializer):
     client_name = serializers.SerializerMethodField()
     site_name = serializers.SerializerMethodField()
     category_name = serializers.SerializerMethodField()
+    responsible_cstr_name = serializers.SerializerMethodField()
+    responsible_client_name = serializers.SerializerMethodField()
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     total_tasks = serializers.SerializerMethodField()
     completed_tasks = serializers.SerializerMethodField()
@@ -190,7 +251,9 @@ class ProjectSerializer(serializers.ModelSerializer):
             "category_name",
             "project_type",
             "responsible_cstr",
+            "responsible_cstr_name",
             "responsible_client",
+            "responsible_client_name",
             "description",
             "notes",
             "status",
@@ -214,6 +277,12 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     def get_category_name(self, obj):
         return str(obj.category) if obj.category_id else None
+
+    def get_responsible_cstr_name(self, obj):
+        return str(obj.responsible_cstr) if obj.responsible_cstr_id else None
+
+    def get_responsible_client_name(self, obj):
+        return str(obj.responsible_client) if obj.responsible_client_id else None
 
     def _tasks(self, obj):
         return list(obj.project_tasks.all())
@@ -268,6 +337,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source="project.name", read_only=True)
     project_code = serializers.CharField(source="project.code", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    worked_hours = serializers.SerializerMethodField()
     rack_position_labels = serializers.SerializerMethodField()
     collaborators = CollaboratorSerializer(many=True, read_only=True)
     collaborator_ids = serializers.PrimaryKeyRelatedField(
@@ -296,11 +366,15 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "actual_end",
             "estimated_hours",
             "actual_hours",
+            "worked_hours",
             "notes",
         )
 
     def get_rack_position_labels(self, obj):
         return [rp.position for rp in obj.rack_positions.all()]
+
+    def get_worked_hours(self, obj):
+        return obj.worked_hours
 
     def validate(self, attrs):
         rack_positions = attrs.get("rack_positions")
@@ -318,6 +392,32 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             except DjangoValidationError as exc:
                 raise serializers.ValidationError(getattr(exc, "message_dict", None) or {"non_field_errors": exc.messages})
         return attrs
+
+
+class ProjectOccurrenceSerializer(serializers.ModelSerializer):
+    responsible_name = serializers.CharField(source="responsible.person.name", read_only=True, default=None)
+    severity_display = serializers.CharField(source="get_severity_display", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = ProjectOccurrence
+        fields = (
+            "id",
+            "project",
+            "title",
+            "description",
+            "responsible",
+            "responsible_name",
+            "severity",
+            "severity_display",
+            "status",
+            "status_display",
+            "occurred_at",
+            "resolved_at",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("resolved_at", "created_at", "updated_at")
 
 
 class ProjectTaskCreateSerializer(serializers.Serializer):
@@ -511,3 +611,10 @@ class AuditLogSerializer(serializers.ModelSerializer):
 
     def get_actor_name(self, obj):
         return str(obj.actor) if obj.actor_id else None
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ("id", "title", "message", "url", "project_id", "project_code", "is_read", "created_at")
+        read_only_fields = fields

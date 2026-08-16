@@ -2,6 +2,7 @@ import json
 
 from django import forms
 from django.contrib import admin
+from django.contrib.admin.widgets import AutocompleteSelect
 from django.db import models
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -15,7 +16,39 @@ from .access_scope import (
     user_can_access_category,
 )
 from .admin_mixins import CSVImportExportMixin, SelectablePageSizeAdminMixin
-from .models import Category, Client, ClientResponsible, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
+from .models import (
+    Category,
+    Client,
+    Collaborator,
+    Company,
+    JobTitle,
+    Notification,
+    Person,
+    ProjectType,
+    Responsible,
+    Site,
+    Task,
+    get_or_create_person,
+    update_person,
+)
+
+
+def _person_user_field(help_text=""):
+    """Campo 'Usuário vinculado' com autocomplete, reaproveitado nos
+    formulários de Colaborador/Responsável — edita Person.user por baixo,
+    sem expor o cadastro de Pessoa separadamente. Precisa ser declarado no
+    corpo da classe do form (não dentro de __init__): o Django Admin valida
+    os campos de `fields`/`fieldsets` contra `form.base_fields`, que só é
+    montado a partir dos atributos definidos na hora da classe ser criada."""
+    from users.models import User
+
+    return forms.ModelChoiceField(
+        label="Usuário vinculado",
+        queryset=User.objects.all(),
+        required=False,
+        help_text=help_text,
+        widget=AutocompleteSelect(Person._meta.get_field("user"), admin.site),
+    )
 
 
 class PhoneMaskAdminMixin:
@@ -209,45 +242,89 @@ class SiteAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdm
         return TemplateResponse(request, "admin/core/site/map.html", context)
 
 
+class CollaboratorAdminForm(forms.ModelForm):
+    name = forms.CharField(label="Nome", required=False)
+    email = forms.EmailField(label="E-mail", required=False)
+    phone = forms.CharField(label="Telefone", required=False)
+    company = forms.ModelChoiceField(label="Empresa", queryset=Company.objects.all())
+    user = _person_user_field("Vincule um usuário para este técnico acessar Minhas Tarefas.")
+
+    class Meta:
+        model = Collaborator
+        fields = ("registration", "yellow_badge", "job_title", "manager", "sites", "is_active")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.person_id:
+            person = self.instance.person
+            self.fields["name"].initial = person.name
+            self.fields["email"].initial = person.email
+            self.fields["phone"].initial = person.phone
+            self.fields["company"].initial = person.company_id
+            self.fields["user"].initial = person.user_id
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        data = self.cleaned_data
+        if instance.person_id:
+            update_person(
+                instance.person,
+                name=data.get("name"), email=data.get("email"), phone=data.get("phone"),
+                company=data.get("company"), user=data.get("user"), has_user=True,
+            )
+        else:
+            instance.person = get_or_create_person(
+                name=data.get("name"), email=data.get("email"),
+                phone=data.get("phone"), company=data.get("company"),
+            )
+            if data.get("user"):
+                update_person(instance.person, user=data.get("user"), has_user=True)
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
+
 @admin.register(Collaborator)
-class CollaboratorAdmin(DenyClientScopedAdminMixin, CompanyScopedAdmin):
-    list_display = ("registration", "yellow_badge", "name", "job_title", "manager", "user", "company", "email", "is_active")
+class CollaboratorAdmin(DenyClientScopedAdminMixin, CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    form = CollaboratorAdminForm
+    list_display = ("registration", "yellow_badge", "person_name", "job_title", "manager", "person_company", "person_email", "is_active")
+    list_filter = ("person__company", "is_active")
     search_fields = (
         "registration",
         "yellow_badge",
-        "name",
+        "person__name",
         "job_title__name",
-        "manager__name",
-        "email",
-        "user__username",
-        "user__email",
+        "manager__person__name",
+        "person__email",
+        "person__user__username",
+        "person__user__email",
     )
-    autocomplete_fields = ("job_title", "manager", "user")
+    autocomplete_fields = ("job_title", "manager")
     filter_horizontal = ("sites",)
-    fields = (
-        "company",
-        "name",
-        "registration",
-        "yellow_badge",
-        "job_title",
-        "manager",
-        "user",
-        "email",
-        "phone",
-        "sites",
-        "is_active",
-        "created_at",
-        "updated_at",
-    )
+    fields = ("name", "email", "phone", "company", "user", "registration", "yellow_badge", "job_title", "manager", "sites", "is_active", "created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at")
 
     class Media:
         js = ("core/js/phone-mask.js", "core/js/collaborator-manager-filter.js")
+
+    @admin.display(description="Nome", ordering="person__name")
+    def person_name(self, obj):
+        return obj.person.name if obj.person_id else "—"
+
+    @admin.display(description="E-mail", ordering="person__email")
+    def person_email(self, obj):
+        return obj.person.email if obj.person_id else "—"
+
+    @admin.display(description="Empresa", ordering="person__company")
+    def person_company(self, obj):
+        return obj.person.company if obj.person_id else None
 
     def get_search_results(self, request, queryset, search_term):
         queryset, use_distinct = super().get_search_results(request, queryset, search_term)
         if request.GET.get("field_name") == "manager":
             company_id = request.GET.get("company_id")
-            queryset = queryset.filter(company_id=company_id) if company_id else queryset.none()
+            queryset = queryset.filter(person__company_id=company_id) if company_id else queryset.none()
         return queryset, use_distinct
 
 
@@ -257,14 +334,121 @@ class JobTitleAdmin(DenyClientScopedAdminMixin, CompanyScopedAdmin):
     search_fields = ("name", "description")
 
 
+class ResponsibleAdminForm(forms.ModelForm):
+    name = forms.CharField(label="Nome", required=False)
+    email = forms.EmailField(label="E-mail", required=False)
+    phone = forms.CharField(label="Telefone", required=False)
+    company = forms.ModelChoiceField(
+        label="Empresa (CSTR)", queryset=Company.objects.all(), required=False,
+        help_text="Obrigatório quando Tipo = CSTR.",
+    )
+    user = _person_user_field("Vincule um usuário a este responsável, se fizer sentido.")
+
+    class Meta:
+        model = Responsible
+        fields = ("kind", "client", "job_title", "is_active")
+        help_texts = {"client": "Obrigatório quando Tipo = Cliente."}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.person_id:
+            person = self.instance.person
+            self.fields["name"].initial = person.name
+            self.fields["email"].initial = person.email
+            self.fields["phone"].initial = person.phone
+            self.fields["company"].initial = person.company_id
+            self.fields["user"].initial = person.user_id
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        data = self.cleaned_data
+        if instance.person_id:
+            update_person(
+                instance.person,
+                name=data.get("name"), email=data.get("email"), phone=data.get("phone"),
+                company=data.get("company"), user=data.get("user"), has_user=True,
+            )
+        else:
+            instance.person = get_or_create_person(
+                name=data.get("name"), email=data.get("email"),
+                phone=data.get("phone"), company=data.get("company"),
+            )
+            if data.get("user"):
+                update_person(instance.person, user=data.get("user"), has_user=True)
+        if commit:
+            instance.save()
+        return instance
+
+
 @admin.register(Responsible)
-class ResponsibleAdmin(DenyClientScopedAdminMixin, CompanyScopedAdmin):
-    list_display = ("name", "company", "user", "email", "phone", "is_active")
-    search_fields = ("name", "email", "phone", "user__username", "user__first_name", "user__last_name", "user__email")
-    autocomplete_fields = ("user",)
+class ResponsibleAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    """Responsável unificado — o campo Tipo decide se é CSTR (usa Empresa)
+    ou Cliente (usa Cliente + Cargo). Substitui os antigos cadastros
+    separados 'Responsáveis' e 'Responsáveis do Cliente'."""
+
+    form = ResponsibleAdminForm
+    list_display = ("person_name", "kind", "person_company", "client", "person_email", "is_active")
+    list_filter = ("kind", "person__company", "client", "is_active")
+    search_fields = (
+        "person__name",
+        "person__email",
+        "person__phone",
+        "person__user__username",
+        "person__user__email",
+        "client__legal_name",
+        "client__trade_name",
+        "job_title",
+    )
+    autocomplete_fields = ("client",)
+    readonly_fields = ("created_at", "updated_at")
+    fields = ("kind", "name", "email", "phone", "company", "client", "job_title", "user", "is_active", "created_at", "updated_at")
 
     class Media:
         js = ("core/js/phone-mask.js", "core/js/collaborator-manager-filter.js")
+
+    @admin.display(description="Nome", ordering="person__name")
+    def person_name(self, obj):
+        return obj.person.name if obj.person_id else "—"
+
+    @admin.display(description="Empresa", ordering="person__company")
+    def person_company(self, obj):
+        return obj.person.company if obj.person_id else None
+
+    @admin.display(description="E-mail", ordering="person__email")
+    def person_email(self, obj):
+        return obj.person.email if obj.person_id else "—"
+
+    def get_queryset(self, request):
+        return scope_client_queryset(super().get_queryset(request), request.user, client_field="client_id")
+
+    def _accessible(self, request, obj):
+        """Usuário-cliente só acessa Responsáveis (kind=client) do próprio
+        Cliente — os de kind=cstr têm client_id nulo, então nunca batem no
+        escopo. Equipe interna (scope None) acessa tudo normalmente."""
+        if obj is None:
+            return True
+        scope = get_scope_for_user(request.user)
+        if scope is None:
+            return True
+        return obj.client_id in scope["clients"]
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(request, obj) and self._accessible(request, obj)
+
+    def has_change_permission(self, request, obj=None):
+        return super().has_change_permission(request, obj) and self._accessible(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and self._accessible(request, obj)
+
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        if request.GET.get("field_name") == "responsible_client":
+            client_id = request.GET.get("client_id")
+            queryset = queryset.filter(client_id=client_id, is_active=True) if client_id else queryset.none()
+        if request.GET.get("field_name") == "responsible_cstr":
+            queryset = queryset.filter(kind=Responsible.KIND_CSTR)
+        return queryset, use_distinct
 
 
 @admin.register(Category)
@@ -425,49 +609,64 @@ class ClientAdmin(CompanyScopedAdmin):
         return super().has_delete_permission(request, obj) and self._client_accessible(request, obj)
 
 
-class ClientResponsibleInline(TabularInline):
-    model = ClientResponsible
+class ResponsibleClientInlineForm(forms.ModelForm):
+    """Inline de Responsável (Tipo=Cliente) dentro da tela de Cliente —
+    'client' e 'kind' vêm implícitos do contexto, não aparecem no form."""
+
+    name = forms.CharField(label="Nome", required=False)
+    email = forms.EmailField(label="E-mail", required=False)
+    phone = forms.CharField(label="Telefone", required=False)
+
+    class Meta:
+        model = Responsible
+        fields = ("job_title", "is_active")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.person_id:
+            person = self.instance.person
+            self.fields["name"].initial = person.name
+            self.fields["email"].initial = person.email
+            self.fields["phone"].initial = person.phone
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.kind = Responsible.KIND_CLIENT
+        data = self.cleaned_data
+        if instance.person_id:
+            update_person(instance.person, name=data.get("name"), email=data.get("email"), phone=data.get("phone"))
+        else:
+            instance.person = get_or_create_person(name=data.get("name"), email=data.get("email"), phone=data.get("phone"))
+        if commit:
+            instance.save()
+        return instance
+
+
+class ResponsibleClientInline(TabularInline):
+    model = Responsible
+    fk_name = "client"
+    form = ResponsibleClientInlineForm
     extra = 0
-    fields = ("name", "job_title", "email", "phone", "is_active")
+    fields = ("name", "email", "phone", "job_title", "is_active")
+    verbose_name = "Responsável do Cliente"
+    verbose_name_plural = "Responsáveis do Cliente"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(kind=Responsible.KIND_CLIENT)
 
     class Media:
         js = ("core/js/phone-mask.js",)
 
 
-ClientAdmin.inlines = (ClientResponsibleInline,)
+ClientAdmin.inlines = (ResponsibleClientInline,)
 
 
-@admin.register(ClientResponsible)
-class ClientResponsibleAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("name", "client", "job_title", "email", "phone", "is_active")
-    list_filter = ("client", "is_active")
-    search_fields = ("name", "email", "phone", "job_title", "client__legal_name", "client__trade_name")
-    autocomplete_fields = ("client",)
-    readonly_fields = ("created_at", "updated_at")
+@admin.register(Notification)
+class NotificationAdmin(ModelAdmin):
+    list_display = ("user", "title", "project_code", "is_read", "created_at")
+    list_filter = ("is_read",)
+    search_fields = ("user__username", "title", "message", "project_code")
+    readonly_fields = ("user", "title", "message", "url", "project_id", "project_code", "is_read", "created_at", "updated_at")
 
-    def get_queryset(self, request):
-        return scope_client_queryset(super().get_queryset(request), request.user, client_field="client_id")
-
-    def _responsible_accessible(self, request, obj):
-        if obj is None:
-            return True
-        scope = get_scope_for_user(request.user)
-        if scope is None:
-            return True
-        return obj.client_id in scope["clients"]
-
-    def has_view_permission(self, request, obj=None):
-        return super().has_view_permission(request, obj) and self._responsible_accessible(request, obj)
-
-    def has_change_permission(self, request, obj=None):
-        return super().has_change_permission(request, obj) and self._responsible_accessible(request, obj)
-
-    def has_delete_permission(self, request, obj=None):
-        return super().has_delete_permission(request, obj) and self._responsible_accessible(request, obj)
-
-    def get_search_results(self, request, queryset, search_term):
-        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
-        if request.GET.get("field_name") == "responsible_client":
-            client_id = request.GET.get("client_id")
-            queryset = queryset.filter(client_id=client_id, is_active=True) if client_id else queryset.none()
-        return queryset, use_distinct
+    def has_add_permission(self, request):
+        return False

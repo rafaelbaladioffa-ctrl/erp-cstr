@@ -42,6 +42,10 @@ export const PERMS = {
   addProjectTask: "projects.add_projecttask",
   changeProjectTask: "projects.change_projecttask",
   deleteProjectTask: "projects.delete_projecttask",
+  viewProjectOccurrence: "projects.view_projectoccurrence",
+  addProjectOccurrence: "projects.add_projectoccurrence",
+  changeProjectOccurrence: "projects.change_projectoccurrence",
+  deleteProjectOccurrence: "projects.delete_projectoccurrence",
   viewDailyUpdate: "updates.view_dailyupdate",
   addDailyUpdate: "updates.add_dailyupdate",
   changeDailyUpdate: "updates.change_dailyupdate",
@@ -59,7 +63,6 @@ export const PERMS = {
   viewJobTitle: "core.view_jobtitle",
   viewCollaborator: "core.view_collaborator",
   viewResponsible: "core.view_responsible",
-  viewClientResponsible: "core.view_clientresponsible",
   viewTask: "core.view_task",
 };
 
@@ -72,6 +75,5 @@ export const CADASTROS_PERMS = [
   PERMS.viewJobTitle,
   PERMS.viewCollaborator,
   PERMS.viewResponsible,
-  PERMS.viewClientResponsible,
   PERMS.viewTask,
 ];

@@ -29,18 +29,18 @@ class DailyUpdateAllocationForm(forms.ModelForm):
         self.fields["project"].queryset = Project.objects.filter(
             status__in=(Project.STATUS_IN_PROGRESS, Project.STATUS_PLANNING)
         ).select_related("site")
-        self.fields["collaborators"].queryset = Collaborator.objects.filter(is_active=True).order_by("name")
+        self.fields["collaborators"].queryset = Collaborator.objects.filter(is_active=True).order_by("person__name")
 
     def clean(self):
         cleaned_data = super().clean()
         project = cleaned_data.get("project")
         collaborators = cleaned_data.get("collaborators")
         if project and collaborators:
-            invalid = collaborators.exclude(company_id=project.company_id)
+            invalid = collaborators.exclude(person__company_id=project.company_id)
             if invalid.exists():
                 self.add_error(
                     "collaborators",
-                    "Todos os Colaboradores devem pertencer à mesma Empresa do Projeto selecionado.",
+                    "Todos os Técnicos devem pertencer à mesma Empresa do Projeto selecionado.",
                 )
         return cleaned_data
 
@@ -53,8 +53,8 @@ class DailyUpdateAllocationInline(TabularInline):
     extra = 1
     min_num = 1
     validate_min = True
-    verbose_name = "Projeto e Colaboradores"
-    verbose_name_plural = "Projetos e Colaboradores"
+    verbose_name = "Projeto e Técnicos"
+    verbose_name_plural = "Projetos e Técnicos"
 
 
 @admin.register(DailyUpdate)
@@ -77,7 +77,7 @@ class DailyUpdateAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         "allocations__project__po",
         "allocations__project__site__code",
         "allocations__project__site__name",
-        "allocations__collaborators__name",
+        "allocations__collaborators__person__name",
     )
     readonly_fields = ("site_readonly", "description_display", "created_by", "created_at", "updated_at")
     fields = (
@@ -127,7 +127,7 @@ class DailyUpdateAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
             filename=filename,
         )
 
-    @admin.action(description="Enviar e-mail aos colaboradores alocados")
+    @admin.action(description="Enviar e-mail aos técnicos alocados")
     def send_daily_update_emails_action(self, request, queryset):
         total_sent, total_skipped = 0, []
         for daily_update in queryset:
@@ -141,10 +141,10 @@ class DailyUpdateAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
             nomes = ", ".join(sorted(set(total_skipped)))
             messages.warning(
                 request,
-                f"Colaborador(es) sem e-mail cadastrado, envio ignorado para: {nomes}.",
+                f"Técnico(s) sem e-mail cadastrado, envio ignorado para: {nomes}.",
             )
         if not total_sent and not total_skipped:
-            messages.warning(request, "Nenhum colaborador alocado nas Atualizações Diárias selecionadas.")
+            messages.warning(request, "Nenhum técnico alocado nas Atualizações Diárias selecionadas.")
 
     def save_model(self, request, obj, form, change):
         if not obj.created_by_id:
@@ -178,14 +178,14 @@ class DailyUpdateAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
             return None
         return ", ".join(obj.sites) or None
 
-    @admin.display(description="Colaboradores")
+    @admin.display(description="Técnicos")
     def collaborators_display(self, obj):
         allocations = list(obj.allocations.select_related("project").prefetch_related("collaborators"))
         if not allocations:
             return "—"
         summaries = []
         for allocation in allocations[:2]:
-            names = list(allocation.collaborators.values_list("name", flat=True))
+            names = list(allocation.collaborators.values_list("person__name", flat=True))
             visible = names[:2]
             suffix = f" +{len(names) - 2}" if len(names) > 2 else ""
             summaries.append(f"{allocation.project.name}: {', '.join(visible)}{suffix}")

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { projectsApi } from "../api/resources";
 import type { Project } from "../api/types";
 import ProjectFormModal from "../components/projects/ProjectFormModal";
@@ -69,7 +69,11 @@ export default function ProjectsList() {
   const canChange = hasPerm(user, PERMS.changeProject);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<TabKey>("active");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab: TabKey = searchParams.get("tab") === "history" ? "history" : "active";
+  function setTab(next: TabKey) {
+    setSearchParams(next === "history" ? { tab: "history" } : {}, { replace: true });
+  }
   const [search, setSearch] = useState("");
   const [clientFilter, setClientFilter] = useState("");
   const [siteFilter, setSiteFilter] = useState("");

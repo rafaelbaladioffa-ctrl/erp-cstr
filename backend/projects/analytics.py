@@ -104,9 +104,9 @@ def build_projects_performance(*, company_id=None, client_id=None, status=None, 
 
 
 def build_technical_performance(*, company_id=None, date_from=None, date_to=None):
-    collaborators = Collaborator.objects.filter(is_active=True).select_related("company", "job_title")
+    collaborators = Collaborator.objects.filter(is_active=True).select_related("person", "person__company", "job_title")
     if company_id:
-        collaborators = collaborators.filter(company_id=company_id)
+        collaborators = collaborators.filter(person__company_id=company_id)
     collaborators = collaborators.prefetch_related("project_tasks", "project_tasks__rack_positions")
 
     rows = []
@@ -134,10 +134,10 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
         rows.append(
             {
                 "collaborator_id": collaborator.pk,
-                "name": collaborator.name,
+                "name": collaborator.person.name,
                 "registration": collaborator.registration,
                 "job_title": str(collaborator.job_title) if collaborator.job_title_id else None,
-                "company": str(collaborator.company) if collaborator.company_id else None,
+                "company": str(collaborator.person.company) if collaborator.person.company_id else None,
                 "tasks_total": tasks_total,
                 "tasks_completed": len(completed_tasks),
                 "hours_worked": round(hours_worked, 2),

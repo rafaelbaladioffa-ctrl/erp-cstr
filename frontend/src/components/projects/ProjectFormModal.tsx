@@ -3,7 +3,6 @@ import { projectsApi, registryApi } from "../../api/resources";
 import type {
   Category,
   ClientFull,
-  ClientResponsibleFull,
   Company,
   Project,
   ProjectType,
@@ -39,7 +38,7 @@ export default function ProjectFormModal({
   const [categories, setCategories] = useState<Category[]>([]);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
   const [responsibles, setResponsibles] = useState<ResponsibleFull[]>([]);
-  const [clientResponsibles, setClientResponsibles] = useState<ClientResponsibleFull[]>([]);
+  const [clientResponsibles, setClientResponsibles] = useState<ResponsibleFull[]>([]);
   const [loadingRefs, setLoadingRefs] = useState(true);
 
   const [values, setValues] = useState<FormValues>(
@@ -65,8 +64,8 @@ export default function ProjectFormModal({
       registryApi.sites.list({ page_size: "500" } as never),
       registryApi.categories.list({ page_size: "200" } as never),
       registryApi.projectTypes.list({ page_size: "200" } as never),
-      registryApi.responsibles.list({ page_size: "200" } as never),
-      registryApi.clientResponsibles.list({ page_size: "500" } as never),
+      registryApi.responsibles.list({ page_size: "200", kind: "cstr" } as never),
+      registryApi.responsibles.list({ page_size: "500", kind: "client" } as never),
     ])
       .then(([c, cl, s, cat, pt, resp, clResp]) => {
         if (c.status === "fulfilled") setCompanies(c.value.results);

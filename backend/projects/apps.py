@@ -6,3 +6,6 @@ class ProjectsConfig(AppConfig):
     name = "projects"
     verbose_name = "Projetos"
 
+    def ready(self):
+        from . import signals  # noqa: F401
+

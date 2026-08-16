@@ -7,6 +7,8 @@ const STATUS_TONE: Record<string, Tone> = {
   paused: "amber",
   completed: "green",
   canceled: "red",
+  open: "amber",
+  resolved: "green",
 };
 
 const TONE_STYLES: Record<Tone, { bg: string; color: string }> = {
@@ -14,7 +16,7 @@ const TONE_STYLES: Record<Tone, { bg: string; color: string }> = {
   amber: { bg: "var(--amber-soft)", color: "var(--amber)" },
   green: { bg: "var(--green-soft)", color: "var(--green)" },
   red: { bg: "var(--red-soft)", color: "var(--red)" },
-  neutral: { bg: "#eef1f6", color: "var(--text-muted)" },
+  neutral: { bg: "var(--bg)", color: "var(--text-muted)" },
 };
 
 export default function StatusBadge({ status, label }: { status: string; label: string }) {

@@ -3,16 +3,18 @@ import type {
   AuditLogEntry,
   Category,
   ClientFull,
-  ClientResponsibleFull,
   Collaborator,
   CollaboratorFull,
+  CollaboratorHours,
   Company,
   DailyUpdate,
   JobTitle,
   Me,
+  Notification,
   Paginated,
   Project,
   ProjectDailyUpdate,
+  ProjectOccurrence,
   ProjectTask,
   ProjectTaskBulkPayload,
   ProjectTaskCreatePayload,
@@ -52,7 +54,6 @@ export const registryApi = {
   jobTitles: crud<JobTitle>("/registry/job-titles"),
   sites: crud<SiteFull>("/registry/sites"),
   clients: crud<ClientFull>("/registry/clients"),
-  clientResponsibles: crud<ClientResponsibleFull>("/registry/client-responsibles"),
   responsibles: crud<ResponsibleFull>("/registry/responsibles"),
   collaborators: crud<CollaboratorFull>("/registry/collaborators"),
   tasks: crud<TaskFull>("/registry/tasks"),
@@ -97,6 +98,26 @@ export interface Site {
 
 export const meApi = {
   get: () => apiClient.get<Me>("/me/").then((r) => r.data),
+  changePassword: (old_password: string, new_password: string) =>
+    apiClient.post<{ detail: string }>("/me/change-password/", { old_password, new_password }).then((r) => r.data),
+};
+
+export interface GlobalSearchResult {
+  projects: { id: number; code: string; name: string; po: string; client: string; site: string }[];
+  sites: { id: number; code: string; name: string; client: string; city: string }[];
+  tasks: {
+    id: number;
+    task_name: string;
+    project_id: number;
+    project_name: string;
+    project_code: string;
+    status: string;
+    status_display: string;
+  }[];
+}
+
+export const searchApi = {
+  search: (q: string) => apiClient.get<GlobalSearchResult>("/search/", { params: { q } }).then((r) => r.data),
 };
 
 export const projectsApi = {
@@ -123,6 +144,8 @@ export const projectsApi = {
     apiClient
       .post<{ created: number; skipped: number; tasks: ProjectTask[] }>(`/projects/${id}/tasks/create/`, payload)
       .then((r) => r.data),
+  hoursByCollaborator: (id: number) =>
+    apiClient.get<CollaboratorHours[]>(`/projects/${id}/hours-by-collaborator/`).then((r) => r.data),
 };
 
 export const rackPositionsApi = {
@@ -140,6 +163,23 @@ export const projectTasksApi = {
   update: (id: number, payload: Partial<ProjectTask>) =>
     apiClient.patch<ProjectTask>(`/project-tasks/${id}/`, payload).then((r) => r.data),
   remove: (id: number) => apiClient.delete(`/project-tasks/${id}/`),
+};
+
+export const notificationsApi = {
+  list: () => apiClient.get<Paginated<Notification>>("/notifications/").then((r) => r.data),
+  unreadCount: () => apiClient.get<{ count: number }>("/notifications/unread_count/").then((r) => r.data),
+  markRead: (id: number) => apiClient.post<Notification>(`/notifications/${id}/mark-read/`).then((r) => r.data),
+  markAllRead: () => apiClient.post("/notifications/mark-all-read/"),
+};
+
+export const projectOccurrencesApi = {
+  list: (projectId: number) =>
+    apiClient.get<Paginated<ProjectOccurrence>>("/project-occurrences/", { params: { project: String(projectId) } }).then((r) => r.data),
+  create: (payload: Partial<ProjectOccurrence>) =>
+    apiClient.post<ProjectOccurrence>("/project-occurrences/", payload).then((r) => r.data),
+  update: (id: number, payload: Partial<ProjectOccurrence>) =>
+    apiClient.patch<ProjectOccurrence>(`/project-occurrences/${id}/`, payload).then((r) => r.data),
+  remove: (id: number) => apiClient.delete(`/project-occurrences/${id}/`),
 };
 
 export const clientsApi = {

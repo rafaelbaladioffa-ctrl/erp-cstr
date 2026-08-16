@@ -17,9 +17,9 @@ from unfold.admin import ModelAdmin, TabularInline
 from core.access_scope import scope_project_queryset, user_can_access_project
 from core.admin_mixins import SelectablePageSizeAdminMixin
 from core.csv_io import MAX_CSV_UPLOAD_BYTES, neutralize_formula
-from core.models import Category, Client, ClientResponsible, Collaborator, Company, ProjectType, Responsible, Site, Task
+from core.models import Category, Client, Collaborator, Company, ProjectType, Responsible, Site, Task
 from .analytics import build_projects_performance, build_technical_performance, parse_date
-from .models import DashboardProxy, Project, ProjectHistory, ProjectTask, RackPosition
+from .models import DashboardProxy, Project, ProjectHistory, ProjectOccurrence, ProjectTask, RackPosition
 from .services import (
     BulkActionError,
     add_tasks_to_project,
@@ -200,8 +200,8 @@ class ProjectAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         company_id = self.data.get("company") or getattr(self.instance, "company_id", None)
-        queryset = Collaborator.objects.filter(is_active=True).order_by("name")
-        self.fields["bulk_collaborators"].queryset = queryset.filter(company_id=company_id) if company_id else queryset.none()
+        queryset = Collaborator.objects.filter(is_active=True).order_by("person__name")
+        self.fields["bulk_collaborators"].queryset = queryset.filter(person__company_id=company_id) if company_id else queryset.none()
         if self.instance and self.instance.pk:
             self.fields["bulk_tasks"].queryset = self.instance.project_tasks.select_related("task").order_by("order", "id")
             self.fields["bulk_task_rack_positions"].queryset = self.instance.rack_positions.all()
@@ -369,8 +369,8 @@ class ProjectTaskBulkActionForm(forms.Form):
             project.rack_positions.all() if project else RackPosition.objects.none()
         )
         self.fields["bulk_collaborators"].queryset = Collaborator.objects.filter(
-            is_active=True, company_id=project.company_id
-        ).order_by("name") if project else Collaborator.objects.none()
+            is_active=True, person__company_id=project.company_id
+        ).order_by("person__name") if project else Collaborator.objects.none()
         self.fields["bulk_tasks"].queryset = (
             project.project_tasks.select_related("task").order_by("order", "id") if project else ProjectTask.objects.none()
         )
@@ -448,7 +448,7 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         "po",
         "client__legal_name",
         "client__trade_name",
-        "responsible_client__name",
+        "responsible_client__person__name",
     )
     autocomplete_fields = ("client", "site", "project_type", "category", "responsible_cstr", "responsible_client")
     readonly_fields = ("code", "created_at", "updated_at")
@@ -604,7 +604,8 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
             ]
         )
         queryset = self.get_queryset(request).select_related(
-            "company", "client", "site", "project_type", "category", "responsible_cstr", "responsible_client"
+            "company", "client", "site", "project_type", "category",
+            "responsible_cstr", "responsible_cstr__person", "responsible_client", "responsible_client__person",
         )
         for project in queryset:
             writer.writerow(
@@ -617,8 +618,8 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                     neutralize_formula(project.site.name) if project.site else "",
                     neutralize_formula(project.project_type.name) if project.project_type else "",
                     neutralize_formula(project.category.name) if project.category else "",
-                    neutralize_formula(project.responsible_cstr.name) if project.responsible_cstr else "",
-                    neutralize_formula(project.responsible_client.name) if project.responsible_client else "",
+                    neutralize_formula(project.responsible_cstr.person.name) if project.responsible_cstr else "",
+                    neutralize_formula(project.responsible_client.person.name) if project.responsible_client else "",
                     project.get_status_display(),
                     project.planned_start.strftime("%d/%m/%Y") if project.planned_start else "",
                     project.planned_end.strftime("%d/%m/%Y") if project.planned_end else "",
@@ -659,12 +660,18 @@ class ProjectAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
                             site = self._csv_relation(Site, row.get("site"), "name", "code", queryset=site_queryset)
                             project_type = self._csv_relation(ProjectType, row.get("tipo_projeto"), "name")
                             category = self._csv_relation(Category, row.get("categoria"), "name")
-                            responsible_cstr = self._csv_relation(Responsible, row.get("responsavel_cstr"), "name")
-                            client_responsibles = ClientResponsible.objects.filter(client=client) if client else ClientResponsible.objects.none()
+                            responsible_cstr = self._csv_relation(
+                                Responsible, row.get("responsavel_cstr"), "person__name",
+                                queryset=Responsible.objects.filter(kind=Responsible.KIND_CSTR),
+                            )
+                            client_responsibles = (
+                                Responsible.objects.filter(kind=Responsible.KIND_CLIENT, client=client)
+                                if client else Responsible.objects.none()
+                            )
                             responsible_client = self._csv_relation(
-                                ClientResponsible,
+                                Responsible,
                                 row.get("responsavel_cliente"),
-                                "name",
+                                "person__name",
                                 queryset=client_responsibles,
                             )
                             status_text = (row.get("status") or "Planejamento").strip().casefold()
@@ -909,8 +916,8 @@ class ProjectHistoryAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         "po",
         "client__legal_name",
         "client__trade_name",
-        "responsible_cstr__name",
-        "responsible_client__name",
+        "responsible_cstr__person__name",
+        "responsible_client__person__name",
     )
     ordering = ("-actual_end", "-updated_at")
 
@@ -919,7 +926,7 @@ class ProjectHistoryAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
             super()
             .get_queryset(request)
             .filter(status=Project.STATUS_COMPLETED)
-            .select_related("company", "client", "site", "project_type", "responsible_cstr")
+            .select_related("company", "client", "site", "project_type", "responsible_cstr", "responsible_cstr__person")
         )
         return scope_project_queryset(queryset, request.user)
 
@@ -1005,13 +1012,13 @@ class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     form = ProjectTaskAdminForm
     list_display = ("project", "task", "rack_positions_display", "collaborators_display", "status", "order", "planned_start", "planned_end")
     list_filter = ("status", "project__company", "project", "rack_positions")
-    search_fields = ("project__code", "project__name", "task__code", "task__name", "collaborators__name", "rack_positions__position")
+    search_fields = ("project__code", "project__name", "task__code", "task__name", "collaborators__person__name", "rack_positions__position")
     autocomplete_fields = ("project", "task", "collaborators")
     readonly_fields = ("created_at", "updated_at")
 
     @admin.display(description="Responsáveis")
     def collaborators_display(self, obj):
-        names = [collaborator.name for collaborator in obj.collaborators.all()]
+        names = [collaborator.person.name for collaborator in obj.collaborators.select_related("person").all()]
         return ", ".join(names) if names else "-"
 
     @admin.display(description="Rack Positions")
@@ -1021,6 +1028,19 @@ class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).prefetch_related("collaborators", "rack_positions")
+
+    def get_model_perms(self, request):
+        """Mantém as rotas para os links internos, mas oculta o submódulo do menu."""
+        return {}
+
+
+@admin.register(ProjectOccurrence)
+class ProjectOccurrenceAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("project", "title", "severity", "status", "responsible", "occurred_at", "resolved_at")
+    list_filter = ("status", "severity", "project__company", "project")
+    search_fields = ("project__code", "project__name", "title", "description", "responsible__person__name")
+    autocomplete_fields = ("project", "responsible")
+    readonly_fields = ("resolved_at", "created_at", "updated_at")
 
     def get_model_perms(self, request):
         """Mantém as rotas para os links internos, mas oculta o submódulo do menu."""

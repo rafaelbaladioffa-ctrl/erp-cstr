@@ -31,7 +31,7 @@ export default function Modal({
     >
       <div
         className="card"
-        style={{ width: "100%", maxWidth: width, padding: 0, background: "#fff" }}
+        style={{ width: "100%", maxWidth: width, padding: 0, background: "var(--white)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
@@ -55,7 +55,7 @@ export default function Modal({
               height: 32,
               borderRadius: 8,
               border: "1px solid var(--border)",
-              background: "#fff",
+              background: "var(--white)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

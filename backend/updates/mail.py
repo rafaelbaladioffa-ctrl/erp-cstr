@@ -25,18 +25,18 @@ def send_daily_update_emails(daily_update):
     pdf_filename = f"atualizacao-diaria-{daily_update.allocation_date:%Y-%m-%d}.pdf"
 
     sent, skipped = [], []
-    for collaborator in sorted(collaborators, key=lambda c: c.name):
-        if not collaborator.email:
-            skipped.append(collaborator.name)
+    for collaborator in sorted(collaborators, key=lambda c: c.person.name):
+        if not collaborator.person.email:
+            skipped.append(collaborator.person.name)
             continue
         email = EmailMessage(
             subject=subject,
             body=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[collaborator.email],
+            to=[collaborator.person.email],
         )
         email.attach(pdf_filename, pdf_bytes, "application/pdf")
         email.send(fail_silently=False)
-        sent.append(collaborator.name)
+        sent.append(collaborator.person.name)
 
     return sent, skipped

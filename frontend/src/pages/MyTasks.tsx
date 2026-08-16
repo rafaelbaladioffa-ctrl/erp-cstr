@@ -102,8 +102,8 @@ export default function MyTasks() {
       <div>
         <div className="mt-title">Minhas Tarefas</div>
         <div className="empty-state">
-          Seu usuário ainda não está vinculado a um Colaborador. Peça para o administrador vincular seu
-          usuário no cadastro de Colaboradores.
+          Seu usuário ainda não está vinculado a um Técnico. Peça para o administrador vincular seu
+          usuário no cadastro de Técnicos.
         </div>
       </div>
     );

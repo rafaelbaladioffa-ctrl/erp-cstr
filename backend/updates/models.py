@@ -66,7 +66,9 @@ class DailyUpdate(TimestampedModel):
             project_code = f" ({project.code})" if project.code else ""
             site_name = project.site.name if project.site else "Não informado"
             po = project.po or "Não informada"
-            collaborators = ", ".join(allocation.collaborators.order_by("name").values_list("name", flat=True))
+            collaborators = ", ".join(
+                allocation.collaborators.order_by("person__name").values_list("person__name", flat=True)
+            )
             lines.extend(
                 (
                     f"• {project.name}{project_code}",

@@ -10,6 +10,10 @@ export interface FieldConfig {
   options?: FieldOption[];
   span?: 1 | 2;
   placeholder?: string;
+  /** Mostra o campo só quando o predicado retorna true — usado para
+   * formulários "com Tipo" onde só um subconjunto de campos se aplica
+   * (ex: Responsável CSTR usa Empresa, Responsável Cliente usa Cliente). */
+  visibleIf?: (values: FormValues) => boolean;
 }
 
 export type FormValues = Record<string, unknown>;
@@ -27,7 +31,7 @@ export default function DynamicForm({
 }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
-      {fields.map((field) => {
+      {fields.filter((field) => !field.visibleIf || field.visibleIf(values)).map((field) => {
         const fieldErrors = errors?.[field.name];
         const value = values[field.name];
         return (

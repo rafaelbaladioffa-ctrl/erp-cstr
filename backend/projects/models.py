@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
-from core.models import Category, Client, ClientResponsible, Collaborator, Company, ProjectType, Responsible, Site, Task, TimestampedModel
+from core.models import Category, Client, Collaborator, Company, ProjectType, Responsible, Site, Task, TimestampedModel
 
 
 class ProjectSequence(models.Model):
@@ -49,21 +49,25 @@ class Project(TimestampedModel):
         Responsible,
         verbose_name="Responsável CSTR",
         on_delete=models.PROTECT,
-        related_name="projects",
+        related_name="cstr_projects",
         null=True,
         blank=True,
         limit_choices_to=(
-            models.Q(company__legal_name__icontains="CONSULTIMER")
-            | models.Q(company__trade_name__icontains="CONSULTIMER")
+            models.Q(kind=Responsible.KIND_CSTR)
+            & (
+                models.Q(person__company__legal_name__icontains="CONSULTIMER")
+                | models.Q(person__company__trade_name__icontains="CONSULTIMER")
+            )
         ),
     )
     responsible_client = models.ForeignKey(
-        ClientResponsible,
+        Responsible,
         verbose_name="Responsável Cliente",
         on_delete=models.PROTECT,
-        related_name="projects",
+        related_name="client_projects",
         null=True,
         blank=True,
+        limit_choices_to=models.Q(kind=Responsible.KIND_CLIENT),
     )
     status = models.CharField("status", max_length=20, choices=STATUS_CHOICES, default=STATUS_PLANNING)
     planned_start = models.DateField("início previsto", null=True, blank=True)
@@ -88,7 +92,7 @@ class Project(TimestampedModel):
         if self.client_id and self.site_id and self.site.client_id != self.client_id:
             errors["site"] = "O Site selecionado deve pertencer ao Cliente do projeto."
         if self.responsible_cstr_id and "CONSULTIMER" not in (
-            f"{self.responsible_cstr.company.legal_name} {self.responsible_cstr.company.trade_name}".upper()
+            f"{self.responsible_cstr.person.company.legal_name} {self.responsible_cstr.person.company.trade_name}".upper()
         ):
             errors["responsible_cstr"] = "O Responsável CSTR deve pertencer à empresa Consultimer."
         if self.responsible_client_id and self.client_id and self.responsible_client.client_id != self.client_id:
@@ -278,3 +282,53 @@ class ProjectTask(TimestampedModel):
         if self.status == self.STATUS_COMPLETED and self.planned_start and self.planned_end:
             return round(max((self.planned_end - self.planned_start).total_seconds(), 0) / 3600, 2)
         return 0.0
+
+
+class ProjectOccurrence(TimestampedModel):
+    SEVERITY_LOW = "low"
+    SEVERITY_MEDIUM = "medium"
+    SEVERITY_HIGH = "high"
+    SEVERITY_CRITICAL = "critical"
+    SEVERITY_CHOICES = (
+        (SEVERITY_LOW, "Baixa"),
+        (SEVERITY_MEDIUM, "Média"),
+        (SEVERITY_HIGH, "Alta"),
+        (SEVERITY_CRITICAL, "Crítica"),
+    )
+
+    STATUS_OPEN = "open"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_RESOLVED = "resolved"
+    STATUS_CANCELED = "canceled"
+    STATUS_CHOICES = (
+        (STATUS_OPEN, "Aberta"),
+        (STATUS_IN_PROGRESS, "Em Andamento"),
+        (STATUS_RESOLVED, "Resolvida"),
+        (STATUS_CANCELED, "Cancelada"),
+    )
+
+    project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="occurrences")
+    title = models.CharField("título", max_length=200)
+    description = models.TextField("descrição", blank=True)
+    responsible = models.ForeignKey(
+        Collaborator, verbose_name="responsável", on_delete=models.SET_NULL, null=True, blank=True, related_name="occurrences"
+    )
+    severity = models.CharField("criticidade", max_length=20, choices=SEVERITY_CHOICES, default=SEVERITY_MEDIUM)
+    status = models.CharField("status", max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    occurred_at = models.DateField("data da ocorrência", default=timezone.now)
+    resolved_at = models.DateField("data de resolução", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Ocorrência do Projeto"
+        verbose_name_plural = "Ocorrências do Projeto"
+        ordering = ("-occurred_at", "-id")
+
+    def __str__(self):
+        return f"{self.project} - {self.title}"
+
+    def save(self, *args, **kwargs):
+        if self.status == self.STATUS_RESOLVED and not self.resolved_at:
+            self.resolved_at = timezone.now().date()
+        elif self.status != self.STATUS_RESOLVED:
+            self.resolved_at = None
+        super().save(*args, **kwargs)

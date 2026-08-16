@@ -31,11 +31,96 @@ def neutralize_formula(value: str) -> str:
     return value
 
 
+class _PersonField:
+    """Campo 'virtual' usado por get_csv_fields para achatar as colunas de
+    core.Person (nome/e-mail/telefone/empresa) diretamente no CSV de
+    Collaborator/Responsible/ClientResponsible — esses modelos não têm mais
+    essas colunas próprias (viraram uma FK 'person', ver core/models.py),
+    mas o CSV continua com as mesmas colunas de sempre para quem importa/
+    exporta essas planilhas."""
+
+    LABELS = {"name": "Nome", "email": "E-mail", "phone": "Telefone", "company": "Empresa"}
+
+    def __init__(self, base_name, sub_name):
+        from .models import Company
+
+        self.name = f"{base_name}__{sub_name}"
+        self.attname = self.name
+        self.verbose_name = self.LABELS[sub_name]
+        self.is_relation = sub_name == "company"
+        self.related_model = Company if self.is_relation else None
+        self.null = sub_name != "name"
+        self.base_name = base_name
+        self.sub_name = sub_name
+
+    def get_internal_type(self):
+        return "EmailField" if self.sub_name == "email" else "CharField"
+
+
 def get_csv_fields(model):
-    return [field for field in model._meta.fields if field.name != "id" and field.editable]
+    from .models import Person
+
+    fields = []
+    for field in model._meta.fields:
+        if field.name == "id" or not field.editable:
+            continue
+        if field.is_relation and field.related_model is Person:
+            fields.extend(_PersonField(field.name, sub) for sub in ("name", "email", "phone", "company"))
+        else:
+            fields.append(field)
+    return fields
+
+
+def _match_by_str(related_model, raw, verbose_name):
+    match = next(
+        (candidate for candidate in related_model.objects.all() if str(candidate) == raw),
+        None,
+    )
+    if match is None:
+        raise ValueError(f'{verbose_name}: não encontrado "{raw}".')
+    return match
+
+
+def _resolve_person(data):
+    """Reaproveita um Person existente (por e-mail, senão por nome+empresa)
+    ou cria um novo — para que importar Colaborador/Responsável/Responsável
+    do Cliente via CSV não duplique a mesma pessoa em vários registros."""
+    from .models import Person
+
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise ValueError("Nome: obrigatório.")
+    email = (data.get("email") or "").strip()
+    company = data.get("company")
+
+    person = Person.objects.filter(email__iexact=email).first() if email else None
+    if person is None:
+        person = Person.objects.filter(name__iexact=name, company=company).first()
+    if person is None:
+        return Person.objects.create(name=name, email=email, phone=data.get("phone") or "", company=company)
+
+    changed = False
+    if email and not person.email:
+        person.email = email
+        changed = True
+    if data.get("phone") and not person.phone:
+        person.phone = data["phone"]
+        changed = True
+    if company and not person.company_id:
+        person.company = company
+        changed = True
+    if changed:
+        person.save()
+    return person
 
 
 def serialize_csv_value(obj, field):
+    if isinstance(field, _PersonField):
+        person = getattr(obj, field.base_name, None)
+        if person is None:
+            return ""
+        value = getattr(person, field.sub_name, None)
+        return neutralize_formula(str(value)) if value else ""
     if field.is_relation:
         related = getattr(obj, field.name)
         return neutralize_formula(str(related)) if related is not None else ""
@@ -126,7 +211,17 @@ def import_csv_rows(model, file_content):
     for line_number, row in enumerate(rows, start=2):
         try:
             with transaction.atomic():
-                values = {field.name: parse_csv_value(row, field) for field in fields}
+                values = {}
+                person_data = {}
+                person_base_name = None
+                for field in fields:
+                    if isinstance(field, _PersonField):
+                        person_base_name = field.base_name
+                        person_data[field.sub_name] = parse_csv_value(row, field)
+                    else:
+                        values[field.name] = parse_csv_value(row, field)
+                if person_base_name:
+                    values[person_base_name] = _resolve_person(person_data)
                 obj = model(**values)
                 obj.full_clean()
                 obj.save()

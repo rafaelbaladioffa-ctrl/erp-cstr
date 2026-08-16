@@ -2,7 +2,7 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.utils import timezone
 
-from core.models import ClientResponsible
+from core.models import Responsible
 from projects.models import ProjectTask
 
 WORKDAY_START = "07:30"
@@ -29,7 +29,18 @@ def compute_progress_defaults(project, date):
     completed = [pt for pt in all_tasks if pt.status == ProjectTask.STATUS_COMPLETED]
     percent = round((len(completed) / total) * 100) if total else 0
 
-    executed_today = [pt for pt in all_tasks if pt.actual_end == date]
+    def completed_on(pt):
+        # `actual_end` só é preenchido quando a tarefa passa pelo fluxo de
+        # iniciar/pausar/concluir do técnico (Minhas Tarefas). Tarefas
+        # concluídas por edição direta ou ação em massa não têm essa data —
+        # nesse caso usamos `updated_at` (quando o status virou "concluída")
+        # como aproximação de quando ela foi executada.
+        if pt.status != ProjectTask.STATUS_COMPLETED:
+            return None
+        reference = pt.actual_end or pt.updated_at
+        return timezone.localtime(reference).date() if reference else None
+
+    executed_today = [pt for pt in all_tasks if completed_on(pt) == date]
     activities_text = "\n".join(
         f"{pt.task.name} — {STATUS_LABELS.get(pt.status, pt.status)}" for pt in executed_today
     )
@@ -56,10 +67,10 @@ def compute_progress_defaults(project, date):
 def build_project_update_body(project_update):
     project = project_update.project
 
-    responsible_aws = project.responsible_client.name if project.responsible_client_id else "Não informado"
-    responsible_cstr = project.responsible_cstr.name if project.responsible_cstr_id else "Não informado"
+    responsible_aws = project.responsible_client.person.name if project.responsible_client_id else "Não informado"
+    responsible_cstr = project.responsible_cstr.person.name if project.responsible_cstr_id else "Não informado"
     collaborators_line = (
-        ", ".join(project_update.collaborators.order_by("name").values_list("name", flat=True))
+        ", ".join(project_update.collaborators.order_by("person__name").values_list("person__name", flat=True))
         or "Não informados"
     )
 
@@ -102,7 +113,9 @@ def send_project_daily_update_email(project_update):
     responsibles = []
     if project.client_id:
         responsibles = list(
-            ClientResponsible.objects.filter(client_id=project.client_id, is_active=True)
+            Responsible.objects.filter(
+                kind=Responsible.KIND_CLIENT, client_id=project.client_id, is_active=True
+            ).select_related("person")
         )
 
     subject = f"Atualização de Projeto — {project.name} ({project_update.date:%d/%m/%Y})"
@@ -116,18 +129,18 @@ def send_project_daily_update_email(project_update):
 
     sent, skipped = [], []
     for responsible in responsibles:
-        if not responsible.email:
-            skipped.append(responsible.name)
+        if not responsible.person.email:
+            skipped.append(responsible.person.name)
             continue
         email = EmailMessage(
             subject=subject,
             body=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[responsible.email],
+            to=[responsible.person.email],
         )
         email.attach(pdf_filename, pdf_bytes, "application/pdf")
         email.send(fail_silently=False)
-        sent.append(responsible.name)
+        sent.append(responsible.person.name)
 
     if sent:
         type(project_update).objects.filter(pk=project_update.pk).update(sent_at=timezone.now())

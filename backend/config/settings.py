@@ -122,13 +122,18 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "users.User"
 
 UNFOLD = {
-    "SITE_TITLE": "ERP CSTR",
+    "SITE_TITLE": "Consultimer | Projetos",
     "SITE_HEADER": "Consultimer ERP",
     "SITE_SUBHEADER": "Gestão de projetos e operações",
     "SITE_LOGO": {
         "light": lambda request: static("core/img/consultimer-logo-light.png"),
         "dark": lambda request: static("core/img/consultimer-logo-branco.png"),
     },
+    "SITE_FAVICONS": [
+        {"rel": "icon", "sizes": "32x32", "type": "image/png", "href": lambda request: static("core/img/favicon-32.png")},
+        {"rel": "icon", "sizes": "16x16", "type": "image/png", "href": lambda request: static("core/img/favicon-16.png")},
+        {"rel": "apple-touch-icon", "href": lambda request: static("core/img/apple-touch-icon.png")},
+    ],
     "SITE_SYMBOL": "hub",
     "SHOW_HISTORY": True,
     "SHOW_VIEW_ON_SITE": False,

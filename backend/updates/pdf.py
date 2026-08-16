@@ -138,7 +138,7 @@ def build_daily_updates_pdf(updates, allocation_date):
 
     for number, entry in enumerate(project_entries, 1):
         project = entry["project"]
-        technicians = sorted(entry["collaborators"].values(), key=lambda item: item.name.lower())
+        technicians = sorted(entry["collaborators"].values(), key=lambda item: item.person.name.lower())
         project_heading = Table(
             [[Paragraph(f"{number:02d}", styles["metric_value"]), Paragraph(project.name, styles["project"])]],
             colWidths=[14 * mm, 160 * mm],
@@ -178,7 +178,7 @@ def build_daily_updates_pdf(updates, allocation_date):
 
         technician_cells = [Paragraph("EQUIPE ALOCADA", styles["label"])]
         technician_cells.extend(
-            Paragraph(f"- {collaborator.name}", styles["technician"])
+            Paragraph(f"- {collaborator.person.name}", styles["technician"])
             for collaborator in technicians
         )
         if not technicians:

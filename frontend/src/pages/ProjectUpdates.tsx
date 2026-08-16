@@ -21,6 +21,8 @@ export default function ProjectUpdates() {
   const [newProjectId, setNewProjectId] = useState<number | "">("");
   const [newDate, setNewDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [newSummary, setNewSummary] = useState("");
+  const [generateError, setGenerateError] = useState("");
+  const [generating, setGenerating] = useState(false);
 
   function reload() {
     setLoading(true);
@@ -38,16 +40,30 @@ export default function ProjectUpdates() {
 
   async function handleGenerate() {
     if (!newProjectId) return;
-    const created = await projectUpdatesApi.create({
-      project: Number(newProjectId),
-      date: newDate,
-      summary: newSummary,
-    });
-    setCreating(false);
-    setNewProjectId("");
-    setNewSummary("");
-    reload();
-    setSelected(created);
+    setGenerating(true);
+    setGenerateError("");
+    try {
+      const created = await projectUpdatesApi.create({
+        project: Number(newProjectId),
+        date: newDate,
+        summary: newSummary,
+      });
+      setCreating(false);
+      setNewProjectId("");
+      setNewSummary("");
+      reload();
+      setSelected(created);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: Record<string, string[]> } };
+      const data = axiosErr.response?.data;
+      const raw = data ? Object.values(data).flat().join(" ") : "";
+      const message = raw.includes("devem criar um set único")
+        ? "Já existe uma atualização para este projeto nesta data. Edite a atualização existente na lista abaixo."
+        : raw || "Não foi possível gerar a atualização.";
+      setGenerateError(message);
+    } finally {
+      setGenerating(false);
+    }
   }
 
   return (
@@ -66,76 +82,75 @@ export default function ProjectUpdates() {
         }
       />
 
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {creating && canCreate && (
-            <div className="form-card">
-              <label className="form-label">Projeto</label>
-              <select className="input" value={newProjectId} onChange={(e) => setNewProjectId(Number(e.target.value))}>
-                <option value="">Selecione...</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.code} — {p.name}
-                  </option>
-                ))}
-              </select>
+      {creating && canCreate && (
+        <div className="form-card">
+          <label className="form-label">Projeto</label>
+          <select className="input" value={newProjectId} onChange={(e) => setNewProjectId(Number(e.target.value))}>
+            <option value="">Selecione...</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code} — {p.name}
+              </option>
+            ))}
+          </select>
 
-              <label className="form-label">Data</label>
-              <input type="date" className="input" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+          <label className="form-label">Data</label>
+          <input type="date" className="input" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
 
-              <label className="form-label">Observações (opcional)</label>
-              <textarea className="input" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} style={{ height: 80 }} />
+          <label className="form-label">Observações (opcional)</label>
+          <textarea className="input" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} style={{ height: 80 }} />
 
-              <button className="btn btn-primary" onClick={handleGenerate} style={{ marginTop: 14 }}>
-                Gerar Atualização
-              </button>
-            </div>
-          )}
+          {generateError && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{generateError}</p>}
 
-          {loading ? (
-            <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {updates.map((update) => (
+          <button className="btn btn-primary" onClick={handleGenerate} disabled={generating} style={{ marginTop: 14 }}>
+            {generating ? "Gerando..." : "Gerar Atualização"}
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {updates.map((update) => {
+            const expanded = selected?.id === update.id;
+            return (
+              <div key={update.id} className="card" style={{ padding: 16 }}>
                 <div
-                  key={update.id}
-                  onClick={() => setSelected(update)}
-                  className="card"
-                  style={{
-                    padding: 14,
-                    cursor: "pointer",
-                    borderColor: selected?.id === update.id ? "var(--orange)" : undefined,
-                    borderWidth: selected?.id === update.id ? 2 : undefined,
-                  }}
+                  onClick={() => setSelected(expanded ? null : update)}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <div>
                     <strong style={{ color: "var(--text)" }}>{update.project_name}</strong>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
+                      {update.project_code} · {new Date(update.date + "T00:00:00").toLocaleDateString("pt-BR")} · {update.completion_percent}%
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: update.is_sent ? "var(--green)" : "var(--amber)" }}>
                       {update.is_sent ? "Enviado" : "Não enviado"}
                     </span>
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    {new Date(update.date + "T00:00:00").toLocaleDateString("pt-BR")} · {update.completion_percent}%
+                    <Icon name={expanded ? "expand_less" : "expand_more"} style={{ fontSize: 20, color: "var(--text-faint)" }} />
                   </div>
                 </div>
-              ))}
-              {updates.length === 0 && <div className="empty-state">Nenhuma atualização registrada.</div>}
-            </div>
-          )}
-        </div>
 
-        {selected && (
-          <ProjectUpdateEditor
-            update={selected}
-            collaborators={collaborators}
-            canEdit={canEdit}
-            onChange={(u) => {
-              setSelected(u);
-              setUpdates((prev) => prev.map((item) => (item.id === u.id ? u : item)));
-            }}
-          />
-        )}
-      </div>
+                {expanded && (
+                  <ProjectUpdateEditor
+                    update={update}
+                    collaborators={collaborators}
+                    canEdit={canEdit}
+                    onChange={(u) => {
+                      setSelected(u);
+                      setUpdates((prev) => prev.map((item) => (item.id === u.id ? u : item)));
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
+          {updates.length === 0 && <div className="empty-state">Nenhuma atualização registrada.</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -199,11 +214,8 @@ function ProjectUpdateEditor({
   }
 
   return (
-    <div className="card" style={{ flex: 1, padding: 20, maxWidth: 440, flexShrink: 0 }}>
-      <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>{update.project_name}</h2>
-      <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>{update.project_code}</p>
-
-      <label className="form-label">Colaboradores</label>
+    <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
+      <label className="form-label">Técnicos</label>
       <select
         multiple
         disabled={!canEdit}

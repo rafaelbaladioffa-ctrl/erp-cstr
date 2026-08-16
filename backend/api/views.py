@@ -2,7 +2,7 @@ import csv
 
 from django.db import models
 from django.http import FileResponse, HttpResponse
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
@@ -17,8 +17,20 @@ from core.access_scope import (
     scope_site_queryset,
 )
 from core.csv_io import MAX_CSV_UPLOAD_BYTES, build_csv_content, import_csv_rows
-from core.models import Category, Client, ClientResponsible, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
-from projects.models import Project, ProjectTask, RackPosition
+from core.models import (
+    Category,
+    Client,
+    Collaborator,
+    Company,
+    JobTitle,
+    Notification,
+    ProjectType,
+    Responsible,
+    Site,
+    Task,
+    get_collaborator_role,
+)
+from projects.models import Project, ProjectOccurrence, ProjectTask, RackPosition
 from projects.services import (
     BulkActionError,
     add_tasks_to_project,
@@ -38,7 +50,6 @@ from .permissions import IsSuperUser, RequireChangePermissionForActions, ViewAwa
 from .serializers import (
     AuditLogSerializer,
     ClientCrudSerializer,
-    ClientResponsibleCrudSerializer,
     ClientSerializer,
     CollaboratorCrudSerializer,
     CollaboratorSerializer,
@@ -47,8 +58,10 @@ from .serializers import (
     DailyUpdateSerializer,
     JobTitleCrudSerializer,
     MyTaskUpdateSerializer,
+    NotificationSerializer,
     ProjectDailyUpdateCreateSerializer,
     ProjectDailyUpdateSerializer,
+    ProjectOccurrenceSerializer,
     ProjectSerializer,
     ProjectTaskBulkActionSerializer,
     ProjectTaskCreateSerializer,
@@ -168,8 +181,102 @@ class MeView(APIView):
             "company_id": user.company_id,
             "is_superuser": user.is_superuser,
             "permissions": permissions,
-            "has_collaborator_profile": hasattr(user, "collaborator_profile"),
+            "has_collaborator_profile": get_collaborator_role(user) is not None,
         })
+
+
+class ChangePasswordView(APIView):
+    """Permite ao usuário autenticado trocar a própria senha (menu Minha
+    Conta), validando a senha atual e aplicando os mesmos validadores de
+    senha do Django Admin/createsuperuser."""
+
+    def post(self, request):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        old_password = request.data.get("old_password") or ""
+        new_password = request.data.get("new_password") or ""
+        if not request.user.check_password(old_password):
+            return Response({"detail": "Senha atual incorreta."}, status=400)
+        if not new_password:
+            return Response({"detail": "Informe a nova senha."}, status=400)
+        try:
+            validate_password(new_password, user=request.user)
+        except DjangoValidationError as exc:
+            return Response({"detail": " ".join(exc.messages)}, status=400)
+        request.user.set_password(new_password)
+        request.user.save(update_fields=["password"])
+        return Response({"detail": "Senha alterada com sucesso."})
+
+
+class GlobalSearchView(APIView):
+    """Busca global do shell (barra de pesquisa no topo): procura Projetos
+    (nome/código/PO), Sites (nome/código) e Tarefas de Projeto (pelo nome
+    da Tarefa do catálogo), respeitando o escopo de acesso do usuário-
+    cliente. Resultados limitados a 6 por categoria — é um "quick search",
+    não uma busca paginada."""
+
+    LIMIT = 6
+
+    def get(self, request):
+        query = (request.query_params.get("q") or "").strip()
+        if len(query) < 2:
+            return Response({"projects": [], "sites": [], "tasks": []})
+
+        projects_qs = scope_project_queryset(
+            Project.objects.select_related("client", "site").filter(
+                models.Q(name__icontains=query) | models.Q(code__icontains=query) | models.Q(po__icontains=query)
+            ),
+            request.user,
+        )[: self.LIMIT]
+        projects = [
+            {
+                "id": p.pk,
+                "code": p.code,
+                "name": p.name,
+                "po": p.po,
+                "client": str(p.client) if p.client_id else "",
+                "site": str(p.site) if p.site_id else "",
+            }
+            for p in projects_qs
+        ]
+
+        sites_qs = scope_site_queryset(
+            Site.objects.select_related("client").filter(
+                models.Q(name__icontains=query) | models.Q(code__icontains=query)
+            ),
+            request.user,
+        )[: self.LIMIT]
+        sites = [
+            {
+                "id": s.pk,
+                "code": s.code,
+                "name": s.name,
+                "client": str(s.client) if s.client_id else "",
+                "city": s.city,
+            }
+            for s in sites_qs
+        ]
+
+        tasks_qs = scope_project_queryset(
+            ProjectTask.objects.select_related("task", "project").filter(task__name__icontains=query),
+            request.user,
+            field_prefix="project__",
+        )[: self.LIMIT]
+        tasks = [
+            {
+                "id": t.pk,
+                "task_name": t.task.name,
+                "project_id": t.project_id,
+                "project_name": t.project.name,
+                "project_code": t.project.code,
+                "status": t.status,
+                "status_display": t.get_status_display(),
+            }
+            for t in tasks_qs
+        ]
+
+        return Response({"projects": projects, "sites": sites, "tasks": tasks})
 
 
 class ClientViewSet(viewsets.ReadOnlyModelViewSet):
@@ -192,7 +299,7 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
     """Colaboradores são dados internos (equipe CSTR), não do Cliente — um
     usuário-cliente não deve enxergá-los de forma alguma."""
 
-    queryset = Collaborator.objects.filter(is_active=True).order_by("name")
+    queryset = Collaborator.objects.filter(is_active=True).select_related("person").order_by("person__name")
     serializer_class = CollaboratorSerializer
 
     def get_queryset(self):
@@ -201,7 +308,9 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
 
 class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
     queryset = (
-        Project.objects.select_related("client", "site", "category")
+        Project.objects.select_related(
+            "client", "site", "category", "responsible_cstr__person", "responsible_client__person"
+        )
         .prefetch_related("project_tasks")
         .order_by("-created_at")
     )
@@ -216,7 +325,9 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             queryset = queryset.filter(status=status_param)
         search = self.request.query_params.get("search")
         if search:
-            queryset = queryset.filter(name__icontains=search)
+            queryset = queryset.filter(
+                models.Q(name__icontains=search) | models.Q(code__icontains=search) | models.Q(po__icontains=search)
+            )
         return scope_project_queryset(queryset, self.request.user)
 
     @action(detail=True, methods=["get"])
@@ -229,6 +340,25 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
         )
         serializer = ProjectTaskSerializer(tasks, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], url_path="hours-by-collaborator")
+    def hours_by_collaborator(self, request, pk=None):
+        project = self.get_object()
+        tasks = project.project_tasks.prefetch_related("collaborators__person")
+        totals: dict[int, dict] = {}
+        for task in tasks:
+            hours = task.worked_hours
+            if not hours:
+                continue
+            for collaborator in task.collaborators.all():
+                entry = totals.setdefault(
+                    collaborator.id, {"collaborator_id": collaborator.id, "collaborator_name": collaborator.person.name, "hours": 0.0}
+                )
+                entry["hours"] += hours
+        data = sorted(totals.values(), key=lambda item: item["hours"], reverse=True)
+        for item in data:
+            item["hours"] = round(item["hours"], 2)
+        return Response(data)
 
     @action(detail=True, methods=["get"], url_path="rack-positions")
     def rack_positions(self, request, pk=None):
@@ -361,6 +491,50 @@ class ProjectTaskViewSet(viewsets.ModelViewSet):
 class RackPositionViewSet(viewsets.ModelViewSet):
     queryset = RackPosition.objects.select_related("project").order_by("project_id", "position")
     serializer_class = RackPositionSerializer
+    permission_classes = [ViewAwareModelPermissions]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get("project")
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+
+
+class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    serializer_class = NotificationSerializer
+    permission_classes = [ViewAwareModelPermissions]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user).order_by("-created_at")
+
+    def get_permissions(self):
+        # Notificações são sempre pessoais — não faz sentido exigir a
+        # permissão de model do Django aqui (não há como conceder acesso a
+        # "ver notificação de outra pessoa"); basta estar autenticado.
+        return [permission() for permission in (permissions.IsAuthenticated,)]
+
+    @action(detail=False, methods=["get"])
+    def unread_count(self, request):
+        return Response({"count": self.get_queryset().filter(is_read=False).count()})
+
+    @action(detail=True, methods=["post"], url_path="mark-read")
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        if not notification.is_read:
+            notification.is_read = True
+            notification.save(update_fields=["is_read"])
+        return Response(self.get_serializer(notification).data)
+
+    @action(detail=False, methods=["post"], url_path="mark-all-read")
+    def mark_all_read(self, request):
+        self.get_queryset().filter(is_read=False).update(is_read=True)
+        return Response({"detail": "ok"})
+
+
+class ProjectOccurrenceViewSet(viewsets.ModelViewSet):
+    queryset = ProjectOccurrence.objects.select_related("project", "responsible").order_by("-occurred_at", "-id")
+    serializer_class = ProjectOccurrenceSerializer
     permission_classes = [ViewAwareModelPermissions]
 
     def get_queryset(self):
@@ -504,31 +678,33 @@ class ClientRegistryViewSet(RegistryViewSet):
     client_scope_mode = "client"
 
 
-class ClientResponsibleViewSet(RegistryViewSet):
-    queryset = ClientResponsible.objects.select_related("client").order_by("name")
-    serializer_class = ClientResponsibleCrudSerializer
-    search_fields = ("name", "email")
+class ResponsibleViewSet(RegistryViewSet):
+    """Responsáveis unificados (CSTR + Cliente, ver Responsible.kind). Um
+    usuário-cliente só enxerga os de kind=client do próprio Cliente — os de
+    kind=cstr têm client_id nulo, então o filtro de escopo já os exclui
+    automaticamente (client_id__in nunca casa com NULL)."""
+
+    queryset = Responsible.objects.select_related("client", "person", "person__company").order_by("person__name")
+    serializer_class = ResponsibleCrudSerializer
+    search_fields = ("person__name", "person__email")
     client_scope_mode = "client"
     client_scope_field = "client_id"
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        kind = self.request.query_params.get("kind")
+        if kind:
+            queryset = queryset.filter(kind=kind)
         client_id = self.request.query_params.get("client")
         if client_id:
             queryset = queryset.filter(client_id=client_id)
         return queryset
 
 
-class ResponsibleViewSet(RegistryViewSet):
-    queryset = Responsible.objects.select_related("company").order_by("name")
-    serializer_class = ResponsibleCrudSerializer
-    search_fields = ("name", "email")
-
-
 class CollaboratorRegistryViewSet(RegistryViewSet):
-    queryset = Collaborator.objects.select_related("company", "job_title", "manager").order_by("name")
+    queryset = Collaborator.objects.select_related("person", "person__company", "job_title", "manager").order_by("person__name")
     serializer_class = CollaboratorCrudSerializer
-    search_fields = ("name", "registration", "yellow_badge")
+    search_fields = ("person__name", "registration", "yellow_badge")
 
 
 class TaskViewSet(RegistryViewSet):
@@ -566,10 +742,26 @@ class DailyUpdateViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
     change_permission_actions = ("send_email", "pdf", "pdf_consolidado")
 
     def get_queryset(self):
+        from django.utils.dateparse import parse_date
+        from rest_framework.exceptions import ValidationError
+
         queryset = super().get_queryset()
         date_param = self.request.query_params.get("date")
         if date_param:
             queryset = queryset.filter(allocation_date=date_param)
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        if date_from and date_to:
+            start, end = parse_date(date_from), parse_date(date_to)
+            if not start or not end:
+                raise ValidationError("date_from/date_to inválidos.")
+            if (end - start).days > 6:
+                raise ValidationError("O período selecionado não pode ultrapassar 7 dias.")
+            queryset = queryset.filter(allocation_date__gte=start, allocation_date__lte=end)
+        elif date_from:
+            queryset = queryset.filter(allocation_date__gte=date_from)
+        elif date_to:
+            queryset = queryset.filter(allocation_date__lte=date_to)
         return deny_if_client_scoped(queryset, self.request.user)
 
     @action(detail=True, methods=["post"], url_path="send-email")
@@ -668,7 +860,7 @@ class MyTaskViewSet(
         return ProjectTaskSerializer
 
     def get_queryset(self):
-        collaborator = getattr(self.request.user, "collaborator_profile", None)
+        collaborator = get_collaborator_role(self.request.user)
         if collaborator is None:
             return self.queryset.none()
         return self.queryset.filter(collaborators=collaborator).order_by("planned_start", "order", "id")

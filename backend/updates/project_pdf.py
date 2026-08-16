@@ -93,10 +93,10 @@ def build_project_daily_update_pdf(project_update):
     styles = _styles()
     content_width = A4[0] - 2 * SIDE_MARGIN
 
-    responsible_aws = project.responsible_client.name if project.responsible_client_id else "Não informado"
-    responsible_cstr = project.responsible_cstr.name if project.responsible_cstr_id else "Não informado"
+    responsible_aws = project.responsible_client.person.name if project.responsible_client_id else "Não informado"
+    responsible_cstr = project.responsible_cstr.person.name if project.responsible_cstr_id else "Não informado"
     collaborators_line = (
-        ", ".join(project_update.collaborators.order_by("name").values_list("name", flat=True))
+        ", ".join(project_update.collaborators.order_by("person__name").values_list("person__name", flat=True))
         or "Não informados"
     )
 

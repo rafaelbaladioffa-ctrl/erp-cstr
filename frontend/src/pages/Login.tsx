@@ -35,27 +35,8 @@ export default function Login() {
       }}
     >
       <form onSubmit={handleSubmit} className="card" style={{ padding: 36, width: 360, background: "#fff" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 10,
-              background: "var(--orange)",
-              color: "#fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 15,
-            }}
-          >
-            CS
-          </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)", lineHeight: 1.1 }}>CONSULTIMER</div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--orange)", letterSpacing: "0.1em" }}>ERP CSTR</div>
-          </div>
+        <div style={{ marginBottom: 22 }}>
+          <img src="/consultimer-logo-light.png" alt="Consultimer" style={{ height: 34 }} />
         </div>
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 22 }}>Entre com seu usuário do sistema</p>
 

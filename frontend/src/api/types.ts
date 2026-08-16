@@ -32,7 +32,9 @@ export interface Project {
   category_name: string | null;
   project_type: number | null;
   responsible_cstr: number | null;
+  responsible_cstr_name: string | null;
   responsible_client: number | null;
+  responsible_client_name: string | null;
   description: string;
   notes: string;
   status: string;
@@ -166,24 +168,19 @@ export interface ClientFull {
   is_active: boolean;
 }
 
-export interface ClientResponsibleFull {
+export type ResponsibleKind = "cstr" | "client";
+
+export interface ResponsibleFull {
   id: number;
+  kind: ResponsibleKind;
+  company: number | null;
+  company_name: string | null;
   client: number | null;
   client_name: string | null;
   name: string;
   email: string;
   phone: string;
   job_title: string;
-  is_active: boolean;
-}
-
-export interface ResponsibleFull {
-  id: number;
-  company: number | null;
-  company_name: string | null;
-  name: string;
-  email: string;
-  phone: string;
   is_active: boolean;
 }
 
@@ -235,7 +232,42 @@ export interface ProjectTask {
   actual_end: string | null;
   estimated_hours: string | null;
   actual_hours: string | null;
+  worked_hours: number;
   notes: string;
+}
+
+export interface ProjectOccurrence {
+  id: number;
+  project: number;
+  title: string;
+  description: string;
+  responsible: number | null;
+  responsible_name: string | null;
+  severity: string;
+  severity_display: string;
+  status: string;
+  status_display: string;
+  occurred_at: string;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Notification {
+  id: number;
+  title: string;
+  message: string;
+  url: string;
+  project_id: number | null;
+  project_code: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface CollaboratorHours {
+  collaborator_id: number;
+  collaborator_name: string;
+  hours: number;
 }
 
 export interface ProjectTaskBulkPayload {

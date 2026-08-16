@@ -151,8 +151,107 @@ class JobTitle(ActiveCompanyModel):
         return self.name or "Cargo sem identificação"
 
 
-class Collaborator(ActiveCompanyModel):
+def get_or_create_person(*, name="", email="", phone="", company=None):
+    """Reaproveita um Person existente (por e-mail, senão por nome+empresa)
+    ou cria um novo — usado pelos formulários de Colaborador/Responsável/
+    Responsável do Cliente (Django Admin e API) para que essas 'papéis'
+    continuem editáveis como um formulário único (nome/e-mail/telefone),
+    sem duplicar a mesma pessoa quando ela já existe (ex: vira Responsável
+    depois de já ser Colaborador)."""
+    name = (name or "").strip()
+    email = (email or "").strip()
+    person = Person.objects.filter(email__iexact=email).first() if email else None
+    if person is None:
+        person = Person.objects.filter(name__iexact=name, company=company).first()
+    if person is None:
+        return Person.objects.create(name=name, email=email, phone=phone or "", company=company)
+    return person
+
+
+def update_person(person, *, name=None, email=None, phone=None, company=None, user=None, has_user=False):
+    """Atualiza um Person já vinculado com os valores digitados no formulário
+    de edição de um papel (Colaborador/Responsável/Responsável do Cliente) —
+    sobrescreve direto (não é a heurística de 'preencher só o que tá vazio'
+    do import CSV: aqui o usuário está editando de propósito)."""
+    if name is not None:
+        person.name = name
+    if email is not None:
+        person.email = email
+    if phone is not None:
+        person.phone = phone
+    if company is not None:
+        person.company = company
+    if has_user:
+        person.user = user
+    person.save()
+
+
+def get_collaborator_role(user):
+    """Colaborador (papel) vinculado ao usuário logado, via Person, ou None
+    se o usuário não tiver Person vinculado ou não for Colaborador. Único
+    ponto usado por Minhas Tarefas / MyTaskViewSet para decidir quais
+    tarefas mostrar — substitui o antigo `user.collaborator_profile`
+    (ligação direta e sem-Person que existia antes desta unificação)."""
+    person = getattr(user, "person", None)
+    return getattr(person, "collaborator_role", None) if person else None
+
+
+class Person(TimestampedModel):
+    """Identidade única de uma pessoa física conhecida pelo sistema —
+    concentra nome/e-mail/telefone/empresa/usuário vinculado num único
+    lugar, para que Colaborador, Responsável e Responsável do Cliente sejam
+    apenas "papéis" que uma mesma pessoa pode acumular sem duplicar
+    cadastro (ex: um supervisor que também executa tarefas tem UM Person,
+    com um Collaborator E um Responsible ligados a ele — não dois
+    registros soltos e sem relação, como antes desta unificação)."""
+
     name = models.CharField("nome", max_length=150, blank=True)
+    email = models.EmailField("e-mail", blank=True)
+    phone = models.CharField("telefone", max_length=20, blank=True)
+    company = models.ForeignKey(
+        Company,
+        verbose_name="empresa",
+        on_delete=models.PROTECT,
+        related_name="people",
+        null=True,
+        blank=True,
+        help_text="Empresa à qual esta pessoa pertence (equipe interna). Deixe em branco para um contato "
+        "externo (ex: Responsável do Cliente sem vínculo direto com uma empresa do grupo).",
+    )
+    user = models.OneToOneField(
+        "users.User",
+        verbose_name="usuário vinculado",
+        on_delete=models.SET_NULL,
+        related_name="person",
+        null=True,
+        blank=True,
+        help_text="Vincule um usuário para dar login a esta pessoa (ex: como Colaborador, para acessar "
+        "Minhas Tarefas). Para o acesso de portal de um contato do cliente, configure o escopo "
+        "diretamente no cadastro do Usuário (campo Cliente).",
+    )
+    is_active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "pessoa"
+        verbose_name_plural = "pessoas"
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name or self.email or "Pessoa sem identificação"
+
+    def clean(self):
+        super().clean()
+        if self.user_id and self.company_id and self.user.company_id != self.company_id:
+            raise ValidationError({"user": "O usuário deve pertencer à mesma empresa desta pessoa."})
+
+
+class Collaborator(TimestampedModel):
+    person = models.OneToOneField(
+        Person,
+        verbose_name="pessoa",
+        on_delete=models.CASCADE,
+        related_name="collaborator_role",
+    )
     registration = models.CharField("matrícula", max_length=30, blank=True)
     yellow_badge = models.CharField("Yellow Badge", max_length=50, blank=True)
     job_title = models.ForeignKey(
@@ -163,17 +262,7 @@ class Collaborator(ActiveCompanyModel):
         null=True,
         blank=True,
     )
-    email = models.EmailField("e-mail", blank=True)
-    phone = models.CharField("telefone", max_length=20, blank=True)
     sites = models.ManyToManyField(Site, verbose_name="sites", related_name="collaborators", blank=True)
-    user = models.OneToOneField(
-        "users.User",
-        verbose_name="usuário vinculado",
-        on_delete=models.SET_NULL,
-        related_name="collaborator_profile",
-        null=True,
-        blank=True,
-    )
     manager = models.ForeignKey(
         "self",
         verbose_name="gestor",
@@ -187,65 +276,102 @@ class Collaborator(ActiveCompanyModel):
             | models.Q(job_title__name__icontains="Gerente")
         ),
     )
+    is_active = models.BooleanField("ativo", default=True)
 
     class Meta:
-        verbose_name = "colaborador"
-        verbose_name_plural = "colaboradores"
-        ordering = ("name",)
-        constraints = [
-            models.UniqueConstraint(
-                fields=("company", "registration"),
-                condition=~models.Q(registration=""),
-                name="unique_collaborator_registration_per_company",
-            ),
-            models.UniqueConstraint(
-                fields=("company", "yellow_badge"),
-                condition=~models.Q(yellow_badge=""),
-                name="unique_collaborator_yellow_badge_per_company",
-            ),
-        ]
+        verbose_name = "técnico"
+        verbose_name_plural = "técnicos"
+        ordering = ("person__name",)
 
     def __str__(self):
-        return self.name or self.registration or "Colaborador sem identificação"
+        if not self.person_id:
+            return "Colaborador sem identificação"
+        return str(self.person) or self.registration or "Colaborador sem identificação"
 
     def clean(self):
         super().clean()
         errors = {}
         if self.manager_id and self.pk and self.manager_id == self.pk:
             errors["manager"] = "O colaborador não pode ser seu próprio gestor."
-        if self.manager_id and self.company_id and self.manager.company_id != self.company_id:
+        if (
+            self.manager_id
+            and self.person_id
+            and self.person.company_id
+            and self.manager.person.company_id != self.person.company_id
+        ):
             errors["manager"] = "O gestor deve pertencer à mesma empresa do colaborador."
-        if self.user_id and self.company_id and self.user.company_id != self.company_id:
-            errors["user"] = "O usuário deve pertencer à mesma empresa do colaborador."
+        if self.person_id and self.registration:
+            dup = Collaborator.objects.filter(
+                person__company_id=self.person.company_id, registration=self.registration
+            ).exclude(pk=self.pk)
+            if dup.exists():
+                errors["registration"] = "Já existe um colaborador com esta matrícula nesta empresa."
+        if self.person_id and self.yellow_badge:
+            dup = Collaborator.objects.filter(
+                person__company_id=self.person.company_id, yellow_badge=self.yellow_badge
+            ).exclude(pk=self.pk)
+            if dup.exists():
+                errors["yellow_badge"] = "Já existe um colaborador com este Yellow Badge nesta empresa."
         if errors:
             raise ValidationError(errors)
 
 
-class Responsible(ActiveCompanyModel):
-    name = models.CharField("nome", max_length=150, blank=True)
-    email = models.EmailField("e-mail", blank=True)
-    phone = models.CharField("telefone", max_length=20, blank=True)
-    user = models.OneToOneField(
-        "users.User",
-        verbose_name="usuário vinculado",
-        on_delete=models.SET_NULL,
-        related_name="responsible_profile",
+class Responsible(TimestampedModel):
+    """Responsável por um Projeto — do lado CSTR (kind=cstr, pessoa da
+    própria empresa) ou do lado do Cliente (kind=client, contato do
+    Cliente). Unificado num único cadastro/tela: ao criar, escolhe-se o
+    Tipo, que determina se `client` é obrigatório (Cliente) ou deve ficar
+    vazio (CSTR — nesse caso a empresa vem de `person.company`)."""
+
+    KIND_CSTR = "cstr"
+    KIND_CLIENT = "client"
+    KIND_CHOICES = (
+        (KIND_CSTR, "CSTR"),
+        (KIND_CLIENT, "Cliente"),
+    )
+
+    kind = models.CharField("tipo", max_length=10, choices=KIND_CHOICES, default=KIND_CSTR)
+    person = models.OneToOneField(
+        Person,
+        verbose_name="pessoa",
+        on_delete=models.CASCADE,
+        related_name="responsible_role",
+    )
+    client = models.ForeignKey(
+        "Client",
+        verbose_name="cliente",
+        on_delete=models.CASCADE,
+        related_name="responsibles",
         null=True,
         blank=True,
+        help_text="Obrigatório para Responsável do Cliente. Deixe em branco para Responsável CSTR.",
     )
+    job_title = models.CharField("cargo", max_length=100, blank=True)
+    is_active = models.BooleanField("ativo", default=True)
 
     class Meta:
         verbose_name = "responsável"
         verbose_name_plural = "responsáveis"
-        ordering = ("name",)
+        ordering = ("person__name",)
 
     def __str__(self):
-        return self.name or self.email or "Responsável sem identificação"
+        if not self.person_id:
+            return "Responsável sem identificação"
+        return str(self.person) or "Responsável sem identificação"
 
     def clean(self):
         super().clean()
-        if self.user_id and self.company_id and self.user.company_id != self.company_id:
-            raise ValidationError({"user": "O usuário deve pertencer à mesma empresa do responsável."})
+        errors = {}
+        if self.kind == self.KIND_CLIENT and not self.client_id:
+            errors["client"] = "Obrigatório para Responsável do Cliente."
+        if self.kind == self.KIND_CSTR and self.client_id:
+            errors["client"] = "Deve ficar em branco para Responsável CSTR."
+        if errors:
+            raise ValidationError(errors)
+        if self.kind == self.KIND_CLIENT and self.client_id and self.person_id:
+            dup = Responsible.objects.filter(client_id=self.client_id, person_id=self.person_id).exclude(pk=self.pk)
+            if dup.exists():
+                raise ValidationError({"person": "Esta pessoa já é Responsável deste Cliente."})
 
 
 class Category(TimestampedModel):
@@ -384,26 +510,42 @@ class Client(ActiveCompanyModel):
         return self.trade_name or self.legal_name or self.tax_id or "Cliente sem identificação"
 
 
-class ClientResponsible(TimestampedModel):
-    client = models.ForeignKey(
-        Client,
-        verbose_name="cliente",
-        on_delete=models.CASCADE,
-        related_name="responsibles",
+class Notification(TimestampedModel):
+    """Notificação in-app para um usuário. Não referencia models de outros
+    apps diretamente (evita import circular com `projects`) — guarda apenas
+    `url` (rota do frontend) e `project_id`/`project_code` para exibição."""
+
+    user = models.ForeignKey(
+        "users.User", verbose_name="usuário", on_delete=models.CASCADE, related_name="notifications"
     )
-    name = models.CharField("nome", max_length=150)
-    email = models.EmailField("e-mail", blank=True)
-    phone = models.CharField("telefone", max_length=20, blank=True)
-    job_title = models.CharField("cargo", max_length=100, blank=True)
-    is_active = models.BooleanField("ativo", default=True)
+    title = models.CharField("título", max_length=200)
+    message = models.CharField("mensagem", max_length=500, blank=True)
+    url = models.CharField("link", max_length=300, blank=True)
+    project_id = models.PositiveIntegerField("id do projeto", null=True, blank=True)
+    project_code = models.CharField("código do projeto", max_length=50, blank=True)
+    is_read = models.BooleanField("lida", default=False)
 
     class Meta:
-        verbose_name = "Responsável do Cliente"
-        verbose_name_plural = "Responsáveis do Cliente"
-        ordering = ("name",)
-        constraints = [
-            models.UniqueConstraint(fields=("client", "name"), name="unique_responsible_name_per_client")
-        ]
+        verbose_name = "notificação"
+        verbose_name_plural = "notificações"
+        ordering = ("-created_at",)
 
     def __str__(self):
-        return self.name
+        return f"{self.user} - {self.title}"
+
+
+def notify_user(user, *, title, message="", url="", project_id=None, project_code=""):
+    """Cria uma Notification para `user` se ele existir (usuários vinculados
+    a Pessoa podem não ter conta de login)."""
+    if not user:
+        return None
+    return Notification.objects.create(
+        user=user,
+        title=title,
+        message=message,
+        url=url,
+        project_id=project_id,
+        project_code=project_code,
+    )
+
+

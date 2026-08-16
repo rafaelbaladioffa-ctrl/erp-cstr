@@ -4,10 +4,15 @@ from django.test import TestCase
 from django.utils import timezone
 
 from audit.models import AuditLog
-from core.models import Client, Collaborator, Company, Site
+from core.models import Client, Collaborator, Company, Person, Site
 from projects.models import Project
 from users.models import User
 from .models import DailyUpdate, DailyUpdateAllocation
+
+
+def make_collaborator(company, name, **kwargs):
+    person = Person.objects.create(name=name, company=company)
+    return Collaborator.objects.create(person=person, **kwargs)
 
 
 class DailyUpdateTests(TestCase):
@@ -35,7 +40,7 @@ class DailyUpdateTests(TestCase):
             status=Project.STATUS_PLANNING,
         )
         self.technicians = [
-            Collaborator.objects.create(company=self.company, name=f"Técnico {number}")
+            make_collaborator(self.company, f"Técnico {number}")
             for number in range(1, 3)
         ]
         AuditLog.objects.all().delete()
@@ -87,7 +92,7 @@ class DailyUpdateTests(TestCase):
         self.assertIn(self.second_project.po, update.description)
         self.assertIn(self.site.name, update.description)
         for technician in self.technicians:
-            self.assertIn(technician.name, update.description)
+            self.assertIn(technician.person.name, update.description)
         self.assertTrue(
             AuditLog.objects.filter(
                 app_label="updates",
@@ -99,7 +104,7 @@ class DailyUpdateTests(TestCase):
 
     def test_collaborator_from_another_company_is_rejected(self):
         another_company = Company.objects.create(legal_name="Outra Empresa")
-        outsider = Collaborator.objects.create(company=another_company, name="Técnico Externo")
+        outsider = make_collaborator(another_company, "Técnico Externo")
         response = self.client.post(
             "/admin/updates/dailyupdate/add/",
             {

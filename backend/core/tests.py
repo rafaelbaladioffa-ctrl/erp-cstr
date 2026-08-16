@@ -5,7 +5,12 @@ from django.utils import timezone
 from django.urls import reverse
 from django.db import IntegrityError, transaction
 from users.models import User
-from .models import Category, Client, Collaborator, Company, JobTitle, ProjectType, Responsible, Site, Task
+from .models import Category, Client, Collaborator, Company, JobTitle, Person, ProjectType, Responsible, Site, Task
+
+
+def make_collaborator(company, name, **kwargs):
+    person = Person.objects.create(name=name, company=company)
+    return Collaborator.objects.create(person=person, **kwargs)
 
 
 class UnfoldTranslationTests(TestCase):
@@ -57,7 +62,7 @@ class CompanyTests(TestCase):
     def test_collaborator_selects_registered_job_title(self):
         company = Company.objects.create(legal_name="Empresa C", tax_id="44.444.444/0001-44")
         job_title = JobTitle.objects.create(company=company, name="Analista")
-        collaborator = Collaborator.objects.create(company=company, name="Pessoa Teste", job_title=job_title)
+        collaborator = make_collaborator(company, "Pessoa Teste", job_title=job_title)
         self.assertEqual(collaborator.job_title, job_title)
         self.assertEqual(str(collaborator.job_title), "Analista")
 
@@ -65,8 +70,8 @@ class CompanyTests(TestCase):
         company = Company.objects.create(legal_name="Empresa D", tax_id="55.555.555/0001-55")
         manager_role = JobTitle.objects.create(company=company, name="Supervisor de Operacoes")
         regular_role = JobTitle.objects.create(company=company, name="Analista")
-        manager = Collaborator.objects.create(company=company, name="Gestor Teste", job_title=manager_role)
-        Collaborator.objects.create(company=company, name="Pessoa Regular", job_title=regular_role)
+        manager = make_collaborator(company, "Gestor Teste", job_title=manager_role)
+        make_collaborator(company, "Pessoa Regular", job_title=regular_role)
 
         manager_field = Collaborator._meta.get_field("manager")
         eligible_managers = Collaborator.objects.complex_filter(manager_field.get_limit_choices_to())
@@ -76,26 +81,28 @@ class CompanyTests(TestCase):
         company_a = Company.objects.create(legal_name="Empresa E", tax_id="66.666.666/0001-66")
         company_b = Company.objects.create(legal_name="Empresa F", tax_id="77.777.777/0001-77")
         role = JobTitle.objects.create(company=company_b, name="Gerente")
-        manager = Collaborator.objects.create(company=company_b, name="Gestor Externo", job_title=role)
-        collaborator = Collaborator(company=company_a, name="Pessoa Teste", manager=manager)
+        manager = make_collaborator(company_b, "Gestor Externo", job_title=role)
+        person = Person.objects.create(name="Pessoa Teste", company=company_a)
+        collaborator = Collaborator(person=person, manager=manager)
         with self.assertRaises(ValidationError):
             collaborator.full_clean()
 
     def test_responsible_links_to_user_from_same_company(self):
         company = Company.objects.create(legal_name="Empresa G", tax_id="88.888.888/0001-88")
         user = User.objects.create_user(username="responsavel", email="responsavel@example.com", company=company)
-        responsible = Responsible(company=company, name="Responsavel Teste", user=user)
-        responsible.full_clean()
-        responsible.save()
-        self.assertEqual(responsible.user, user)
+        person = Person(company=company, name="Responsavel Teste", user=user)
+        person.full_clean()
+        person.save()
+        responsible = Responsible.objects.create(person=person)
+        self.assertEqual(responsible.person.user, user)
 
     def test_responsible_rejects_user_from_another_company(self):
         company_a = Company.objects.create(legal_name="Empresa H", tax_id="99.999.999/0001-99")
         company_b = Company.objects.create(legal_name="Empresa I", tax_id="10.000.000/0001-10")
         user = User.objects.create_user(username="outra_empresa", email="outra@example.com", company=company_b)
-        responsible = Responsible(company=company_a, user=user)
+        person = Person(company=company_a, user=user)
         with self.assertRaises(ValidationError):
-            responsible.full_clean()
+            person.full_clean()
 
     def test_project_types_can_be_created_in_bulk_through_admin(self):
         admin_user = User.objects.create_superuser(username="bulk_admin", email="bulk@example.com", password="test-password")

@@ -2,6 +2,7 @@ from django.contrib import admin
 from unfold.admin import ModelAdmin
 
 from core.admin_mixins import SelectablePageSizeAdminMixin
+from core.models import get_collaborator_role
 
 from .models import MyTask
 
@@ -35,7 +36,7 @@ class MyTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request).select_related("project", "task")
-        collaborator = getattr(request.user, "collaborator_profile", None)
+        collaborator = get_collaborator_role(request.user)
         if collaborator is None:
             return queryset.none()
         return queryset.filter(collaborators=collaborator)
@@ -49,7 +50,7 @@ class MyTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     def has_change_permission(self, request, obj=None):
         if obj is None:
             return super().has_change_permission(request, obj)
-        collaborator = getattr(request.user, "collaborator_profile", None)
+        collaborator = get_collaborator_role(request.user)
         if collaborator is None:
             return False
         return obj.collaborators.filter(pk=collaborator.pk).exists() and super().has_change_permission(request, obj)

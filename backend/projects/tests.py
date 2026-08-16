@@ -6,8 +6,23 @@ from django.test import TestCase
 from django.utils import timezone
 
 from users.models import User
-from core.models import Client, ClientResponsible, Collaborator, Company, ProjectType, Responsible, Site, Task
+from core.models import Client, Collaborator, Company, Person, ProjectType, Responsible, Site, Task
 from .models import Project, ProjectHistory, ProjectTask, RackPosition
+
+
+def make_collaborator(company, name, **kwargs):
+    person = Person.objects.create(name=name, company=company)
+    return Collaborator.objects.create(person=person, **kwargs)
+
+
+def make_responsible(company, name, **kwargs):
+    person = Person.objects.create(name=name, company=company)
+    return Responsible.objects.create(person=person, kind=Responsible.KIND_CSTR, **kwargs)
+
+
+def make_client_responsible(client, name, **kwargs):
+    person = Person.objects.create(name=name)
+    return Responsible.objects.create(client=client, person=person, kind=Responsible.KIND_CLIENT, **kwargs)
 
 
 class ProjectTests(TestCase):
@@ -103,8 +118,8 @@ class ProjectTests(TestCase):
     def test_project_has_po_and_two_responsible_fields(self):
         company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
         client = Client.objects.create(company=company, legal_name="Cliente")
-        responsible_client = ClientResponsible.objects.create(client=client, name="Responsável do Cliente")
-        responsible_cstr = Responsible.objects.create(company=company, name="Responsável CSTR")
+        responsible_client = make_client_responsible(client, "Responsável do Cliente")
+        responsible_cstr = make_responsible(company, "Responsável CSTR")
         project = Project.objects.create(
             company=company,
             name="Projeto com PO",
@@ -140,7 +155,7 @@ class ProjectTests(TestCase):
         company = Company.objects.create(legal_name="Empresa Tarefas")
         project = Project.objects.create(company=company, name="Projeto Operacional")
         task = Task.objects.create(name="Instalação")
-        collaborator = Collaborator.objects.create(company=company, name="Colaborador")
+        collaborator = make_collaborator(company, "Colaborador")
         project_task = ProjectTask(project=project, task=task)
         project_task.full_clean()
         project_task.save()
@@ -151,8 +166,8 @@ class ProjectTests(TestCase):
         company_a = Company.objects.create(legal_name="Empresa A")
         project = Project.objects.create(company=company_a, name="Projeto")
         task = Task.objects.create(name="Tarefa")
-        first = Collaborator.objects.create(company=company_a, name="Primeiro Responsável")
-        second = Collaborator.objects.create(company=company_a, name="Segundo Responsável")
+        first = make_collaborator(company_a, "Primeiro Responsável")
+        second = make_collaborator(company_a, "Segundo Responsável")
         project_task = ProjectTask.objects.create(project=project, task=task)
         project_task.collaborators.set([first, second])
         self.assertEqual(project_task.collaborators.count(), 2)
@@ -226,7 +241,7 @@ class ProjectTests(TestCase):
             password="test-password",
         )
         company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
-        collaborator = Collaborator.objects.create(company=company, name="Responsável em Massa")
+        collaborator = make_collaborator(company, "Responsável em Massa")
         project = Project.objects.create(company=company, name="Projeto em Massa")
         task = Task.objects.create(name="Tarefa em Massa")
         project_task = ProjectTask.objects.create(project=project, task=task, order=1)
@@ -290,7 +305,7 @@ class ProjectTests(TestCase):
             planned_end=timezone.make_aware(datetime(2026, 8, 17, 17, 45)),
         )
         collaborators = [
-            Collaborator.objects.create(company=company, name=f"Responsável {number}")
+            make_collaborator(company, f"Responsável {number}")
             for number in range(1, 4)
         ]
         completed_project_task.collaborators.set(collaborators)

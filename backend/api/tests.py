@@ -9,7 +9,12 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from audit.models import AuditLog
-from core.models import Category, Client, Collaborator, Company, ProjectType, Site, Task
+from core.models import Category, Client, Collaborator, Company, Person, ProjectType, Site, Task
+
+
+def make_collaborator(company, name, **kwargs):
+    person = Person.objects.create(name=name, company=company)
+    return Collaborator.objects.create(person=person, **kwargs)
 from projects.models import Project, ProjectTask, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -87,8 +92,8 @@ class DashboardTests(TestCase):
         project = Project.objects.create(company=self.company, name="Projeto Rack", has_rack_positions=True)
         rack_a = RackPosition.objects.create(project=project, position="RACK01", links=24)
         rack_b = RackPosition.objects.create(project=project, position="RACK02", links=12)
-        collaborator = Collaborator.objects.create(company=self.company, name="Técnico Um")
-        other_collaborator = Collaborator.objects.create(company=self.company, name="Técnico Dois")
+        collaborator = make_collaborator(self.company, "Técnico Um")
+        other_collaborator = make_collaborator(self.company, "Técnico Dois")
         task = Task.objects.create(name="Lançamento de Cabos")
 
         completed_task = ProjectTask.objects.create(
@@ -121,7 +126,7 @@ class DashboardTests(TestCase):
     def test_technical_performance_filters_by_date_range(self):
         self._login()
         project = Project.objects.create(company=self.company, name="Projeto Período")
-        collaborator = Collaborator.objects.create(company=self.company, name="Técnico Período")
+        collaborator = make_collaborator(self.company, "Técnico Período")
         task_in_range = Task.objects.create(name="Tarefa Dentro do Período")
         task_out_of_range = Task.objects.create(name="Tarefa Fora do Período")
 
@@ -226,7 +231,7 @@ class ProjectTaskApiTests(TestCase):
         self.project = Project.objects.create(company=self.company, name="Projeto Tarefas", status=Project.STATUS_IN_PROGRESS)
         self.task_a = Task.objects.create(name="Instalação")
         self.task_b = Task.objects.create(name="Certificação")
-        self.collaborator = Collaborator.objects.create(company=self.company, name="Fulano")
+        self.collaborator = make_collaborator(self.company, "Fulano")
         user = User.objects.create_superuser(username="tasks_admin", email="tasks@example.com", password="test-password")
         self.client_api.force_authenticate(user=user)
 
@@ -353,7 +358,7 @@ class ProjectTaskRackPositionExplodeApiTests(TestCase):
         self.rack_b = RackPosition.objects.create(project=self.project, position="01-02-060-26")
         self.rack_c = RackPosition.objects.create(project=self.project, position="01-02-060-27")
         self.task = Task.objects.create(name="Aplicação de Label")
-        self.collaborator = Collaborator.objects.create(company=self.company, name="Fulano")
+        self.collaborator = make_collaborator(self.company, "Fulano")
         user = User.objects.create_superuser(username="explode_admin", email="explode@example.com", password="test-password")
         self.client_api.force_authenticate(user=user)
 
@@ -687,7 +692,7 @@ class DailyUpdateConsolidatedPdfApiTests(TestCase):
         self.client_api = APIClient()
         self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
         self.project = Project.objects.create(company=self.company, name="Projeto Teste", status=Project.STATUS_IN_PROGRESS)
-        self.collaborator = Collaborator.objects.create(company=self.company, name="Fulano")
+        self.collaborator = make_collaborator(self.company, "Fulano")
         user = User.objects.create_superuser(username="pdf_admin", email="pdf@example.com", password="test-password")
         self.client_api.force_authenticate(user=user)
 
