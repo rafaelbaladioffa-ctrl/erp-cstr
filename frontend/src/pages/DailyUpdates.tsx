@@ -14,6 +14,15 @@ function tomorrowIso() {
   return d.toISOString().slice(0, 10);
 }
 
+interface AllocationRow {
+  projectId: number | "";
+  collaboratorIds: number[];
+}
+
+function emptyRow(): AllocationRow {
+  return { projectId: "", collaboratorIds: [] };
+}
+
 export default function DailyUpdates() {
   const { user } = useAuth();
   const canCreate = hasPerm(user, PERMS.addDailyUpdate);
@@ -24,9 +33,10 @@ export default function DailyUpdates() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [projectId, setProjectId] = useState<number | "">("");
-  const [selectedCollaborators, setSelectedCollaborators] = useState<number[]>([]);
+  const [allocationRows, setAllocationRows] = useState<AllocationRow[]>([emptyRow()]);
   const [feedback, setFeedback] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [savingCreate, setSavingCreate] = useState(false);
   const [consolidatedDate, setConsolidatedDate] = useState(tomorrowIso);
   const [downloadingId, setDownloadingId] = useState<number | "consolidated" | null>(null);
   const [range, setRange] = useState<DateRange | null>(null);
@@ -54,16 +64,41 @@ export default function DailyUpdates() {
     collaboratorsApi.list().then((data) => setCollaborators(data.results));
   }, []);
 
+  function addAllocationRow() {
+    setAllocationRows((prev) => [...prev, emptyRow()]);
+  }
+
+  function removeAllocationRow(index: number) {
+    setAllocationRows((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateAllocationRow(index: number, patch: Partial<AllocationRow>) {
+    setAllocationRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
   async function handleCreate() {
-    if (!projectId || selectedCollaborators.length === 0) return;
-    await dailyUpdatesApi.create({
-      allocation_date: date,
-      allocations: [{ project: Number(projectId), collaborator_ids: selectedCollaborators }],
-    } as never);
-    setCreating(false);
-    setProjectId("");
-    setSelectedCollaborators([]);
-    reload(range);
+    const validRows = allocationRows.filter((row) => row.projectId && row.collaboratorIds.length > 0);
+    if (validRows.length === 0) {
+      setCreateError("Adicione ao menos um projeto com técnico(s) selecionado(s).");
+      return;
+    }
+    setSavingCreate(true);
+    setCreateError("");
+    try {
+      await dailyUpdatesApi.create({
+        allocation_date: date,
+        allocations: validRows.map((row) => ({ project: Number(row.projectId), collaborator_ids: row.collaboratorIds })),
+      } as never);
+      setCreating(false);
+      setAllocationRows([emptyRow()]);
+      reload(range);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: Record<string, unknown> } };
+      const data = axiosErr.response?.data;
+      setCreateError(data ? JSON.stringify(data) : "Não foi possível salvar a atualização.");
+    } finally {
+      setSavingCreate(false);
+    }
   }
 
   async function handleSendEmail(id: number) {
@@ -100,7 +135,14 @@ export default function DailyUpdates() {
         subtitle="Registre e envie o consolidado diário de alocação da equipe."
         actions={
           canCreate ? (
-            <button className="btn btn-primary" onClick={() => setCreating((v) => !v)}>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setCreating((v) => !v);
+                setAllocationRows([emptyRow()]);
+                setCreateError("");
+              }}
+            >
               <Icon name={creating ? "close" : "add"} style={{ fontSize: 18 }} />
               {creating ? "Cancelar" : "Nova Atualização"}
             </button>
@@ -142,38 +184,80 @@ export default function DailyUpdates() {
       {creating && canCreate && (
         <div className="form-card">
           <label className="form-label">Data da alocação</label>
-          <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} style={{ marginBottom: 16 }} />
 
-          <label className="form-label">Projeto</label>
-          <select className="input" value={projectId} onChange={(e) => setProjectId(Number(e.target.value))}>
-            <option value="">Selecione...</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.code} — {p.name}
-              </option>
-            ))}
-          </select>
+          {allocationRows.map((row, index) => (
+            <div
+              key={index}
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: 14,
+                marginBottom: 12,
+                position: "relative",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                  Projeto {index + 1}
+                </span>
+                {allocationRows.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeAllocationRow(index)}
+                    className="btn btn-outline btn-sm"
+                    style={{ color: "var(--red)" }}
+                  >
+                    <Icon name="delete" style={{ fontSize: 14 }} />
+                  </button>
+                )}
+              </div>
 
-          <label className="form-label">Técnicos</label>
-          <select
-            multiple
-            className="input"
-            value={selectedCollaborators.map(String)}
-            onChange={(e) =>
-              setSelectedCollaborators(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))
-            }
-            style={{ height: 120 }}
-          >
-            {collaborators.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+              <label className="form-label">Projeto</label>
+              <select
+                className="input"
+                value={row.projectId}
+                onChange={(e) => updateAllocationRow(index, { projectId: Number(e.target.value) })}
+              >
+                <option value="">Selecione...</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} — {p.name}
+                  </option>
+                ))}
+              </select>
 
-          <button className="btn btn-primary" onClick={handleCreate} style={{ marginTop: 14 }}>
-            Salvar
+              <label className="form-label">Técnicos</label>
+              <select
+                multiple
+                className="input"
+                value={row.collaboratorIds.map(String)}
+                onChange={(e) =>
+                  updateAllocationRow(index, { collaboratorIds: Array.from(e.target.selectedOptions).map((o) => Number(o.value)) })
+                }
+                style={{ height: 100 }}
+              >
+                {collaborators.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+
+          <button type="button" onClick={addAllocationRow} className="btn btn-outline btn-sm" style={{ marginBottom: 14 }}>
+            <Icon name="add" style={{ fontSize: 15 }} />
+            Adicionar Projeto
           </button>
+
+          {createError && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{createError}</p>}
+
+          <div>
+            <button className="btn btn-primary" onClick={handleCreate} disabled={savingCreate}>
+              {savingCreate ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
         </div>
       )}
 

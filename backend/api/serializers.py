@@ -16,7 +16,7 @@ from core.models import (
     get_or_create_person,
     update_person,
 )
-from projects.models import Project, ProjectOccurrence, ProjectTask, RackPosition
+from projects.models import Project, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
 
@@ -294,7 +294,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         return len([t for t in self._tasks(obj) if t.status == "completed"])
 
     def get_worked_hours(self, obj):
-        return float(sum(t.worked_hours for t in self._tasks(obj)))
+        return merged_worked_hours(self._tasks(obj))
 
     def get_progress_percent(self, obj):
         tasks = self._tasks(obj)

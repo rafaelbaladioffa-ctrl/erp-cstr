@@ -30,7 +30,7 @@ from core.models import (
     Task,
     get_collaborator_role,
 )
-from projects.models import Project, ProjectOccurrence, ProjectTask, RackPosition
+from projects.models import Project, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
     add_tasks_to_project,
@@ -364,20 +364,28 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="hours-by-collaborator")
     def hours_by_collaborator(self, request, pk=None):
         project = self.get_object()
-        tasks = project.project_tasks.prefetch_related("collaborators__person")
-        totals: dict[int, dict] = {}
+        tasks = list(project.project_tasks.prefetch_related("collaborators__person"))
+
+        tasks_by_collaborator: dict[int, list] = {}
+        names_by_collaborator: dict[int, str] = {}
         for task in tasks:
-            hours = task.worked_hours
-            if not hours:
-                continue
             for collaborator in task.collaborators.all():
-                entry = totals.setdefault(
-                    collaborator.id, {"collaborator_id": collaborator.id, "collaborator_name": collaborator.person.name, "hours": 0.0}
-                )
-                entry["hours"] += hours
-        data = sorted(totals.values(), key=lambda item: item["hours"], reverse=True)
-        for item in data:
-            item["hours"] = round(item["hours"], 2)
+                tasks_by_collaborator.setdefault(collaborator.id, []).append(task)
+                names_by_collaborator[collaborator.id] = collaborator.person.name
+
+        data = [
+            {
+                "collaborator_id": collaborator_id,
+                "collaborator_name": names_by_collaborator[collaborator_id],
+                # Mescla intervalos sobrepostos (ex: técnico inicia várias
+                # tarefas ao mesmo tempo) para não contar o mesmo tempo
+                # trabalhado mais de uma vez.
+                "hours": merged_worked_hours(collaborator_tasks),
+            }
+            for collaborator_id, collaborator_tasks in tasks_by_collaborator.items()
+        ]
+        data = [item for item in data if item["hours"] > 0]
+        data.sort(key=lambda item: item["hours"], reverse=True)
         return Response(data)
 
     @action(detail=True, methods=["get"], url_path="rack-positions")

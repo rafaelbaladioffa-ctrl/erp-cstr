@@ -284,6 +284,36 @@ class ProjectTask(TimestampedModel):
         return 0.0
 
 
+def merged_worked_hours(tasks):
+    """Soma horas trabalhadas de um conjunto de ProjectTask evitando contar
+    duas vezes o tempo em que houve sobreposição (ex: técnico inicia várias
+    tarefas ao mesmo tempo e as conclui dentro da mesma janela — cada tarefa
+    tem sua própria duração de X minutos, mas o tempo real trabalhado foi só
+    X minutos, não X × número de tarefas).
+
+    Mescla os intervalos [actual_start, actual_end] que se sobrepõem antes de
+    somar a duração; tarefas sem actual_start/actual_end (usam a estimativa de
+    `worked_hours`) são somadas à parte, sem tentar detectar sobreposição."""
+    intervals = []
+    flat_hours = 0.0
+    for task in tasks:
+        if task.actual_start and task.actual_end:
+            intervals.append((task.actual_start, task.actual_end))
+        else:
+            flat_hours += task.worked_hours
+
+    intervals.sort(key=lambda interval: interval[0])
+    merged = []
+    for start, end in intervals:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+
+    merged_seconds = sum((end - start).total_seconds() for start, end in merged)
+    return round(merged_seconds / 3600 + flat_hours, 2)
+
+
 class ProjectOccurrence(TimestampedModel):
     SEVERITY_LOW = "low"
     SEVERITY_MEDIUM = "medium"
