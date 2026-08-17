@@ -103,9 +103,11 @@ def build_project_update_body(project_update):
     return "\n".join(lines)
 
 
-def send_project_daily_update_email(project_update):
+def send_project_daily_update_email(project_update, extra_recipients=None):
     """Envia a Atualização Diária de Projeto para todos os ClientResponsible
-    ativos do cliente vinculado ao projeto.
+    ativos do cliente vinculado ao projeto, mais quaisquer destinatários
+    extras informados (usuários do sistema escolhidos ou e-mails avulsos
+    digitados na tela) via `extra_recipients` — lista de tuplas (nome, e-mail).
 
     Retorna uma tupla (enviados, sem_email) com os nomes em cada caso.
     """
@@ -118,6 +120,20 @@ def send_project_daily_update_email(project_update):
             ).select_related("person")
         )
 
+    recipients = [(r.person.name, r.person.email) for r in responsibles]
+    recipients += list(extra_recipients or [])
+
+    # Deduplica por e-mail (case-insensitive), preservando a primeira ocorrência.
+    seen_emails = set()
+    deduped = []
+    for name, email in recipients:
+        key = (email or "").strip().lower()
+        if key and key not in seen_emails:
+            seen_emails.add(key)
+            deduped.append((name, email))
+        elif not key:
+            deduped.append((name, email))
+
     subject = f"Atualização de Projeto — {project.name} ({project_update.date:%d/%m/%Y})"
     body = build_project_update_body(project_update)
 
@@ -128,19 +144,19 @@ def send_project_daily_update_email(project_update):
     pdf_filename = f"atualizacao-projeto-{project.code or project.pk}-{project_update.date:%Y-%m-%d}.pdf"
 
     sent, skipped = [], []
-    for responsible in responsibles:
-        if not responsible.person.email:
-            skipped.append(responsible.person.name)
+    for name, recipient_email in deduped:
+        if not recipient_email:
+            skipped.append(name)
             continue
         email = EmailMessage(
             subject=subject,
             body=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[responsible.person.email],
+            to=[recipient_email],
         )
         email.attach(pdf_filename, pdf_bytes, "application/pdf")
         email.send(fail_silently=False)
-        sent.append(responsible.person.name)
+        sent.append(name)
 
     if sent:
         type(project_update).objects.filter(pk=project_update.pk).update(sent_at=timezone.now())

@@ -32,6 +32,7 @@ urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),
     path("token/refresh/", ThrottledTokenRefreshView.as_view(), name="token-refresh"),
     path("me/", views.MeView.as_view(), name="me"),
+    path("user-options/", views.UserOptionsView.as_view(), name="user-options"),
     path("me/change-password/", views.ChangePasswordView.as_view(), name="change-password"),
     path("search/", views.GlobalSearchView.as_view(), name="global-search"),
     path("dashboard/projects/", ProjectsPerformanceView.as_view(), name="dashboard-projects"),

@@ -166,6 +166,26 @@ class RegistryViewSet(CSVExportImportMixin, viewsets.ModelViewSet):
         return deny_if_client_scoped(queryset, user)
 
 
+class UserOptionsView(APIView):
+    """Lista enxuta de usuários do sistema (id/nome/e-mail) para telas que
+    precisam deixar o usuário escolher destinatários adicionais de e-mail
+    (ex: enviar Atualização de Projeto para alguém além dos responsáveis)."""
+
+    def get(self, request):
+        from users.models import User
+
+        users = (
+            User.objects.filter(is_active=True)
+            .exclude(email="")
+            .order_by("first_name", "last_name", "username")
+        )
+        data = [
+            {"id": u.pk, "name": u.get_full_name() or u.username, "email": u.email}
+            for u in users
+        ]
+        return Response(data)
+
+
 class MeView(APIView):
     def get(self, request):
         user = request.user
@@ -824,10 +844,37 @@ class ProjectDailyUpdateViewSet(RequireChangePermissionForActions, viewsets.Mode
 
     @action(detail=True, methods=["post"], url_path="send-email")
     def send_email(self, request, pk=None):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from django.core.validators import validate_email
+
+        from users.models import User
+
         project_update = self.get_object()
-        if not project_update.project.client_id:
+
+        extra = []
+        user_ids = request.data.get("user_ids") or []
+        for extra_user in User.objects.filter(pk__in=user_ids, is_active=True).exclude(email=""):
+            extra.append((extra_user.get_full_name() or extra_user.username, extra_user.email))
+
+        invalid_emails = []
+        for raw in request.data.get("emails") or []:
+            candidate = (raw or "").strip()
+            if not candidate:
+                continue
+            try:
+                validate_email(candidate)
+            except DjangoValidationError:
+                invalid_emails.append(candidate)
+                continue
+            extra.append((candidate, candidate))
+
+        if invalid_emails:
+            return Response({"detail": f"E-mail(s) inválido(s): {', '.join(invalid_emails)}"}, status=400)
+
+        if not project_update.project.client_id and not extra:
             return Response({"detail": "O projeto não possui cliente vinculado."}, status=400)
-        sent, skipped = send_project_daily_update_email(project_update)
+
+        sent, skipped = send_project_daily_update_email(project_update, extra_recipients=extra)
         return Response({"sent": sent, "skipped": skipped})
 
     @action(detail=True, methods=["get"])

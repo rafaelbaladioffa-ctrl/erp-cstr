@@ -253,6 +253,12 @@ export interface ProjectOccurrence {
   updated_at: string;
 }
 
+export interface UserOption {
+  id: number;
+  name: string;
+  email: string;
+}
+
 export interface Notification {
   id: number;
   title: string;

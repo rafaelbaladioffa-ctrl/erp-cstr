@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { collaboratorsApi, projectsApi, projectUpdatesApi } from "../api/resources";
-import type { Collaborator, Project, ProjectDailyUpdate } from "../api/types";
+import { collaboratorsApi, projectsApi, projectUpdatesApi, usersApi } from "../api/resources";
+import type { Collaborator, Project, ProjectDailyUpdate, UserOption } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import DateRangeCalendar, { type DateRange } from "../components/ui/DateRangeCalendar";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
@@ -14,6 +15,7 @@ export default function ProjectUpdates() {
   const [updates, setUpdates] = useState<ProjectDailyUpdate[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [userOptions, setUserOptions] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<ProjectDailyUpdate | null>(null);
@@ -23,6 +25,9 @@ export default function ProjectUpdates() {
   const [newSummary, setNewSummary] = useState("");
   const [generateError, setGenerateError] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "sent" | "pending">("all");
+  const [range, setRange] = useState<DateRange | null>(null);
 
   function reload() {
     setLoading(true);
@@ -36,6 +41,7 @@ export default function ProjectUpdates() {
     reload();
     projectsApi.list().then((data) => setProjects(data.results));
     collaboratorsApi.list().then((data) => setCollaborators(data.results));
+    usersApi.options().then(setUserOptions);
   }, []);
 
   async function handleGenerate() {
@@ -66,6 +72,31 @@ export default function ProjectUpdates() {
     }
   }
 
+  const poByProject: Record<number, string> = {};
+  projects.forEach((p) => {
+    poByProject[p.id] = p.po || "";
+  });
+
+  const term = search.trim().toLowerCase();
+  const hasFilter = term !== "" || range !== null;
+
+  const filteredUpdates = hasFilter
+    ? updates.filter((update) => {
+        if (statusFilter === "sent" && !update.is_sent) return false;
+        if (statusFilter === "pending" && update.is_sent) return false;
+        if (range && (update.date < range.start || update.date > range.end)) return false;
+        if (term) {
+          const po = (poByProject[update.project] || "").toLowerCase();
+          const matches =
+            update.project_name.toLowerCase().includes(term) ||
+            update.project_code.toLowerCase().includes(term) ||
+            po.includes(term);
+          if (!matches) return false;
+        }
+        return true;
+      })
+    : [];
+
   return (
     <div>
       <PageHeader
@@ -81,6 +112,41 @@ export default function ProjectUpdates() {
           ) : undefined
         }
       />
+
+      <div className="card" style={{ padding: 14, marginBottom: 16, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="field-label">Período</span>
+          <DateRangeCalendar value={range} onChange={setRange} maxDays={31} />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="field-label">Buscar</span>
+          <input
+            type="text"
+            className="input"
+            placeholder="PO ou nome do projeto..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 220 }}
+          />
+          {hasFilter && (
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {filteredUpdates.length} atualização(ões) encontrada(s)
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginLeft: "auto" }}>
+          <div className="field-group">
+            <span className="field-label">Status</span>
+            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
+              <option value="all">Todos</option>
+              <option value="sent">Enviado</option>
+              <option value="pending">Não enviado</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
       {creating && canCreate && (
         <div className="form-card">
@@ -110,9 +176,14 @@ export default function ProjectUpdates() {
 
       {loading ? (
         <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+      ) : !hasFilter ? (
+        <div className="empty-state">
+          <Icon name="calendar_month" style={{ fontSize: 28, color: "var(--text-faint)" }} />
+          <p style={{ marginTop: 8 }}>Selecione um período ou busque por PO/nome do projeto acima para ver as Atualizações de Projeto.</p>
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {updates.map((update) => {
+          {filteredUpdates.map((update) => {
             const expanded = selected?.id === update.id;
             return (
               <div key={update.id} className="card" style={{ padding: 16 }}>
@@ -138,6 +209,7 @@ export default function ProjectUpdates() {
                   <ProjectUpdateEditor
                     update={update}
                     collaborators={collaborators}
+                    userOptions={userOptions}
                     canEdit={canEdit}
                     onChange={(u) => {
                       setSelected(u);
@@ -148,7 +220,7 @@ export default function ProjectUpdates() {
               </div>
             );
           })}
-          {updates.length === 0 && <div className="empty-state">Nenhuma atualização registrada.</div>}
+          {filteredUpdates.length === 0 && <div className="empty-state">Nenhuma atualização encontrada para o filtro.</div>}
         </div>
       )}
     </div>
@@ -158,18 +230,25 @@ export default function ProjectUpdates() {
 function ProjectUpdateEditor({
   update,
   collaborators,
+  userOptions,
   canEdit,
   onChange,
 }: {
   update: ProjectDailyUpdate;
   collaborators: Collaborator[];
+  userOptions: UserOption[];
   canEdit: boolean;
   onChange: (u: ProjectDailyUpdate) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
   const [copied, setCopied] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [recipientsOpen, setRecipientsOpen] = useState(false);
+  const [extraUserIds, setExtraUserIds] = useState<number[]>([]);
+  const [extraEmailsText, setExtraEmailsText] = useState("");
 
   async function handleDownloadPdf() {
     setDownloadingPdf(true);
@@ -196,13 +275,27 @@ function ProjectUpdateEditor({
   }
 
   async function handleSendEmail() {
-    const result = await projectUpdatesApi.sendEmail(update.id);
-    if (result.detail) {
-      setFeedback(result.detail);
-    } else {
-      setFeedback(`${result.sent.length} e-mail(s) enviado(s).${result.skipped.length ? ` Sem e-mail: ${result.skipped.join(", ")}` : ""}`);
-      const refreshed = await projectUpdatesApi.get(update.id);
-      onChange(refreshed);
+    const emails = extraEmailsText
+      .split(/[,;\n]/)
+      .map((e) => e.trim())
+      .filter(Boolean);
+    setSendingEmail(true);
+    setFeedback("");
+    setFeedbackError("");
+    try {
+      const result = await projectUpdatesApi.sendEmail(update.id, { user_ids: extraUserIds, emails });
+      if (result.detail) {
+        setFeedbackError(result.detail);
+      } else {
+        setFeedback(`${result.sent.length} e-mail(s) enviado(s).${result.skipped.length ? ` Sem e-mail: ${result.skipped.join(", ")}` : ""}`);
+        const refreshed = await projectUpdatesApi.get(update.id);
+        onChange(refreshed);
+      }
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      setFeedbackError(axiosErr.response?.data?.detail || "Não foi possível enviar o e-mail.");
+    } finally {
+      setSendingEmail(false);
     }
   }
 
@@ -294,6 +387,54 @@ function ProjectUpdateEditor({
       </div>
 
       {feedback && <p style={{ fontSize: 12, color: "var(--green)", marginTop: 8, fontWeight: 600 }}>{feedback}</p>}
+      {feedbackError && <p style={{ fontSize: 12, color: "var(--red)", marginTop: 8, fontWeight: 600 }}>{feedbackError}</p>}
+
+      {canEdit && (
+        <div style={{ marginTop: 14 }}>
+          <button
+            type="button"
+            onClick={() => setRecipientsOpen((v) => !v)}
+            style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)", fontSize: 12.5 }}
+          >
+            <Icon name={recipientsOpen ? "expand_less" : "expand_more"} style={{ fontSize: 16 }} />
+            Destinatários adicionais {extraUserIds.length + extraEmailsText.split(/[,;\n]/).filter((e) => e.trim()).length > 0
+              ? `(${extraUserIds.length + extraEmailsText.split(/[,;\n]/).filter((e) => e.trim()).length})`
+              : ""}
+          </button>
+
+          {recipientsOpen && (
+            <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginTop: 8 }}>
+              <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8 }}>
+                Além dos responsáveis do cliente vinculado ao projeto, você pode escolher usuários do sistema e/ou digitar e-mails avulsos.
+              </p>
+
+              <label className="form-label">Usuários do sistema</label>
+              <select
+                multiple
+                className="input"
+                value={extraUserIds.map(String)}
+                onChange={(e) => setExtraUserIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
+                style={{ height: 90 }}
+              >
+                {userOptions.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} — {u.email}
+                  </option>
+                ))}
+              </select>
+
+              <label className="form-label">E-mails avulsos</label>
+              <textarea
+                className="input"
+                placeholder="Separe por vírgula ou uma linha por e-mail"
+                value={extraEmailsText}
+                onChange={(e) => setExtraEmailsText(e.target.value)}
+                style={{ height: 60 }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <button onClick={copyText} className="btn btn-secondary">
@@ -304,8 +445,8 @@ function ProjectUpdateEditor({
             <button onClick={handleDownloadPdf} disabled={downloadingPdf} className="btn btn-secondary">
               {downloadingPdf ? "Gerando..." : "Baixar PDF"}
             </button>
-            <button onClick={handleSendEmail} className="btn btn-primary">
-              Enviar por E-mail
+            <button onClick={handleSendEmail} disabled={sendingEmail} className="btn btn-primary">
+              {sendingEmail ? "Enviando..." : "Enviar por E-mail"}
             </button>
           </>
         )}

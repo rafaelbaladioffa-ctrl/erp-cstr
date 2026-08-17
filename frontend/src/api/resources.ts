@@ -21,6 +21,7 @@ import type {
   ProjectType,
   RackPosition,
   ResponsibleFull,
+  UserOption,
   SiteFull,
   SiteMapData,
   TaskFull,
@@ -216,11 +217,15 @@ export const projectUpdatesApi = {
     apiClient.post<ProjectDailyUpdate>("/project-updates/", payload).then((r) => r.data),
   update: (id: number, payload: Partial<ProjectDailyUpdate>) =>
     apiClient.patch<ProjectDailyUpdate>(`/project-updates/${id}/`, payload).then((r) => r.data),
-  sendEmail: (id: number) =>
+  sendEmail: (id: number, payload?: { user_ids?: number[]; emails?: string[] }) =>
     apiClient
-      .post<{ sent: string[]; skipped: string[]; detail?: string }>(`/project-updates/${id}/send-email/`)
+      .post<{ sent: string[]; skipped: string[]; detail?: string }>(`/project-updates/${id}/send-email/`, payload || {})
       .then((r) => r.data),
   pdfPath: (id: number) => `/project-updates/${id}/pdf/`,
+};
+
+export const usersApi = {
+  options: () => apiClient.get<UserOption[]>("/user-options/").then((r) => r.data),
 };
 
 export const myTasksApi = {
