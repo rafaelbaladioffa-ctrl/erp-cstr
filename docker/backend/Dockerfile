@@ -23,4 +23,8 @@ RUN chmod +x /entrypoint.sh \
 
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "60"]
+# Usa a variável PORT quando definida pela plataforma de hospedagem (ex: Railway,
+# que atribui a porta dinamicamente); cai para 8000 localmente (docker compose),
+# onde PORT não é definida. Precisa de "sh -c" para o shell expandir a variável
+# em tempo de execução — forma exec (array) não faz essa substituição.
+CMD ["sh", "-c", "gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 3 --timeout 60"]
