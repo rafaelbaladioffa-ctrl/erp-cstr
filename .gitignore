@@ -15,4 +15,6 @@ backend/output/
 backend/tmp/
 outputs/
 artifacts/*/*.png
+tools/faq-generator/shots/
+tools/faq-generator/*.pdf
 

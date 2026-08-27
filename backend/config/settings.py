@@ -66,6 +66,11 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
+# Evita cair em /accounts/profile/ (padrão do Django, sem view registrada
+# nesse sistema) quando alguém loga entrando direto por /admin/login/ em vez
+# de /admin/ (que já redireciona com o "next" certo automaticamente).
+LOGIN_REDIRECT_URL = "/admin/"
+
 ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
