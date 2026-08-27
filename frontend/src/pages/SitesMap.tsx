@@ -167,7 +167,7 @@ export default function SitesMap() {
               borderLeft: "1px solid #DDE3EA",
               boxShadow: "-4px 0 12px rgba(0,0,0,0.06)",
               overflowY: "auto",
-              zIndex: 5,
+              zIndex: 1000,
             }}
           >
             <div style={{ padding: "16px 18px", borderBottom: "1px solid #DDE3EA", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
