@@ -253,6 +253,18 @@ export interface ProjectOccurrence {
   updated_at: string;
 }
 
+export interface ProjectAttachment {
+  id: number;
+  project: number;
+  file: string;
+  file_name: string;
+  file_size: number | null;
+  description: string;
+  uploaded_by: number | null;
+  uploaded_by_name: string | null;
+  created_at: string;
+}
+
 export interface UserOption {
   id: number;
   name: string;

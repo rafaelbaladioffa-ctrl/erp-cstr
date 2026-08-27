@@ -16,7 +16,7 @@ from core.models import (
     get_or_create_person,
     update_person,
 )
-from projects.models import Project, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
+from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
 
@@ -418,6 +418,41 @@ class ProjectOccurrenceSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("resolved_at", "created_at", "updated_at")
+
+
+class ProjectAttachmentSerializer(serializers.ModelSerializer):
+    file_name = serializers.SerializerMethodField()
+    file_size = serializers.SerializerMethodField()
+    uploaded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProjectAttachment
+        fields = (
+            "id",
+            "project",
+            "file",
+            "file_name",
+            "file_size",
+            "description",
+            "uploaded_by",
+            "uploaded_by_name",
+            "created_at",
+        )
+        read_only_fields = ("uploaded_by", "created_at")
+
+    def get_file_name(self, obj):
+        return obj.file.name.rsplit("/", 1)[-1] if obj.file else ""
+
+    def get_file_size(self, obj):
+        try:
+            return obj.file.size
+        except (ValueError, FileNotFoundError, OSError):
+            return None
+
+    def get_uploaded_by_name(self, obj):
+        if not obj.uploaded_by_id:
+            return None
+        return obj.uploaded_by.get_full_name() or obj.uploaded_by.get_username()
 
 
 class ProjectTaskCreateSerializer(serializers.Serializer):

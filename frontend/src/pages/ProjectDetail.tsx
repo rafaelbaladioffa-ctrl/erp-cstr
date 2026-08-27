@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { projectOccurrencesApi, projectsApi, projectTasksApi, rackPositionsApi, registryApi } from "../api/resources";
-import type { CollaboratorFull, CollaboratorHours, Project, ProjectOccurrence, ProjectTask, RackPosition } from "../api/types";
+import { projectAttachmentsApi, projectOccurrencesApi, projectsApi, projectTasksApi, rackPositionsApi, registryApi } from "../api/resources";
+import type { CollaboratorFull, CollaboratorHours, Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition } from "../api/types";
 import ProjectOccurrenceFormModal from "../components/projects/ProjectOccurrenceFormModal";
 import ProjectTaskFormModal from "../components/projects/ProjectTaskFormModal";
 import RackPositionBulkModal from "../components/projects/RackPositionBulkModal";
@@ -12,9 +12,10 @@ import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
+import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
 
-type DetailTab = "tasks" | "hours" | "occurrences";
+type DetailTab = "tasks" | "hours" | "occurrences" | "attachments";
 
 const SEVERITY_TONE: Record<string, { bg: string; color: string }> = {
   low: { bg: "var(--bg)", color: "var(--text-muted)" },
@@ -54,6 +55,12 @@ export default function ProjectDetail() {
   const [occurrenceFormOpen, setOccurrenceFormOpen] = useState(false);
   const [editingOccurrence, setEditingOccurrence] = useState<ProjectOccurrence | null>(null);
 
+  const [attachments, setAttachments] = useState<ProjectAttachment[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentDescription, setAttachmentDescription] = useState("");
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+
   const canAddRack = hasPerm(user, PERMS.addRackPosition);
   const canChangeRack = hasPerm(user, PERMS.changeRackPosition);
   const canDeleteRack = hasPerm(user, PERMS.deleteRackPosition);
@@ -63,6 +70,8 @@ export default function ProjectDetail() {
   const canAddOccurrence = hasPerm(user, PERMS.addProjectOccurrence);
   const canChangeOccurrence = hasPerm(user, PERMS.changeProjectOccurrence);
   const canDeleteOccurrence = hasPerm(user, PERMS.deleteProjectOccurrence);
+  const canAddAttachment = hasPerm(user, PERMS.addProjectAttachment);
+  const canDeleteAttachment = hasPerm(user, PERMS.deleteProjectAttachment);
 
   const mountedRef = useRef(true);
 
@@ -113,6 +122,19 @@ export default function ProjectDetail() {
       });
   }
 
+  function reloadAttachments() {
+    if (!projectId) return;
+    setAttachmentsLoading(true);
+    projectAttachmentsApi
+      .list(projectId)
+      .then((data) => {
+        if (mountedRef.current) setAttachments(data.results);
+      })
+      .finally(() => {
+        if (mountedRef.current) setAttachmentsLoading(false);
+      });
+  }
+
   useEffect(() => {
     mountedRef.current = true;
     reload();
@@ -128,6 +150,7 @@ export default function ProjectDetail() {
   useEffect(() => {
     if (activeTab === "hours" && hours.length === 0 && !hoursLoading) reloadHours();
     if (activeTab === "occurrences" && occurrences.length === 0 && !occurrencesLoading) reloadOccurrences();
+    if (activeTab === "attachments" && attachments.length === 0 && !attachmentsLoading) reloadAttachments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, projectId]);
 
@@ -180,6 +203,38 @@ export default function ProjectDetail() {
     if (!confirm(`Excluir a ocorrência "${occurrence.title}"?`)) return;
     await projectOccurrencesApi.remove(occurrence.id);
     reloadOccurrences();
+  }
+
+  async function handleUploadAttachment() {
+    if (!attachmentFile || !projectId) return;
+    setUploadingAttachment(true);
+    try {
+      await projectAttachmentsApi.upload(projectId, attachmentFile, attachmentDescription);
+      setAttachmentFile(null);
+      setAttachmentDescription("");
+      const fileInput = document.getElementById("attachment-file-input") as HTMLInputElement | null;
+      if (fileInput) fileInput.value = "";
+      reloadAttachments();
+    } finally {
+      setUploadingAttachment(false);
+    }
+  }
+
+  async function handleDeleteAttachment(attachment: ProjectAttachment) {
+    if (!confirm(`Excluir o anexo "${attachment.file_name}"?`)) return;
+    await projectAttachmentsApi.remove(attachment.id);
+    reloadAttachments();
+  }
+
+  function handleDownloadAttachment(attachment: ProjectAttachment) {
+    downloadAuthenticatedFile(projectAttachmentsApi.downloadUrl(attachment.id), attachment.file_name);
+  }
+
+  function formatFileSize(bytes: number | null) {
+    if (bytes === null) return "—";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   async function handleImportFromProjectType() {
@@ -372,6 +427,9 @@ export default function ProjectDetail() {
         </button>
         <button className={`tab-btn${activeTab === "occurrences" ? " active" : ""}`} onClick={() => setActiveTab("occurrences")}>
           Ocorrências
+        </button>
+        <button className={`tab-btn${activeTab === "attachments" ? " active" : ""}`} onClick={() => setActiveTab("attachments")}>
+          Anexos
         </button>
       </div>
 
@@ -639,6 +697,95 @@ export default function ProjectDetail() {
                     </tr>
                   )}
                   {occurrencesLoading && (
+                    <tr>
+                      <td colSpan={6}>
+                        <div className="table-empty">Carregando...</div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === "attachments" && (
+        <>
+          {canAddAttachment && (
+            <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+              <h2 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", margin: "0 0 12px" }}>Anexar arquivo</h2>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div className="field-group" style={{ flex: "1 1 220px" }}>
+                  <span className="field-label">Arquivo</span>
+                  <input
+                    id="attachment-file-input"
+                    type="file"
+                    className="input"
+                    onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+                <div className="field-group" style={{ flex: "1 1 220px" }}>
+                  <span className="field-label">Descrição (opcional)</span>
+                  <input
+                    type="text"
+                    className="input"
+                    value={attachmentDescription}
+                    onChange={(e) => setAttachmentDescription(e.target.value)}
+                    placeholder="Ex: Planta baixa atualizada"
+                  />
+                </div>
+                <button className="btn btn-primary" onClick={handleUploadAttachment} disabled={!attachmentFile || uploadingAttachment}>
+                  <Icon name="upload" style={{ fontSize: 16 }} />
+                  {uploadingAttachment ? "Enviando..." : "Enviar"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="card">
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Arquivo</th>
+                    <th>Descrição</th>
+                    <th>Tamanho</th>
+                    <th>Enviado por</th>
+                    <th>Data</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attachments.map((attachment) => (
+                    <tr key={attachment.id}>
+                      <td>{attachment.file_name}</td>
+                      <td>{attachment.description || "—"}</td>
+                      <td>{formatFileSize(attachment.file_size)}</td>
+                      <td>{attachment.uploaded_by_name || "—"}</td>
+                      <td>{new Date(attachment.created_at).toLocaleDateString("pt-BR")}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button className="btn btn-outline btn-sm" onClick={() => handleDownloadAttachment(attachment)}>
+                            <Icon name="download" style={{ fontSize: 14 }} />
+                          </button>
+                          {canDeleteAttachment && (
+                            <button className="btn btn-outline btn-sm" onClick={() => handleDeleteAttachment(attachment)} style={{ color: "var(--red)" }}>
+                              <Icon name="delete" style={{ fontSize: 14 }} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!attachmentsLoading && attachments.length === 0 && (
+                    <tr>
+                      <td colSpan={6}>
+                        <div className="table-empty">Nenhum arquivo anexado.</div>
+                      </td>
+                    </tr>
+                  )}
+                  {attachmentsLoading && (
                     <tr>
                       <td colSpan={6}>
                         <div className="table-empty">Carregando...</div>

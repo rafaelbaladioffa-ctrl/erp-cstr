@@ -19,7 +19,7 @@ from core.admin_mixins import SelectablePageSizeAdminMixin
 from core.csv_io import MAX_CSV_UPLOAD_BYTES, neutralize_formula
 from core.models import Category, Client, Collaborator, Company, ProjectType, Responsible, Site, Task
 from .analytics import build_projects_performance, build_technical_performance, parse_date
-from .models import DashboardProxy, Project, ProjectHistory, ProjectOccurrence, ProjectTask, RackPosition
+from .models import DashboardProxy, Project, ProjectAttachment, ProjectHistory, ProjectOccurrence, ProjectTask, RackPosition
 from .services import (
     BulkActionError,
     add_tasks_to_project,
@@ -1041,6 +1041,19 @@ class ProjectOccurrenceAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     search_fields = ("project__code", "project__name", "title", "description", "responsible__person__name")
     autocomplete_fields = ("project", "responsible")
     readonly_fields = ("resolved_at", "created_at", "updated_at")
+
+    def get_model_perms(self, request):
+        """Mantém as rotas para os links internos, mas oculta o submódulo do menu."""
+        return {}
+
+
+@admin.register(ProjectAttachment)
+class ProjectAttachmentAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("project", "file", "description", "uploaded_by", "created_at")
+    list_filter = ("project__company", "project")
+    search_fields = ("project__code", "project__name", "description", "file")
+    autocomplete_fields = ("project",)
+    readonly_fields = ("uploaded_by", "created_at", "updated_at")
 
     def get_model_perms(self, request):
         """Mantém as rotas para os links internos, mas oculta o submódulo do menu."""

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
@@ -362,3 +363,30 @@ class ProjectOccurrence(TimestampedModel):
         elif self.status != self.STATUS_RESOLVED:
             self.resolved_at = None
         super().save(*args, **kwargs)
+
+
+def project_attachment_upload_to(instance, filename):
+    return f"project_attachments/{instance.project_id}/{filename}"
+
+
+class ProjectAttachment(TimestampedModel):
+    project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="attachments")
+    file = models.FileField("arquivo", upload_to=project_attachment_upload_to)
+    description = models.CharField("descrição", max_length=255, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="enviado por",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        editable=False,
+        related_name="project_attachments",
+    )
+
+    class Meta:
+        verbose_name = "Anexo do Projeto"
+        verbose_name_plural = "Anexos do Projeto"
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.project} - {self.file.name.rsplit('/', 1)[-1]}"

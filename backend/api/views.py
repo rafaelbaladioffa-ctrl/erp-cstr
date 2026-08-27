@@ -30,7 +30,7 @@ from core.models import (
     Task,
     get_collaborator_role,
 )
-from projects.models import Project, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
+from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
     add_tasks_to_project,
@@ -59,6 +59,7 @@ from .serializers import (
     JobTitleCrudSerializer,
     MyTaskUpdateSerializer,
     NotificationSerializer,
+    ProjectAttachmentSerializer,
     ProjectDailyUpdateCreateSerializer,
     ProjectDailyUpdateSerializer,
     ProjectOccurrenceSerializer,
@@ -571,6 +572,29 @@ class ProjectOccurrenceViewSet(viewsets.ModelViewSet):
         if project_id:
             queryset = queryset.filter(project_id=project_id)
         return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+
+
+class ProjectAttachmentViewSet(viewsets.ModelViewSet):
+    queryset = ProjectAttachment.objects.select_related("project", "uploaded_by").order_by("-created_at")
+    serializer_class = ProjectAttachmentSerializer
+    permission_classes = [ViewAwareModelPermissions]
+    parser_classes = [MultiPartParser]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get("project")
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+
+    def perform_create(self, serializer):
+        serializer.save(uploaded_by=self.request.user)
+
+    @action(detail=True, methods=["get"])
+    def download(self, request, pk=None):
+        attachment = self.get_object()
+        filename = attachment.file.name.rsplit("/", 1)[-1]
+        return FileResponse(attachment.file.open("rb"), as_attachment=True, filename=filename)
 
 
 # ---------------------------------------------------------------------------

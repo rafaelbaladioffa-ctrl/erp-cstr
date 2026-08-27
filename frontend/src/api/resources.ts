@@ -13,6 +13,7 @@ import type {
   Notification,
   Paginated,
   Project,
+  ProjectAttachment,
   ProjectDailyUpdate,
   ProjectOccurrence,
   ProjectTask,
@@ -181,6 +182,22 @@ export const projectOccurrencesApi = {
   update: (id: number, payload: Partial<ProjectOccurrence>) =>
     apiClient.patch<ProjectOccurrence>(`/project-occurrences/${id}/`, payload).then((r) => r.data),
   remove: (id: number) => apiClient.delete(`/project-occurrences/${id}/`),
+};
+
+export const projectAttachmentsApi = {
+  list: (projectId: number) =>
+    apiClient.get<Paginated<ProjectAttachment>>("/project-attachments/", { params: { project: String(projectId) } }).then((r) => r.data),
+  upload: (projectId: number, file: File, description: string) => {
+    const form = new FormData();
+    form.append("project", String(projectId));
+    form.append("file", file);
+    if (description) form.append("description", description);
+    return apiClient
+      .post<ProjectAttachment>("/project-attachments/", form, { headers: { "Content-Type": "multipart/form-data" } })
+      .then((r) => r.data);
+  },
+  remove: (id: number) => apiClient.delete(`/project-attachments/${id}/`),
+  downloadUrl: (id: number) => `/project-attachments/${id}/download/`,
 };
 
 export const clientsApi = {
