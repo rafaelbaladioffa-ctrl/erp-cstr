@@ -91,7 +91,7 @@ def _build_dashboard_context(request, admin_site):
 
 class ProjectTaskMultipleChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, obj):
-        return f"{obj.order} — {obj.task.name}"
+        return f"{obj.order} — {obj.display_name}"
 
 
 class ProjectCSVImportForm(forms.Form):
@@ -1010,11 +1010,18 @@ class ProjectTaskAdminForm(forms.ModelForm):
 @admin.register(ProjectTask)
 class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     form = ProjectTaskAdminForm
-    list_display = ("project", "task", "rack_positions_display", "collaborators_display", "status", "order", "planned_start", "planned_end")
+    list_display = ("project", "display_name_admin", "rack_positions_display", "collaborators_display", "status", "order", "planned_start", "planned_end")
     list_filter = ("status", "project__company", "project", "rack_positions")
-    search_fields = ("project__code", "project__name", "task__code", "task__name", "collaborators__person__name", "rack_positions__position")
+    search_fields = (
+        "project__code", "project__name", "task__code", "task__name", "custom_name",
+        "collaborators__person__name", "rack_positions__position",
+    )
     autocomplete_fields = ("project", "task", "collaborators")
     readonly_fields = ("created_at", "updated_at")
+
+    @admin.display(description="Tarefa")
+    def display_name_admin(self, obj):
+        return obj.display_name
 
     @admin.display(description="Responsáveis")
     def collaborators_display(self, obj):

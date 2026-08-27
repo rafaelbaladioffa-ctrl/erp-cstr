@@ -19,7 +19,7 @@ class MyTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         "actual_end",
     )
     list_filter = ("status",)
-    search_fields = ("project__code", "project__name", "task__name")
+    search_fields = ("project__code", "project__name", "task__name", "custom_name")
     readonly_fields = ("project", "task", "planned_start", "planned_end", "estimated_hours")
     fields = (
         "project",

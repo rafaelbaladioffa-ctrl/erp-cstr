@@ -146,6 +146,10 @@ export const projectsApi = {
     apiClient
       .post<{ created: number; skipped: number; tasks: ProjectTask[] }>(`/projects/${id}/tasks/create/`, payload)
       .then((r) => r.data),
+  createCustomTasks: (id: number, names: string[]) =>
+    apiClient
+      .post<{ created: number; tasks: ProjectTask[] }>(`/projects/${id}/tasks/create-custom/`, { names })
+      .then((r) => r.data),
   hoursByCollaborator: (id: number) =>
     apiClient.get<CollaboratorHours[]>(`/projects/${id}/hours-by-collaborator/`).then((r) => r.data),
 };

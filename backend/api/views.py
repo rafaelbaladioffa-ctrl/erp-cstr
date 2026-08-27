@@ -33,6 +33,7 @@ from core.models import (
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
+    add_custom_tasks_to_project,
     add_tasks_to_project,
     apply_bulk_task_update,
     create_rack_positions_bulk,
@@ -280,14 +281,16 @@ class GlobalSearchView(APIView):
         ]
 
         tasks_qs = scope_project_queryset(
-            ProjectTask.objects.select_related("task", "project").filter(task__name__icontains=query),
+            ProjectTask.objects.select_related("task", "project").filter(
+                models.Q(task__name__icontains=query) | models.Q(custom_name__icontains=query)
+            ),
             request.user,
             field_prefix="project__",
         )[: self.LIMIT]
         tasks = [
             {
                 "id": t.pk,
-                "task_name": t.task.name,
+                "task_name": t.display_name,
                 "project_id": t.project_id,
                 "project_name": t.project.name,
                 "project_code": t.project.code,
@@ -337,7 +340,7 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
     )
     serializer_class = ProjectSerializer
     permission_classes = [ViewAwareModelPermissions]
-    change_permission_actions = ("tasks_bulk", "import_tasks", "rack_positions_bulk", "tasks_create")
+    change_permission_actions = ("tasks_bulk", "import_tasks", "rack_positions_bulk", "tasks_create", "tasks_create_custom")
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -432,6 +435,16 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
         created, skipped = create_task_instances(project, data["task"], rack_positions, collaborators=data["collaborator_ids"], **fields)
         tasks = ProjectTaskSerializer(created, many=True).data
         return Response({"created": len(created), "skipped": skipped, "tasks": tasks})
+
+    @action(detail=True, methods=["post"], url_path="tasks/create-custom")
+    def tasks_create_custom(self, request, pk=None):
+        project = self.get_object()
+        names = clean_bulk_names(request.data.get("names"))
+        if not names:
+            return Response({"detail": "Informe ao menos um nome de tarefa."}, status=400)
+        created = add_custom_tasks_to_project(project, names)
+        tasks = ProjectTaskSerializer(created, many=True).data
+        return Response({"created": len(created), "tasks": tasks})
 
     @action(detail=True, methods=["post"], url_path="import-tasks")
     def import_tasks(self, request, pk=None):

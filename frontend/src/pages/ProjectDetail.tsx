@@ -8,6 +8,7 @@ import RackPositionBulkModal from "../components/projects/RackPositionBulkModal"
 import RackPositionFormModal from "../components/projects/RackPositionFormModal";
 import TasksBulkUpdatePanel from "../components/projects/TasksBulkUpdatePanel";
 import TasksCatalogAddModal from "../components/projects/TasksCatalogAddModal";
+import BulkNamesModal from "../components/ui/BulkNamesModal";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatusBadge from "../components/ui/StatusBadge";
@@ -43,6 +44,7 @@ export default function ProjectDetail() {
 
   const [taskFormOpen, setTaskFormOpen] = useState(false);
   const [taskCatalogOpen, setTaskCatalogOpen] = useState(false);
+  const [customTasksOpen, setCustomTasksOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [importingTasks, setImportingTasks] = useState(false);
@@ -174,6 +176,7 @@ export default function ProjectDetail() {
   function closeTaskModals() {
     setTaskFormOpen(false);
     setTaskCatalogOpen(false);
+    setCustomTasksOpen(false);
     setEditingTask(null);
   }
 
@@ -457,6 +460,10 @@ export default function ProjectDetail() {
                 <button className="btn btn-outline btn-sm" onClick={() => setTaskCatalogOpen(true)}>
                   <Icon name="playlist_add" style={{ fontSize: 15 }} />
                   Adicionar do Catálogo
+                </button>
+                <button className="btn btn-outline btn-sm" onClick={() => setCustomTasksOpen(true)}>
+                  <Icon name="edit_note" style={{ fontSize: 15 }} />
+                  Adicionar Avulsas
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={() => setTaskFormOpen(true)}>
                   <Icon name="add" style={{ fontSize: 15 }} />
@@ -813,6 +820,17 @@ export default function ProjectDetail() {
       )}
       {taskCatalogOpen && (
         <TasksCatalogAddModal project={project} existingTasks={tasks} rackPositions={rackPositions} onClose={closeTaskModals} onSaved={handleTaskSaved} />
+      )}
+      {customTasksOpen && (
+        <BulkNamesModal
+          title="Adicionar Tarefas Avulsas"
+          helpText="Um nome de tarefa por linha. Essas tarefas não vêm do catálogo — ficam exclusivas deste projeto."
+          extraFields={[]}
+          extraValues={{}}
+          onSave={(names) => projectsApi.createCustomTasks(project.id, names)}
+          onClose={closeTaskModals}
+          onSaved={handleTaskSaved}
+        />
       )}
       {occurrenceFormOpen && (
         <ProjectOccurrenceFormModal

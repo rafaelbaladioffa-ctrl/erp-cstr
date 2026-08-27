@@ -42,11 +42,11 @@ def compute_progress_defaults(project, date):
 
     executed_today = [pt for pt in all_tasks if completed_on(pt) == date]
     activities_text = "\n".join(
-        f"{pt.task.name} — {STATUS_LABELS.get(pt.status, pt.status)}" for pt in executed_today
+        f"{pt.display_name} — {STATUS_LABELS.get(pt.status, pt.status)}" for pt in executed_today
     )
 
     certification_done = any(
-        pt.status == ProjectTask.STATUS_COMPLETED and "certifica" in pt.task.name.lower()
+        pt.status == ProjectTask.STATUS_COMPLETED and "certifica" in pt.display_name.lower()
         for pt in all_tasks
     )
     project_finished = total > 0 and percent == 100

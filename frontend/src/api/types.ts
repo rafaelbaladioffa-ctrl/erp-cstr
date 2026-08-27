@@ -217,8 +217,9 @@ export interface ProjectTask {
   project: number;
   project_name?: string;
   project_code?: string;
-  task: number;
+  task: number | null;
   task_name: string;
+  custom_name: string;
   rack_positions: number[];
   rack_position_labels: string[];
   collaborators: Collaborator[];

@@ -86,7 +86,7 @@ def notify_task_assignment(sender, instance, action, pk_set, **kwargs):
         notify_user(
             user,
             title="Nova tarefa atribuída",
-            message=f'Você foi atribuído à tarefa "{instance.task.name}" no projeto "{instance.project.name}".',
+            message=f'Você foi atribuído à tarefa "{instance.display_name}" no projeto "{instance.project.name}".',
             url=f"/projetos/{instance.project_id}",
             project_id=instance.project_id,
             project_code=instance.project.code,

@@ -78,7 +78,7 @@
                         {% for row in task_rows %}
                         <tr>
                             <td>{{ row.project_task.order }}</td>
-                            <td>{{ row.project_task.task.name }}</td>
+                            <td>{{ row.project_task.display_name }}</td>
                             {% if project.has_rack_positions %}<td>{{ row.rack_positions_display }}</td>{% endif %}
                             <td>
                                 <div class="project-overview__task-people">

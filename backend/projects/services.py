@@ -124,6 +124,26 @@ def add_tasks_to_project(project, tasks, rack_positions=None):
     return total_created
 
 
+def add_custom_tasks_to_project(project, names):
+    """Cria uma ProjectTask avulsa (sem Tarefa de catálogo, usando texto livre
+    em `custom_name`) para cada nome em `names` — uma linha de texto vira uma
+    tarefa. Diferente de add_tasks_to_project, não explode por Rack Position
+    nem faz checagem de duplicidade (tarefa avulsa não tem catálogo pra
+    comparar); quem precisar de Rack Position edita a tarefa depois de criada.
+    Retorna a lista de ProjectTask criadas."""
+    with transaction.atomic():
+        Project.objects.select_for_update().filter(pk=project.pk).exists()
+        next_order = (project.project_tasks.aggregate(highest=Max("order"))["highest"] or 0) + 1
+        created = []
+        for name in names:
+            name = name.strip()
+            if not name:
+                continue
+            created.append(ProjectTask.objects.create(project=project, custom_name=name, order=next_order))
+            next_order += 1
+    return created
+
+
 def import_tasks_from_project_type(project):
     """Copia todas as Tarefas ativas do Tipo de Projeto do projeto para
     ProjectTask (ignorando as que já existem). Retorna a quantidade criada."""

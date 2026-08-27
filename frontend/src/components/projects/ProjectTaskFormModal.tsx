@@ -67,7 +67,11 @@ export default function ProjectTaskFormModal({
   }, []);
 
   const availableCatalogTasks = useMemo(() => {
-    const others = existingTasks.filter((t) => t.id !== projectTask?.id);
+    // Tarefas avulsas (sem Tarefa de catálogo) não entram nessa checagem de
+    // "catálogo já usado" — só existe uma pra tarefas vinculadas ao catálogo.
+    const others = existingTasks.filter(
+      (t): t is ProjectTask & { task: number } => t.id !== projectTask?.id && t.task !== null
+    );
     if (project.has_rack_positions && rackPositions.length > 0) {
       // Com Rack Position, uma Tarefa do catálogo só fica indisponível
       // quando já cobre todos os Rack Positions do projeto.

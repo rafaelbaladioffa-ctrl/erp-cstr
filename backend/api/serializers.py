@@ -333,7 +333,7 @@ class RackPositionSerializer(serializers.ModelSerializer):
 
 
 class ProjectTaskSerializer(serializers.ModelSerializer):
-    task_name = serializers.CharField(source="task.name", read_only=True)
+    task_name = serializers.CharField(source="display_name", read_only=True)
     project_name = serializers.CharField(source="project.name", read_only=True)
     project_code = serializers.CharField(source="project.code", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
@@ -353,6 +353,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "project_code",
             "task",
             "task_name",
+            "custom_name",
             "rack_positions",
             "rack_position_labels",
             "collaborators",
@@ -379,7 +380,10 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         rack_positions = attrs.get("rack_positions")
         project = attrs.get("project") or getattr(self.instance, "project", None)
-        task = attrs.get("task") or getattr(self.instance, "task", None)
+        task = attrs.get("task") if "task" in attrs else getattr(self.instance, "task", None)
+        custom_name = attrs.get("custom_name") if "custom_name" in attrs else getattr(self.instance, "custom_name", "")
+        if not task and not (custom_name or "").strip():
+            raise serializers.ValidationError({"custom_name": "Informe uma Tarefa do catálogo ou um nome avulso."})
         if rack_positions:
             invalid = [rp for rp in rack_positions if rp.project_id != project.pk]
             if invalid:

@@ -179,7 +179,15 @@ class ProjectTask(TimestampedModel):
     )
 
     project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="project_tasks")
-    task = models.ForeignKey(Task, verbose_name="tarefa", on_delete=models.PROTECT, related_name="project_tasks")
+    task = models.ForeignKey(
+        Task, verbose_name="tarefa", on_delete=models.PROTECT, related_name="project_tasks", null=True, blank=True
+    )
+    custom_name = models.CharField(
+        "nome da tarefa avulsa",
+        max_length=200,
+        blank=True,
+        help_text="Usado só quando a tarefa não vem do catálogo (campo 'Tarefa' em branco).",
+    )
     rack_positions = models.ManyToManyField(
         RackPosition,
         verbose_name="Rack Positions",
@@ -210,11 +218,19 @@ class ProjectTask(TimestampedModel):
         ordering = ("order", "id")
 
     def __str__(self):
-        return f"{self.project} - {self.task}"
+        return f"{self.project} - {self.display_name}"
+
+    @property
+    def display_name(self):
+        """Nome de exibição: usa a Tarefa do catálogo quando vinculada,
+        senão o nome avulso digitado (uma das duas sempre existe — ver clean())."""
+        return self.task.name if self.task_id else self.custom_name
 
     def clean(self):
         super().clean()
         errors = {}
+        if not self.task_id and not self.custom_name.strip():
+            errors["custom_name"] = "Informe uma Tarefa do catálogo ou um nome avulso."
         if self.planned_start and self.planned_end and self.planned_end < self.planned_start:
             errors["planned_end"] = "O término previsto não pode ser anterior ao início previsto."
         if self.actual_start and self.actual_end and self.actual_end < self.actual_start:
@@ -240,7 +256,11 @@ class ProjectTask(TimestampedModel):
         Rack Position envolvido, continua só podendo haver uma tarefa igual
         por projeto. Assim como validate_rack_positions, precisa ser chamado
         explicitamente por quem atribui os valores (M2M só existe após
-        salvar)."""
+        salvar). Tarefas avulsas (sem Tarefa de catálogo) não entram nessa
+        checagem — não há o que deduplicar contra um catálogo que não existe
+        para elas."""
+        if not self.task_id:
+            return
         queryset = ProjectTask.objects.filter(project_id=self.project_id, task_id=self.task_id)
         if self.pk:
             queryset = queryset.exclude(pk=self.pk)

@@ -33,20 +33,23 @@ export default function TasksCatalogAddModal({
   }, []);
 
   const availableTasks = useMemo(() => {
+    // Tarefas avulsas (sem Tarefa de catálogo) não entram nessa checagem de
+    // "catálogo já usado" — só existe uma pra tarefas vinculadas ao catálogo.
+    const catalogLinked = existingTasks.filter((t): t is ProjectTask & { task: number } => t.task !== null);
     if (usesRackPositions) {
       // Com Rack Position, uma Tarefa do catálogo só fica indisponível
       // quando JÁ cobre todos os Rack Positions do projeto — senão ainda
       // falta cobrir algum, então continua selecionável (o backend cria só
       // as instâncias que faltam e ignora as que já existem).
       const coveredByTask = new Map<number, Set<number>>();
-      existingTasks.forEach((t) => {
+      catalogLinked.forEach((t) => {
         const set = coveredByTask.get(t.task) ?? new Set<number>();
         t.rack_positions.forEach((rpId) => set.add(rpId));
         coveredByTask.set(t.task, set);
       });
       return catalogTasks.filter((t) => (coveredByTask.get(t.id)?.size ?? 0) < rackPositions.length);
     }
-    const alreadyUsed = new Set(existingTasks.map((t) => t.task));
+    const alreadyUsed = new Set(catalogLinked.map((t) => t.task));
     return catalogTasks.filter((t) => !alreadyUsed.has(t.id));
   }, [catalogTasks, existingTasks, usesRackPositions, rackPositions]);
 
