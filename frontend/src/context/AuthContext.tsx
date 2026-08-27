@@ -6,7 +6,7 @@ import type { Me } from "../api/types";
 interface AuthContextValue {
   user: Me | null;
   loading: boolean;
-  login: (username: string, password: string, remember?: boolean) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -36,8 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  async function login(username: string, password: string, remember = false) {
-    await apiLogin(username, password, remember);
+  async function login(username: string, password: string) {
+    await apiLogin(username, password);
     const me = await meApi.get();
     setUser(me);
   }

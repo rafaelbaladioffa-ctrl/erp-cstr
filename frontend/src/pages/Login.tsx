@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { savedUsername } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(savedUsername.get());
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(() => Boolean(savedUsername.get()));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -16,7 +17,12 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(username, password, remember);
+      await login(username, password);
+      if (remember) {
+        savedUsername.set(username);
+      } else {
+        savedUsername.clear();
+      }
       navigate("/projetos");
     } catch {
       setError("Usuário ou senha inválidos.");
@@ -49,7 +55,7 @@ export default function Login() {
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
           <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-          Manter-me conectado neste dispositivo
+          Salvar meu usuário (a senha sempre será solicitada)
         </label>
 
         {error && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 12 }}>{error}</p>}

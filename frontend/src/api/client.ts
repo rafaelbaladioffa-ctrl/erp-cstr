@@ -4,31 +4,30 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
 const ACCESS_TOKEN_KEY = "erp_access_token";
 const REFRESH_TOKEN_KEY = "erp_refresh_token";
-const REMEMBER_KEY = "erp_remember_me";
+const SAVED_USERNAME_KEY = "erp_saved_username";
 
-// Sessão sem "manter conectado" usa sessionStorage (some ao fechar o navegador/aba);
-// com "manter conectado" marcado, usa localStorage (sobrevive a fechar e reabrir).
-function activeStore(): Storage {
-  return localStorage.getItem(REMEMBER_KEY) === "1" ? localStorage : sessionStorage;
-}
-
+// Sempre em sessionStorage: a sessão nunca sobrevive a fechar o navegador/aba,
+// login e senha são exigidos de novo a cada abertura.
 export const tokenStorage = {
-  getAccess: () => activeStore().getItem(ACCESS_TOKEN_KEY),
-  getRefresh: () => activeStore().getItem(REFRESH_TOKEN_KEY),
-  set: (access: string, refresh: string, remember = false) => {
-    localStorage.setItem(REMEMBER_KEY, remember ? "1" : "0");
-    const store = remember ? localStorage : sessionStorage;
-    store.setItem(ACCESS_TOKEN_KEY, access);
-    store.setItem(REFRESH_TOKEN_KEY, refresh);
+  getAccess: () => sessionStorage.getItem(ACCESS_TOKEN_KEY),
+  getRefresh: () => sessionStorage.getItem(REFRESH_TOKEN_KEY),
+  set: (access: string, refresh: string) => {
+    sessionStorage.setItem(ACCESS_TOKEN_KEY, access);
+    sessionStorage.setItem(REFRESH_TOKEN_KEY, refresh);
   },
-  setAccess: (access: string) => activeStore().setItem(ACCESS_TOKEN_KEY, access),
+  setAccess: (access: string) => sessionStorage.setItem(ACCESS_TOKEN_KEY, access),
   clear: () => {
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(REMEMBER_KEY);
     sessionStorage.removeItem(ACCESS_TOKEN_KEY);
     sessionStorage.removeItem(REFRESH_TOKEN_KEY);
   },
+};
+
+// Apenas o nome de usuário (nunca a senha) pode ficar salvo entre sessões,
+// só para preencher o campo automaticamente na tela de login.
+export const savedUsername = {
+  get: () => localStorage.getItem(SAVED_USERNAME_KEY) || "",
+  set: (username: string) => localStorage.setItem(SAVED_USERNAME_KEY, username),
+  clear: () => localStorage.removeItem(SAVED_USERNAME_KEY),
 };
 
 export const apiClient = axios.create({ baseURL: API_URL });
@@ -79,9 +78,9 @@ apiClient.interceptors.response.use(
   },
 );
 
-export async function login(username: string, password: string, remember = false) {
+export async function login(username: string, password: string) {
   const { data } = await axios.post(`${API_URL}/token/`, { username, password });
-  tokenStorage.set(data.access, data.refresh, remember);
+  tokenStorage.set(data.access, data.refresh);
   return data;
 }
 
