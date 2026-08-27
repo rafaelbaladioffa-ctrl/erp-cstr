@@ -6,6 +6,7 @@ import RequirePermission from "./components/RequirePermission";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AuditLog from "./pages/AuditLog";
 import CadastrosPage from "./pages/cadastros/CadastrosPage";
+import Dashboard from "./pages/Dashboard";
 import DailyUpdates from "./pages/DailyUpdates";
 import Login from "./pages/Login";
 import MyTasks from "./pages/MyTasks";
@@ -54,6 +55,14 @@ export default function App() {
           }
         >
           <Route path="/" element={<HomeRedirect />} />
+          <Route
+            path="/dashboard"
+            element={
+              <RequireAnyPermission permissions={[PERMS.viewProject, PERMS.viewCollaborator]}>
+                <Dashboard />
+              </RequireAnyPermission>
+            }
+          />
           <Route
             path="/projetos"
             element={

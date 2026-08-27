@@ -266,6 +266,58 @@ export interface ProjectAttachment {
   created_at: string;
 }
 
+export interface ProjectPerformanceRow {
+  id: number;
+  code: string;
+  name: string;
+  status: string;
+  status_display: string;
+  company: string | null;
+  client: string | null;
+  total_tasks: number;
+  completed_tasks: number;
+  progress_percent: number;
+  worked_hours: number;
+  link_count: number;
+  planned_end: string | null;
+  is_overdue: boolean;
+}
+
+export interface ProjectsPerformanceData {
+  summary: {
+    total_projects: number;
+    overdue_projects: number;
+    avg_progress_percent: number;
+    total_worked_hours: number;
+    total_links: number;
+  };
+  by_status: { status: string; status_display: string; count: number }[];
+  top_projects_by_hours: ProjectPerformanceRow[];
+  projects: ProjectPerformanceRow[];
+}
+
+export interface CollaboratorPerformanceRow {
+  collaborator_id: number;
+  name: string;
+  registration: string;
+  job_title: string | null;
+  company: string | null;
+  tasks_total: number;
+  tasks_completed: number;
+  hours_worked: number;
+  links_executed: number;
+}
+
+export interface TechnicalPerformanceData {
+  summary: {
+    total_collaborators: number;
+    total_tasks_completed: number;
+    total_hours_worked: number;
+    total_links_executed: number;
+  };
+  collaborators: CollaboratorPerformanceRow[];
+}
+
 export interface UserOption {
   id: number;
   name: string;

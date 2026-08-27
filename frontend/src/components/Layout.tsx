@@ -33,7 +33,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: "Sistema",
-    items: [{ to: "/cadastros", label: "Cadastros Gerais", icon: "inventory_2", permissions: CADASTROS_PERMS }],
+    items: [
+      { to: "/dashboard", label: "Dashboard", icon: "dashboard", permissions: [PERMS.viewProject, PERMS.viewCollaborator] },
+      { to: "/cadastros", label: "Cadastros Gerais", icon: "inventory_2", permissions: CADASTROS_PERMS },
+    ],
   },
   {
     title: "Técnico",
@@ -46,6 +49,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
 ];
 
 const AREA_LABELS: Record<string, { area: string; page: string }> = {
+  "/dashboard": { area: "Sistema", page: "Dashboard" },
   "/atualizacoes-diarias": { area: "Atualizações", page: "Atualizações Diárias" },
   "/atualizacoes-projeto": { area: "Atualizações", page: "Atualizações de Projetos" },
   "/cadastros": { area: "Sistema", page: "Cadastros Gerais" },

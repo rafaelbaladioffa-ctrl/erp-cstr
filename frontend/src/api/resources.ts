@@ -16,12 +16,14 @@ import type {
   ProjectAttachment,
   ProjectDailyUpdate,
   ProjectOccurrence,
+  ProjectsPerformanceData,
   ProjectTask,
   ProjectTaskBulkPayload,
   ProjectTaskCreatePayload,
   ProjectType,
   RackPosition,
   ResponsibleFull,
+  TechnicalPerformanceData,
   UserOption,
   SiteFull,
   SiteMapData,
@@ -202,6 +204,13 @@ export const projectAttachmentsApi = {
   },
   remove: (id: number) => apiClient.delete(`/project-attachments/${id}/`),
   downloadUrl: (id: number) => `/project-attachments/${id}/download/`,
+};
+
+export const dashboardApi = {
+  projects: (params?: Record<string, string>) =>
+    apiClient.get<ProjectsPerformanceData>("/dashboard/projects/", { params }).then((r) => r.data),
+  technical: (params?: Record<string, string>) =>
+    apiClient.get<TechnicalPerformanceData>("/dashboard/technical/", { params }).then((r) => r.data),
 };
 
 export const clientsApi = {
