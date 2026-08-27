@@ -30,7 +30,7 @@ export default function DynamicForm({
   onChange: (name: string, value: unknown) => void;
 }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+    <div className="dynamic-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
       {fields.filter((field) => !field.visibleIf || field.visibleIf(values)).map((field) => {
         const fieldErrors = errors?.[field.name];
         const value = values[field.name];

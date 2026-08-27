@@ -243,9 +243,9 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24, alignItems: "start" }}>
+      <div className="project-overview-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24, alignItems: "start" }}>
         <OverviewPanel icon="description" title="Geral">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+          <div className="panel-field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
             <PanelField label="PO" value={project.po || "—"} />
             <PanelField label="Cliente" value={project.client_name || "—"} />
             <PanelField label="Site" value={project.site_name || "—"} />
@@ -261,7 +261,7 @@ export default function ProjectDetail() {
         </OverviewPanel>
 
         <OverviewPanel icon="calendar_month" title="Cronograma">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+          <div className="panel-field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
             <PanelField
               label="Status"
               value={
@@ -278,7 +278,7 @@ export default function ProjectDetail() {
         </OverviewPanel>
 
         <OverviewPanel icon="bar_chart" title="Indicadores">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+          <div className="panel-field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
             <PanelField label="Quantidade de Links" value={String(project.link_count)} />
             <PanelField label="Horas Trabalhadas" value={`${project.worked_hours}h`} />
             <PanelField label="Tarefas" value={`${project.completed_tasks} / ${project.total_tasks}`} />
@@ -496,7 +496,7 @@ export default function ProjectDetail() {
       )}
 
       {activeTab === "hours" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div className="panel-field-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div>
             <h2 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", margin: "0 0 10px" }}>Por Técnico</h2>
             <div className="card">

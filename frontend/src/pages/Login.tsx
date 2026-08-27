@@ -39,9 +39,10 @@ export default function Login() {
         alignItems: "center",
         justifyContent: "center",
         background: "var(--navy)",
+        padding: 16,
       }}
     >
-      <form onSubmit={handleSubmit} className="card" style={{ padding: 36, width: 360, background: "#fff" }}>
+      <form onSubmit={handleSubmit} className="card" style={{ padding: 36, width: "100%", maxWidth: 360, background: "#fff" }}>
         <div style={{ marginBottom: 22 }}>
           <img src="/consultimer-logo-light.png" alt="Consultimer" style={{ height: 34 }} />
         </div>
