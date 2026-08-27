@@ -293,7 +293,7 @@ export default function CadastrosPage() {
             <div className="toolbar-title">{entity.label}</div>
             <div className="toolbar-subtitle">{filtered.length} registro(s) encontrado(s)</div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {entity.key === "sites" && (
               <Link to="/sites/mapa" className="btn btn-outline">
                 <Icon name="map" style={{ fontSize: 16 }} />

@@ -1174,6 +1174,10 @@ select.input[multiple] {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 
+  .dynamic-form-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
   .toolbar {
     flex-direction: column;
     align-items: stretch;
@@ -1237,6 +1241,24 @@ select.input[multiple] {
     right: 10px !important;
     width: auto !important;
     max-width: none !important;
+  }
+
+  .site-map-panel {
+    width: 100% !important;
+  }
+
+  .section-header-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .section-actions {
+    width: 100%;
+  }
+
+  .section-actions .btn {
+    flex: 1;
+    justify-content: center;
   }
 }
 

@@ -189,9 +189,9 @@ export default function ProjectUpdates() {
               <div key={update.id} className="card" style={{ padding: 16 }}>
                 <div
                   onClick={() => setSelected(expanded ? null : update)}
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", flexWrap: "wrap", gap: 8 }}
                 >
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <strong style={{ color: "var(--text)" }}>{update.project_name}</strong>
                     <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
                       {update.project_code} · {new Date(update.date + "T00:00:00").toLocaleDateString("pt-BR")} · {update.completion_percent}%

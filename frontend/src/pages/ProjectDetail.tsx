@@ -289,9 +289,9 @@ export default function ProjectDetail() {
 
       {project.has_rack_positions && (
         <>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
             <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>Rack Positions</h2>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="section-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {canAddRack && (
                 <>
                   <button className="btn btn-outline btn-sm" onClick={() => setRackBulkOpen(true)}>
@@ -377,7 +377,7 @@ export default function ProjectDetail() {
 
       {activeTab === "tasks" && (
         <>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
             <button
               onClick={() => setTasksOpen((v) => !v)}
               style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0 }}
@@ -389,7 +389,7 @@ export default function ProjectDetail() {
               </span>
             </button>
             {canAddTask && (
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="section-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {project.project_type && (
                   <button className="btn btn-outline btn-sm" onClick={handleImportFromProjectType} disabled={importingTasks}>
                     <Icon name="library_add" style={{ fontSize: 15 }} />
@@ -570,7 +570,7 @@ export default function ProjectDetail() {
 
       {activeTab === "occurrences" && (
         <>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
             <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>Ocorrências</h2>
             {canAddOccurrence && (
               <button className="btn btn-primary btn-sm" onClick={() => setOccurrenceFormOpen(true)}>

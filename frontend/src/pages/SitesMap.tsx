@@ -156,6 +156,7 @@ export default function SitesMap() {
 
         {selectedPoint && (
           <div
+            className="site-map-panel"
             style={{
               position: "absolute",
               top: 0,

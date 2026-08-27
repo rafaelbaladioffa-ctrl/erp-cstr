@@ -83,7 +83,7 @@ export default function TasksBulkUpdatePanel({
 
   return (
     <div className="card" style={{ padding: 16, marginBottom: 16, border: "1px solid var(--orange)" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
         <strong style={{ fontSize: 13.5 }}>{selectedIds.length} tarefa(s) selecionada(s) — Ações em Massa</strong>
         <button className="btn btn-outline btn-sm" onClick={onClear}>
           <Icon name="close" style={{ fontSize: 14 }} />
@@ -91,7 +91,7 @@ export default function TasksBulkUpdatePanel({
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
+      <div className="dynamic-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
         <div className="field-group">
           <span className="field-label">Status</span>
           <select className="select" value={status} onChange={(e) => setStatus(e.target.value)}>

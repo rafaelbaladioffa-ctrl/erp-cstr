@@ -162,7 +162,7 @@ export default function DailyUpdates() {
         </div>
 
         {canSend && (
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginLeft: "auto" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginLeft: "auto", flexWrap: "wrap" }}>
             <div className="field-group">
               <span className="field-label">Gerar PDF Consolidado do dia</span>
               <input type="date" className="input" value={consolidatedDate} onChange={(e) => setConsolidatedDate(e.target.value)} />
@@ -272,12 +272,12 @@ export default function DailyUpdates() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {updates.map((update) => (
             <div key={update.id} className="card" style={{ padding: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className="section-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <strong style={{ color: "var(--text)" }}>
                   {new Date(update.allocation_date + "T00:00:00").toLocaleDateString("pt-BR")}
                 </strong>
                 {canSend && (
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div className="section-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
                       onClick={() => handleDownloadPdf(update.id, update.allocation_date)}
                       disabled={downloadingId === update.id}

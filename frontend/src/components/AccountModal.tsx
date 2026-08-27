@@ -77,7 +77,7 @@ export default function AccountModal({ onClose }: { onClose: () => void }) {
         {error && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{error}</p>}
         {success && <p style={{ color: "var(--green)", fontSize: 13, marginTop: 10 }}>{success}</p>}
 
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
           <button type="button" className="btn btn-outline" onClick={logout}>
             Sair da conta
           </button>
