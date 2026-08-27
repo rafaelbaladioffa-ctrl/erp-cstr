@@ -1226,6 +1226,18 @@ select.input[multiple] {
   .panel-field-grid {
     grid-template-columns: 1fr !important;
   }
+
+  /* Dropdowns (notificações, configurações) ancoram no ícone, que fica perto
+     da borda da tela — em vez de estourar pra fora, fixamos na viewport. */
+  .search-dropdown,
+  .settings-dropdown {
+    position: fixed !important;
+    top: 50px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
 }
 
 /* ---------- Minhas Tarefas — mobile-first (técnico em campo) ---------- */
