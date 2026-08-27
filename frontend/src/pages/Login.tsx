@@ -55,7 +55,7 @@ export default function Login() {
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
           <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-          Salvar meu usuário (a senha sempre será solicitada)
+          Salvar meu usuário
         </label>
 
         {error && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 12 }}>{error}</p>}
