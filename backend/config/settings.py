@@ -217,3 +217,12 @@ CSRF_COOKIE_SECURE = not DEBUG
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+
+# --- Sessão do Django Admin: mesmo comportamento de login do frontend ---------
+# Nunca fica logado ao reabrir o navegador (cookie de sessão, não persistente).
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+# Desloga automaticamente após 10 minutos sem nenhuma requisição nova.
+SESSION_COOKIE_AGE = 10 * 60
+# Renova a contagem dos 10 minutos a cada requisição (vira um timeout por
+# inatividade, não um limite fixo de sessão).
+SESSION_SAVE_EVERY_REQUEST = True
