@@ -1,25 +1,14 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { sitesMapApi } from "../api/resources";
-import type { SiteMapData } from "../api/types";
+import type { SiteMapData, SiteMapPoint } from "../api/types";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatCard from "../components/ui/StatCard";
 import { useAuth } from "../context/AuthContext";
 import { PERMS, hasPerm } from "../utils/permissions";
-
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
-
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-});
 
 function escapeHtml(value: string): string {
   return value
@@ -30,14 +19,32 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function pinIcon(count: number): L.DivIcon {
+  const hasProjects = count > 0;
+  return L.divIcon({
+    className: "",
+    html: `
+      <div style="position:relative;width:30px;height:30px;">
+        <div style="width:30px;height:30px;border-radius:50%;background:${hasProjects ? "#F16023" : "#172033"};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,0.35);"></div>
+        <div style="position:absolute;top:-7px;right:-7px;min-width:19px;height:19px;border-radius:999px;background:${hasProjects ? "#F16023" : "#172033"};color:#fff;border:2px solid #fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;">${count}</div>
+      </div>
+    `,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    popupAnchor: [0, -18],
+  });
+}
+
 export default function SitesMap() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canRegeocode = hasPerm(user, PERMS.changeSite);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const [data, setData] = useState<SiteMapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [regeocoding, setRegeocoding] = useState(false);
+  const [selectedPoint, setSelectedPoint] = useState<SiteMapPoint | null>(null);
 
   function reload() {
     setLoading(true);
@@ -63,32 +70,33 @@ export default function SitesMap() {
     const layerGroup = L.layerGroup().addTo(map);
 
     data.points.forEach((point) => {
-      const projectsHtml = point.projects.length
-        ? `<ul style="margin:4px 0 0;padding-left:16px;">${point.projects
-            .map(
-              (p) =>
-                `<li>${escapeHtml(p.code)} — ${escapeHtml(p.name)}${p.client ? ` (${escapeHtml(p.client)})` : ""}</li>`
-            )
-            .join("")}</ul>`
-        : `<p style="margin:4px 0 0;color:#94a3b8;">Nenhum projeto ativo</p>`;
+      const count = point.projects.length;
+      const marker = L.marker([point.lat, point.lng], { icon: pinIcon(count) }).addTo(layerGroup);
       const popupHtml = `
-        <strong>${escapeHtml(point.name)}</strong><br/>
+        <strong>${escapeHtml(point.name)}</strong>
+        <span style="background:#F16023;color:#fff;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;margin-left:6px;">${count} projeto(s) ativo(s)</span><br/>
         ${point.client ? `<span style="color:#526174;">${escapeHtml(point.client)}</span><br/>` : ""}
         <span style="color:#526174;font-size:12px;">${escapeHtml(point.address)}</span>
-        ${projectsHtml}
       `;
-      L.marker([point.lat, point.lng]).addTo(layerGroup).bindPopup(popupHtml);
+      marker.bindPopup(popupHtml);
+      marker.on("click", () => setSelectedPoint(point));
     });
 
     if (data.points.length) {
       const bounds = L.latLngBounds(data.points.map((p) => [p.lat, p.lng] as [number, number]));
       map.fitBounds(bounds, { padding: [32, 32] });
+      if (data.points.length === 1) map.setZoom(14);
     }
 
     return () => {
       layerGroup.remove();
     };
   }, [data]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    setTimeout(() => mapRef.current?.invalidateSize(), 210);
+  }, [selectedPoint]);
 
   useEffect(() => {
     return () => {
@@ -142,8 +150,62 @@ export default function SitesMap() {
 
       {loading && !data && <p style={{ color: "var(--text-muted)" }}>Carregando...</p>}
 
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div ref={mapContainerRef} style={{ height: 560, width: "100%" }} />
+      <div className="card" style={{ padding: 0, overflow: "hidden", position: "relative", height: 560 }}>
+        <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
+
+        {selectedPoint && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 320,
+              maxWidth: "100%",
+              background: "#fff",
+              borderLeft: "1px solid #DDE3EA",
+              boxShadow: "-4px 0 12px rgba(0,0,0,0.06)",
+              overflowY: "auto",
+              zIndex: 5,
+            }}
+          >
+            <div style={{ padding: "16px 18px", borderBottom: "1px solid #DDE3EA", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <h2 style={{ fontSize: 15, color: "#172033", margin: "0 0 4px" }}>{selectedPoint.name}</h2>
+                <p style={{ fontSize: 12, color: "#526174", margin: 0 }}>
+                  {selectedPoint.projects.length} projeto(s) ativo(s) neste site
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedPoint(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#526174", lineHeight: 1 }}
+              >
+                &times;
+              </button>
+            </div>
+            <div>
+              {selectedPoint.projects.length === 0 ? (
+                <div style={{ padding: 18, fontSize: 13, color: "#526174" }}>Nenhum projeto ativo neste site no momento.</div>
+              ) : (
+                selectedPoint.projects.map((project) => (
+                  <a
+                    key={project.id}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate(`/projetos/${project.id}`);
+                    }}
+                    href={`/projetos/${project.id}`}
+                    style={{ display: "block", padding: "12px 18px", borderBottom: "1px solid #F0F2F5", textDecoration: "none", cursor: "pointer" }}
+                  >
+                    <div style={{ fontSize: 11, color: "#F16023", fontWeight: 700 }}>{project.code}</div>
+                    <div style={{ fontSize: 13.5, color: "#172033", fontWeight: 600, margin: "2px 0" }}>{project.name}</div>
+                    {project.client && <div style={{ fontSize: 12, color: "#526174" }}>{project.client}</div>}
+                  </a>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
