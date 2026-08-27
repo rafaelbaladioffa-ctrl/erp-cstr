@@ -37,6 +37,7 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<DetailTab>("tasks");
   const [tasksOpen, setTasksOpen] = useState(false);
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
 
   const [rackFormOpen, setRackFormOpen] = useState(false);
   const [rackBulkOpen, setRackBulkOpen] = useState(false);
@@ -344,6 +345,36 @@ export default function ProjectDetail() {
           </div>
         </OverviewPanel>
       </div>
+
+      {project.description && (
+        <div className="card" style={{ padding: 0, marginBottom: 24, overflow: "hidden" }}>
+          <button
+            onClick={() => setDescriptionOpen((v) => !v)}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "12px 16px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <Icon name={descriptionOpen ? "expand_less" : "expand_more"} style={{ fontSize: 18, color: "var(--text-faint)" }} />
+            <Icon name="description" style={{ fontSize: 15, color: "var(--orange)" }} />
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Descrição
+            </span>
+          </button>
+          {descriptionOpen && (
+            <div style={{ padding: "0 16px 16px", fontSize: 13.5, color: "var(--text)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+              {project.description}
+            </div>
+          )}
+        </div>
+      )}
 
       {project.has_rack_positions && (
         <>
