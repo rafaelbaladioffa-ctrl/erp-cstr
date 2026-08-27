@@ -4,18 +4,30 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
 const ACCESS_TOKEN_KEY = "erp_access_token";
 const REFRESH_TOKEN_KEY = "erp_refresh_token";
+const REMEMBER_KEY = "erp_remember_me";
+
+// Sessão sem "manter conectado" usa sessionStorage (some ao fechar o navegador/aba);
+// com "manter conectado" marcado, usa localStorage (sobrevive a fechar e reabrir).
+function activeStore(): Storage {
+  return localStorage.getItem(REMEMBER_KEY) === "1" ? localStorage : sessionStorage;
+}
 
 export const tokenStorage = {
-  getAccess: () => localStorage.getItem(ACCESS_TOKEN_KEY),
-  getRefresh: () => localStorage.getItem(REFRESH_TOKEN_KEY),
-  set: (access: string, refresh: string) => {
-    localStorage.setItem(ACCESS_TOKEN_KEY, access);
-    localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+  getAccess: () => activeStore().getItem(ACCESS_TOKEN_KEY),
+  getRefresh: () => activeStore().getItem(REFRESH_TOKEN_KEY),
+  set: (access: string, refresh: string, remember = false) => {
+    localStorage.setItem(REMEMBER_KEY, remember ? "1" : "0");
+    const store = remember ? localStorage : sessionStorage;
+    store.setItem(ACCESS_TOKEN_KEY, access);
+    store.setItem(REFRESH_TOKEN_KEY, refresh);
   },
-  setAccess: (access: string) => localStorage.setItem(ACCESS_TOKEN_KEY, access),
+  setAccess: (access: string) => activeStore().setItem(ACCESS_TOKEN_KEY, access),
   clear: () => {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(REMEMBER_KEY);
+    sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+    sessionStorage.removeItem(REFRESH_TOKEN_KEY);
   },
 };
 
@@ -67,9 +79,9 @@ apiClient.interceptors.response.use(
   },
 );
 
-export async function login(username: string, password: string) {
+export async function login(username: string, password: string, remember = false) {
   const { data } = await axios.post(`${API_URL}/token/`, { username, password });
-  tokenStorage.set(data.access, data.refresh);
+  tokenStorage.set(data.access, data.refresh, remember);
   return data;
 }
 

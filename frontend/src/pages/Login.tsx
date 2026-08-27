@@ -7,6 +7,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -15,7 +16,7 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(username, password);
+      await login(username, password, remember);
       navigate("/projetos");
     } catch {
       setError("Usuário ou senha inválidos.");
@@ -45,6 +46,11 @@ export default function Login() {
 
         <label className="form-label">Senha</label>
         <input type="password" className="input" style={{ width: "100%" }} value={password} onChange={(e) => setPassword(e.target.value)} />
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+          Manter-me conectado neste dispositivo
+        </label>
 
         {error && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 12 }}>{error}</p>}
 
