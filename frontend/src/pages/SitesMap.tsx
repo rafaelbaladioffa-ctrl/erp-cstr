@@ -82,6 +82,7 @@ export default function SitesMap() {
       marker.on("click", () => setSelectedPoint(point));
     });
 
+    map.invalidateSize();
     if (data.points.length) {
       const bounds = L.latLngBounds(data.points.map((p) => [p.lat, p.lng] as [number, number]));
       map.fitBounds(bounds, { padding: [32, 32] });
@@ -150,7 +151,7 @@ export default function SitesMap() {
 
       {loading && !data && <p style={{ color: "var(--text-muted)" }}>Carregando...</p>}
 
-      <div className="card" style={{ padding: 0, overflow: "hidden", position: "relative", height: 560 }}>
+      <div className="card" style={{ padding: 0, overflow: "hidden", position: "relative", height: "calc(100vh - 300px)", minHeight: 480 }}>
         <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
         {selectedPoint && (
