@@ -124,6 +124,61 @@ function formatProjectUpdate(p) {
   return lines.join("\n");
 }
 
+// Horário do envio automático diário: 18h em America/Sao_Paulo. O Brasil não
+// tem mais horário de verão (abolido em 2019), então o offset -3h é fixo o
+// ano todo — evita depender do pacote tzdata (nem sempre presente em imagens
+// slim) só para converter fuso horário.
+const BROADCAST_HOUR_UTC = 21;
+const BROADCAST_MINUTE_UTC = 0;
+
+function phoneToJid(rawPhone) {
+  const digits = (rawPhone || "").replace(/\D/g, "");
+  if (digits.length >= 12) return `${digits}@s.whatsapp.net`;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}@s.whatsapp.net`; // sem código de país
+  return null; // número curto/inválido demais para confiar
+}
+
+function formatBroadcastMessage(t, date) {
+  const lines = t.allocations.map(
+    (a) => `• ${a.project}${a.code ? ` (${a.code})` : ""} — Site: ${a.site || "não informado"}`
+  );
+  return `Olá, ${t.collaborator_name}! Aqui está sua alocação para ${formatDate(date)}:\n\n${lines.join("\n")}`;
+}
+
+async function runDailyBroadcast(sock) {
+  const data = await botGet("/bot/daily-broadcast/");
+  if (!data.technicians.length) {
+    console.log(`Envio automático diário: nenhuma alocação para ${data.date}, nada a enviar.`);
+    return;
+  }
+  console.log(`Envio automático diário: enviando alocação de ${data.date} para ${data.technicians.length} técnico(s).`);
+  for (const t of data.technicians) {
+    const jid = phoneToJid(t.phone);
+    if (!jid) {
+      console.error(`Envio automático: telefone inválido para ${t.collaborator_name} (${t.phone}), pulando.`);
+      continue;
+    }
+    try {
+      await sock.sendMessage(jid, { text: formatBroadcastMessage(t, data.date) });
+    } catch (err) {
+      console.error(`Envio automático: erro ao enviar para ${t.collaborator_name}:`, err.message);
+    }
+  }
+}
+
+let currentSock = null;
+let lastBroadcastDateKey = null;
+
+setInterval(() => {
+  if (!currentSock) return;
+  const now = new Date();
+  const dateKey = now.toISOString().slice(0, 10);
+  if (now.getUTCHours() === BROADCAST_HOUR_UTC && now.getUTCMinutes() === BROADCAST_MINUTE_UTC && lastBroadcastDateKey !== dateKey) {
+    lastBroadcastDateKey = dateKey;
+    runDailyBroadcast(currentSock).catch((err) => console.error("Erro no envio automático diário:", err.message));
+  }
+}, 60000);
+
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
@@ -142,12 +197,14 @@ async function start() {
       qrcode.generate(qr, { small: true });
     }
     if (connection === "close") {
+      currentSock = null;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       console.log("Conexão com o WhatsApp fechada.", shouldReconnect ? "Reconectando..." : "Sessão deslogada — apague o volume de auth e escaneie o QR de novo.");
       if (shouldReconnect) start();
     } else if (connection === "open") {
       console.log("Bot conectado ao WhatsApp com sucesso.");
+      currentSock = sock;
     }
   });
 

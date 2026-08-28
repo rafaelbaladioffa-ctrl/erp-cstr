@@ -1,4 +1,5 @@
 import csv
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.db import models
@@ -691,6 +692,59 @@ class BotAllocationView(APIView):
                 ],
             }
         )
+
+
+class BotDailyBroadcastView(APIView):
+    """GET /api/bot/daily-broadcast/?date=<AAAA-MM-DD, opcional>
+
+    Usado pelo envio automático diário do bot (não é um técnico chamando):
+    lista, para a data informada (padrão: amanhã — as Atualizações Diárias
+    já são criadas com essa data por padrão, já que o gestor normalmente
+    planeja o dia seguinte à tarde), cada colaborador com alocação
+    registrada e telefone cadastrado, para o bot mandar a mensagem
+    proativamente, sem o técnico precisar chamar o bot."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        date_str = request.query_params.get("date")
+        if date_str:
+            try:
+                target_date = date.fromisoformat(date_str)
+            except ValueError:
+                return Response({"detail": "Parâmetro 'date' inválido, use AAAA-MM-DD."}, status=400)
+        else:
+            target_date = timezone.localdate() + timedelta(days=1)
+
+        allocations = (
+            DailyUpdateAllocation.objects.filter(daily_update__allocation_date=target_date)
+            .select_related("project", "project__site")
+            .prefetch_related("collaborators__person")
+        )
+
+        by_collaborator = {}
+        for allocation in allocations:
+            for collaborator in allocation.collaborators.all():
+                if not collaborator.is_active or not collaborator.person.phone:
+                    continue
+                entry = by_collaborator.setdefault(
+                    collaborator.id,
+                    {
+                        "phone": collaborator.person.phone,
+                        "collaborator_name": collaborator.person.name,
+                        "allocations": [],
+                    },
+                )
+                entry["allocations"].append(
+                    {
+                        "project": allocation.project.name,
+                        "code": allocation.project.code,
+                        "site": allocation.project.site.name if allocation.project.site_id else None,
+                    }
+                )
+
+        return Response({"date": target_date.isoformat(), "technicians": list(by_collaborator.values())})
 
 
 class BotMyTasksView(APIView):
