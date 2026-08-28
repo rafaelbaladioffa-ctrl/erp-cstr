@@ -628,6 +628,25 @@ class BotSharedSecretPermission(permissions.BasePermission):
         return bool(settings.WHATSAPP_BOT_SECRET) and secret == settings.WHATSAPP_BOT_SECRET
 
 
+def _find_bot_collaborator(name="", phone=""):
+    """Acha o Colaborador ativo correspondente ao nome (busca parcial) ou
+    telefone informado pelo técnico no bot do WhatsApp. Retorna uma tupla
+    (collaborator, ambiguous_matches) — só um dos dois é preenchido."""
+    active_collaborators = Collaborator.objects.filter(is_active=True).select_related("person")
+
+    if name:
+        matches = list(active_collaborators.filter(person__name__icontains=name))
+        if len(matches) > 1:
+            return None, [c.person.name for c in matches]
+        return (matches[0] if matches else None), None
+
+    collaborator = next(
+        (c for c in active_collaborators if c.person.phone and phones_match(c.person.phone, phone)),
+        None,
+    )
+    return collaborator, None
+
+
 class BotAllocationView(APIView):
     """GET /api/bot/allocation/?name=<nome>  (ou ?phone=<numero>)
 
@@ -644,23 +663,9 @@ class BotAllocationView(APIView):
         if not name and not phone:
             return Response({"detail": "Informe o parâmetro 'name' ou 'phone'."}, status=400)
 
-        active_collaborators = Collaborator.objects.filter(is_active=True).select_related("person")
-
-        if name:
-            matches = list(active_collaborators.filter(person__name__icontains=name))
-            if len(matches) > 1:
-                return Response(
-                    {
-                        "found": "ambiguous",
-                        "matches": [c.person.name for c in matches],
-                    }
-                )
-            collaborator = matches[0] if matches else None
-        else:
-            collaborator = next(
-                (c for c in active_collaborators if c.person.phone and phones_match(c.person.phone, phone)),
-                None,
-            )
+        collaborator, ambiguous_matches = _find_bot_collaborator(name, phone)
+        if ambiguous_matches is not None:
+            return Response({"found": "ambiguous", "matches": ambiguous_matches})
 
         if not collaborator:
             return Response({"found": False})
@@ -683,6 +688,53 @@ class BotAllocationView(APIView):
                         "site": a.project.site.name if a.project.site_id else None,
                     }
                     for a in allocations
+                ],
+            }
+        )
+
+
+class BotMyTasksView(APIView):
+    """GET /api/bot/my-tasks/?name=<nome>
+
+    Usado pelo bot do WhatsApp: dado o nome digitado pelo técnico, retorna
+    as tarefas pendentes (não concluídas/canceladas) atribuídas a ele em
+    projetos ativos, agrupadas por projeto."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        name = request.query_params.get("name", "").strip()
+        if not name:
+            return Response({"detail": "Parâmetro 'name' é obrigatório."}, status=400)
+
+        collaborator, ambiguous_matches = _find_bot_collaborator(name=name)
+        if ambiguous_matches is not None:
+            return Response({"found": "ambiguous", "matches": ambiguous_matches})
+
+        if not collaborator:
+            return Response({"found": False})
+
+        tasks = (
+            ProjectTask.objects.filter(collaborators=collaborator, project__is_active=True)
+            .exclude(status__in=(ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_CANCELED))
+            .select_related("project", "task")
+            .order_by("project__name", "order", "id")
+        )
+        status_labels = dict(ProjectTask.STATUS_CHOICES)
+
+        return Response(
+            {
+                "found": True,
+                "collaborator_name": collaborator.person.name,
+                "tasks": [
+                    {
+                        "project": t.project.name,
+                        "code": t.project.code,
+                        "task": t.display_name,
+                        "status": status_labels.get(t.status, t.status),
+                    }
+                    for t in tasks
                 ],
             }
         )

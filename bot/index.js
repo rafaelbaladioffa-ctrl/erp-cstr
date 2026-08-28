@@ -14,6 +14,7 @@ const logger = pino({ level: "warn" });
 const MENU_OPTIONS = [
   { number: "1", key: "alocacao", label: "Alocação (projeto e site de hoje)" },
   { number: "2", key: "atualizacao_projetos", label: "Atualização de projetos" },
+  { number: "3", key: "minhas_tarefas", label: "Minhas tarefas" },
 ];
 
 const MENU_TEXT =
@@ -70,6 +71,34 @@ async function fetchAllocationByName(name) {
     (a) => `• ${a.project}${a.code ? ` (${a.code})` : ""} — Site: ${a.site || "não informado"}`
   );
   return `Olá, ${data.collaborator_name}! Sua alocação de hoje (${formatDate(data.date)}):\n\n${lines.join("\n")}`;
+}
+
+async function fetchMyTasksByName(name) {
+  const data = await botGet("/bot/my-tasks/", { name });
+
+  if (data.found === "ambiguous") {
+    const options = data.matches.map((n) => `• ${n}`).join("\n");
+    return `Encontrei mais de um técnico com esse nome:\n\n${options}\n\nDigite /bot para tentar de novo, com o nome completo.`;
+  }
+  if (!data.found) {
+    return "Não encontrei ninguém com esse nome cadastrado como técnico ativo. Confira a digitação (nome completo) ou fale com seu gestor.";
+  }
+  if (!data.tasks.length) {
+    return `Olá, ${data.collaborator_name}! Você não tem tarefas pendentes no momento. 🎉`;
+  }
+
+  const byProject = new Map();
+  for (const t of data.tasks) {
+    const key = `${t.code ? `${t.code} - ` : ""}${t.project}`;
+    if (!byProject.has(key)) byProject.set(key, []);
+    byProject.get(key).push(t);
+  }
+
+  const blocks = [...byProject.entries()].map(
+    ([project, tasks]) => `*${project}*\n` + tasks.map((t) => `• ${t.task} (${t.status})`).join("\n")
+  );
+
+  return `Olá, ${data.collaborator_name}! Suas tarefas pendentes:\n\n${blocks.join("\n\n")}`;
 }
 
 function formatProjectUpdate(p) {
@@ -150,8 +179,8 @@ async function start() {
             continue;
           }
 
-          if (option.key === "alocacao") {
-            sessions.set(jid, { state: "awaiting_name" });
+          if (option.key === "alocacao" || option.key === "minhas_tarefas") {
+            sessions.set(jid, { state: "awaiting_name", purpose: option.key });
             await sock.sendMessage(jid, { text: "Qual é o seu nome completo (como está cadastrado no sistema)?" });
             continue;
           }
@@ -216,8 +245,10 @@ async function start() {
         }
 
         if (session.state === "awaiting_name") {
+          const { purpose } = session;
           sessions.delete(jid);
-          const reply = await fetchAllocationByName(rawText);
+          const reply =
+            purpose === "minhas_tarefas" ? await fetchMyTasksByName(rawText) : await fetchAllocationByName(rawText);
           await sock.sendMessage(jid, { text: reply });
           continue;
         }
