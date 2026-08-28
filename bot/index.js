@@ -2,6 +2,7 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const qrcode = require("qrcode-terminal");
 const pino = require("pino");
 const axios = require("axios");
+const http = require("http");
 
 const API_URL = process.env.BOT_API_URL || "http://backend:8000/api";
 const API_SECRET = process.env.BOT_API_SECRET || "";
@@ -168,6 +169,25 @@ async function runDailyBroadcast(sock) {
 
 let currentSock = null;
 let lastBroadcastDateKey = null;
+
+// Servidor só para uso interno (não publicado no compose.yaml, só acessível
+// de dentro do próprio container) — permite disparar o envio diário na hora,
+// via `docker exec`, para testar sem esperar até as 18h.
+http
+  .createServer((req, res) => {
+    if (req.url !== "/trigger-broadcast") {
+      res.writeHead(404).end();
+      return;
+    }
+    if (!currentSock) {
+      res.writeHead(503).end("Bot não está conectado ao WhatsApp no momento.\n");
+      return;
+    }
+    runDailyBroadcast(currentSock)
+      .then(() => res.writeHead(200).end("Envio disparado — confira os logs do bot.\n"))
+      .catch((err) => res.writeHead(500).end(`Erro: ${err.message}\n`));
+  })
+  .listen(3001, "127.0.0.1");
 
 setInterval(() => {
   if (!currentSock) return;
