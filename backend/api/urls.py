@@ -38,5 +38,6 @@ urlpatterns = [
     path("search/", views.GlobalSearchView.as_view(), name="global-search"),
     path("dashboard/projects/", ProjectsPerformanceView.as_view(), name="dashboard-projects"),
     path("dashboard/technical/", TechnicalPerformanceView.as_view(), name="dashboard-technical"),
+    path("bot/allocation/", views.BotAllocationView.as_view(), name="bot-allocation"),
     path("", include(router.urls)),
 ]

@@ -213,6 +213,10 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "apikey")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "atualizacoes@consultimer.com")
 
+# Segredo compartilhado usado pelo bot do WhatsApp para chamar a API sem
+# fazer login normal (ver api/views.BotSharedSecretPermission).
+WHATSAPP_BOT_SECRET = os.getenv("WHATSAPP_BOT_SECRET", "")
+
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

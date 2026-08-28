@@ -47,8 +47,22 @@ services:
     depends_on:
       - backend
 
+  whatsapp-bot:
+    build:
+      context: .
+      dockerfile: docker/whatsapp-bot/Dockerfile
+    restart: unless-stopped
+    environment:
+      BOT_API_URL: ${BOT_API_URL:-http://backend:8000/api}
+      BOT_API_SECRET: ${WHATSAPP_BOT_SECRET:-}
+    volumes:
+      - whatsapp_auth:/app/auth_info
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
   static_data:
   media_data:
   frontend_node_modules:
+  whatsapp_auth:

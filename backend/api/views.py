@@ -1,7 +1,9 @@
 import csv
 
+from django.conf import settings
 from django.db import models
 from django.http import FileResponse, HttpResponse
+from django.utils import timezone
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
@@ -30,6 +32,7 @@ from core.models import (
     Task,
     get_collaborator_role,
 )
+from core.phone_utils import phones_match
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -42,7 +45,7 @@ from projects.services import (
 )
 from technical.models import MyTask
 from updates.mail import send_daily_update_emails
-from updates.models import DailyUpdate, ProjectDailyUpdate
+from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.pdf import build_daily_updates_pdf
 from updates.project_client_mail import send_project_daily_update_email
 from updates.project_pdf import build_project_daily_update_pdf
@@ -608,6 +611,71 @@ class ProjectAttachmentViewSet(viewsets.ModelViewSet):
         attachment = self.get_object()
         filename = attachment.file.name.rsplit("/", 1)[-1]
         return FileResponse(attachment.file.open("rb"), as_attachment=True, filename=filename)
+
+
+# ---------------------------------------------------------------------------
+# Bot do WhatsApp
+# ---------------------------------------------------------------------------
+
+
+class BotSharedSecretPermission(permissions.BasePermission):
+    """Autenticação simples por segredo compartilhado (não é um usuário
+    logado) — usada só pelo serviço do bot do WhatsApp, que roda fora do
+    navegador e não tem como fazer login normal."""
+
+    def has_permission(self, request, view):
+        secret = request.headers.get("X-Bot-Secret", "")
+        return bool(settings.WHATSAPP_BOT_SECRET) and secret == settings.WHATSAPP_BOT_SECRET
+
+
+class BotAllocationView(APIView):
+    """GET /api/bot/allocation/?phone=<numero>
+
+    Usado pelo bot do WhatsApp: dado um número de telefone (formato livre,
+    com ou sem código de país), acha o Colaborador correspondente pelo
+    telefone cadastrado e retorna em quais projetos/sites ele está alocado
+    na Atualização Diária de hoje."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        phone = request.query_params.get("phone", "")
+        if not phone:
+            return Response({"detail": "Parâmetro 'phone' é obrigatório."}, status=400)
+
+        collaborator = next(
+            (
+                c
+                for c in Collaborator.objects.filter(is_active=True).select_related("person")
+                if c.person.phone and phones_match(c.person.phone, phone)
+            ),
+            None,
+        )
+        if not collaborator:
+            return Response({"found": False})
+
+        today = timezone.localdate()
+        allocations = DailyUpdateAllocation.objects.filter(
+            daily_update__allocation_date=today,
+            collaborators=collaborator,
+        ).select_related("project", "project__site")
+
+        return Response(
+            {
+                "found": True,
+                "collaborator_name": collaborator.person.name,
+                "date": today.isoformat(),
+                "allocations": [
+                    {
+                        "project": a.project.name,
+                        "code": a.project.code,
+                        "site": a.project.site.name if a.project.site_id else None,
+                    }
+                    for a in allocations
+                ],
+            }
+        )
 
 
 # ---------------------------------------------------------------------------
