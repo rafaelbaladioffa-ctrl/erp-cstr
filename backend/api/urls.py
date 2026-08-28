@@ -39,5 +39,8 @@ urlpatterns = [
     path("dashboard/projects/", ProjectsPerformanceView.as_view(), name="dashboard-projects"),
     path("dashboard/technical/", TechnicalPerformanceView.as_view(), name="dashboard-technical"),
     path("bot/allocation/", views.BotAllocationView.as_view(), name="bot-allocation"),
+    path("bot/sites/", views.BotSitesView.as_view(), name="bot-sites"),
+    path("bot/projects/", views.BotProjectsView.as_view(), name="bot-projects"),
+    path("bot/project-update/", views.BotProjectUpdateView.as_view(), name="bot-project-update"),
     path("", include(router.urls)),
 ]

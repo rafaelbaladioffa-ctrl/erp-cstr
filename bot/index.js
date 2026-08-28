@@ -9,9 +9,12 @@ const AUTH_DIR = process.env.AUTH_DIR || "/app/auth_info";
 
 const logger = pino({ level: "warn" });
 
-// Opções do menu principal. Hoje só existe "alocação", mas a lista foi
-// pensada para crescer conforme novas funções do bot forem adicionadas.
-const MENU_OPTIONS = [{ number: "1", key: "alocacao", label: "Alocação (projeto e site de hoje)" }];
+// Opções do menu principal. A lista foi pensada para crescer conforme novas
+// funções do bot forem adicionadas.
+const MENU_OPTIONS = [
+  { number: "1", key: "alocacao", label: "Alocação (projeto e site de hoje)" },
+  { number: "2", key: "atualizacao_projetos", label: "Atualização de projetos" },
+];
 
 const MENU_TEXT =
   "Olá! Eu sou o bot do ERP Consultimer. O que você deseja?\n\n" +
@@ -41,12 +44,17 @@ function formatDate(iso) {
   return `${d}/${mo}/${y}`;
 }
 
-async function fetchAllocationByName(name) {
-  const { data } = await axios.get(`${API_URL}/bot/allocation/`, {
-    params: { name },
+async function botGet(path, params) {
+  const { data } = await axios.get(`${API_URL}${path}`, {
+    params,
     headers: { "X-Bot-Secret": API_SECRET },
     timeout: 10000,
   });
+  return data;
+}
+
+async function fetchAllocationByName(name) {
+  const data = await botGet("/bot/allocation/", { name });
 
   if (data.found === "ambiguous") {
     const options = data.matches.map((n) => `• ${n}`).join("\n");
@@ -62,6 +70,28 @@ async function fetchAllocationByName(name) {
     (a) => `• ${a.project}${a.code ? ` (${a.code})` : ""} — Site: ${a.site || "não informado"}`
   );
   return `Olá, ${data.collaborator_name}! Sua alocação de hoje (${formatDate(data.date)}):\n\n${lines.join("\n")}`;
+}
+
+function formatProjectUpdate(p) {
+  const lines = [
+    `📋 *${p.code ? `${p.code} - ` : ""}${p.name}*`,
+    `Cliente: ${p.client || "não informado"} | Site: ${p.site || "não informado"}`,
+    `Status: ${p.status}${p.po ? ` | PO: ${p.po}` : ""}`,
+  ];
+
+  if (p.today_update) {
+    const u = p.today_update;
+    lines.push("", "*Atualização de hoje:*", `${u.completion_percent}% concluído`);
+    if (u.activities_text) lines.push(`Atividades: ${u.activities_text}`);
+    if (u.certification_done) lines.push("🏆 Certificação finalizada");
+    if (u.project_finished) lines.push("🏁 Projeto finalizado");
+    if (u.summary) lines.push(`Obs: ${u.summary}`);
+    if (u.collaborators.length) lines.push(`Colaboradores: ${u.collaborators.join(", ")}`);
+  } else {
+    lines.push("", "Nenhuma atualização registrada hoje para este projeto.");
+  }
+
+  return lines.join("\n");
 }
 
 async function start() {
@@ -98,7 +128,8 @@ async function start() {
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith("@g.us")) continue;
 
-      const text = normalize(extractText(msg));
+      const rawText = extractText(msg).trim();
+      const text = normalize(rawText);
       if (!text) continue;
 
       try {
@@ -117,16 +148,75 @@ async function start() {
             await sock.sendMessage(jid, { text: "Opção inválida. " + MENU_TEXT });
             continue;
           }
+
           if (option.key === "alocacao") {
             sessions.set(jid, { state: "awaiting_name" });
             await sock.sendMessage(jid, { text: "Qual é o seu nome completo (como está cadastrado no sistema)?" });
+            continue;
           }
+
+          if (option.key === "atualizacao_projetos") {
+            const sites = await botGet("/bot/sites/");
+            if (!sites.length) {
+              sessions.delete(jid);
+              await sock.sendMessage(jid, { text: "Não encontrei nenhum site com projeto ativo no momento." });
+              continue;
+            }
+            sessions.set(jid, { state: "select_site", sites });
+            const list = sites.map((s, i) => `${i + 1}️⃣ ${s.name}`).join("\n");
+            await sock.sendMessage(jid, { text: `Qual site?\n\n${list}\n\nDigite o número.` });
+            continue;
+          }
+        }
+
+        if (session.state === "select_site") {
+          const index = parseInt(text, 10) - 1;
+          const site = session.sites[index];
+          if (!site) {
+            await sock.sendMessage(jid, { text: "Número inválido. Digite o número de um dos sites da lista, ou /bot para recomeçar." });
+            continue;
+          }
+
+          const projects = await botGet("/bot/projects/", { site_id: site.id });
+          if (!projects.length) {
+            sessions.delete(jid);
+            await sock.sendMessage(jid, { text: `Não há projetos ativos em ${site.name} no momento.` });
+            continue;
+          }
+          sessions.set(jid, { state: "select_project", site, projects });
+          const list = projects.map((p, i) => `${i + 1}️⃣ ${p.code ? `${p.code} - ` : ""}${p.name}`).join("\n");
+          await sock.sendMessage(jid, {
+            text: `Projetos ativos em ${site.name}:\n\n${list}\n\n0️⃣ Todos os projetos ativos deste site\n\nDigite o número.`,
+          });
+          continue;
+        }
+
+        if (session.state === "select_project") {
+          const { site, projects } = session;
+          sessions.delete(jid);
+
+          if (text === "0" || text.includes("todos")) {
+            const updates = await botGet("/bot/project-update/", { site_id: site.id });
+            for (const update of updates) {
+              await sock.sendMessage(jid, { text: formatProjectUpdate(update) });
+            }
+            continue;
+          }
+
+          const index = parseInt(text, 10) - 1;
+          const project = projects[index];
+          if (!project) {
+            await sock.sendMessage(jid, { text: "Número inválido. Digite /bot para recomeçar." });
+            continue;
+          }
+          const [update] = await botGet("/bot/project-update/", { project_id: project.id });
+          await sock.sendMessage(jid, { text: formatProjectUpdate(update) });
           continue;
         }
 
         if (session.state === "awaiting_name") {
           sessions.delete(jid);
-          const reply = await fetchAllocationByName(extractText(msg).trim());
+          const reply = await fetchAllocationByName(rawText);
           await sock.sendMessage(jid, { text: reply });
           continue;
         }

@@ -688,6 +688,103 @@ class BotAllocationView(APIView):
         )
 
 
+class BotSitesView(APIView):
+    """GET /api/bot/sites/
+
+    Lista os sites que têm ao menos um projeto ativo, para o técnico
+    escolher no fluxo de "Atualização de projetos" do bot."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        sites = (
+            Site.objects.filter(projects__is_active=True)
+            .distinct()
+            .order_by("name")
+        )
+        return Response([{"id": s.id, "name": s.name or s.code or f"Site #{s.id}"} for s in sites])
+
+
+class BotProjectsView(APIView):
+    """GET /api/bot/projects/?site_id=<id>
+
+    Lista os projetos ativos de um site, para o técnico escolher no fluxo
+    de "Atualização de projetos" do bot."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        site_id = request.query_params.get("site_id")
+        if not site_id:
+            return Response({"detail": "Parâmetro 'site_id' é obrigatório."}, status=400)
+
+        projects = Project.objects.filter(is_active=True, site_id=site_id).order_by("name")
+        return Response([{"id": p.id, "code": p.code, "name": p.name} for p in projects])
+
+
+def _serialize_project_update(project):
+    today = timezone.localdate()
+    today_update = ProjectDailyUpdate.objects.filter(project=project, date=today).first()
+
+    client = project.client.name if project.client_id else (project.site.client.name if project.site_id else None)
+    status_label = dict(Project.STATUS_CHOICES).get(project.status, project.status)
+
+    return {
+        "code": project.code,
+        "name": project.name,
+        "client": client,
+        "site": project.site.name if project.site_id else None,
+        "status": status_label,
+        "po": project.po or None,
+        "planned_start": project.planned_start.isoformat() if project.planned_start else None,
+        "planned_end": project.planned_end.isoformat() if project.planned_end else None,
+        "description": project.description or None,
+        "today_update": (
+            {
+                "completion_percent": today_update.completion_percent,
+                "activities_text": today_update.activities_text or None,
+                "certification_done": today_update.certification_done,
+                "project_finished": today_update.project_finished,
+                "summary": today_update.summary or None,
+                "collaborators": list(
+                    today_update.collaborators.order_by("person__name").values_list("person__name", flat=True)
+                ),
+            }
+            if today_update
+            else None
+        ),
+    }
+
+
+class BotProjectUpdateView(APIView):
+    """GET /api/bot/project-update/?project_id=<id>
+    GET /api/bot/project-update/?site_id=<id>  (todos os projetos ativos do site)
+
+    Usado pelo bot do WhatsApp para trazer a atualização do dia e um
+    overview geral de um projeto (ou de todos os projetos ativos de um
+    site)."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        project_id = request.query_params.get("project_id")
+        site_id = request.query_params.get("site_id")
+        if not project_id and not site_id:
+            return Response({"detail": "Informe 'project_id' ou 'site_id'."}, status=400)
+
+        if project_id:
+            projects = Project.objects.filter(pk=project_id, is_active=True).select_related("client", "site", "site__client")
+        else:
+            projects = Project.objects.filter(site_id=site_id, is_active=True).select_related(
+                "client", "site", "site__client"
+            ).order_by("name")
+
+        return Response([_serialize_project_update(p) for p in projects])
+
+
 # ---------------------------------------------------------------------------
 # Cadastros Gerais
 # ---------------------------------------------------------------------------
