@@ -623,6 +623,14 @@ class ProjectDailyUpdateSerializer(serializers.ModelSerializer):
             return None
         return build_project_update_body(obj)
 
+    def to_representation(self, instance):
+        # Recalcula percentual/atividades/certificação/finalização a partir
+        # das ProjectTask sempre que a Atualização é lida (lista, detalhe ou
+        # resposta de update), em vez de mostrar o valor congelado desde a
+        # criação do registro.
+        instance.refresh_from_tasks()
+        return super().to_representation(instance)
+
 
 class ProjectDailyUpdateCreateSerializer(serializers.ModelSerializer):
     """Usado apenas na criação: os demais campos são calculados

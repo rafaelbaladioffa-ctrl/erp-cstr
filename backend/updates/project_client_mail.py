@@ -65,6 +65,7 @@ def compute_progress_defaults(project, date):
 
 
 def build_project_update_body(project_update):
+    project_update.refresh_from_tasks()
     project = project_update.project
 
     responsible_aws = project.responsible_client.person.name if project.responsible_client_id else "Não informado"

@@ -201,19 +201,32 @@ class ProjectDailyUpdate(TimestampedModel):
     def populate_defaults(self):
         """Preenche automaticamente colaboradores, percentual, atividades,
         certificação e status de finalização com base no projeto e na data.
-        Só roda na criação; depois disso os valores ficam livres para edição.
-        """
+        Só roda na criação (os colaboradores ficam livres para edição depois
+        disso); percentual/atividades/certificação/finalização continuam
+        sendo recalculados a cada visualização — ver refresh_from_tasks()."""
         from .project_client_mail import compute_progress_defaults
 
         defaults = compute_progress_defaults(self.project, self.date)
-        type(self).objects.filter(pk=self.pk).update(
-            completion_percent=defaults["percent"],
-            activities_text=defaults["activities_text"],
-            certification_done=defaults["certification_done"],
-            project_finished=defaults["project_finished"],
-        )
-        self.completion_percent = defaults["percent"]
-        self.activities_text = defaults["activities_text"]
-        self.certification_done = defaults["certification_done"]
-        self.project_finished = defaults["project_finished"]
         self.collaborators.set(defaults["collaborator_ids"])
+        self.refresh_from_tasks()
+
+    def refresh_from_tasks(self):
+        """Recalcula percentual, atividades executadas, certificação e status
+        de finalização a partir do estado atual das ProjectTask do projeto.
+        Chamado sempre que a Atualização é visualizada/exportada (tela de
+        Atualizações de Projeto, PDF, e-mail, bot do WhatsApp), para nunca
+        mostrar dados congelados no momento em que o registro foi criado."""
+        from .project_client_mail import compute_progress_defaults
+
+        defaults = compute_progress_defaults(self.project, self.date)
+        fields = {
+            "completion_percent": defaults["percent"],
+            "activities_text": defaults["activities_text"],
+            "certification_done": defaults["certification_done"],
+            "project_finished": defaults["project_finished"],
+        }
+        changed = any(getattr(self, field) != value for field, value in fields.items())
+        if changed:
+            type(self).objects.filter(pk=self.pk).update(**fields)
+            for field, value in fields.items():
+                setattr(self, field, value)
