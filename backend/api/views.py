@@ -629,29 +629,39 @@ class BotSharedSecretPermission(permissions.BasePermission):
 
 
 class BotAllocationView(APIView):
-    """GET /api/bot/allocation/?phone=<numero>
+    """GET /api/bot/allocation/?name=<nome>  (ou ?phone=<numero>)
 
-    Usado pelo bot do WhatsApp: dado um número de telefone (formato livre,
-    com ou sem código de país), acha o Colaborador correspondente pelo
-    telefone cadastrado e retorna em quais projetos/sites ele está alocado
-    na Atualização Diária de hoje."""
+    Usado pelo bot do WhatsApp: dado o nome (ou telefone) digitado pelo
+    técnico, acha o Colaborador correspondente e retorna em quais
+    projetos/sites ele está alocado na Atualização Diária de hoje."""
 
     permission_classes = [BotSharedSecretPermission]
     authentication_classes = []
 
     def get(self, request):
+        name = request.query_params.get("name", "").strip()
         phone = request.query_params.get("phone", "")
-        if not phone:
-            return Response({"detail": "Parâmetro 'phone' é obrigatório."}, status=400)
+        if not name and not phone:
+            return Response({"detail": "Informe o parâmetro 'name' ou 'phone'."}, status=400)
 
-        collaborator = next(
-            (
-                c
-                for c in Collaborator.objects.filter(is_active=True).select_related("person")
-                if c.person.phone and phones_match(c.person.phone, phone)
-            ),
-            None,
-        )
+        active_collaborators = Collaborator.objects.filter(is_active=True).select_related("person")
+
+        if name:
+            matches = list(active_collaborators.filter(person__name__icontains=name))
+            if len(matches) > 1:
+                return Response(
+                    {
+                        "found": "ambiguous",
+                        "matches": [c.person.name for c in matches],
+                    }
+                )
+            collaborator = matches[0] if matches else None
+        else:
+            collaborator = next(
+                (c for c in active_collaborators if c.person.phone and phones_match(c.person.phone, phone)),
+                None,
+            )
+
         if not collaborator:
             return Response({"found": False})
 

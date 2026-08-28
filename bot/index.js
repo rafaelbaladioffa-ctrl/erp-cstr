@@ -9,20 +9,51 @@ const AUTH_DIR = process.env.AUTH_DIR || "/app/auth_info";
 
 const logger = pino({ level: "warn" });
 
-function formatDate(iso) {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
+// Opções do menu principal. Hoje só existe "alocação", mas a lista foi
+// pensada para crescer conforme novas funções do bot forem adicionadas.
+const MENU_OPTIONS = [{ number: "1", key: "alocacao", label: "Alocação (projeto e site de hoje)" }];
+
+const MENU_TEXT =
+  "Olá! Eu sou o bot do ERP Consultimer. O que você deseja?\n\n" +
+  MENU_OPTIONS.map((o) => `${o.number}️⃣ ${o.label}`).join("\n") +
+  "\n\nDigite o número da opção.";
+
+// Estado de conversa por número (em memória — reinicia com o processo, o que
+// é aceitável já que o fluxo é curto e o usuário sempre pode digitar /bot
+// de novo para recomeçar).
+const sessions = new Map();
+
+function normalize(text) {
+  return (text || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase();
 }
 
-async function buildReply(phone) {
+function extractText(msg) {
+  const m = msg.message;
+  return m?.conversation || m?.extendedTextMessage?.text || m?.imageMessage?.caption || m?.videoMessage?.caption || "";
+}
+
+function formatDate(iso) {
+  const [y, mo, d] = iso.split("-");
+  return `${d}/${mo}/${y}`;
+}
+
+async function fetchAllocationByName(name) {
   const { data } = await axios.get(`${API_URL}/bot/allocation/`, {
-    params: { phone },
+    params: { name },
     headers: { "X-Bot-Secret": API_SECRET },
     timeout: 10000,
   });
 
+  if (data.found === "ambiguous") {
+    const options = data.matches.map((n) => `• ${n}`).join("\n");
+    return `Encontrei mais de um técnico com esse nome:\n\n${options}\n\nDigite /bot para tentar de novo, com o nome completo.`;
+  }
   if (!data.found) {
-    return "Não encontrei seu número cadastrado no sistema. Fale com seu gestor pra atualizar seu telefone no cadastro de Técnicos.";
+    return "Não encontrei ninguém com esse nome cadastrado como técnico ativo. Confira a digitação (nome completo) ou fale com seu gestor.";
   }
   if (!data.allocations.length) {
     return `Olá, ${data.collaborator_name}! Você ainda não tem uma alocação registrada para hoje (${formatDate(data.date)}).`;
@@ -66,18 +97,44 @@ async function start() {
       if (!msg.message || msg.key.fromMe) continue;
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith("@g.us")) continue;
-      // O WhatsApp às vezes manda o remoteJid como "@lid" (um id opaco, não o
-      // telefone) em vez do JID clássico "@s.whatsapp.net" — quando isso
-      // acontece, o telefone de verdade (se disponível) vem em remoteJidAlt.
-      const phoneJid = jid.endsWith("@lid") && msg.key.remoteJidAlt ? msg.key.remoteJidAlt : jid;
-      const phone = phoneJid.split("@")[0];
+
+      const text = normalize(extractText(msg));
+      if (!text) continue;
+
       try {
-        const reply = await buildReply(phone);
-        await sock.sendMessage(jid, { text: reply });
+        if (text === "/bot" || text === "bot") {
+          sessions.set(jid, { state: "menu" });
+          await sock.sendMessage(jid, { text: MENU_TEXT });
+          continue;
+        }
+
+        const session = sessions.get(jid);
+        if (!session) continue; // ignora mensagens fora do fluxo, sem /bot não reagimos
+
+        if (session.state === "menu") {
+          const option = MENU_OPTIONS.find((o) => o.number === text || normalize(o.key) === text || text.includes(o.key));
+          if (!option) {
+            await sock.sendMessage(jid, { text: "Opção inválida. " + MENU_TEXT });
+            continue;
+          }
+          if (option.key === "alocacao") {
+            sessions.set(jid, { state: "awaiting_name" });
+            await sock.sendMessage(jid, { text: "Qual é o seu nome completo (como está cadastrado no sistema)?" });
+          }
+          continue;
+        }
+
+        if (session.state === "awaiting_name") {
+          sessions.delete(jid);
+          const reply = await fetchAllocationByName(extractText(msg).trim());
+          await sock.sendMessage(jid, { text: reply });
+          continue;
+        }
       } catch (err) {
-        console.error(`Erro ao responder ${phone}:`, err.message);
+        console.error(`Erro ao responder ${jid}:`, err.message);
+        sessions.delete(jid);
         try {
-          await sock.sendMessage(jid, { text: "Desculpe, deu um erro ao consultar sua alocação. Tenta de novo em alguns minutos." });
+          await sock.sendMessage(jid, { text: "Desculpe, deu um erro. Digite /bot para começar de novo." });
         } catch {
           // ignora falha ao enviar a mensagem de erro
         }
