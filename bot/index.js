@@ -66,7 +66,11 @@ async function start() {
       if (!msg.message || msg.key.fromMe) continue;
       const jid = msg.key.remoteJid;
       if (!jid || jid.endsWith("@g.us")) continue;
-      const phone = jid.split("@")[0];
+      // O WhatsApp às vezes manda o remoteJid como "@lid" (um id opaco, não o
+      // telefone) em vez do JID clássico "@s.whatsapp.net" — quando isso
+      // acontece, o telefone de verdade (se disponível) vem em remoteJidAlt.
+      const phoneJid = jid.endsWith("@lid") && msg.key.remoteJidAlt ? msg.key.remoteJidAlt : jid;
+      const phone = phoneJid.split("@")[0];
       try {
         const reply = await buildReply(phone);
         await sock.sendMessage(jid, { text: reply });
