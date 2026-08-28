@@ -728,7 +728,7 @@ def _serialize_project_update(project):
     today = timezone.localdate()
     today_update = ProjectDailyUpdate.objects.filter(project=project, date=today).first()
 
-    client = project.client.name if project.client_id else (project.site.client.name if project.site_id else None)
+    client = str(project.client) if project.client_id else (str(project.site.client) if project.site_id else None)
     status_label = dict(Project.STATUS_CHOICES).get(project.status, project.status)
 
     return {
