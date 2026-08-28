@@ -725,6 +725,8 @@ class BotProjectsView(APIView):
 
 
 def _serialize_project_update(project):
+    from updates.project_client_mail import compute_progress_defaults
+
     today = timezone.localdate()
     today_update = ProjectDailyUpdate.objects.filter(project=project, date=today).first()
     if today_update:
@@ -732,6 +734,9 @@ def _serialize_project_update(project):
 
     client = str(project.client) if project.client_id else (str(project.site.client) if project.site_id else None)
     status_label = dict(Project.STATUS_CHOICES).get(project.status, project.status)
+    # Percentual geral de conclusão do projeto (todas as tarefas, não só as
+    # de hoje) — independe de existir uma Atualização de Projeto para hoje.
+    completion_percent = compute_progress_defaults(project, today)["percent"]
 
     return {
         "code": project.code,
@@ -740,6 +745,7 @@ def _serialize_project_update(project):
         "site": project.site.name if project.site_id else None,
         "status": status_label,
         "po": project.po or None,
+        "completion_percent": completion_percent,
         "planned_start": project.planned_start.isoformat() if project.planned_start else None,
         "planned_end": project.planned_end.isoformat() if project.planned_end else None,
         "description": project.description or None,

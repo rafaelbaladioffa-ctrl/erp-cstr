@@ -77,11 +77,12 @@ function formatProjectUpdate(p) {
     `📋 *${p.code ? `${p.code} - ` : ""}${p.name}*`,
     `Cliente: ${p.client || "não informado"} | Site: ${p.site || "não informado"}`,
     `Status: ${p.status}${p.po ? ` | PO: ${p.po}` : ""}`,
+    `Progresso do projeto: ${p.completion_percent}%`,
   ];
 
   if (p.today_update) {
     const u = p.today_update;
-    lines.push("", "*Atualização de hoje:*", `${u.completion_percent}% concluído`);
+    lines.push("", "*Atualização de hoje:*");
     if (u.activities_text) lines.push(`Atividades: ${u.activities_text}`);
     if (u.certification_done) lines.push("🏆 Certificação finalizada");
     if (u.project_finished) lines.push("🏁 Projeto finalizado");
