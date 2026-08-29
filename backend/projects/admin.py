@@ -19,7 +19,7 @@ from core.admin_mixins import SelectablePageSizeAdminMixin
 from core.csv_io import MAX_CSV_UPLOAD_BYTES, neutralize_formula
 from core.models import Category, Client, Collaborator, Company, ProjectType, Responsible, Site, Task
 from .analytics import build_projects_performance, build_technical_performance, parse_date
-from .models import DashboardProxy, Project, ProjectAttachment, ProjectHistory, ProjectOccurrence, ProjectTask, RackPosition
+from .models import DashboardProxy, Project, ProjectAttachment, ProjectHistory, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition
 from .services import (
     BulkActionError,
     add_tasks_to_project,
@@ -395,12 +395,12 @@ class ProjectTaskInline(TabularInline):
     model = ProjectTask
     extra = 0
     classes = ("collapse",)
-    autocomplete_fields = ("task", "collaborators")
+    autocomplete_fields = ("task",)
     fields = (
         "order",
         "task",
         "rack_positions",
-        "collaborators",
+        "collaborators_display",
         "status",
         "planned_start",
         "planned_end",
@@ -409,8 +409,13 @@ class ProjectTaskInline(TabularInline):
         "actual_end",
         "actual_hours",
     )
-    readonly_fields = ("actual_start", "actual_end", "actual_hours")
+    readonly_fields = ("collaborators_display", "actual_start", "actual_end", "actual_hours")
     show_change_link = True
+
+    @admin.display(description="Responsáveis")
+    def collaborators_display(self, obj):
+        names = [collaborator.person.name for collaborator in obj.collaborators.select_related("person").all()]
+        return ", ".join(names) if names else "—"
 
     def get_formset(self, request, obj=None, **kwargs):
         self._parent_obj = obj
@@ -1007,6 +1012,14 @@ class ProjectTaskAdminForm(forms.ModelForm):
         self.fields["rack_positions"].queryset = project.rack_positions.all() if project else RackPosition.objects.none()
 
 
+class ProjectTaskAssignmentInline(TabularInline):
+    model = ProjectTaskAssignment
+    extra = 0
+    fields = ("collaborator", "queue_order", "dispatched_at", "dispatched_by")
+    readonly_fields = ("dispatched_at",)
+    autocomplete_fields = ("collaborator",)
+
+
 @admin.register(ProjectTask)
 class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     form = ProjectTaskAdminForm
@@ -1016,8 +1029,9 @@ class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
         "project__code", "project__name", "task__code", "task__name", "custom_name",
         "collaborators__person__name", "rack_positions__position",
     )
-    autocomplete_fields = ("project", "task", "collaborators")
+    autocomplete_fields = ("project", "task")
     readonly_fields = ("created_at", "updated_at")
+    inlines = (ProjectTaskAssignmentInline,)
 
     @admin.display(description="Tarefa")
     def display_name_admin(self, obj):

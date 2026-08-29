@@ -11,6 +11,9 @@ import type {
   JobTitle,
   Me,
   Notification,
+  OperationsBoard,
+  OperationsReports,
+  OperationsTimeline,
   Paginated,
   Project,
   ProjectAttachment,
@@ -24,6 +27,7 @@ import type {
   RackPosition,
   ResponsibleFull,
   TechnicalPerformanceData,
+  TechnicianPresence,
   UserOption,
   SiteFull,
   SiteMapData,
@@ -262,4 +266,29 @@ export const myTasksApi = {
   list: () => apiClient.get<Paginated<ProjectTask>>("/my-tasks/").then((r) => r.data),
   update: (id: number, payload: Partial<ProjectTask>) =>
     apiClient.patch<ProjectTask>(`/my-tasks/${id}/`, payload).then((r) => r.data),
+};
+
+export const presenceApi = {
+  me: () => apiClient.get<TechnicianPresence>("/technician-presence/me/").then((r) => r.data),
+  setStatus: (status: string) =>
+    apiClient.post<TechnicianPresence>("/technician-presence/set-status/", { status }).then((r) => r.data),
+};
+
+export const operationsApi = {
+  board: (siteId: number | "all") =>
+    apiClient.get<OperationsBoard>("/operations/board/", { params: { site: String(siteId) } }).then((r) => r.data),
+  dispatch: (taskId: number, collaboratorIds: number[]) =>
+    apiClient
+      .post<ProjectTask>(`/project-tasks/${taskId}/dispatch/`, { collaborator_ids: collaboratorIds })
+      .then((r) => r.data),
+  timeline: (siteId: number | "all", date?: string) =>
+    apiClient
+      .get<OperationsTimeline>("/operations/timeline/", { params: { site: String(siteId), ...(date ? { date } : {}) } })
+      .then((r) => r.data),
+  reports: (siteId: number | "all", dateFrom?: string, dateTo?: string) =>
+    apiClient
+      .get<OperationsReports>("/operations/reports/", {
+        params: { site: String(siteId), ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) },
+      })
+      .then((r) => r.data),
 };

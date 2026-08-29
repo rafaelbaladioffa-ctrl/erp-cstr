@@ -13,9 +13,11 @@ from core.models import (
     Responsible,
     Site,
     Task,
+    get_collaborator_role,
     get_or_create_person,
     update_person,
 )
+from dispatch.models import TechnicianDailyPresence
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
@@ -343,6 +345,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     collaborator_ids = serializers.PrimaryKeyRelatedField(
         source="collaborators", queryset=Collaborator.objects.filter(is_active=True), many=True, write_only=True, required=False
     )
+    queue_order = serializers.SerializerMethodField()
 
     class Meta:
         model = ProjectTask
@@ -361,6 +364,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "status",
             "status_display",
             "order",
+            "queue_order",
             "planned_start",
             "planned_end",
             "actual_start",
@@ -368,6 +372,8 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "estimated_hours",
             "actual_hours",
             "worked_hours",
+            "completion_outcome",
+            "quantity_done",
             "notes",
         )
 
@@ -376,6 +382,19 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
 
     def get_worked_hours(self, obj):
         return obj.worked_hours
+
+    def get_queue_order(self, obj):
+        """Posição desta tarefa na fila do técnico logado (não faz sentido
+        fora do contexto de /my-tasks/, onde há um único técnico óbvio;
+        em outros contextos retorna None)."""
+        request = self.context.get("request")
+        if request is None:
+            return None
+        collaborator = get_collaborator_role(request.user)
+        if collaborator is None:
+            return None
+        assignment = obj.assignments.filter(collaborator=collaborator).first()
+        return assignment.queue_order if assignment else None
 
     def validate(self, attrs):
         rack_positions = attrs.get("rack_positions")
@@ -516,7 +535,41 @@ class MyTaskUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProjectTask
-        fields = ("id", "status", "actual_start", "actual_end", "actual_hours", "notes")
+        fields = (
+            "id",
+            "status",
+            "actual_start",
+            "actual_end",
+            "actual_hours",
+            "completion_outcome",
+            "quantity_done",
+            "notes",
+        )
+
+    def validate(self, attrs):
+        if attrs.get("status") == ProjectTask.STATUS_IN_PROGRESS:
+            request = self.context.get("request")
+            collaborator = get_collaborator_role(request.user) if request else None
+            if collaborator is not None:
+                conflict = ProjectTask.objects.filter(
+                    collaborators=collaborator, status=ProjectTask.STATUS_IN_PROGRESS
+                )
+                if self.instance is not None:
+                    conflict = conflict.exclude(pk=self.instance.pk)
+                if conflict.exists():
+                    raise serializers.ValidationError(
+                        {"status": "Você já tem uma atividade em execução. Finalize ou pause antes de iniciar outra."}
+                    )
+        return attrs
+
+
+class TechnicianDailyPresenceSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = TechnicianDailyPresence
+        fields = ("id", "collaborator", "date", "status", "status_display", "checked_in_at", "checked_out_at")
+        read_only_fields = ("collaborator", "date", "status", "checked_in_at", "checked_out_at")
 
 
 class DailyUpdateAllocationSerializer(serializers.ModelSerializer):

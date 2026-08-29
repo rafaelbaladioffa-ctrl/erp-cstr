@@ -196,6 +196,7 @@ class ProjectTask(TimestampedModel):
     )
     collaborators = models.ManyToManyField(
         Collaborator,
+        through="ProjectTaskAssignment",
         verbose_name="responsáveis",
         related_name="project_tasks",
         blank=True,
@@ -211,6 +212,19 @@ class ProjectTask(TimestampedModel):
     paused_seconds = models.FloatField("segundos pausados", default=0, editable=False)
     paused_at = models.DateTimeField("pausado em", null=True, blank=True, editable=False)
     notes = models.TextField("observações", blank=True)
+
+    COMPLETION_OUTCOME_COMPLETED = "completed"
+    COMPLETION_OUTCOME_PARTIAL = "partial"
+    COMPLETION_OUTCOME_BLOCKED = "blocked"
+    COMPLETION_OUTCOME_CHOICES = (
+        (COMPLETION_OUTCOME_COMPLETED, "Concluída"),
+        (COMPLETION_OUTCOME_PARTIAL, "Parcial"),
+        (COMPLETION_OUTCOME_BLOCKED, "Bloqueada"),
+    )
+    completion_outcome = models.CharField(
+        "resultado da finalização", max_length=20, choices=COMPLETION_OUTCOME_CHOICES, blank=True
+    )
+    quantity_done = models.CharField("quantidade executada", max_length=100, blank=True)
 
     class Meta:
         verbose_name = "Tarefa do Projeto"
@@ -303,6 +317,37 @@ class ProjectTask(TimestampedModel):
         if self.status == self.STATUS_COMPLETED and self.planned_start and self.planned_end:
             return round(max((self.planned_end - self.planned_start).total_seconds(), 0) / 3600, 2)
         return 0.0
+
+
+class ProjectTaskAssignment(TimestampedModel):
+    """Through model de ProjectTask.collaborators — guarda quem despachou a
+    tarefa pra cada técnico, quando, e a posição dela na fila do técnico
+    (várias tarefas podem ser despachadas pra um técnico, mas só uma fica
+    'em execução' por vez; as demais aguardam nessa ordem)."""
+
+    project_task = models.ForeignKey(ProjectTask, on_delete=models.CASCADE, related_name="assignments")
+    collaborator = models.ForeignKey(Collaborator, on_delete=models.CASCADE, related_name="task_assignments")
+    dispatched_at = models.DateTimeField("despachado em", auto_now_add=True)
+    dispatched_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="despachado por",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    queue_order = models.PositiveIntegerField("posição na fila", default=0)
+
+    class Meta:
+        verbose_name = "Despacho de Tarefa"
+        verbose_name_plural = "Despachos de Tarefa"
+        ordering = ("queue_order", "dispatched_at")
+        constraints = [
+            models.UniqueConstraint(fields=("project_task", "collaborator"), name="unique_assignment_per_task_collaborator")
+        ]
+
+    def __str__(self):
+        return f"{self.project_task} → {self.collaborator}"
 
 
 def merged_worked_hours(tasks):

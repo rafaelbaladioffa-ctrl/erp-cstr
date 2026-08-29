@@ -228,6 +228,7 @@ export interface ProjectTask {
   status: string;
   status_display: string;
   order: number;
+  queue_order: number | null;
   planned_start: string | null;
   planned_end: string | null;
   actual_start: string | null;
@@ -235,7 +236,172 @@ export interface ProjectTask {
   estimated_hours: string | null;
   actual_hours: string | null;
   worked_hours: number;
+  completion_outcome: string;
+  quantity_done: string;
   notes: string;
+}
+
+export interface TechnicianPresence {
+  id: number;
+  collaborator: number;
+  date: string;
+  status: "not_started" | "available" | "in_progress" | "lunch" | "personal" | "site_blocked" | "awaiting_release" | "off_duty";
+  status_display: string;
+  checked_in_at: string | null;
+  checked_out_at: string | null;
+}
+
+export interface StatusEvent {
+  status: string;
+  status_display: string;
+  changed_at: string;
+}
+
+export interface OperationsBoardCurrentTask {
+  id: number;
+  name: string;
+  project_name: string;
+  status: string;
+  actual_start: string | null;
+}
+
+export interface OperationsBoardQueueItem {
+  task_id: number;
+  task_name: string;
+  project_name: string;
+  queue_order: number;
+}
+
+export interface OperationsBoardTechnician {
+  id: number;
+  name: string;
+  site_name: string;
+  presence_status: string;
+  presence_status_display: string;
+  checked_in_at: string | null;
+  checked_out_at: string | null;
+  current_tasks: OperationsBoardCurrentTask[];
+  queue: OperationsBoardQueueItem[];
+  status_events: StatusEvent[];
+}
+
+export interface OperationsBoardAssignee {
+  collaborator_id: number;
+  name: string;
+  queue_order: number;
+}
+
+export interface OperationsBoardTask {
+  id: number;
+  name: string;
+  project_name: string;
+  project_code: string;
+  site_name: string;
+  estimated_hours: string | null;
+  assignees: OperationsBoardAssignee[];
+}
+
+export interface OperationsBoardStats {
+  planned: number;
+  active: number;
+  completed: number;
+  pending: number;
+  technicians_on_site: number;
+  technicians_absent: number;
+  progress_pct: number;
+}
+
+export interface OperationsBoard {
+  technicians: OperationsBoardTechnician[];
+  pool: OperationsBoardTask[];
+  stats: OperationsBoardStats;
+}
+
+export interface TimelineBlock {
+  id: number;
+  name: string;
+  project_name: string;
+  status: string;
+  planned_start: string | null;
+  planned_end: string | null;
+  actual_start: string | null;
+  actual_end: string | null;
+  estimated_hours: string | null;
+}
+
+export interface TimelineTechnician {
+  id: number;
+  name: string;
+  site_name: string;
+  blocks: TimelineBlock[];
+  queue: OperationsBoardQueueItem[];
+  status_events: StatusEvent[];
+}
+
+export interface OperationsTimeline {
+  date: string | null;
+  is_today: boolean;
+  technicians: TimelineTechnician[];
+}
+
+export interface ReportsStats {
+  avg_utilization_pct: number;
+  productive_hours: number;
+  completed_count: number;
+  today_productive_hours: number;
+  today_unproductive_hours: number;
+  completed_this_month: number;
+}
+
+export interface ReportsTechnician {
+  id: number;
+  name: string;
+  site_name: string;
+  worked_hours: number;
+  completed_count: number;
+  journey_hours: number;
+  utilization_pct: number | null;
+}
+
+export interface ReportsActivity {
+  name: string;
+  executions: number;
+  avg_hours: number;
+  best_hours: number;
+}
+
+export interface ReportsTechnicianToday {
+  id: number;
+  name: string;
+  site_name: string;
+  journey_hours: number;
+  active_hours: number;
+  available_hours: number;
+  break_hours: number;
+  utilization_pct: number | null;
+}
+
+export interface ReportsUnproductiveReason {
+  status: string;
+  status_display: string;
+  hours: number;
+}
+
+export interface ReportsLogEntry {
+  at: string;
+  name: string;
+  text: string;
+}
+
+export interface OperationsReports {
+  date_from: string;
+  date_to: string;
+  stats: ReportsStats;
+  technicians: ReportsTechnician[];
+  activities: ReportsActivity[];
+  today_technicians: ReportsTechnicianToday[];
+  unproductive_by_reason: ReportsUnproductiveReason[];
+  log_entries: ReportsLogEntry[];
 }
 
 export interface ProjectOccurrence {

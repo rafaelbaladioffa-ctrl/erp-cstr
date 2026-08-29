@@ -31,7 +31,8 @@ from core.models import (
     Task,
     get_collaborator_role,
 )
-from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
+from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
+from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
     add_custom_tasks_to_project,
@@ -76,6 +77,7 @@ from .serializers import (
     SiteCrudSerializer,
     SiteSerializer,
     TaskCrudSerializer,
+    TechnicianDailyPresenceSerializer,
 )
 
 
@@ -510,10 +512,11 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
         return Response({"updated": updated})
 
 
-class ProjectTaskViewSet(viewsets.ModelViewSet):
+class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
     queryset = ProjectTask.objects.select_related("task", "project").prefetch_related("collaborators", "rack_positions")
     serializer_class = ProjectTaskSerializer
     permission_classes = [ViewAwareModelPermissions]
+    change_permission_actions = ("dispatch_task",)
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -531,6 +534,36 @@ class ProjectTaskViewSet(viewsets.ModelViewSet):
             Project.objects.select_for_update().filter(pk=project.pk).exists()
             next_order = (project.project_tasks.aggregate(highest=models.Max("order"))["highest"] or 0) + 1
             serializer.save(order=serializer.validated_data.get("order") or next_order)
+
+    @action(detail=True, methods=["post"], url_path="dispatch")
+    def dispatch_task(self, request, pk=None):
+        """Despacha a tarefa pra um ou mais técnicos: cria (ou atualiza) a
+        ProjectTaskAssignment de cada um, colocando-a no fim da fila dele
+        (posições anteriores dele em tarefas ainda não iniciadas)."""
+        task = self.get_object()
+        collaborator_ids = request.data.get("collaborator_ids") or []
+        if not collaborator_ids:
+            return Response({"detail": "Informe ao menos um técnico."}, status=400)
+
+        collaborators = Collaborator.objects.filter(id__in=collaborator_ids, is_active=True)
+        for collaborator in collaborators:
+            next_order = (
+                ProjectTaskAssignment.objects.filter(
+                    collaborator=collaborator, project_task__status=ProjectTask.STATUS_NOT_STARTED
+                ).aggregate(highest=models.Max("queue_order"))["highest"]
+                or 0
+            ) + 1
+            ProjectTaskAssignment.objects.update_or_create(
+                project_task=task,
+                collaborator=collaborator,
+                defaults={"dispatched_by": request.user, "queue_order": next_order},
+            )
+
+        # `task` veio de self.get_object(), que já tinha prefetch_related("collaborators")
+        # rodado (vazio, antes do despacho acima) — refresh_from_db() limpa esse cache
+        # de prefetch pra refletir as ProjectTaskAssignment recém-criadas na resposta.
+        task.refresh_from_db()
+        return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
 
 
 class RackPositionViewSet(viewsets.ModelViewSet):
@@ -963,8 +996,114 @@ class MyTaskViewSet(
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
         instance = self.get_object()
-        response.data = ProjectTaskSerializer(instance).data
+        self._sync_presence_with_task(request, instance)
+        response.data = ProjectTaskSerializer(instance, context=self.get_serializer_context()).data
         return response
+
+    def _sync_presence_with_task(self, request, task):
+        """Iniciar uma atividade põe o técnico automaticamente 'Em Execução';
+        pausar ou finalizar sem ter outra em_progress volta pra 'Disponível'
+        — o técnico não precisa mexer no dropdown de status pra isso."""
+        collaborator = get_collaborator_role(request.user)
+        if collaborator is None:
+            return
+
+        if task.status == ProjectTask.STATUS_IN_PROGRESS:
+            new_status = TechnicianDailyPresence.STATUS_IN_PROGRESS
+        elif task.status in (ProjectTask.STATUS_PAUSED, ProjectTask.STATUS_COMPLETED):
+            still_active = collaborator.task_assignments.filter(
+                project_task__status=ProjectTask.STATUS_IN_PROGRESS
+            ).exists()
+            if still_active:
+                return
+            new_status = TechnicianDailyPresence.STATUS_AVAILABLE
+        else:
+            return
+
+        presence, _ = TechnicianDailyPresence.objects.get_or_create(
+            collaborator=collaborator, date=timezone.localdate()
+        )
+        if presence.status == new_status:
+            return
+        now = timezone.now()
+        presence.status = new_status
+        presence.checked_in_at = presence.checked_in_at or now
+        presence.checked_out_at = None
+        presence.save(update_fields=("status", "checked_in_at", "checked_out_at", "updated_at"))
+        TechnicianStatusEvent.objects.create(
+            collaborator=collaborator, date=presence.date, status=new_status, changed_at=now
+        )
+
+
+class TechnicianPresenceViewSet(viewsets.GenericViewSet):
+    """Módulo Técnico > presença do dia: o próprio técnico marca 'cheguei no
+    site' / 'encerrar expediente'. Um registro por (técnico, dia) — ver
+    dispatch.models.TechnicianDailyPresence."""
+
+    queryset = TechnicianDailyPresence.objects.none()
+    serializer_class = TechnicianDailyPresenceSerializer
+    permission_classes = [ViewAwareModelPermissions]
+
+    def _get_or_create_today(self, request):
+        collaborator = get_collaborator_role(request.user)
+        if collaborator is None:
+            return None
+        presence, _ = TechnicianDailyPresence.objects.get_or_create(
+            collaborator=collaborator, date=timezone.localdate()
+        )
+        return presence
+
+    def get_queryset(self):
+        collaborator = get_collaborator_role(self.request.user)
+        if collaborator is None:
+            return TechnicianDailyPresence.objects.none()
+        return TechnicianDailyPresence.objects.filter(collaborator=collaborator)
+
+    @action(detail=False, methods=["get"])
+    def me(self, request):
+        presence = self._get_or_create_today(request)
+        if presence is None:
+            return Response({"detail": "Usuário sem Técnico vinculado."}, status=404)
+        return Response(TechnicianDailyPresenceSerializer(presence).data)
+
+    @action(detail=False, methods=["post"], url_path="check-in")
+    def check_in(self, request):
+        """Mantido por compatibilidade — equivale a set_status com
+        status=available (o primeiro 'Disponível' do dia já é o check-in)."""
+        return self._apply_status(request, TechnicianDailyPresence.STATUS_AVAILABLE)
+
+    @action(detail=False, methods=["post"], url_path="check-out")
+    def check_out(self, request):
+        """Mantido por compatibilidade — equivale a set_status com status=off_duty."""
+        return self._apply_status(request, TechnicianDailyPresence.STATUS_OFF_DUTY)
+
+    @action(detail=False, methods=["post"], url_path="set-status")
+    def set_status(self, request):
+        """O técnico escolhe livremente entre Disponível / Almoço / Particular
+        / Fim de Expediente. O primeiro status selecionado no dia (qualquer
+        um deles) já funciona como o check-in — não existe mais um botão de
+        'cheguei no site' separado."""
+        status_value = request.data.get("status")
+        if status_value not in TechnicianDailyPresence.SELECTABLE_STATUSES:
+            return Response({"detail": "Status inválido."}, status=400)
+        return self._apply_status(request, status_value)
+
+    def _apply_status(self, request, status_value):
+        presence = self._get_or_create_today(request)
+        if presence is None:
+            return Response({"detail": "Usuário sem Técnico vinculado."}, status=404)
+        now = timezone.now()
+        presence.status = status_value
+        if status_value == TechnicianDailyPresence.STATUS_OFF_DUTY:
+            presence.checked_out_at = now
+        else:
+            presence.checked_in_at = presence.checked_in_at or now
+            presence.checked_out_at = None
+        presence.save(update_fields=("status", "checked_in_at", "checked_out_at", "updated_at"))
+        TechnicianStatusEvent.objects.create(
+            collaborator=presence.collaborator, date=presence.date, status=status_value, changed_at=now
+        )
+        return Response(TechnicianDailyPresenceSerializer(presence).data)
 
 
 class AuditLogViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

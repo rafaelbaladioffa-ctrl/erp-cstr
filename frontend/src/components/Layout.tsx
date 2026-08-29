@@ -18,6 +18,14 @@ interface NavItem {
 
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
+    title: "Central de Operações",
+    items: [
+      { to: "/operacao-do-dia", label: "Operação do Dia", icon: "alt_route", permission: PERMS.viewOperationsBoard },
+      { to: "/timeline-operacional", label: "Timeline Operacional", icon: "schedule", permission: PERMS.viewOperationsBoard },
+      { to: "/relatorios-indicadores", label: "Relatórios e Indicadores", icon: "bar_chart", permission: PERMS.viewOperationsBoard },
+    ],
+  },
+  {
     title: "Projeto",
     items: [
       { to: "/projetos", label: "Projetos Ativos", icon: "folder", permission: PERMS.viewProject },
@@ -49,6 +57,9 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
 ];
 
 const AREA_LABELS: Record<string, { area: string; page: string }> = {
+  "/operacao-do-dia": { area: "Central de Operações", page: "Operação do Dia" },
+  "/timeline-operacional": { area: "Central de Operações", page: "Timeline Operacional" },
+  "/relatorios-indicadores": { area: "Central de Operações", page: "Relatórios e Indicadores" },
   "/dashboard": { area: "Sistema", page: "Dashboard" },
   "/atualizacoes-diarias": { area: "Atualizações", page: "Atualizações Diárias" },
   "/atualizacoes-projeto": { area: "Atualizações", page: "Atualizações de Projetos" },

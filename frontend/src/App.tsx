@@ -10,6 +10,9 @@ import Dashboard from "./pages/Dashboard";
 import DailyUpdates from "./pages/DailyUpdates";
 import Login from "./pages/Login";
 import MyTasks from "./pages/MyTasks";
+import OperationsBoard from "./pages/OperationsBoard";
+import OperationsReportsPage from "./pages/OperationsReports";
+import TimelineOperacional from "./pages/TimelineOperacional";
 import ProjectDetail from "./pages/ProjectDetail";
 import ProjectsList from "./pages/ProjectsList";
 import ProjectUpdates from "./pages/ProjectUpdates";
@@ -55,6 +58,30 @@ export default function App() {
           }
         >
           <Route path="/" element={<HomeRedirect />} />
+          <Route
+            path="/operacao-do-dia"
+            element={
+              <RequirePermission permission={PERMS.viewOperationsBoard}>
+                <OperationsBoard />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/timeline-operacional"
+            element={
+              <RequirePermission permission={PERMS.viewOperationsBoard}>
+                <TimelineOperacional />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/relatorios-indicadores"
+            element={
+              <RequirePermission permission={PERMS.viewOperationsBoard}>
+                <OperationsReportsPage />
+              </RequirePermission>
+            }
+          />
           <Route
             path="/dashboard"
             element={

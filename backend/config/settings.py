@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "projects",
     "updates",
     "technical",
+    "dispatch",
     "bot",
     "api",
 ]
