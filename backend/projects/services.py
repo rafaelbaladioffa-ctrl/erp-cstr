@@ -7,6 +7,7 @@ as Tarefas do Projeto e cadastro em massa de Rack Positions.
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 
 from .models import Project, ProjectTask, RackPosition
 
@@ -162,6 +163,14 @@ def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, pl
     updates = {}
     if status:
         updates["status"] = status
+        if status == ProjectTask.STATUS_COMPLETED:
+            # QuerySet.update() (usado logo abaixo) não passa por Model.save(),
+            # então campos auto_now como updated_at não são preenchidos
+            # sozinhos — sem isso, uma conclusão em massa nunca "conta" como
+            # feita hoje pros relatórios de Atualização de Projeto/bot, já que
+            # eles usam actual_end (ou updated_at, na falta dele) pra saber em
+            # que dia a tarefa foi executada.
+            updates["actual_end"] = timezone.now()
     if planned_start:
         updates["planned_start"] = planned_start
     if planned_end:
