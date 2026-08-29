@@ -47,6 +47,15 @@ PRESENCE_LABEL = {
 AWAY_STATUSES = {"lunch", "personal", "site_blocked", "awaiting_release"}
 
 
+def _fmt(value):
+    """Formata um float como string de ponto fixo, sempre com "." decimal —
+    o Django Template Language localiza {{ float }} pra vírgula quando o
+    locale ativo é pt_BR (USE_I18N=True), o que quebra silenciosamente
+    qualquer `left:{{ x }}%` no CSS inline (left:0,0% é inválido, o
+    navegador simplesmente ignora a propriedade)."""
+    return f"{value:.2f}"
+
+
 def _initials(name):
     parts = (name or "").strip().split()
     letters = "".join(p[0] for p in parts[:2])
@@ -214,8 +223,8 @@ class OperationsPrintView(APIView):
                 width = max(0.6, right - left)
                 bars.append(
                     {
-                        "left": round(left, 2),
-                        "width": round(width, 2),
+                        "left": _fmt(left),
+                        "width": _fmt(width),
                         "top": _bar_top(item["lane"], lane_count),
                         "height": _bar_height(lane_count),
                         "color": seg["color"],
@@ -243,7 +252,7 @@ class OperationsPrintView(APIView):
             )
 
         hour_marks = [
-            {"hour": h, "left": round(((h - WINDOW_START_HOUR) / (WINDOW_END_HOUR - WINDOW_START_HOUR)) * 100, 2)}
+            {"hour": h, "left": _fmt(((h - WINDOW_START_HOUR) / (WINDOW_END_HOUR - WINDOW_START_HOUR)) * 100)}
             for h in range(WINDOW_START_HOUR, WINDOW_END_HOUR + 1)
         ]
 
@@ -252,6 +261,6 @@ class OperationsPrintView(APIView):
             "tech_rows": tech_rows,
             "hour_marks": hour_marks,
             "now_label": now.strftime("%d/%m/%Y %H:%M"),
-            "now_pct": round(_pct(now, now), 2),
+            "now_pct": _fmt(_pct(now, now)),
         }
         return render(request, "bot/operations_print.html", context)
