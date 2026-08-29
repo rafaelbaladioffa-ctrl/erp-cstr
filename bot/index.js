@@ -240,7 +240,8 @@ async function captureOperationsPrint() {
     await page.setExtraHTTPHeaders({ "X-Bot-Secret": API_SECRET });
     await page.setViewport({ width: 1148, height: 900 });
     await page.goto(`${API_URL}/bot/operations-print/?site=all`, { waitUntil: "networkidle0", timeout: 30000 });
-    return await page.screenshot({ type: "png", fullPage: true });
+    const shot = await page.screenshot({ type: "png", fullPage: true });
+    return Buffer.isBuffer(shot) ? shot : Buffer.from(shot);
   } finally {
     await browser.close();
   }
@@ -270,7 +271,7 @@ async function runOperationsPrintBroadcast(sock, overridePhone) {
       continue;
     }
     try {
-      await sock.sendMessage(jid, { image, caption });
+      await sock.sendMessage(jid, { image, caption, mimetype: "image/png" });
     } catch (err) {
       console.error(`${label}: erro ao enviar para ${r.name}:`, err.message);
     }
