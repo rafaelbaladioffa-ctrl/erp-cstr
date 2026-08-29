@@ -23,7 +23,7 @@ export default function Login() {
       } else {
         savedUsername.clear();
       }
-      navigate("/projetos");
+      navigate("/");
     } catch {
       setError("Usuário ou senha inválidos.");
     } finally {

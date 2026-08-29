@@ -1279,15 +1279,13 @@ select.input[multiple] {
 .mt-tabs {
   display: flex;
   gap: 8px;
-  overflow-x: auto;
   padding-bottom: 2px;
   margin-bottom: 16px;
-  -webkit-overflow-scrolling: touch;
 }
 
 .mt-tab {
   flex: 1;
-  min-width: fit-content;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1309,7 +1307,14 @@ select.input[multiple] {
   color: #fff;
 }
 
+.mt-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .mt-tab-count {
+  flex-shrink: 0;
   font-size: 11.5px;
   font-weight: 800;
   background: rgba(23, 32, 51, 0.08);
@@ -1317,6 +1322,23 @@ select.input[multiple] {
   border-radius: 999px;
   padding: 1px 7px;
   font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .mt-tabs {
+    gap: 6px;
+  }
+
+  .mt-tab {
+    gap: 4px;
+    padding: 9px 6px;
+    font-size: 11.5px;
+  }
+
+  .mt-tab-count {
+    font-size: 10px;
+    padding: 1px 5px;
+  }
 }
 
 .mt-tab.active .mt-tab-count {

@@ -205,6 +205,7 @@ class MeView(APIView):
             "is_superuser": user.is_superuser,
             "permissions": permissions,
             "has_collaborator_profile": get_collaborator_role(user) is not None,
+            "must_change_password": user.must_change_password,
         })
 
 
@@ -228,7 +229,8 @@ class ChangePasswordView(APIView):
         except DjangoValidationError as exc:
             return Response({"detail": " ".join(exc.messages)}, status=400)
         request.user.set_password(new_password)
-        request.user.save(update_fields=["password"])
+        request.user.must_change_password = False
+        request.user.save(update_fields=["password", "must_change_password"])
         return Response({"detail": "Senha alterada com sucesso."})
 
 

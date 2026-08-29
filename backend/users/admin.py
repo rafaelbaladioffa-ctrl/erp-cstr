@@ -14,7 +14,7 @@ class ERPUserAdmin(SelectablePageSizeAdminMixin, BaseUserAdmin, ModelAdmin):
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
     fieldsets = BaseUserAdmin.fieldsets + (
-        ("ERP", {"fields": ("company",)}),
+        ("ERP", {"fields": ("company", "must_change_password")}),
         (
             "Acesso do Usuário-Cliente",
             {
@@ -35,6 +35,11 @@ class ERPUserAdmin(SelectablePageSizeAdminMixin, BaseUserAdmin, ModelAdmin):
     list_display = ("username", "email", "company", "client", "is_staff", "is_active")
     list_filter = ("company", "client", "is_staff", "is_active", "groups")
     search_fields = ("username", "first_name", "last_name", "email")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.must_change_password = True
+        super().save_model(request, obj, form, change)
 
     def get_search_results(self, request, queryset, search_term):
         queryset, use_distinct = super().get_search_results(request, queryset, search_term)

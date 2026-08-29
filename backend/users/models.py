@@ -32,6 +32,12 @@ class User(AbstractUser):
         related_name="portal_users",
         help_text="Restringe o usuário-cliente a estes Sites do Cliente vinculado. Vazio = todos os Sites do Cliente.",
     )
+    must_change_password = models.BooleanField(
+        "precisa trocar a senha",
+        default=False,
+        help_text="Marcado automaticamente para usuários recém-criados — força a troca de senha no próximo "
+        "login, antes de liberar o acesso ao resto do sistema.",
+    )
     client_categories = models.ManyToManyField(
         "core.Category",
         verbose_name="categorias permitidas",

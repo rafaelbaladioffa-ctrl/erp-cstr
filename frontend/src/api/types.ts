@@ -14,6 +14,7 @@ export interface Me {
   is_superuser: boolean;
   permissions: string[];
   has_collaborator_profile: boolean;
+  must_change_password: boolean;
 }
 
 export interface Project {

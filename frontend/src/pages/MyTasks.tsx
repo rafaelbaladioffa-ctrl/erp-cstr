@@ -124,7 +124,7 @@ export default function MyTasks() {
               onClick={() => setActiveTab(tab.key)}
               className={`mt-tab${activeTab === tab.key ? " active" : ""}`}
             >
-              {tab.short}
+              <span className="mt-tab-label">{tab.short}</span>
               <span className="mt-tab-count">{count}</span>
             </button>
           );
