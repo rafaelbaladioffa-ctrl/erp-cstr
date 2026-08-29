@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -325,8 +326,13 @@ class BotDailyTasksBroadcastView(APIView):
         for allocation in allocations:
             project = allocation.project
             allocated_collaborators = list(allocation.collaborators.all())
+            # Inclui tarefas sem responsável definido ainda (comum em projetos
+            # onde a atribuição é feita a nível de projeto, não de tarefa) e
+            # as atribuídas especificamente a quem está alocado hoje; exclui
+            # só as que pertencem a outra pessoa que não está no time de hoje.
             pending_tasks = (
-                ProjectTask.objects.filter(project=project, collaborators__in=allocated_collaborators)
+                ProjectTask.objects.filter(project=project)
+                .filter(Q(collaborators=None) | Q(collaborators__in=allocated_collaborators))
                 .exclude(status__in=(ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_CANCELED))
                 .distinct()
                 .order_by("order", "id")
