@@ -135,7 +135,10 @@ class OperationsBoardView(APIView):
                 }
             )
 
-        pool_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_NOT_STARTED)
+        # Só entra no pool do dia quem tem início AGENDADO pra hoje — sem
+        # isso, todo o backlog não iniciado (mesmo tarefas agendadas pra
+        # daqui semanas) aparecia junto, inflando a lista.
+        pool_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_NOT_STARTED, planned_start__date=today)
         if site_id:
             pool_qs = pool_qs.filter(project__site_id=site_id)
         pool = (
