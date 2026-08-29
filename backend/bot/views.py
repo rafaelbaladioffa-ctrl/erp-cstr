@@ -324,9 +324,11 @@ class BotDailyTasksBroadcastView(APIView):
         projects = []
         for allocation in allocations:
             project = allocation.project
+            allocated_collaborators = list(allocation.collaborators.all())
             pending_tasks = (
-                ProjectTask.objects.filter(project=project)
+                ProjectTask.objects.filter(project=project, collaborators__in=allocated_collaborators)
                 .exclude(status__in=(ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_CANCELED))
+                .distinct()
                 .order_by("order", "id")
             )
             projects.append(
