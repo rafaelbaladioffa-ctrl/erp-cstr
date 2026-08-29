@@ -44,6 +44,7 @@ export default function OperationsBoard() {
   const [now, setNow] = useState(() => Date.now());
   const [expandedBar, setExpandedBar] = useState<string | null>(null);
   const [poolOpen, setPoolOpen] = useState(false);
+  const [techOpen, setTechOpen] = useState(false);
 
   useEffect(() => {
     sitesApi.list().then((data) => {
@@ -228,11 +229,14 @@ export default function OperationsBoard() {
 
           <div className="ops-columns">
             <div className="ops-tech-card">
-              <div className="ops-card-head">
+              <button type="button" className="ops-card-head ops-card-head-toggle" onClick={() => setTechOpen((v) => !v)}>
                 <div className="ops-card-title">Técnicos</div>
-                <div className="ops-card-hint">{technicians.length} no site hoje</div>
-              </div>
-              {groupByPair(technicians).map(({ primary, partner }) => {
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div className="ops-card-hint">{technicians.length} no site hoje</div>
+                  <Icon name={techOpen ? "expand_less" : "expand_more"} style={{ fontSize: 20, color: "var(--text-faint)" }} />
+                </div>
+              </button>
+              {techOpen && groupByPair(technicians).map(({ primary, partner }) => {
                 const rows = partner ? [primary, partner] : [primary];
                 const content = rows.map((tech) => {
                   const hasInProgress = tech.current_tasks.some((t) => t.status === "in_progress");
@@ -306,7 +310,7 @@ export default function OperationsBoard() {
                   </div>
                 );
               })}
-              {technicians.length === 0 && <div className="empty-state">Nenhum técnico vinculado a este site.</div>}
+              {techOpen && technicians.length === 0 && <div className="empty-state">Nenhum técnico vinculado a este site.</div>}
             </div>
 
             <div className="ops-pool-card">
