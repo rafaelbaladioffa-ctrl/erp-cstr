@@ -298,6 +298,20 @@ def _active_subscribers(flag):
     )
 
 
+class BotOperationsPrintRecipientsView(APIView):
+    """GET /api/bot/broadcasts/operations-print-recipients/
+
+    Lista quem deve receber o print da Operação do Dia (8h/10h/12h/14h/16h/
+    18h) — o bot captura a imagem (via /api/bot/operations-print/) e manda
+    pra cada telefone daqui."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        return Response({"recipients": _active_subscribers("receives_operations_print")})
+
+
 class BotDailyTasksBroadcastView(APIView):
     """GET /api/bot/broadcasts/daily-tasks/?date=<AAAA-MM-DD, opcional>
 

@@ -3,10 +3,12 @@ const qrcode = require("qrcode-terminal");
 const pino = require("pino");
 const axios = require("axios");
 const http = require("http");
+const puppeteer = require("puppeteer-core");
 
 const API_URL = process.env.BOT_API_URL || "http://backend:8000/api";
 const API_SECRET = process.env.BOT_API_SECRET || "";
 const AUTH_DIR = process.env.AUTH_DIR || "/app/auth_info";
+const CHROMIUM_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium";
 
 const logger = pino({ level: "warn" });
 
@@ -220,6 +222,61 @@ async function runProjectUpdatesBroadcast(sock) {
   await sendToRecipients(sock, data.recipients, text, "Atualização de projetos (17h)");
 }
 
+async function captureOperationsPrint() {
+  const browser = await puppeteer.launch({
+    executablePath: CHROMIUM_PATH,
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-extensions",
+      "--no-zygote",
+    ],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setExtraHTTPHeaders({ "X-Bot-Secret": API_SECRET });
+    await page.setViewport({ width: 1148, height: 900 });
+    await page.goto(`${API_URL}/bot/operations-print/?site=all`, { waitUntil: "networkidle0", timeout: 30000 });
+    return await page.screenshot({ type: "png", fullPage: true });
+  } finally {
+    await browser.close();
+  }
+}
+
+async function runOperationsPrintBroadcast(sock, overridePhone) {
+  const label = "Operação do Dia (print)";
+  const recipients = overridePhone
+    ? [{ name: "Teste", phone: overridePhone }]
+    : (await botGet("/bot/broadcasts/operations-print-recipients/")).recipients;
+
+  if (!recipients.length) {
+    console.log(`${label}: nenhum destinatário cadastrado, nada a enviar.`);
+    return;
+  }
+
+  console.log(`${label}: capturando imagem da Central de Operações...`);
+  const image = await captureOperationsPrint();
+  const now = new Date();
+  const caption = `📸 Operação do Dia — ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+
+  console.log(`${label}: enviando para ${recipients.length} destinatário(s).`);
+  for (const r of recipients) {
+    const jid = phoneToJid(r.phone);
+    if (!jid) {
+      console.error(`${label}: telefone inválido para ${r.name} (${r.phone}), pulando.`);
+      continue;
+    }
+    try {
+      await sock.sendMessage(jid, { image, caption });
+    } catch (err) {
+      console.error(`${label}: erro ao enviar para ${r.name}:`, err.message);
+    }
+  }
+}
+
 let currentSock = null;
 
 // Horários dos envios automáticos, em America/Sao_Paulo (convertidos para UTC
@@ -229,6 +286,15 @@ const SCHEDULED_BROADCASTS = [
   { key: "daily-tasks", hourUTC: 13, minuteUTC: 0, run: runDailyTasksBroadcast }, // 10h
   { key: "allocation", hourUTC: 21, minuteUTC: 0, run: runAllocationBroadcast }, // 18h
   { key: "project-updates", hourUTC: 20, minuteUTC: 0, run: runProjectUpdatesBroadcast }, // 17h
+  // Print da Operação do Dia — 6x ao dia (8h, 10h, 12h, 14h, 16h, 18h). Cada
+  // horário precisa de uma key própria: são disparos independentes no mesmo
+  // dia, não um único envio diário como os de cima.
+  { key: "operations-print-08", hourUTC: 11, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
+  { key: "operations-print-10", hourUTC: 13, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
+  { key: "operations-print-12", hourUTC: 15, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
+  { key: "operations-print-14", hourUTC: 17, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
+  { key: "operations-print-16", hourUTC: 19, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
+  { key: "operations-print-18", hourUTC: 21, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
 ];
 const lastRunDateKey = {};
 
@@ -237,13 +303,27 @@ const lastRunDateKey = {};
 // hora, via `docker exec`, para testar sem esperar o horário programado.
 http
   .createServer((req, res) => {
-    const broadcast = SCHEDULED_BROADCASTS.find((b) => req.url === `/trigger-${b.key}`);
-    if (!broadcast) {
-      res.writeHead(404).end();
-      return;
-    }
+    const url = new URL(req.url, "http://localhost");
+
     if (!currentSock) {
       res.writeHead(503).end("Bot não está conectado ao WhatsApp no momento.\n");
+      return;
+    }
+
+    // Rota própria pro print da Operação do Dia — aceita ?to=<telefone> pra
+    // mandar só pra um número específico (teste), em vez da lista completa
+    // de destinatários cadastrados.
+    if (url.pathname === "/trigger-operations-print") {
+      const overridePhone = url.searchParams.get("to") || undefined;
+      runOperationsPrintBroadcast(currentSock, overridePhone)
+        .then(() => res.writeHead(200).end("Envio disparado — confira os logs do bot.\n"))
+        .catch((err) => res.writeHead(500).end(`Erro: ${err.message}\n`));
+      return;
+    }
+
+    const broadcast = SCHEDULED_BROADCASTS.find((b) => url.pathname === `/trigger-${b.key}`);
+    if (!broadcast) {
+      res.writeHead(404).end();
       return;
     }
     broadcast

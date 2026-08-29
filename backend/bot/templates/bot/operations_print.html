@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1100px;
+    background: #0a1729;
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    padding: 24px;
+    color: #fff;
+  }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  .title { font-size: 20px; font-weight: 700; }
+  .subtitle { font-size: 12px; color: #6c7d97; margin-top: 2px; }
+  .ring {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: conic-gradient(#f16023 {{ stats.progress_pct }}%, #1c2438 0);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ring-inner {
+    width: 44px; height: 44px; border-radius: 50%; background: #0a1729;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 18px; }
+  .stat-card { background: #131c30; border-radius: 10px; padding: 10px 12px; }
+  .stat-label { font-size: 9px; color: #6c7d97; letter-spacing: 0.03em; text-transform: uppercase; }
+  .stat-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .panel { background: #131c30; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .panel-title { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+  .tech-list { display: flex; flex-direction: column; gap: 6px; }
+  .tech-row { display: flex; align-items: center; gap: 10px; background: #1c2438; border-radius: 8px; padding: 7px 10px; }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%; background: #2a3450;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; position: relative; flex-shrink: 0;
+  }
+  .dot { position: absolute; bottom: -1px; right: -1px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid #1c2438; }
+  .tech-name { font-size: 12px; font-weight: 500; }
+  .tech-status { font-size: 10.5px; margin-top: 1px; }
+  .timeline-wrap { display: flex; }
+  .tl-labels { width: 190px; flex-shrink: 0; }
+  .tl-ruler-spacer { height: 22px; }
+  .tl-body { flex: 1; position: relative; }
+  .tl-ruler { position: relative; height: 22px; border-bottom: 1px solid #263352; margin-bottom: 4px; }
+  .tl-tick { position: absolute; top: 0; font-size: 9px; color: #6c7d97; transform: translateX(-50%); }
+  .tl-row-label { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 0; }
+  .tl-row-name { font-size: 11px; font-weight: 500; }
+  .tl-row-site { font-size: 9.5px; color: #6c7d97; }
+  .tl-track { position: relative; border-bottom: 1px solid #182034; }
+  .tl-bar { position: absolute; border-radius: 5px; display: flex; align-items: center; padding: 0 6px; overflow: hidden; }
+  .tl-bar-label { font-size: 9px; font-weight: 600; color: #0a1729; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .footer { text-align: center; font-size: 10px; color: #465066; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="title">Operação do Dia</div>
+      <div class="subtitle">{{ now_label }}</div>
+    </div>
+    <div class="ring"><div class="ring-inner">{{ stats.progress_pct }}%</div></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat-card"><div class="stat-label">Planejadas</div><div class="stat-value">{{ stats.planned }}</div></div>
+    <div class="stat-card"><div class="stat-label">Em execução</div><div class="stat-value" style="color:#5b9bff;">{{ stats.active }}</div></div>
+    <div class="stat-card"><div class="stat-label">Concluídas</div><div class="stat-value" style="color:#34d399;">{{ stats.completed }}</div></div>
+    <div class="stat-card"><div class="stat-label">Pendentes</div><div class="stat-value">{{ stats.pending }}</div></div>
+    <div class="stat-card"><div class="stat-label">No site</div><div class="stat-value" style="color:#2dd4bf;">{{ stats.technicians_on_site }}</div></div>
+    <div class="stat-card"><div class="stat-label">Ausentes</div><div class="stat-value" style="color:#f87171;">{{ stats.technicians_absent }}</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Técnicos</div>
+    <div class="tech-list">
+      {% for row in tech_rows %}
+      <div class="tech-row">
+        <div class="avatar">{{ row.initials }}
+          <span class="dot" style="background:{{ row.status_color }};"></span>
+        </div>
+        <div style="min-width:0;flex:1;">
+          <div class="tech-name">{{ row.tech.name }}</div>
+          <div class="tech-status" style="color:{{ row.status_color }};">
+            {% if row.current_task_name %}{{ row.current_task_name }}{% else %}{{ row.tech.presence_status_display }}{% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Timeline operacional</div>
+    <div class="timeline-wrap">
+      <div class="tl-labels">
+        <div class="tl-ruler-spacer"></div>
+        {% for row in tech_rows %}
+        <div class="tl-row-label" style="height:{{ row.height }}px;">
+          <div class="avatar" style="width:22px;height:22px;font-size:9px;">{{ row.initials }}</div>
+          <div>
+            <div class="tl-row-name">{{ row.tech.name }}</div>
+            <div class="tl-row-site">{{ row.tech.site_name }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="tl-body">
+        <div class="tl-ruler">
+          {% for m in hour_marks %}
+          <span class="tl-tick" style="left:{{ m.left }}%;">{{ m.hour }}h</span>
+          {% endfor %}
+          <div style="position:absolute;top:0;bottom:0;left:{{ now_pct }}%;width:2px;background:#f16023;"></div>
+        </div>
+        {% for row in tech_rows %}
+        <div class="tl-track" style="height:{{ row.height }}px;">
+          {% for bar in row.bars %}
+          <div class="tl-bar" style="left:{{ bar.left }}%;width:{{ bar.width }}%;top:{{ bar.top }}px;height:{{ bar.height }}px;background:{{ bar.color }};">
+            <span class="tl-bar-label">{{ bar.label }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">ERP Consultimer · gerado automaticamente</div>
+</body>
+</html>

@@ -106,6 +106,96 @@ def _queue_data(collaborator):
     ]
 
 
+def build_board_data(site_id):
+    """Monta os mesmos dados de OperationsBoardView.get() — extraído à parte
+    pra ser reaproveitado pela view de "print" (bot do WhatsApp), sem
+    duplicar a lógica."""
+    today = timezone.localdate()
+    collaborators_qs = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
+    if site_id:
+        collaborators_qs = collaborators_qs.filter(sites=site_id)
+
+    presence_filter = {"date": today}
+    if site_id:
+        presence_filter["collaborator__sites"] = site_id
+    presences = {p.collaborator_id: p for p in TechnicianDailyPresence.objects.filter(**presence_filter)}
+    collaborator_ids = [c.id for c in collaborators_qs]
+    status_events_by_collaborator = _status_events_data(collaborator_ids, today)
+    pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
+
+    technicians = []
+    for collaborator in collaborators_qs:
+        presence = presences.get(collaborator.id)
+        technicians.append(
+            {
+                "id": collaborator.id,
+                "name": collaborator.person.name if collaborator.person_id else str(collaborator),
+                "site_name": _site_label(collaborator),
+                "presence_status": presence.status if presence else TechnicianDailyPresence.STATUS_NOT_STARTED,
+                "presence_status_display": (
+                    presence.get_status_display() if presence else "Não chegou"
+                ),
+                "checked_in_at": presence.checked_in_at if presence else None,
+                "checked_out_at": presence.checked_out_at if presence else None,
+                "current_tasks": _current_tasks_data(collaborator),
+                "queue": _queue_data(collaborator),
+                "status_events": status_events_by_collaborator.get(collaborator.id, []),
+                "pair_partner": pair_partner_by_collaborator.get(collaborator.id),
+            }
+        )
+
+    # Só entra no pool do dia quem tem início AGENDADO pra hoje — sem
+    # isso, todo o backlog não iniciado (mesmo tarefas agendadas pra
+    # daqui semanas) aparecia junto, inflando a lista.
+    pool_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_NOT_STARTED, planned_start__date=today)
+    if site_id:
+        pool_qs = pool_qs.filter(project__site_id=site_id)
+    pool = (
+        pool_qs.select_related("project", "project__site", "task")
+        .prefetch_related("assignments__collaborator__person")
+        .order_by("order", "id")
+    )
+    pool_data = [
+        {
+            "id": t.id,
+            "name": t.display_name,
+            "project_name": t.project.name,
+            "project_code": t.project.code,
+            "site_name": t.project.site.name if t.project.site_id else "—",
+            "estimated_hours": t.estimated_hours,
+            "assignees": [
+                {"collaborator_id": a.collaborator_id, "name": a.collaborator.person.name, "queue_order": a.queue_order}
+                for a in t.assignments.all()
+            ],
+        }
+        for t in pool
+    ]
+
+    active_qs = ProjectTask.objects.filter(status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
+    completed_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_COMPLETED, actual_end__date=today)
+    if site_id:
+        active_qs = active_qs.filter(project__site_id=site_id)
+        completed_qs = completed_qs.filter(project__site_id=site_id)
+    pending_count = len(pool_data)
+    active_count = active_qs.count()
+    completed_today_count = completed_qs.count()
+    planned_count = pending_count + active_count + completed_today_count
+    technicians_absent = sum(
+        1 for t in technicians if t["presence_status"] == TechnicianDailyPresence.STATUS_NOT_STARTED
+    )
+    stats = {
+        "planned": planned_count,
+        "active": active_count,
+        "completed": completed_today_count,
+        "pending": pending_count,
+        "technicians_on_site": len(technicians),
+        "technicians_absent": technicians_absent,
+        "progress_pct": round((completed_today_count / planned_count) * 100) if planned_count else 0,
+    }
+
+    return {"technicians": technicians, "pool": pool_data, "stats": stats}
+
+
 class OperationsBoardView(APIView):
     """GET /api/operations/board/?site=<id> — omita `site` (ou use
     `site=all`) pra ver todos os sites de uma vez."""
@@ -116,91 +206,62 @@ class OperationsBoardView(APIView):
         site_id = request.query_params.get("site")
         if site_id == "all":
             site_id = None
+        return Response(build_board_data(site_id))
 
-        today = timezone.localdate()
-        collaborators_qs = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
-        if site_id:
-            collaborators_qs = collaborators_qs.filter(sites=site_id)
 
-        presence_filter = {"date": today}
-        if site_id:
-            presence_filter["collaborator__sites"] = site_id
-        presences = {p.collaborator_id: p for p in TechnicianDailyPresence.objects.filter(**presence_filter)}
-        collaborator_ids = [c.id for c in collaborators_qs]
-        status_events_by_collaborator = _status_events_data(collaborator_ids, today)
-        pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
+def build_timeline_data(site_id, date):
+    """Monta os mesmos dados de OperationsTimelineView.get() — extraído à
+    parte pra ser reaproveitado pela view de "print" (bot do WhatsApp)."""
+    is_today = date == timezone.localdate()
 
-        technicians = []
-        for collaborator in collaborators_qs:
-            presence = presences.get(collaborator.id)
-            technicians.append(
-                {
-                    "id": collaborator.id,
-                    "name": collaborator.person.name if collaborator.person_id else str(collaborator),
-                    "site_name": _site_label(collaborator),
-                    "presence_status": presence.status if presence else TechnicianDailyPresence.STATUS_NOT_STARTED,
-                    "presence_status_display": (
-                        presence.get_status_display() if presence else "Não chegou"
-                    ),
-                    "checked_in_at": presence.checked_in_at if presence else None,
-                    "checked_out_at": presence.checked_out_at if presence else None,
-                    "current_tasks": _current_tasks_data(collaborator),
-                    "queue": _queue_data(collaborator),
-                    "status_events": status_events_by_collaborator.get(collaborator.id, []),
-                    "pair_partner": pair_partner_by_collaborator.get(collaborator.id),
-                }
+    collaborators_qs = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
+    if site_id:
+        collaborators_qs = collaborators_qs.filter(sites=site_id)
+
+    collaborator_ids = [c.id for c in collaborators_qs]
+    status_events_by_collaborator = _status_events_data(collaborator_ids, date)
+    pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
+
+    technicians = []
+    for collaborator in collaborators_qs:
+        tasks = (
+            ProjectTask.objects.filter(collaborators=collaborator)
+            .filter(
+                Q(actual_start__date=date)
+                | Q(planned_start__date=date)
+                | Q(status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
             )
-
-        # Só entra no pool do dia quem tem início AGENDADO pra hoje — sem
-        # isso, todo o backlog não iniciado (mesmo tarefas agendadas pra
-        # daqui semanas) aparecia junto, inflando a lista.
-        pool_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_NOT_STARTED, planned_start__date=today)
-        if site_id:
-            pool_qs = pool_qs.filter(project__site_id=site_id)
-        pool = (
-            pool_qs.select_related("project", "project__site", "task")
-            .prefetch_related("assignments__collaborator__person")
-            .order_by("order", "id")
+            .select_related("project", "task")
+            .distinct()
+            .order_by("planned_start", "actual_start")
         )
-        pool_data = [
+        blocks = [
             {
                 "id": t.id,
                 "name": t.display_name,
                 "project_name": t.project.name,
-                "project_code": t.project.code,
-                "site_name": t.project.site.name if t.project.site_id else "—",
+                "status": t.status,
+                "planned_start": t.planned_start,
+                "planned_end": t.planned_end,
+                "actual_start": t.actual_start,
+                "actual_end": t.actual_end,
                 "estimated_hours": t.estimated_hours,
-                "assignees": [
-                    {"collaborator_id": a.collaborator_id, "name": a.collaborator.person.name, "queue_order": a.queue_order}
-                    for a in t.assignments.all()
-                ],
             }
-            for t in pool
+            for t in tasks
         ]
-
-        active_qs = ProjectTask.objects.filter(status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
-        completed_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_COMPLETED, actual_end__date=today)
-        if site_id:
-            active_qs = active_qs.filter(project__site_id=site_id)
-            completed_qs = completed_qs.filter(project__site_id=site_id)
-        pending_count = len(pool_data)
-        active_count = active_qs.count()
-        completed_today_count = completed_qs.count()
-        planned_count = pending_count + active_count + completed_today_count
-        technicians_absent = sum(
-            1 for t in technicians if t["presence_status"] == TechnicianDailyPresence.STATUS_NOT_STARTED
+        technicians.append(
+            {
+                "id": collaborator.id,
+                "name": collaborator.person.name,
+                "site_name": _site_label(collaborator),
+                "blocks": blocks,
+                "queue": _queue_data(collaborator) if is_today else [],
+                "status_events": status_events_by_collaborator.get(collaborator.id, []),
+                "pair_partner": pair_partner_by_collaborator.get(collaborator.id),
+            }
         )
-        stats = {
-            "planned": planned_count,
-            "active": active_count,
-            "completed": completed_today_count,
-            "pending": pending_count,
-            "technicians_on_site": len(technicians),
-            "technicians_absent": technicians_absent,
-            "progress_pct": round((completed_today_count / planned_count) * 100) if planned_count else 0,
-        }
 
-        return Response({"technicians": technicians, "pool": pool_data, "stats": stats})
+    return {"date": date.isoformat(), "is_today": is_today, "technicians": technicians}
 
 
 class OperationsTimelineView(APIView):
@@ -222,56 +283,8 @@ class OperationsTimelineView(APIView):
         date = parse_date(date_param) if date_param else timezone.localdate()
         if date is None:
             date = timezone.localdate()
-        is_today = date == timezone.localdate()
 
-        collaborators_qs = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
-        if site_id:
-            collaborators_qs = collaborators_qs.filter(sites=site_id)
-
-        collaborator_ids = [c.id for c in collaborators_qs]
-        status_events_by_collaborator = _status_events_data(collaborator_ids, date)
-        pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
-
-        technicians = []
-        for collaborator in collaborators_qs:
-            tasks = (
-                ProjectTask.objects.filter(collaborators=collaborator)
-                .filter(
-                    Q(actual_start__date=date)
-                    | Q(planned_start__date=date)
-                    | Q(status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
-                )
-                .select_related("project", "task")
-                .distinct()
-                .order_by("planned_start", "actual_start")
-            )
-            blocks = [
-                {
-                    "id": t.id,
-                    "name": t.display_name,
-                    "project_name": t.project.name,
-                    "status": t.status,
-                    "planned_start": t.planned_start,
-                    "planned_end": t.planned_end,
-                    "actual_start": t.actual_start,
-                    "actual_end": t.actual_end,
-                    "estimated_hours": t.estimated_hours,
-                }
-                for t in tasks
-            ]
-            technicians.append(
-                {
-                    "id": collaborator.id,
-                    "name": collaborator.person.name,
-                    "site_name": _site_label(collaborator),
-                    "blocks": blocks,
-                    "queue": _queue_data(collaborator) if is_today else [],
-                    "status_events": status_events_by_collaborator.get(collaborator.id, []),
-                    "pair_partner": pair_partner_by_collaborator.get(collaborator.id),
-                }
-            )
-
-        return Response({"date": date.isoformat(), "is_today": is_today, "technicians": technicians})
+        return Response(build_timeline_data(site_id, date))
 
 
 def _presence_durations_by_collaborator(collaborator_ids, date_from, date_to, now):

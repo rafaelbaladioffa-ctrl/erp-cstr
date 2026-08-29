@@ -2,8 +2,10 @@ FROM node:22-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates chromium && rm -rf /var/lib/apt/lists/* \
     && git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY bot/package.json ./
 RUN npm install --omit=dev
