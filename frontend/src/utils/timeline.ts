@@ -1,4 +1,4 @@
-import type { TimelineBlock } from "../api/types";
+import type { PairPartner, TimelineBlock } from "../api/types";
 
 export const PRESENCE_COLOR: Record<string, string> = {
   not_started: "var(--text-faint)",
@@ -189,4 +189,64 @@ export function assignLanes(segments: Segment[]): LanedSegment[] {
   const sorted = [...segments].sort((a, b) => a.start.getTime() - b.start.getTime());
   const laneCount = Math.max(1, sorted.length);
   return sorted.map((segment, lane) => ({ segment, lane, laneCount }));
+}
+
+interface Paired {
+  id: number;
+  pair_partner: PairPartner | null;
+}
+
+export interface PairGroup<T extends Paired> {
+  primary: T;
+  partner: T | null;
+}
+
+/** Agrupa a lista de técnicos em duplas fixas (ver CollaboratorPair no
+ * backend) — cada item aparece uma única vez, como `primary` sozinho (sem
+ * dupla) ou como `{primary, partner}`. A ordem de entrada é preservada
+ * (só pula o parceiro quando ele já apareceu antes na lista). */
+export function groupByPair<T extends Paired>(items: T[]): PairGroup<T>[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const seen = new Set<number>();
+  const groups: PairGroup<T>[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    const partner = item.pair_partner ? byId.get(item.pair_partner.id) || null : null;
+    if (partner) seen.add(partner.id);
+    groups.push({ primary: item, partner });
+  }
+  return groups;
+}
+
+/** Reordena `rows` (qualquer lista com `tech: Paired`) pra que duplas
+ * fiquem em linhas adjacentes — usado na timeline, onde já existe um array
+ * de linhas construído (com segments/lanes calculados) e só a ORDEM precisa
+ * mudar, não os dados. */
+export function reorderRowsByPair<R extends { tech: Paired }>(rows: R[]): R[] {
+  const groups = groupByPair(rows.map((r) => r.tech));
+  const byTechId = new Map(rows.map((r) => [r.tech.id, r]));
+  const ordered: R[] = [];
+  for (const g of groups) {
+    const primaryRow = byTechId.get(g.primary.id);
+    if (primaryRow) ordered.push(primaryRow);
+    if (g.partner) {
+      const partnerRow = byTechId.get(g.partner.id);
+      if (partnerRow) ordered.push(partnerRow);
+    }
+  }
+  return ordered;
+}
+
+/** Classe CSS pra dar o visual de "linhas coladas" às duas linhas de uma
+ * dupla na timeline (fundo compartilhado, sem borda entre elas) — chamar
+ * pra cada índice da lista JÁ reordenada por reorderRowsByPair. */
+export function pairRowClass<R extends { tech: Paired }>(rows: R[], index: number): string {
+  const row = rows[index];
+  const prev = rows[index - 1];
+  const next = rows[index + 1];
+  const pairedWithPrev = !!prev && row.tech.pair_partner?.id === prev.tech.id;
+  const pairedWithNext = !!next && row.tech.pair_partner?.id === next.tech.id;
+  if (!pairedWithPrev && !pairedWithNext) return "";
+  return `tl-row-pair${pairedWithPrev ? " tl-row-pair-second" : " tl-row-pair-first"}`;
 }

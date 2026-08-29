@@ -3,7 +3,7 @@ from unfold.admin import ModelAdmin
 
 from core.admin_mixins import SelectablePageSizeAdminMixin
 
-from .models import TechnicianDailyPresence, TechnicianStatusEvent
+from .models import CollaboratorPair, TechnicianDailyPresence, TechnicianStatusEvent
 
 
 @admin.register(TechnicianDailyPresence)
@@ -20,3 +20,11 @@ class TechnicianStatusEventAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     list_filter = ("status", "date")
     search_fields = ("collaborator__person__name",)
     autocomplete_fields = ("collaborator",)
+
+
+@admin.register(CollaboratorPair)
+class CollaboratorPairAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("collaborator_a", "collaborator_b", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("collaborator_a__person__name", "collaborator_b__person__name")
+    autocomplete_fields = ("collaborator_a", "collaborator_b")

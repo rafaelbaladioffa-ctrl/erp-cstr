@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -108,3 +109,42 @@ class TechnicianStatusEvent(models.Model):
 
     def __str__(self):
         return f"{self.collaborator} — {self.get_status_display()} em {self.changed_at:%d/%m %H:%M}"
+
+
+class CollaboratorPair(TimestampedModel):
+    """Dupla fixa de trabalho — dois técnicos que sempre são despachados
+    juntos e aparecem agrupados no board/timeline da Central de Operações.
+    Um técnico só pode estar em UMA dupla ativa por vez (ver clean()); quem
+    não tem dupla continua aparecendo normalmente, sozinho."""
+
+    collaborator_a = models.ForeignKey(
+        Collaborator, verbose_name="técnico A", on_delete=models.CASCADE, related_name="pair_as_a"
+    )
+    collaborator_b = models.ForeignKey(
+        Collaborator, verbose_name="técnico B", on_delete=models.CASCADE, related_name="pair_as_b"
+    )
+    is_active = models.BooleanField("ativa", default=True)
+
+    class Meta:
+        verbose_name = "Dupla de Técnicos"
+        verbose_name_plural = "Duplas de Técnicos"
+        ordering = ("collaborator_a__person__name",)
+
+    def __str__(self):
+        return f"{self.collaborator_a} + {self.collaborator_b}"
+
+    def clean(self):
+        super().clean()
+        if self.collaborator_a_id and self.collaborator_a_id == self.collaborator_b_id:
+            raise ValidationError("Um técnico não pode formar dupla com ele mesmo.")
+        if not self.is_active:
+            return
+        conflicting = CollaboratorPair.objects.filter(
+            is_active=True, collaborator_a_id__in=(self.collaborator_a_id, self.collaborator_b_id)
+        ) | CollaboratorPair.objects.filter(
+            is_active=True, collaborator_b_id__in=(self.collaborator_a_id, self.collaborator_b_id)
+        )
+        if self.pk:
+            conflicting = conflicting.exclude(pk=self.pk)
+        if conflicting.exists():
+            raise ValidationError("Um dos técnicos já está em outra dupla ativa.")

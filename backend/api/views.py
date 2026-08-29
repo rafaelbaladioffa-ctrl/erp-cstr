@@ -31,7 +31,7 @@ from core.models import (
     Task,
     get_collaborator_role,
 )
-from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
+from dispatch.models import CollaboratorPair, TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -541,9 +541,20 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
         ProjectTaskAssignment de cada um, colocando-a no fim da fila dele
         (posições anteriores dele em tarefas ainda não iniciadas)."""
         task = self.get_object()
-        collaborator_ids = request.data.get("collaborator_ids") or []
+        collaborator_ids = list(request.data.get("collaborator_ids") or [])
         if not collaborator_ids:
             return Response({"detail": "Informe ao menos um técnico."}, status=400)
+
+        # Duplas fixas são sempre despachadas juntas — mesmo que o front só
+        # tenha mandado um dos dois (ex: ação vinda de outro lugar que não
+        # sabe de duplas), o parceiro entra automaticamente.
+        paired = CollaboratorPair.objects.filter(
+            is_active=True
+        ).filter(models.Q(collaborator_a_id__in=collaborator_ids) | models.Q(collaborator_b_id__in=collaborator_ids))
+        for pair in paired:
+            collaborator_ids.append(pair.collaborator_a_id)
+            collaborator_ids.append(pair.collaborator_b_id)
+        collaborator_ids = list(dict.fromkeys(collaborator_ids))
 
         collaborators = Collaborator.objects.filter(id__in=collaborator_ids, is_active=True)
         for collaborator in collaborators:

@@ -257,6 +257,11 @@ export interface StatusEvent {
   changed_at: string;
 }
 
+export interface PairPartner {
+  id: number;
+  name: string;
+}
+
 export interface OperationsBoardCurrentTask {
   id: number;
   name: string;
@@ -283,6 +288,7 @@ export interface OperationsBoardTechnician {
   current_tasks: OperationsBoardCurrentTask[];
   queue: OperationsBoardQueueItem[];
   status_events: StatusEvent[];
+  pair_partner: PairPartner | null;
 }
 
 export interface OperationsBoardAssignee {
@@ -336,6 +342,7 @@ export interface TimelineTechnician {
   blocks: TimelineBlock[];
   queue: OperationsBoardQueueItem[];
   status_events: StatusEvent[];
+  pair_partner: PairPartner | null;
 }
 
 export interface OperationsTimeline {

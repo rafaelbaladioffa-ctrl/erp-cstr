@@ -1896,6 +1896,35 @@ select.input[multiple] {
   border-bottom: none;
 }
 
+.ops-pair-group {
+  border-bottom: 1px solid #eef1f3;
+  background: var(--bg);
+}
+
+.ops-pair-group:last-child {
+  border-bottom: none;
+}
+
+.ops-pair-group .ops-tech-row {
+  border-bottom: 1px dashed var(--border);
+}
+
+.ops-pair-group .ops-tech-row:last-child {
+  border-bottom: none;
+}
+
+.ops-pair-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 16px 0;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .ops-tech-row.selectable {
   cursor: pointer;
 }
@@ -2303,6 +2332,14 @@ select.input[multiple] {
   display: flex;
   align-items: stretch;
   border-top: 1px solid #eef1f3;
+}
+
+.tl-row-pair {
+  background: var(--bg);
+}
+
+.tl-row-pair-second {
+  border-top: none;
 }
 
 .tl-row-label {

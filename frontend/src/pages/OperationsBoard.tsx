@@ -14,8 +14,11 @@ import {
   assignLanes,
   buildTechSegments,
   formatTime,
+  groupByPair,
   initials,
+  pairRowClass,
   pct,
+  reorderRowsByPair,
 } from "../utils/timeline";
 
 function formatElapsed(startIso: string | null, now: number) {
@@ -75,7 +78,15 @@ export default function OperationsBoard() {
 
   function toggleTech(techId: number, available: boolean) {
     if (!available) return;
-    setSelectedTechs((prev) => (prev.includes(techId) ? prev.filter((id) => id !== techId) : [...prev, techId]));
+    // Dupla fixa: selecionar um dos dois já seleciona o parceiro junto
+    // (o despacho em conjunto é o padrão — ver CollaboratorPair no backend).
+    const tech = (board?.technicians || []).find((t) => t.id === techId);
+    const partnerId = tech?.pair_partner?.id;
+    const ids = partnerId != null ? [techId, partnerId] : [techId];
+    setSelectedTechs((prev) => {
+      const isSelected = prev.includes(techId);
+      return isSelected ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])];
+    });
   }
 
   function selectTask(taskId: number) {
@@ -106,18 +117,20 @@ export default function OperationsBoard() {
   // uma, iniciou outra) — as barras dela empilham verticalmente na mesma
   // linha, e as 3 colunas (nomes/timeline/fila) precisam da MESMA altura de
   // linha pra continuarem alinhadas.
-  const techRows = technicians.map((tech) => {
-    const { blocks = [], statusEvents = [] } = timelineByTech[tech.id] || {};
-    const segments = buildTechSegments(blocks, statusEvents, nowDate, true);
-    const lanedSegments = assignLanes(segments);
-    return {
-      tech,
-      lanedSegments,
-      laneCount: lanedSegments[0]?.laneCount ?? 1,
-      doneCount: blocks.filter((b) => b.status === "completed").length,
-      pendingCount: tech.queue.length,
-    };
-  });
+  const techRows = reorderRowsByPair(
+    technicians.map((tech) => {
+      const { blocks = [], statusEvents = [] } = timelineByTech[tech.id] || {};
+      const segments = buildTechSegments(blocks, statusEvents, nowDate, true);
+      const lanedSegments = assignLanes(segments);
+      return {
+        tech,
+        lanedSegments,
+        laneCount: lanedSegments[0]?.laneCount ?? 1,
+        doneCount: blocks.filter((b) => b.status === "completed").length,
+        pendingCount: tech.queue.length,
+      };
+    })
+  );
   const trackHeight = (count: number) => (count <= 1 ? 52 : 10 + count * 30);
   const barTop = (index: number, count: number) => (count <= 1 ? 8 : 6 + index * 30);
   const barHeight = (count: number) => (count <= 1 ? 36 : 26);
@@ -219,64 +232,77 @@ export default function OperationsBoard() {
                 <div className="ops-card-title">Técnicos</div>
                 <div className="ops-card-hint">{technicians.length} no site hoje</div>
               </div>
-              {technicians.map((tech) => {
-                const hasInProgress = tech.current_tasks.some((t) => t.status === "in_progress");
-                const hasPaused = tech.current_tasks.some((t) => t.status === "paused");
-                const pausedAway = hasPaused && AWAY_STATUSES.includes(tech.presence_status);
-                const busyStatus = hasInProgress ? "in_progress" : hasPaused && !pausedAway ? "paused" : undefined;
-                const dotColor = pausedAway
-                  ? PRESENCE_COLOR[tech.presence_status]
-                  : busyStatus
-                    ? BUSY_COLOR[busyStatus]
-                    : PRESENCE_COLOR[tech.presence_status];
-                const dispatchable = tech.presence_status !== "not_started" && tech.presence_status !== "off_duty";
-                const selectable = selectedTask != null && dispatchable;
-                const isSelected = selectedTechs.includes(tech.id);
+              {groupByPair(technicians).map(({ primary, partner }) => {
+                const rows = partner ? [primary, partner] : [primary];
+                const content = rows.map((tech) => {
+                  const hasInProgress = tech.current_tasks.some((t) => t.status === "in_progress");
+                  const hasPaused = tech.current_tasks.some((t) => t.status === "paused");
+                  const pausedAway = hasPaused && AWAY_STATUSES.includes(tech.presence_status);
+                  const busyStatus = hasInProgress ? "in_progress" : hasPaused && !pausedAway ? "paused" : undefined;
+                  const dotColor = pausedAway
+                    ? PRESENCE_COLOR[tech.presence_status]
+                    : busyStatus
+                      ? BUSY_COLOR[busyStatus]
+                      : PRESENCE_COLOR[tech.presence_status];
+                  const dispatchable = tech.presence_status !== "not_started" && tech.presence_status !== "off_duty";
+                  const selectable = selectedTask != null && dispatchable;
+                  const isSelected = selectedTechs.includes(tech.id);
+                  return (
+                    <div
+                      key={tech.id}
+                      className={`ops-tech-row${selectable ? " selectable" : ""}${isSelected ? " selected" : ""}${
+                        tech.presence_status === "off_duty" || tech.presence_status === "not_started" ? " dim" : ""
+                      }`}
+                      onClick={() => toggleTech(tech.id, selectable)}
+                    >
+                      <div className="ops-avatar">
+                        {initials(tech.name)}
+                        <span className="ops-avatar-dot" style={{ background: dotColor }} />
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div className="ops-tech-name">
+                          {tech.name}
+                          {siteId === "all" && <span className="ops-tech-site"> · {tech.site_name}</span>}
+                        </div>
+                        <div className="ops-tech-status" style={{ color: dotColor }}>
+                          {busyStatus === "in_progress"
+                            ? "Em execução"
+                            : busyStatus === "paused"
+                              ? "Pausado"
+                              : tech.presence_status_display}
+                          {tech.current_tasks.length > 1 && ` · ${tech.current_tasks.length} tarefas abertas`}
+                        </div>
+                        {tech.current_tasks.map((t) => (
+                          <div key={t.id} className="ops-tech-current">
+                            {t.status === "paused" ? "⏸ " : ""}
+                            {t.name}
+                            {t.status === "in_progress" && t.actual_start && (
+                              <span className="ops-tech-timer"> · {formatElapsed(t.actual_start, now)}</span>
+                            )}
+                          </div>
+                        ))}
+                        {tech.queue.length > 0 && (
+                          <div className="ops-queue-row">
+                            {tech.queue.map((q, idx) => (
+                              <span key={q.task_id} className="ops-queue-chip" title={q.task_name}>
+                                <span className="ops-queue-num">{idx + 1}</span>
+                                {q.task_name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+                if (!partner) return content;
                 return (
-                  <div
-                    key={tech.id}
-                    className={`ops-tech-row${selectable ? " selectable" : ""}${isSelected ? " selected" : ""}${
-                      tech.presence_status === "off_duty" || tech.presence_status === "not_started" ? " dim" : ""
-                    }`}
-                    onClick={() => toggleTech(tech.id, selectable)}
-                  >
-                    <div className="ops-avatar">
-                      {initials(tech.name)}
-                      <span className="ops-avatar-dot" style={{ background: dotColor }} />
+                  <div key={primary.id} className="ops-pair-group">
+                    <div className="ops-pair-label">
+                      <Icon name="groups" style={{ fontSize: 13 }} />
+                      Dupla
                     </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div className="ops-tech-name">
-                        {tech.name}
-                        {siteId === "all" && <span className="ops-tech-site"> · {tech.site_name}</span>}
-                      </div>
-                      <div className="ops-tech-status" style={{ color: dotColor }}>
-                        {busyStatus === "in_progress"
-                          ? "Em execução"
-                          : busyStatus === "paused"
-                            ? "Pausado"
-                            : tech.presence_status_display}
-                        {tech.current_tasks.length > 1 && ` · ${tech.current_tasks.length} tarefas abertas`}
-                      </div>
-                      {tech.current_tasks.map((t) => (
-                        <div key={t.id} className="ops-tech-current">
-                          {t.status === "paused" ? "⏸ " : ""}
-                          {t.name}
-                          {t.status === "in_progress" && t.actual_start && (
-                            <span className="ops-tech-timer"> · {formatElapsed(t.actual_start, now)}</span>
-                          )}
-                        </div>
-                      ))}
-                      {tech.queue.length > 0 && (
-                        <div className="ops-queue-row">
-                          {tech.queue.map((q, idx) => (
-                            <span key={q.task_id} className="ops-queue-chip" title={q.task_name}>
-                              <span className="ops-queue-num">{idx + 1}</span>
-                              {q.task_name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    {content}
                   </div>
                 );
               })}
@@ -408,8 +434,12 @@ export default function OperationsBoard() {
             <div className="tl-grid-wrap">
               <div className="tl-labels">
                 <div className="tl-ruler" />
-                {techRows.map(({ tech, laneCount, doneCount, pendingCount }) => (
-                  <div key={tech.id} className="tl-row" style={{ height: trackHeight(laneCount) }}>
+                {techRows.map(({ tech, laneCount, doneCount, pendingCount }, idx) => (
+                  <div
+                    key={tech.id}
+                    className={`tl-row ${pairRowClass(techRows, idx)}`}
+                    style={{ height: trackHeight(laneCount) }}
+                  >
                     <div className="tl-row-label">
                       <div className="tl-avatar">{initials(tech.name)}</div>
                       <div>
@@ -451,10 +481,10 @@ export default function OperationsBoard() {
                   </div>
                 </div>
 
-                {techRows.map(({ tech, lanedSegments, laneCount }) => {
+                {techRows.map(({ tech, lanedSegments, laneCount }, rowIdx) => {
                   if (lanedSegments.length === 0) {
                     return (
-                      <div key={tech.id} className="tl-row" style={{ height: trackHeight(0) }}>
+                      <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(0) }}>
                         <div className="tl-row-track">
                           <div className="tl-idle-note">{tech.presence_status_display}</div>
                         </div>
@@ -462,7 +492,7 @@ export default function OperationsBoard() {
                     );
                   }
                   return (
-                    <div key={tech.id} className="tl-row" style={{ height: trackHeight(laneCount) }}>
+                    <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
                       <div className="tl-row-track">
                         {lanedSegments.map(({ segment, lane }, idx) => {
                           const left = pct(segment.start, base);
@@ -507,8 +537,8 @@ export default function OperationsBoard() {
                 <div className="tl-ruler">
                   <span className="tl-queue-col-title">Próximas na fila</span>
                 </div>
-                {techRows.map(({ tech, laneCount }) => (
-                  <div key={tech.id} className="tl-row" style={{ height: trackHeight(laneCount) }}>
+                {techRows.map(({ tech, laneCount }, rowIdx) => (
+                  <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
                     <div className="tl-queue-row-track">
                       {tech.queue.length === 0 ? (
                         <span className="tl-queue-empty">—</span>

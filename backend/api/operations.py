@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.models import Collaborator
-from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
+from dispatch.models import CollaboratorPair, TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import ProjectTask, ProjectTaskAssignment
 
 
@@ -66,6 +66,20 @@ def _status_events_data(collaborator_ids, date):
     return by_collaborator
 
 
+def _pair_partner_map(collaborator_ids):
+    """{collaborator_id: {"id": parceiro_id, "name": nome_parceiro}} pras
+    duplas fixas ativas que têm os dois lados dentro do escopo pedido (site
+    filtrado) — usado pro board/timeline agruparem a dupla visualmente."""
+    pairs = CollaboratorPair.objects.filter(
+        is_active=True, collaborator_a_id__in=collaborator_ids, collaborator_b_id__in=collaborator_ids
+    ).select_related("collaborator_a__person", "collaborator_b__person")
+    partner_map = {}
+    for pair in pairs:
+        partner_map[pair.collaborator_a_id] = {"id": pair.collaborator_b_id, "name": pair.collaborator_b.person.name}
+        partner_map[pair.collaborator_b_id] = {"id": pair.collaborator_a_id, "name": pair.collaborator_a.person.name}
+    return partner_map
+
+
 def _site_label(collaborator):
     """Nome do(s) site(s) do técnico — um técnico pode estar vinculado a mais
     de um site (Collaborator.sites é M2M), então junta os nomes. Usado pra
@@ -114,6 +128,7 @@ class OperationsBoardView(APIView):
         presences = {p.collaborator_id: p for p in TechnicianDailyPresence.objects.filter(**presence_filter)}
         collaborator_ids = [c.id for c in collaborators_qs]
         status_events_by_collaborator = _status_events_data(collaborator_ids, today)
+        pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
 
         technicians = []
         for collaborator in collaborators_qs:
@@ -132,6 +147,7 @@ class OperationsBoardView(APIView):
                     "current_tasks": _current_tasks_data(collaborator),
                     "queue": _queue_data(collaborator),
                     "status_events": status_events_by_collaborator.get(collaborator.id, []),
+                    "pair_partner": pair_partner_by_collaborator.get(collaborator.id),
                 }
             )
 
@@ -214,6 +230,7 @@ class OperationsTimelineView(APIView):
 
         collaborator_ids = [c.id for c in collaborators_qs]
         status_events_by_collaborator = _status_events_data(collaborator_ids, date)
+        pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
 
         technicians = []
         for collaborator in collaborators_qs:
@@ -250,6 +267,7 @@ class OperationsTimelineView(APIView):
                     "blocks": blocks,
                     "queue": _queue_data(collaborator) if is_today else [],
                     "status_events": status_events_by_collaborator.get(collaborator.id, []),
+                    "pair_partner": pair_partner_by_collaborator.get(collaborator.id),
                 }
             )
 

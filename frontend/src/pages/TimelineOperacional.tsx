@@ -14,7 +14,9 @@ import {
   buildTechSegments,
   formatTime,
   initials,
+  pairRowClass,
   pct,
+  reorderRowsByPair,
 } from "../utils/timeline";
 
 function formatDateBR(iso: string) {
@@ -67,16 +69,18 @@ export default function TimelineOperacional() {
   const base = data?.date ? new Date(`${data.date}T00:00:00`) : new Date();
   const nowPct = isToday ? pct(now, base) : null;
 
-  const techRows = technicians.map((tech) => {
-    const segments = buildTechSegments(tech.blocks, tech.status_events, now, isToday);
-    const lanedSegments = assignLanes(segments);
-    return {
-      tech,
-      lanedSegments,
-      laneCount: lanedSegments[0]?.laneCount ?? 1,
-      doneCount: tech.blocks.filter((b) => b.status === "completed").length,
-    };
-  });
+  const techRows = reorderRowsByPair(
+    technicians.map((tech) => {
+      const segments = buildTechSegments(tech.blocks, tech.status_events, now, isToday);
+      const lanedSegments = assignLanes(segments);
+      return {
+        tech,
+        lanedSegments,
+        laneCount: lanedSegments[0]?.laneCount ?? 1,
+        doneCount: tech.blocks.filter((b) => b.status === "completed").length,
+      };
+    })
+  );
   const trackHeight = (count: number) => (count <= 1 ? 52 : 10 + count * 30);
   const barTop = (index: number, count: number) => (count <= 1 ? 8 : 6 + index * 30);
   const barHeight = (count: number) => (count <= 1 ? 36 : 26);
@@ -179,8 +183,8 @@ export default function TimelineOperacional() {
           <div className="tl-grid-wrap">
             <div className="tl-labels">
               <div className="tl-ruler" />
-              {techRows.map(({ tech, laneCount, doneCount }) => (
-                <div key={tech.id} className="tl-row" style={{ height: trackHeight(laneCount) }}>
+              {techRows.map(({ tech, laneCount, doneCount }, rowIdx) => (
+                <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
                   <div className="tl-row-label">
                     <div className="tl-avatar">{initials(tech.name)}</div>
                     <div>
@@ -224,10 +228,10 @@ export default function TimelineOperacional() {
                 )}
               </div>
 
-              {techRows.map(({ tech, lanedSegments, laneCount }) => {
+              {techRows.map(({ tech, lanedSegments, laneCount }, rowIdx) => {
                 if (lanedSegments.length === 0) {
                   return (
-                    <div key={tech.id} className="tl-row" style={{ height: trackHeight(0) }}>
+                    <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(0) }}>
                       <div className="tl-row-track">
                         <div className="tl-idle-note">Sem atividade neste dia</div>
                       </div>
@@ -235,7 +239,7 @@ export default function TimelineOperacional() {
                   );
                 }
                 return (
-                  <div key={tech.id} className="tl-row" style={{ height: trackHeight(laneCount) }}>
+                  <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
                     <div className="tl-row-track">
                       {lanedSegments.map(({ segment, lane }, idx) => {
                         const left = pct(segment.start, base);
