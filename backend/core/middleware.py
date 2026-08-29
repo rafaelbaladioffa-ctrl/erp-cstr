@@ -9,6 +9,13 @@ BEACON_SCRIPT = """
     }
   }, true);
   document.addEventListener("submit", function () { internalNav = true; }, true);
+  // F5/Ctrl+R/Cmd+R (recarregar a página) também dispara "pagehide" — sem
+  // isso, um simples F5 era tratado como fechar a aba e derrubava a sessão.
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "F5" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r")) {
+      internalNav = true;
+    }
+  }, true);
   window.addEventListener("pagehide", function (event) {
     if (event.persisted || internalNav) return;
     navigator.sendBeacon(logoutUrl);
