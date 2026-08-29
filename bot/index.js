@@ -125,13 +125,6 @@ function formatProjectUpdate(p) {
   return lines.join("\n");
 }
 
-// Horário do envio automático diário: 18h em America/Sao_Paulo. O Brasil não
-// tem mais horário de verão (abolido em 2019), então o offset -3h é fixo o
-// ano todo — evita depender do pacote tzdata (nem sempre presente em imagens
-// slim) só para converter fuso horário.
-const BROADCAST_HOUR_UTC = 21;
-const BROADCAST_MINUTE_UTC = 0;
-
 function phoneToJid(rawPhone) {
   const digits = (rawPhone || "").replace(/\D/g, "");
   if (digits.length >= 12) return `${digits}@s.whatsapp.net`;
@@ -146,36 +139,106 @@ function formatBroadcastMessage(t, date) {
   return `Olá, ${t.collaborator_name}! Aqui está sua alocação para ${formatDate(date)}:\n\n${lines.join("\n")}`;
 }
 
-async function runDailyBroadcast(sock) {
+async function runAllocationBroadcast(sock) {
   const data = await botGet("/bot/daily-broadcast/");
   if (!data.technicians.length) {
-    console.log(`Envio automático diário: nenhuma alocação para ${data.date}, nada a enviar.`);
+    console.log(`Envio de alocação: nenhuma alocação para ${data.date}, nada a enviar.`);
     return;
   }
-  console.log(`Envio automático diário: enviando alocação de ${data.date} para ${data.technicians.length} técnico(s).`);
+  console.log(`Envio de alocação: enviando de ${data.date} para ${data.technicians.length} técnico(s).`);
   for (const t of data.technicians) {
     const jid = phoneToJid(t.phone);
     if (!jid) {
-      console.error(`Envio automático: telefone inválido para ${t.collaborator_name} (${t.phone}), pulando.`);
+      console.error(`Envio de alocação: telefone inválido para ${t.collaborator_name} (${t.phone}), pulando.`);
       continue;
     }
     try {
       await sock.sendMessage(jid, { text: formatBroadcastMessage(t, data.date) });
     } catch (err) {
-      console.error(`Envio automático: erro ao enviar para ${t.collaborator_name}:`, err.message);
+      console.error(`Envio de alocação: erro ao enviar para ${t.collaborator_name}:`, err.message);
     }
   }
 }
 
+// Manda o mesmo texto consolidado (todos os projetos do dia) para cada
+// destinatário cadastrado no BotSubscriber — usado pelos envios das 10h e
+// das 17h, que são resumos gerenciais, não mensagens individuais por técnico.
+async function sendToRecipients(sock, recipients, text, label) {
+  if (!recipients.length) {
+    console.log(`${label}: nenhum destinatário cadastrado (BotSubscriber), nada a enviar.`);
+    return;
+  }
+  for (const r of recipients) {
+    const jid = phoneToJid(r.phone);
+    if (!jid) {
+      console.error(`${label}: telefone inválido para ${r.name} (${r.phone}), pulando.`);
+      continue;
+    }
+    try {
+      await sock.sendMessage(jid, { text });
+    } catch (err) {
+      console.error(`${label}: erro ao enviar para ${r.name}:`, err.message);
+    }
+  }
+}
+
+async function runDailyTasksBroadcast(sock) {
+  const data = await botGet("/bot/broadcasts/daily-tasks/");
+  if (!data.projects.length) {
+    console.log(`Tarefas do dia (10h): nenhum projeto alocado em ${data.date}, nada a enviar.`);
+    return;
+  }
+  const blocks = data.projects.map((p) => {
+    const lines = [`*${p.code ? `${p.code} - ` : ""}${p.project}* — Site: ${p.site || "não informado"}`];
+    lines.push(`Técnicos: ${p.collaborators.join(", ") || "não informado"}`);
+    lines.push(p.tasks.length ? `Tarefas:\n${p.tasks.map((t) => `• ${t}`).join("\n")}` : "Sem tarefas pendentes cadastradas.");
+    return lines.join("\n");
+  });
+  const text = `📅 Tarefas alocadas para hoje (${formatDate(data.date)}):\n\n${blocks.join("\n\n")}`;
+  console.log(`Tarefas do dia (10h): enviando ${data.projects.length} projeto(s) para ${data.recipients.length} destinatário(s).`);
+  await sendToRecipients(sock, data.recipients, text, "Tarefas do dia (10h)");
+}
+
+async function runProjectUpdatesBroadcast(sock) {
+  const data = await botGet("/bot/broadcasts/project-updates/");
+  if (!data.projects.length) {
+    console.log(`Atualização de projetos (17h): nenhum projeto alocado em ${data.date}, nada a enviar.`);
+    return;
+  }
+  const blocks = data.projects.map((p) => {
+    const lines = [
+      `*${p.code ? `${p.code} - ` : ""}${p.project}* — Site: ${p.site || "não informado"}`,
+      `Progresso: ${p.completion_percent}%`,
+    ];
+    lines.push(p.activities_text ? `Concluído hoje:\n${p.activities_text}` : "Nada concluído hoje.");
+    if (p.certification_done) lines.push("🏆 Certificação finalizada");
+    if (p.project_finished) lines.push("🏁 Projeto finalizado");
+    return lines.join("\n");
+  });
+  const text = `✅ Atualização de projetos — hoje (${formatDate(data.date)}):\n\n${blocks.join("\n\n")}`;
+  console.log(`Atualização de projetos (17h): enviando ${data.projects.length} projeto(s) para ${data.recipients.length} destinatário(s).`);
+  await sendToRecipients(sock, data.recipients, text, "Atualização de projetos (17h)");
+}
+
 let currentSock = null;
-let lastBroadcastDateKey = null;
+
+// Horários dos envios automáticos, em America/Sao_Paulo (convertidos para UTC
+// fixo -3h — o Brasil não tem mais horário de verão desde 2019, então não
+// precisa do pacote tzdata, nem sempre presente em imagens slim).
+const SCHEDULED_BROADCASTS = [
+  { key: "daily-tasks", hourUTC: 13, minuteUTC: 0, run: runDailyTasksBroadcast }, // 10h
+  { key: "allocation", hourUTC: 21, minuteUTC: 0, run: runAllocationBroadcast }, // 18h
+  { key: "project-updates", hourUTC: 20, minuteUTC: 0, run: runProjectUpdatesBroadcast }, // 17h
+];
+const lastRunDateKey = {};
 
 // Servidor só para uso interno (não publicado no compose.yaml, só acessível
-// de dentro do próprio container) — permite disparar o envio diário na hora,
-// via `docker exec`, para testar sem esperar até as 18h.
+// de dentro do próprio container) — permite disparar cada envio automático na
+// hora, via `docker exec`, para testar sem esperar o horário programado.
 http
   .createServer((req, res) => {
-    if (req.url !== "/trigger-broadcast") {
+    const broadcast = SCHEDULED_BROADCASTS.find((b) => req.url === `/trigger-${b.key}`);
+    if (!broadcast) {
       res.writeHead(404).end();
       return;
     }
@@ -183,7 +246,8 @@ http
       res.writeHead(503).end("Bot não está conectado ao WhatsApp no momento.\n");
       return;
     }
-    runDailyBroadcast(currentSock)
+    broadcast
+      .run(currentSock)
       .then(() => res.writeHead(200).end("Envio disparado — confira os logs do bot.\n"))
       .catch((err) => res.writeHead(500).end(`Erro: ${err.message}\n`));
   })
@@ -193,9 +257,11 @@ setInterval(() => {
   if (!currentSock) return;
   const now = new Date();
   const dateKey = now.toISOString().slice(0, 10);
-  if (now.getUTCHours() === BROADCAST_HOUR_UTC && now.getUTCMinutes() === BROADCAST_MINUTE_UTC && lastBroadcastDateKey !== dateKey) {
-    lastBroadcastDateKey = dateKey;
-    runDailyBroadcast(currentSock).catch((err) => console.error("Erro no envio automático diário:", err.message));
+  for (const b of SCHEDULED_BROADCASTS) {
+    if (now.getUTCHours() === b.hourUTC && now.getUTCMinutes() === b.minuteUTC && lastRunDateKey[b.key] !== dateKey) {
+      lastRunDateKey[b.key] = dateKey;
+      b.run(currentSock).catch((err) => console.error(`Erro no envio automático (${b.key}):`, err.message));
+    }
   }
 }, 60000);
 
