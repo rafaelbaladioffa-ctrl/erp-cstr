@@ -1769,6 +1769,7 @@ select.input[multiple] {
   align-items: center;
   gap: 10px;
   margin-bottom: 4px;
+  flex-wrap: wrap;
 }
 
 .ops-stat-row {
@@ -3020,4 +3021,115 @@ select.input[multiple] {
   font-size: 11px;
   color: var(--text-faint);
   font-style: italic;
+}
+
+/* ---------- Central de Operações — mobile (Operação do Dia, Timeline
+   Operacional, Relatórios e Indicadores) ---------- */
+
+@media (max-width: 860px) {
+  .ops-stat-row {
+    flex-direction: column;
+  }
+
+  .ops-progress-card {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    gap: 14px;
+    padding: 12px 16px;
+  }
+
+  .ops-columns {
+    flex-direction: column;
+  }
+
+  .ops-tech-card {
+    width: 100%;
+  }
+
+  /* Timeline (Operação do Dia e Timeline Operacional): a régua de horas é
+     naturalmente larga (13 marcações de 07h-19h) — em vez de espremer tudo,
+     deixamos rolar na horizontal (.tod-tech-panel/.tl-card já têm
+     overflow-x: auto) e só encolhemos a coluna fixa de nome/info do
+     técnico, pra sobrar mais tela pro que importa: as barras. */
+  .tod-tech-title,
+  .tod-row-info {
+    width: 168px;
+  }
+
+  .tod-overlay {
+    left: 168px;
+  }
+
+  .tod-row-sites,
+  .tod-row-stats {
+    padding-left: 0;
+  }
+
+  .tod-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .tod-side-body {
+    max-height: 360px;
+  }
+
+  .tl-labels,
+  .tl-row-label {
+    width: 150px;
+  }
+
+  /* Coluna de nome mais estreita faria o nome quebrar em 2 linhas e
+     estourar a altura fixa da linha (trackHeight), sobrepondo a linha de
+     baixo — trunca com reticências em vez de quebrar. (.tod-row-name não
+     precisa disso: a linha lá já tem altura fixa generosa o bastante pro
+     nome quebrar em 2 linhas sem sobrepor a próxima.) */
+  .tl-row-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .reports-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .reason-bar-label {
+    width: 110px;
+  }
+
+  .reason-bar-row {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .tod-tech-title,
+  .tod-row-info,
+  .tl-labels,
+  .tl-row-label {
+    width: 128px;
+  }
+
+  .tod-overlay {
+    left: 128px;
+  }
+
+  .tod-row-name {
+    font-size: 11.5px;
+  }
+
+  .tod-status-badge {
+    font-size: 9px;
+    padding: 2px 7px;
+  }
+
+  .tod-side-body {
+    max-height: 280px;
+  }
+
+  .reason-bar-label {
+    width: 90px;
+    font-size: 11.5px;
+  }
 }
