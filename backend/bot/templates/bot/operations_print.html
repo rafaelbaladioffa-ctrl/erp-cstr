@@ -5,7 +5,7 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    width: 1100px;
+    width: 1180px;
     background: #0a1729;
     font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     padding: 24px;
@@ -14,22 +14,34 @@
   .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
   .title { font-size: 20px; font-weight: 700; }
   .subtitle { font-size: 12px; color: #6c7d97; margin-top: 2px; }
+  .ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .ring {
-    width: 56px; height: 56px; border-radius: 50%;
+    width: 60px; height: 60px; border-radius: 50%;
     background: conic-gradient(#f16023 {{ stats.progress_pct }}%, #1c2438 0);
     display: flex; align-items: center; justify-content: center;
   }
   .ring-inner {
-    width: 44px; height: 44px; border-radius: 50%; background: #0a1729;
+    width: 48px; height: 48px; border-radius: 50%; background: #0a1729;
     display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 700;
+    font-size: 14px; font-weight: 700;
   }
+  .ring-label { font-size: 9.5px; color: #6c7d97; text-transform: uppercase; letter-spacing: 0.03em; }
   .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 18px; }
-  .stat-card { background: #131c30; border-radius: 10px; padding: 10px 12px; }
-  .stat-label { font-size: 9px; color: #6c7d97; letter-spacing: 0.03em; text-transform: uppercase; }
-  .stat-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
-  .panel { background: #131c30; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
-  .panel-title { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+  .stat-card {
+    background: #131c30; border-radius: 10px; padding: 12px 14px;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 6px;
+  }
+  .stat-label { font-size: 9px; color: #6c7d97; letter-spacing: 0.03em; text-transform: uppercase; font-weight: 700; }
+  .stat-value { font-size: 21px; font-weight: 700; margin-top: 6px; }
+  .stat-icon {
+    width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .columns { display: grid; grid-template-columns: 1fr 1.3fr; gap: 14px; margin-bottom: 14px; align-items: start; }
+  .panel { background: #131c30; border-radius: 10px; padding: 14px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .panel-title { font-size: 13px; font-weight: 700; }
+  .panel-hint { font-size: 10.5px; color: #6c7d97; }
   .tech-list { display: flex; flex-direction: column; gap: 6px; }
   .tech-row { display: flex; align-items: center; gap: 10px; background: #1c2438; border-radius: 8px; padding: 7px 10px; }
   .avatar {
@@ -40,6 +52,19 @@
   .dot { position: absolute; bottom: -1px; right: -1px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid #1c2438; }
   .tech-name { font-size: 12px; font-weight: 500; }
   .tech-status { font-size: 10.5px; margin-top: 1px; }
+  .pool-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .pool-table th {
+    text-align: left; font-size: 9.5px; color: #6c7d97; text-transform: uppercase;
+    letter-spacing: 0.02em; padding: 0 8px 8px; font-weight: 700;
+  }
+  .pool-table td { padding: 7px 8px; background: #1c2438; }
+  .pool-table tr + tr td { border-top: 4px solid #131c30; }
+  .pool-table td:first-child { border-radius: 8px 0 0 8px; font-weight: 600; }
+  .pool-table td:last-child { border-radius: 0 8px 8px 0; }
+  .badge { display: inline-block; font-size: 9.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+  .badge-wait { background: #263352; color: #9aa7c0; }
+  .badge-go { background: #142238; color: #5b9bff; }
+  .empty { color: #6c7d97; font-size: 11.5px; padding: 10px 0; }
   .timeline-wrap { display: flex; }
   .tl-labels { width: 190px; flex-shrink: 0; }
   .tl-ruler-spacer { height: 22px; }
@@ -61,39 +86,98 @@
       <div class="title">Operação do Dia</div>
       <div class="subtitle">{{ now_label }}</div>
     </div>
-    <div class="ring"><div class="ring-inner">{{ stats.progress_pct }}%</div></div>
+    <div class="ring-wrap">
+      <div class="ring"><div class="ring-inner">{{ stats.progress_pct }}%</div></div>
+      <div class="ring-label">Progresso</div>
+    </div>
   </div>
 
   <div class="stats">
-    <div class="stat-card"><div class="stat-label">Planejadas</div><div class="stat-value">{{ stats.planned }}</div></div>
-    <div class="stat-card"><div class="stat-label">Em execução</div><div class="stat-value" style="color:#5b9bff;">{{ stats.active }}</div></div>
-    <div class="stat-card"><div class="stat-label">Concluídas</div><div class="stat-value" style="color:#34d399;">{{ stats.completed }}</div></div>
-    <div class="stat-card"><div class="stat-label">Pendentes</div><div class="stat-value">{{ stats.pending }}</div></div>
-    <div class="stat-card"><div class="stat-label">No site</div><div class="stat-value" style="color:#2dd4bf;">{{ stats.technicians_on_site }}</div></div>
-    <div class="stat-card"><div class="stat-label">Ausentes</div><div class="stat-value" style="color:#f87171;">{{ stats.technicians_absent }}</div></div>
+    <div class="stat-card">
+      <div><div class="stat-label">Planejadas</div><div class="stat-value">{{ stats.planned }}</div></div>
+      <div class="stat-icon" style="background:#3a2417;color:#f16023;">&#128203;</div>
+    </div>
+    <div class="stat-card">
+      <div><div class="stat-label">Em execução</div><div class="stat-value" style="color:#5b9bff;">{{ stats.active }}</div></div>
+      <div class="stat-icon" style="background:#142238;color:#5b9bff;">&#9654;</div>
+    </div>
+    <div class="stat-card">
+      <div><div class="stat-label">Concluídas</div><div class="stat-value" style="color:#34d399;">{{ stats.completed }}</div></div>
+      <div class="stat-icon" style="background:#103324;color:#34d399;">&#10003;</div>
+    </div>
+    <div class="stat-card">
+      <div><div class="stat-label">Pendentes</div><div class="stat-value">{{ stats.pending }}</div></div>
+      <div class="stat-icon" style="background:#1c2438;color:#8a93a6;">&#8987;</div>
+    </div>
+    <div class="stat-card">
+      <div><div class="stat-label">No site</div><div class="stat-value" style="color:#2dd4bf;">{{ stats.technicians_on_site }}</div></div>
+      <div class="stat-icon" style="background:#103330;color:#2dd4bf;">&#128101;</div>
+    </div>
+    <div class="stat-card">
+      <div><div class="stat-label">Ausentes</div><div class="stat-value" style="color:#f87171;">{{ stats.technicians_absent }}</div></div>
+      <div class="stat-icon" style="background:#3a1616;color:#f87171;">&#8856;</div>
+    </div>
   </div>
 
-  <div class="panel">
-    <div class="panel-title">Técnicos</div>
-    <div class="tech-list">
-      {% for row in tech_rows %}
-      <div class="tech-row">
-        <div class="avatar">{{ row.initials }}
-          <span class="dot" style="background:{{ row.status_color }};"></span>
-        </div>
-        <div style="min-width:0;flex:1;">
-          <div class="tech-name">{{ row.tech.name }}</div>
-          <div class="tech-status" style="color:{{ row.status_color }};">
-            {% if row.current_task_name %}{{ row.current_task_name }}{% else %}{{ row.tech.presence_status_display }}{% endif %}
+  <div class="columns">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Técnicos</div>
+        <div class="panel-hint">{{ tech_rows|length }} no site hoje</div>
+      </div>
+      <div class="tech-list">
+        {% for row in tech_rows %}
+        <div class="tech-row">
+          <div class="avatar">{{ row.initials }}
+            <span class="dot" style="background:{{ row.status_color }};"></span>
+          </div>
+          <div style="min-width:0;flex:1;">
+            <div class="tech-name">{{ row.tech.name }}</div>
+            <div class="tech-status" style="color:{{ row.status_color }};">
+              {% if row.current_task_name %}{{ row.current_task_name }}{% else %}{{ row.tech.presence_status_display }}{% endif %}
+            </div>
           </div>
         </div>
+        {% endfor %}
+        {% if not tech_rows %}<div class="empty">Nenhum técnico vinculado a este site.</div>{% endif %}
       </div>
-      {% endfor %}
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Pool de atividades do dia</div>
+        <div class="panel-hint">{{ pool|length }} pendentes</div>
+      </div>
+      {% if pool %}
+      <table class="pool-table">
+        <thead>
+          <tr><th>Atividade</th><th>Projeto</th><th>Duração est.</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for task in pool %}
+          <tr>
+            <td>{{ task.name }}</td>
+            <td>{{ task.project_name }}{% if task.project_code %} · {{ task.project_code }}{% endif %}</td>
+            <td>{% if task.estimated_hours %}{{ task.estimated_hours }}h{% else %}—{% endif %}</td>
+            <td>
+              {% if task.assignees %}
+              <span class="badge badge-go">Despachada</span>
+              {% else %}
+              <span class="badge badge-wait">Aguardando despacho</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">Nenhuma atividade pendente neste site.</div>
+      {% endif %}
     </div>
   </div>
 
   <div class="panel">
-    <div class="panel-title">Timeline operacional</div>
+    <div class="panel-title" style="margin-bottom:10px;">Timeline operacional</div>
     <div class="timeline-wrap">
       <div class="tl-labels">
         <div class="tl-ruler-spacer"></div>

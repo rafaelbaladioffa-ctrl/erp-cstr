@@ -258,6 +258,7 @@ class OperationsPrintView(APIView):
 
         context = {
             "stats": board["stats"],
+            "pool": board["pool"],
             "tech_rows": tech_rows,
             "hour_marks": hour_marks,
             "now_label": now.strftime("%d/%m/%Y %H:%M"),
