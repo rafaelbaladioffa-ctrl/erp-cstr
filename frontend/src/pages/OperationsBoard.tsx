@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
-import type { OperationsBoard as OperationsBoardData, StatusEvent, TimelineBlock } from "../api/types";
+import type { OperationsBoard as OperationsBoardData, OperationsBoardTechnician, StatusEvent, TimelineBlock } from "../api/types";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import {
@@ -20,6 +20,15 @@ import {
   pct,
   reorderRowsByPair,
 } from "../utils/timeline";
+
+function techStatusBadge(tech: OperationsBoardTechnician) {
+  const hasInProgress = tech.current_tasks.some((t) => t.status === "in_progress");
+  const hasPaused = tech.current_tasks.some((t) => t.status === "paused");
+  const pausedAway = hasPaused && AWAY_STATUSES.includes(tech.presence_status);
+  if (hasInProgress) return { label: "Em execução", color: BUSY_COLOR.in_progress };
+  if (hasPaused && !pausedAway) return { label: "Pausado", color: BUSY_COLOR.paused };
+  return { label: tech.presence_status_display, color: PRESENCE_COLOR[tech.presence_status] };
+}
 
 function formatElapsed(startIso: string | null, now: number) {
   if (!startIso) return "";
@@ -45,6 +54,7 @@ export default function OperationsBoard() {
   const [expandedBar, setExpandedBar] = useState<string | null>(null);
   const [poolOpen, setPoolOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
+  const [othersOpen, setOthersOpen] = useState(false);
 
   useEffect(() => {
     sitesApi.list().then((data) => {
@@ -135,6 +145,42 @@ export default function OperationsBoard() {
   const trackHeight = (count: number) => (count <= 1 ? 52 : 10 + count * 30);
   const barTop = (index: number, count: number) => (count <= 1 ? 8 : 6 + index * 30);
   const barHeight = (count: number) => (count <= 1 ? 36 : 26);
+
+  const windowEnd = new Date(base);
+  windowEnd.setHours(WINDOW_END_HOUR, 0, 0, 0);
+
+  // Barras "não iniciado" — uma pra CADA tarefa já despachada e ainda na
+  // fila do técnico, emendadas em sequência logo depois da última barra
+  // real (na mesma lane, pra não abrir uma linha nova), cada uma com o
+  // nome da própria tarefa. Duração fixa de 1h30 por tarefa — não temos
+  // horário agendado real pras tarefas da fila, só a ordem (queue_order).
+  const NOT_STARTED_DURATION_MS = 1.5 * 60 * 60 * 1000;
+  function notStartedBars(row: (typeof techRows)[number]) {
+    if (row.tech.queue.length === 0) return [];
+    let lane = 0;
+    let cursor = nowDate;
+    if (row.lanedSegments.length > 0) {
+      for (const { segment, lane: segLane } of row.lanedSegments) {
+        const end = segment.end ?? nowDate;
+        if (end >= cursor) {
+          cursor = end;
+          lane = segLane;
+        }
+      }
+    }
+    const bars: { key: number; label: string; start: Date; end: Date; lane: number }[] = [];
+    for (const q of row.tech.queue) {
+      if (cursor >= windowEnd) break;
+      const end = new Date(Math.min(cursor.getTime() + NOT_STARTED_DURATION_MS, windowEnd.getTime()));
+      bars.push({ key: q.task_id, label: q.task_name, start: cursor, end, lane });
+      cursor = end;
+    }
+    return bars;
+  }
+
+  const techsWithQueue = technicians.filter((t) => t.queue.length > 0).sort((a, b) => b.queue.length - a.queue.length);
+  const expandedGroups = techsWithQueue.slice(0, 3);
+  const otherGroups = techsWithQueue.slice(3);
 
   return (
     <div>
@@ -393,10 +439,122 @@ export default function OperationsBoard() {
             </div>
           </div>
 
-          <div className="tl-card" style={{ marginTop: 16 }}>
-            <div className="ops-card-head" style={{ padding: "0 0 14px", border: "none" }}>
-              <div className="ops-card-title">Timeline Operacional — Visão Geral</div>
-              <div className="tl-legend-row" style={{ marginBottom: 0 }}>
+          <div className="tod-layout" style={{ marginTop: 16 }}>
+            <div className="tod-tech-panel">
+              <div className="tod-panel-head">
+                <div className="tod-tech-title">TÉCNICOS ({technicians.length})</div>
+                <div className="tod-ruler">
+                  {HOURS.map((h) => (
+                    <span
+                      key={h}
+                      className="tod-ruler-tick"
+                      style={{ left: `${((h - WINDOW_START_HOUR) / (WINDOW_END_HOUR - WINDOW_START_HOUR)) * 100}%` }}
+                    >
+                      {String(h).padStart(2, "0")}:00
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="tod-body">
+                <div className="tod-overlay">
+                  {HOURS.slice(1, -1).map((h) => (
+                    <div
+                      key={h}
+                      className="tod-gridline"
+                      style={{ left: `${((h - WINDOW_START_HOUR) / (WINDOW_END_HOUR - WINDOW_START_HOUR)) * 100}%` }}
+                    />
+                  ))}
+                  <div className="tod-now-line" style={{ left: `${nowPct}%` }}>
+                    <div className="tod-now-tag">
+                      {nowDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                    <div className="tod-now-dot" />
+                  </div>
+                </div>
+
+                {techRows.map(({ tech, lanedSegments, laneCount, doneCount, pendingCount }, rowIdx) => {
+                  const badge = techStatusBadge(tech);
+                  const rowHeight = laneCount <= 1 ? 92 : 30 + laneCount * 46;
+                  const notStarted = notStartedBars({ tech, lanedSegments, laneCount, doneCount, pendingCount });
+                  return (
+                    <div
+                      key={tech.id}
+                      className={`tod-row ${pairRowClass(techRows, rowIdx)}`}
+                      style={{ minHeight: rowHeight }}
+                    >
+                      <div className="tod-row-info">
+                        <div className="tod-row-name-line">
+                          <div className="tod-row-avatar">
+                            {initials(tech.name)}
+                            <span className="tod-row-avatar-dot" style={{ background: badge.color }} />
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div className="tod-row-name">{tech.name}</div>
+                            <span
+                              className="tod-status-badge"
+                              style={{ background: `color-mix(in srgb, ${badge.color} 16%, white)`, color: badge.color }}
+                            >
+                              {badge.label}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="tod-row-sites">{tech.site_name}</div>
+                        <div className="tod-row-stats">
+                          {doneCount} finalizada{doneCount === 1 ? "" : "s"} · {pendingCount} pendente{pendingCount === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      {lanedSegments.length === 0 && notStarted.length === 0 ? (
+                        <div className="tod-empty-row">{tech.presence_status_display}</div>
+                      ) : (
+                        <div className="tod-track" style={{ minHeight: rowHeight - 20 }}>
+                          {lanedSegments.map(({ segment, lane }, idx) => {
+                            const left = pct(segment.start, base);
+                            const rightPct = segment.end ? pct(segment.end, base) : nowPct;
+                            const width = Math.max(1, rightPct - left);
+                            const top = laneCount <= 1 ? 8 : 6 + lane * 46;
+                            const height = laneCount <= 1 ? 56 : 40;
+                            const barKey = `${tech.id}-seg-${idx}`;
+                            const isExpanded = expandedBar === barKey;
+                            return (
+                              <div
+                                key={idx}
+                                className={`tod-bar${isExpanded ? " expanded" : ""}`}
+                                title={segment.label}
+                                onClick={() => setExpandedBar((prev) => (prev === barKey ? null : barKey))}
+                                style={{ left: `${left}%`, width: `${width}%`, top, height, background: segment.color }}
+                              >
+                                <span className="tod-bar-label">{segment.label}</span>
+                              </div>
+                            );
+                          })}
+                          {notStarted.map((bar) => {
+                            const barKey = `${tech.id}-ns-${bar.key}`;
+                            const isExpanded = expandedBar === barKey;
+                            return (
+                              <div
+                                key={bar.key}
+                                className={`tod-bar tod-bar-notstarted${isExpanded ? " expanded" : ""}`}
+                                title={bar.label}
+                                onClick={() => setExpandedBar((prev) => (prev === barKey ? null : barKey))}
+                                style={{
+                                  left: `${pct(bar.start, base)}%`,
+                                  width: `${Math.max(1, pct(bar.end, base) - pct(bar.start, base))}%`,
+                                  top: laneCount <= 1 ? 8 : 6 + bar.lane * 46,
+                                  height: laneCount <= 1 ? 56 : 40,
+                                }}
+                              >
+                                <span className="tod-bar-label">{bar.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {technicians.length === 0 && <div className="empty-state">Nenhum técnico vinculado a este site.</div>}
+              <div className="tl-legend-row tod-legend-row">
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: DONE_COLOR }} />
                   Concluída
@@ -430,137 +588,67 @@ export default function OperationsBoard() {
                   Aguardando Liberações
                 </div>
                 <div className="legend-item">
-                  <span className="legend-swatch" style={{ background: "var(--text-faint)" }} />
+                  <span className="legend-swatch tod-legend-notstarted" />
                   Não iniciado / Fim de Expediente
                 </div>
               </div>
             </div>
-            <div className="tl-grid-wrap">
-              <div className="tl-labels">
-                <div className="tl-ruler" />
-                {techRows.map(({ tech, laneCount, doneCount, pendingCount }, idx) => (
-                  <div
-                    key={tech.id}
-                    className={`tl-row ${pairRowClass(techRows, idx)}`}
-                    style={{ height: trackHeight(laneCount) }}
-                  >
-                    <div className="tl-row-label">
-                      <div className="tl-avatar">{initials(tech.name)}</div>
-                      <div>
-                        <div className="tl-row-name">
-                          {tech.name}
-                          {siteId === "all" && <span className="tl-row-site"> · {tech.site_name}</span>}
-                        </div>
-                        <div className="tl-row-overview">
-                          {doneCount} finalizada{doneCount === 1 ? "" : "s"} · {pendingCount} pendente{pendingCount === 1 ? "" : "s"}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="tl-body">
-                <div className="tl-ruler">
-                  {HOURS.map((h) => (
-                    <span
-                      key={h}
-                      className="tl-ruler-tick"
-                      style={{ left: `${((h - WINDOW_START_HOUR) / (WINDOW_END_HOUR - WINDOW_START_HOUR)) * 100}%` }}
-                    >
-                      {String(h).padStart(2, "0")}
-                    </span>
-                  ))}
-                </div>
-                <div className="tl-gridlines">
-                  {HOURS.slice(1, -1).map((h) => (
-                    <div
-                      key={h}
-                      className="tl-gridline"
-                      style={{ left: `${((h - WINDOW_START_HOUR) / (WINDOW_END_HOUR - WINDOW_START_HOUR)) * 100}%` }}
-                    />
-                  ))}
-                  <div className="tl-now-line" style={{ left: `${nowPct}%` }}>
-                    <div className="tl-now-tag">agora {nowDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
-                    <div className="tl-now-dot" />
-                  </div>
-                </div>
 
-                {techRows.map(({ tech, lanedSegments, laneCount }, rowIdx) => {
-                  if (lanedSegments.length === 0) {
-                    return (
-                      <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(0) }}>
-                        <div className="tl-row-track">
-                          <div className="tl-idle-note">{tech.presence_status_display}</div>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
-                      <div className="tl-row-track">
-                        {lanedSegments.map(({ segment, lane }, idx) => {
-                          const left = pct(segment.start, base);
-                          const rightPct = segment.end ? pct(segment.end, base) : nowPct;
-                          const width = Math.max(0.4, rightPct - left);
-                          const barKey = `${tech.id}-${idx}`;
-                          const isExpanded = expandedBar === barKey;
-                          return (
-                            <span key={idx}>
-                              {isExpanded && (
-                                <span
-                                  className="tl-bar-time"
-                                  style={{ left: `${left}%`, top: barTop(lane, laneCount), height: barHeight(laneCount) }}
-                                >
-                                  {formatTime(segment.start.toISOString())}
-                                </span>
-                              )}
-                              <div
-                                className={`tl-bar${isExpanded ? " expanded" : ""}`}
-                                title={segment.label}
-                                onClick={() => setExpandedBar((prev) => (prev === barKey ? null : barKey))}
-                                style={{
-                                  left: `${left}%`,
-                                  width: `${width}%`,
-                                  top: barTop(lane, laneCount),
-                                  height: barHeight(laneCount),
-                                  background: segment.color,
-                                }}
-                              >
-                                {segment.live && <span className="tl-live-dot" />}
-                                <span className="tl-bar-label">{segment.label}</span>
-                              </div>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
+            <div className="tod-side-panel">
+              <div className="tod-side-head">
+                <div className="tod-side-title">Próximas atividades / Operações</div>
+                <button type="button" className="tod-filter-btn" onClick={() => setPoolOpen(true)} title="Ver pool completo">
+                  <Icon name="filter_list" style={{ fontSize: 16 }} />
+                </button>
               </div>
-              <div className="tl-queue-col">
-                <div className="tl-ruler">
-                  <span className="tl-queue-col-title">Próximas na fila</span>
-                </div>
-                {techRows.map(({ tech, laneCount }, rowIdx) => (
-                  <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
-                    <div className="tl-queue-row-track">
-                      {tech.queue.length === 0 ? (
-                        <span className="tl-queue-empty">—</span>
-                      ) : (
-                        tech.queue.map((q, idx) => (
-                          <span key={q.task_id} className="ops-queue-chip" title={q.task_name}>
-                            <span className="ops-queue-num">{idx + 1}</span>
-                            {q.task_name}
-                          </span>
-                        ))
-                      )}
+              <div className="tod-side-body">
+                {expandedGroups.map((tech) => (
+                  <div key={tech.id} className="tod-tech-group">
+                    <div className="tod-tech-group-head">
+                      <div className="tod-tech-group-name">{tech.name}</div>
+                      <span className="tod-count-badge">{tech.queue.length}</span>
                     </div>
+                    {tech.queue.slice(0, 2).map((q) => (
+                      <div key={q.task_id} className="tod-activity-card">
+                        <div className="tod-activity-name">{q.task_name}</div>
+                        <div className="tod-activity-project">{q.project_name}</div>
+                      </div>
+                    ))}
                   </div>
                 ))}
+
+                {otherGroups.length > 0 && (
+                  <div className="tod-others-row" onClick={() => setOthersOpen((v) => !v)}>
+                    <span>
+                      Outros técnicos ({otherGroups.length})
+                    </span>
+                    <Icon name={othersOpen ? "expand_less" : "chevron_right"} style={{ fontSize: 18 }} />
+                  </div>
+                )}
+                {othersOpen &&
+                  otherGroups.map((tech) => (
+                    <div key={tech.id} className="tod-tech-group" style={{ marginTop: 10 }}>
+                      <div className="tod-tech-group-head">
+                        <div className="tod-tech-group-name">{tech.name}</div>
+                        <span className="tod-count-badge">{tech.queue.length}</span>
+                      </div>
+                      {tech.queue.slice(0, 2).map((q) => (
+                        <div key={q.task_id} className="tod-activity-card">
+                          <div className="tod-activity-name">{q.task_name}</div>
+                          <div className="tod-activity-project">{q.project_name}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                {techsWithQueue.length === 0 && <div className="empty-state">Nenhuma atividade pendente na fila.</div>}
               </div>
+              <button type="button" className="tod-viewall-link" onClick={() => setPoolOpen(true)}>
+                Ver todas as atividades do dia
+                <Icon name="arrow_forward" style={{ fontSize: 15 }} />
+              </button>
             </div>
-            {technicians.length === 0 && <div className="empty-state">Nenhum técnico vinculado a este site.</div>}
           </div>
+          <div className="tod-footer-hint">Clique em uma atividade para ver detalhes completos.</div>
         </>
       )}
     </div>

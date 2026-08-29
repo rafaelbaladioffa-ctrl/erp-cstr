@@ -2612,3 +2612,412 @@ select.input[multiple] {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+
+/* ---------- Operação do Dia — timeline no layout do mockup ---------- */
+
+.tod-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+  align-items: start;
+}
+
+.tod-tech-panel,
+.tod-side-panel {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.tod-tech-panel {
+  overflow-x: auto;
+}
+
+.tod-panel-head {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.tod-tech-title {
+  width: 260px;
+  flex-shrink: 0;
+  padding: 14px 16px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.tod-ruler {
+  flex: 1;
+  min-width: 560px;
+  position: relative;
+  height: 44px;
+}
+
+.tod-ruler-tick {
+  position: absolute;
+  top: 16px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-faint);
+  transform: translateX(-50%);
+}
+
+.tod-body {
+  position: relative;
+}
+
+.tod-overlay {
+  position: absolute;
+  top: 0;
+  left: 260px;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.tod-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #eef1f3;
+}
+
+.tod-now-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--red);
+}
+
+.tod-now-tag {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--red);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.tod-now-dot {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.tod-row {
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid #eef1f3;
+  min-height: 92px;
+}
+
+.tod-row-pair {
+  background: var(--bg);
+}
+
+.tod-row-pair-second {
+  border-top: none;
+}
+
+.tod-row-info {
+  width: 260px;
+  flex-shrink: 0;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tod-row-name-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tod-row-avatar {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.tod-row-avatar-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--white);
+}
+
+.tod-row-name {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.tod-status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tod-row-sites,
+.tod-row-stats {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-weight: 600;
+  padding-left: 38px;
+}
+
+.tod-track {
+  flex: 1;
+  min-width: 560px;
+  position: relative;
+  padding: 10px 0;
+}
+
+.tod-bar {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 39, 64, 0.12);
+  transition: box-shadow 0.15s ease, z-index 0.15s ease;
+}
+
+.tod-bar:hover {
+  box-shadow: 0 2px 6px rgba(15, 39, 64, 0.3);
+}
+
+.tod-bar.expanded {
+  z-index: 6;
+  min-width: 220px;
+  box-shadow: 0 4px 14px rgba(15, 39, 64, 0.35);
+}
+
+.tod-bar.expanded .tod-bar-label {
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.tod-bar-label {
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tod-bar-notstarted {
+  background: repeating-linear-gradient(45deg, #eef1f3, #eef1f3 6px, #e4e8ea 6px, #e4e8ea 12px);
+  border: 1px dashed var(--border);
+  box-shadow: none;
+}
+
+.tod-bar-notstarted .tod-bar-label {
+  color: var(--text-faint);
+  font-weight: 700;
+}
+
+.tod-legend-row {
+  margin: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.tod-legend-notstarted {
+  background: repeating-linear-gradient(45deg, #eef1f3, #eef1f3 4px, #d8dde1 4px, #d8dde1 8px);
+  border: 1px dashed var(--border);
+}
+
+.tod-empty-row {
+  flex: 1;
+  min-width: 560px;
+  display: flex;
+  align-items: center;
+  padding-left: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--text-faint);
+}
+
+.tod-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tod-side-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.tod-filter-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.tod-side-body {
+  max-height: 620px;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.tod-tech-group {
+  margin-bottom: 14px;
+}
+
+.tod-tech-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tod-tech-group-name {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tod-count-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--orange-soft);
+  color: var(--orange);
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tod-activity-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 11px;
+  margin-bottom: 8px;
+}
+
+.tod-activity-card:last-child {
+  margin-bottom: 0;
+}
+
+.tod-activity-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.tod-activity-project {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.tod-others-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.tod-others-row:hover {
+  background: var(--border);
+}
+
+.tod-viewall-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--blue);
+  cursor: pointer;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  width: 100%;
+}
+
+.tod-viewall-link:hover {
+  background: var(--bg);
+}
+
+.tod-footer-hint {
+  padding: 10px 16px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}

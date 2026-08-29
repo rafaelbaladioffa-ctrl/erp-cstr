@@ -179,16 +179,30 @@ export interface LanedSegment {
   laneCount: number;
 }
 
-/** Empilha os segmentos em ordem cronológica, um por linha — cada tarefa/
- * status ganha sua própria linha à medida que o dia avança, em vez de
- * amontoar vários num só lugar (o que ficava ilegível quando o técnico tinha
- * várias tarefas curtas seguidas: virava uma sequência de bolinhas coladas
- * numa linha só). Sem tentativa de reaproveitar linha entre segmentos que
- * não se sobrepõem — cada barra tem seu próprio espaço vertical. */
+/** Distribui os segmentos em "lanes" (linhas verticais dentro da mesma
+ * trilha do técnico) por SOBREPOSIÇÃO REAL de horário — não por índice fixo.
+ * Segmentos que não se sobrepõem no tempo (o caso comum: uma sequência de
+ * status/tarefas ao longo do dia) ficam todos alinhados na lane 0; só
+ * sobreposição de verdade (ex: pausou uma tarefa e iniciou outra ao mesmo
+ * tempo) usa mais de uma lane. */
 export function assignLanes(segments: Segment[]): LanedSegment[] {
+  const OPEN_END = Number.MAX_SAFE_INTEGER;
   const sorted = [...segments].sort((a, b) => a.start.getTime() - b.start.getTime());
-  const laneCount = Math.max(1, sorted.length);
-  return sorted.map((segment, lane) => ({ segment, lane, laneCount }));
+  const laneEnds: number[] = [];
+  const raw: { segment: Segment; lane: number }[] = [];
+  for (const segment of sorted) {
+    const segStart = segment.start.getTime();
+    const segEnd = segment.end ? segment.end.getTime() : OPEN_END;
+    let lane = laneEnds.findIndex((end) => end <= segStart);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(0);
+    }
+    laneEnds[lane] = segEnd;
+    raw.push({ segment, lane });
+  }
+  const laneCount = Math.max(1, laneEnds.length);
+  return raw.map((r) => ({ ...r, laneCount }));
 }
 
 interface Paired {
