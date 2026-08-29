@@ -492,6 +492,14 @@ async function start() {
   });
 }
 
+process.on("unhandledRejection", (err) => {
+  console.error("Promise rejeitada sem tratamento:", err);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Exceção não capturada:", err);
+});
+
 start().catch((err) => {
   console.error("Falha ao iniciar o bot:", err);
   process.exit(1);
