@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
 const qrcode = require("qrcode-terminal");
 const pino = require("pino");
 const axios = require("axios");
@@ -348,11 +348,14 @@ setInterval(() => {
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  console.log(`Usando versão do WhatsApp Web: ${version.join(".")} (mais recente: ${isLatest})`);
 
   const sock = makeWASocket({
     auth: state,
     logger,
     printQRInTerminal: false,
+    version,
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -367,7 +370,7 @@ async function start() {
       currentSock = null;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log("Conexão com o WhatsApp fechada.", shouldReconnect ? "Reconectando..." : "Sessão deslogada — apague o volume de auth e escaneie o QR de novo.");
+      console.log(`Conexão com o WhatsApp fechada (statusCode=${statusCode}, motivo=${lastDisconnect?.error?.message}).`, shouldReconnect ? "Reconectando..." : "Sessão deslogada — apague o volume de auth e escaneie o QR de novo.");
       if (shouldReconnect) start();
     } else if (connection === "open") {
       console.log("Bot conectado ao WhatsApp com sucesso.");
