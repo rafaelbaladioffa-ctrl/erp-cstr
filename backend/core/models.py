@@ -2,6 +2,8 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
+from core.phone_utils import format_phone
+
 
 class TimestampedModel(models.Model):
     created_at = models.DateTimeField("criado em", auto_now_add=True)
@@ -11,7 +13,22 @@ class TimestampedModel(models.Model):
         abstract = True
 
 
-class Company(TimestampedModel):
+class PhoneNormalizedModel(models.Model):
+    """Mixin pra modelos com campo `phone`: normaliza pro padrão brasileiro
+    "+55 (11) 99999-9999" ao salvar, não importa a via de entrada (API,
+    Django Admin, importação de CSV, shell) — o campo no frontend já formata
+    ao digitar, isso garante o mesmo padrão pelos outros caminhos."""
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if self.phone:
+            self.phone = format_phone(self.phone)
+        super().save(*args, **kwargs)
+
+
+class Company(PhoneNormalizedModel, TimestampedModel):
     legal_name = models.CharField("razão social", max_length=255, blank=True)
     trade_name = models.CharField("nome fantasia", max_length=255, blank=True)
     tax_id = models.CharField("CNPJ/CPF", max_length=18, blank=True)
@@ -196,7 +213,7 @@ def get_collaborator_role(user):
     return getattr(person, "collaborator_role", None) if person else None
 
 
-class Person(TimestampedModel):
+class Person(PhoneNormalizedModel, TimestampedModel):
     """Identidade única de uma pessoa física conhecida pelo sistema —
     concentra nome/e-mail/telefone/empresa/usuário vinculado num único
     lugar, para que Colaborador, Responsável e Responsável do Cliente sejam
@@ -474,7 +491,7 @@ class Task(TimestampedModel):
             return super().save(*args, **kwargs)
 
 
-class Client(ActiveCompanyModel):
+class Client(PhoneNormalizedModel, ActiveCompanyModel):
     PERSON_TYPE_CHOICES = (("company", "Pessoa jurídica"), ("person", "Pessoa física"))
 
     person_type = models.CharField(

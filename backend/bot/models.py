@@ -1,8 +1,8 @@
-from core.models import TimestampedModel
+from core.models import PhoneNormalizedModel, TimestampedModel
 from django.db import models
 
 
-class BotSubscriber(TimestampedModel):
+class BotSubscriber(PhoneNormalizedModel, TimestampedModel):
     """Destinatário dos envios automáticos do bot do WhatsApp (não precisa
     ser um Colaborador cadastrado — normalmente é um gestor que quer
     acompanhar o dia a dia dos projetos)."""

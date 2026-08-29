@@ -1,6 +1,8 @@
+import { formatBrazilPhone } from "../../utils/formatPhone";
+
 export type FieldOption = { value: string | number; label: string };
 
-export type FieldType = "text" | "textarea" | "number" | "checkbox" | "select" | "multiselect" | "email" | "date" | "datetime";
+export type FieldType = "text" | "textarea" | "number" | "checkbox" | "select" | "multiselect" | "email" | "date" | "datetime" | "phone";
 
 export interface FieldConfig {
   name: string;
@@ -142,6 +144,17 @@ function renderInput(field: FieldConfig, value: unknown, onChange: (name: string
           value={(value as string) ?? ""}
           placeholder={field.placeholder}
           onChange={(e) => onChange(field.name, e.target.value)}
+        />
+      );
+    case "phone":
+      return (
+        <input
+          type="text"
+          inputMode="tel"
+          className="input"
+          value={(value as string) ?? ""}
+          placeholder={field.placeholder || "+55 (11) 99999-9999"}
+          onChange={(e) => onChange(field.name, formatBrazilPhone(e.target.value))}
         />
       );
     default:
