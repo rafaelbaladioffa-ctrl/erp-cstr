@@ -47,7 +47,14 @@ async function refreshAccessToken(): Promise<string | null> {
   if (!refresh) return null;
   try {
     const { data } = await axios.post(`${API_URL}/token/refresh/`, { refresh });
-    tokenStorage.setAccess(data.access);
+    // ROTATE_REFRESH_TOKENS está ligado no backend: cada refresh devolve um
+    // refresh token novo, que precisa ser salvo — senão o próximo refresh
+    // usa um token velho e pode falhar quando o blacklist for habilitado.
+    if (data.refresh) {
+      tokenStorage.set(data.access, data.refresh);
+    } else {
+      tokenStorage.setAccess(data.access);
+    }
     return data.access as string;
   } catch {
     tokenStorage.clear();
