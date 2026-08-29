@@ -42,24 +42,48 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 let refreshPromise: Promise<string | null> | null = null;
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const refresh = tokenStorage.getRefresh();
   if (!refresh) return null;
-  try {
-    const { data } = await axios.post(`${API_URL}/token/refresh/`, { refresh });
-    // ROTATE_REFRESH_TOKENS está ligado no backend: cada refresh devolve um
-    // refresh token novo, que precisa ser salvo — senão o próximo refresh
-    // usa um token velho e pode falhar quando o blacklist for habilitado.
-    if (data.refresh) {
-      tokenStorage.set(data.access, data.refresh);
-    } else {
-      tokenStorage.setAccess(data.access);
+
+  // Só um 401 do próprio endpoint de refresh significa "sessão realmente
+  // encerrada" (refresh token expirado/inválido/revogado). Qualquer outro
+  // erro (rede instável, backend reiniciando, timeout) é transitório —
+  // tenta mais algumas vezes antes de desistir, em vez de derrubar a
+  // sessão por uma falha momentânea de conexão.
+  const attempts = 3;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const { data } = await axios.post(`${API_URL}/token/refresh/`, { refresh });
+      // ROTATE_REFRESH_TOKENS está ligado no backend: cada refresh devolve
+      // um refresh token novo, que precisa ser salvo — senão o próximo
+      // refresh usa um token velho e pode falhar quando o blacklist for
+      // habilitado.
+      if (data.refresh) {
+        tokenStorage.set(data.access, data.refresh);
+      } else {
+        tokenStorage.setAccess(data.access);
+      }
+      return data.access as string;
+    } catch (err: unknown) {
+      const status = (err as AxiosError)?.response?.status;
+      if (status === 401) {
+        tokenStorage.clear();
+        return null;
+      }
+      if (attempt === attempts) {
+        // Mantém o token salvo — não é logout de verdade, só não deu pra
+        // renovar agora; a próxima chamada tenta de novo.
+        return null;
+      }
+      await delay(1200);
     }
-    return data.access as string;
-  } catch {
-    tokenStorage.clear();
-    return null;
   }
+  return null;
 }
 
 apiClient.interceptors.response.use(
@@ -79,7 +103,13 @@ apiClient.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newAccess}`;
         return apiClient(originalRequest);
       }
-      window.location.href = "/login";
+      // Só manda pra tela de login se a sessão foi mesmo encerrada (token
+      // limpo do storage por um 401 real) — se o token ainda está salvo, a
+      // renovação só falhou por algo transitório, e um redirect aqui
+      // derrubaria o usuário sem necessidade.
+      if (!tokenStorage.getRefresh()) {
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   },
