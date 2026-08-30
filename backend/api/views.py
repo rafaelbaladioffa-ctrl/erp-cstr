@@ -786,18 +786,6 @@ class ProjectTypeViewSet(RegistryViewSet):
     serializer_class = ProjectTypeCrudSerializer
     search_fields = ("name",)
 
-
-class ActivityTypeViewSet(RegistryViewSet):
-    queryset = ActivityType.objects.order_by("order", "name")
-    serializer_class = ActivityTypeCrudSerializer
-    search_fields = ("name", "code")
-
-
-class ProjectItemTypeViewSet(RegistryViewSet):
-    queryset = ProjectItemType.objects.order_by("order", "name")
-    serializer_class = ProjectItemTypeCrudSerializer
-    search_fields = ("name",)
-
     @action(detail=False, methods=["post"], url_path="bulk-create")
     def bulk_create(self, request):
         names = clean_bulk_names(request.data.get("names"))
@@ -812,6 +800,18 @@ class ProjectItemTypeViewSet(RegistryViewSet):
             )
             created += int(was_created)
         return Response({"created": created})
+
+
+class ActivityTypeViewSet(RegistryViewSet):
+    queryset = ActivityType.objects.order_by("order", "name")
+    serializer_class = ActivityTypeCrudSerializer
+    search_fields = ("name", "code")
+
+
+class ProjectItemTypeViewSet(RegistryViewSet):
+    queryset = ProjectItemType.objects.order_by("order", "name")
+    serializer_class = ProjectItemTypeCrudSerializer
+    search_fields = ("name",)
 
 
 class JobTitleViewSet(RegistryViewSet):
