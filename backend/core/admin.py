@@ -22,6 +22,8 @@ from .models import (
     Client,
     Collaborator,
     Company,
+    GenerationRule,
+    GenerationRuleStep,
     JobTitle,
     Notification,
     Person,
@@ -541,6 +543,25 @@ class ProjectItemTypeAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("name", "description")
     readonly_fields = ("created_at", "updated_at")
+
+
+class GenerationRuleStepInline(TabularInline):
+    model = GenerationRuleStep
+    extra = 1
+    autocomplete_fields = ("activity_type",)
+
+
+@admin.register(GenerationRule)
+class GenerationRuleAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("technology", "name", "is_active", "step_count")
+    list_filter = ("is_active",)
+    search_fields = ("technology", "name")
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [GenerationRuleStepInline]
+
+    def step_count(self, obj):
+        return obj.steps.count()
+    step_count.short_description = "etapas"
 
 
 class TaskAdminForm(forms.ModelForm):

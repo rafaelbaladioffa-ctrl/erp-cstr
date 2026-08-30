@@ -9,7 +9,20 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from audit.models import AuditLog
-from core.models import ActivityType, Category, Client, Collaborator, Company, Person, ProjectItemType, ProjectType, Site, Task
+from core.models import (
+    ActivityType,
+    Category,
+    Client,
+    Collaborator,
+    Company,
+    GenerationRule,
+    GenerationRuleStep,
+    Person,
+    ProjectItemType,
+    ProjectType,
+    Site,
+    Task,
+)
 
 
 def make_collaborator(company, name, **kwargs):
@@ -1217,3 +1230,123 @@ class TaskExecutionEventApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         pool_row = next(row for row in response.data["pool"] if row["id"] == blocked_task.pk)
         self.assertEqual([b["task_id"] for b in pool_row["blocked_by"]], [blocking_task.pk])
+
+
+class GenerationRuleApiTests(TestCase):
+    """Fase 3: motor de regras (tecnologia -> tipos de atividade em ordem)."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(company=self.company, name="Projeto Regras", status=Project.STATUS_IN_PROGRESS)
+        self.item_type = ProjectItemType.objects.create(name="Cabo (regra-teste)")
+        self.launch = ActivityType.objects.create(name="Lançamento (regra-teste)", default_unit="m")
+        self.organize = ActivityType.objects.create(name="Organização (regra-teste)", default_unit="m")
+        self.certify = ActivityType.objects.create(name="Certificação (regra-teste)", default_unit="ponta")
+        self.user = User.objects.create_superuser(username="rule_admin", email="rule_admin@example.com", password="test-password")
+        self.client_api.force_authenticate(user=self.user)
+
+    def test_create_rule_with_nested_steps(self):
+        response = self.client_api.post(
+            "/api/generation-rules/",
+            {
+                "technology": "Robust 2F (regra-teste)",
+                "name": "Robust 2F padrão",
+                "steps": [
+                    {"activity_type": self.launch.pk, "sequence": 1},
+                    {"activity_type": self.organize.pk, "sequence": 2},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(len(response.data["steps"]), 2)
+        rule = GenerationRule.objects.get(pk=response.data["id"])
+        self.assertEqual(list(rule.steps.values_list("activity_type_id", flat=True)), [self.launch.pk, self.organize.pk])
+
+    def test_update_rule_replaces_steps(self):
+        rule = GenerationRule.objects.create(technology="Robust 2F (regra-teste)")
+        GenerationRuleStep.objects.create(rule=rule, activity_type=self.launch, sequence=1)
+
+        response = self.client_api.patch(
+            f"/api/generation-rules/{rule.pk}/",
+            {"steps": [{"activity_type": self.organize.pk, "sequence": 1}, {"activity_type": self.certify.pk, "sequence": 2}]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        rule.refresh_from_db()
+        self.assertEqual(list(rule.steps.values_list("activity_type_id", flat=True)), [self.organize.pk, self.certify.pk])
+
+    def test_activities_for_technology_matches_case_insensitive(self):
+        from core.rules import activities_for_technology
+
+        rule = GenerationRule.objects.create(technology="Robust 2F")
+        GenerationRuleStep.objects.create(rule=rule, activity_type=self.launch, sequence=1)
+        GenerationRuleStep.objects.create(rule=rule, activity_type=self.certify, sequence=2)
+
+        steps = activities_for_technology("  robust 2f  ")
+
+        self.assertEqual([s.activity_type_id for s in steps], [self.launch.pk, self.certify.pk])
+
+    def test_generate_tasks_action_creates_tasks_in_order_and_is_idempotent(self):
+        rule = GenerationRule.objects.create(technology="Robust 2F (regra-teste)")
+        GenerationRuleStep.objects.create(rule=rule, activity_type=self.launch, sequence=1)
+        GenerationRuleStep.objects.create(rule=rule, activity_type=self.organize, sequence=2)
+        item = ProjectItem.objects.create(project=self.project, item_type=self.item_type, technology="Robust 2F (regra-teste)", internal_code="RULE-001")
+
+        first = self.client_api.post(f"/api/project-items/{item.pk}/generate-tasks/")
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.data["created"], 2)
+        tasks = list(ProjectTask.objects.filter(project_item=item).order_by("sequence"))
+        self.assertEqual([t.activity_type_id for t in tasks], [self.launch.pk, self.organize.pk])
+        self.assertEqual(tasks[0].unit, "m")
+
+        second = self.client_api.post(f"/api/project-items/{item.pk}/generate-tasks/")
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(second.data["created"], 0)
+        self.assertEqual(ProjectTask.objects.filter(project_item=item).count(), 2)
+
+    def test_generate_tasks_without_matching_rule_returns_400(self):
+        item = ProjectItem.objects.create(project=self.project, item_type=self.item_type, technology="Tecnologia sem regra", internal_code="RULE-002")
+
+        response = self.client_api.post(f"/api/project-items/{item.pk}/generate-tasks/")
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(ProjectTask.objects.filter(project_item=item).count(), 0)
+
+    @patch.object(OpenRouterProvider, "interpret_scope")
+    def test_scope_import_prefers_rule_over_ai_proposed_tasks(self, mock_interpret):
+        rule = GenerationRule.objects.create(technology="Robust 2F (regra-teste)")
+        GenerationRuleStep.objects.create(rule=rule, activity_type=self.launch, sequence=1)
+        GenerationRuleStep.objects.create(rule=rule, activity_type=self.certify, sequence=2)
+        matching_item_type = ProjectItemType.objects.create(name="Cabo óptico (regra-scope-teste)")
+
+        mock_interpret.return_value = {
+            "work_blocks": [
+                {
+                    "name": "UMN",
+                    "items": [
+                        {
+                            "internal_code": "RULE-SCOPE-001",
+                            "item_type": matching_item_type.name,
+                            "technology": "Robust 2F (regra-teste)",
+                            "length_meters": 20,
+                            "tasks": [{"activity_type": "Uma atividade qualquer que a IA inventou", "quantity_planned": 20, "unit": "m"}],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        dispatch_patcher = patch("api.views._dispatch_interpretation", side_effect=run_ai_interpretation)
+        self.addCleanup(dispatch_patcher.stop)
+        dispatch_patcher.start()
+
+        response = self.client_api.post("/api/scope-imports/", {"project": self.project.pk, "raw_text": "texto qualquer"}, format="json")
+
+        self.assertEqual(response.status_code, 201, response.data)
+        item_data = response.data["ai_raw_response"]["work_blocks"][0]["items"][0]
+        task_names = [t["activity_type_name"] for t in item_data["tasks"]]
+        self.assertEqual(task_names, [self.launch.name, self.certify.name])
+        self.assertTrue(all(not t["activity_type_unmatched"] for t in item_data["tasks"]))

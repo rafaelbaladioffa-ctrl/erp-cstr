@@ -26,6 +26,7 @@ from core.models import (
     Client,
     Collaborator,
     Company,
+    GenerationRule,
     JobTitle,
     Notification,
     ProjectItemType,
@@ -54,6 +55,7 @@ from projects.services import (
     apply_bulk_task_update,
     create_rack_positions_bulk,
     create_task_instances,
+    generate_tasks_from_rule,
     import_tasks_from_project_type,
     record_dispatch_event,
     record_task_transition,
@@ -92,6 +94,7 @@ from .serializers import (
     ProjectTaskBulkActionSerializer,
     ProjectTaskCreateSerializer,
     ProjectTaskSerializer,
+    GenerationRuleSerializer,
     ProjectTypeCrudSerializer,
     RackPositionBulkCreateSerializer,
     RackPositionSerializer,
@@ -702,6 +705,28 @@ class ProjectItemViewSet(viewsets.ModelViewSet):
         if work_block_id:
             queryset = queryset.filter(work_block_id=work_block_id)
         return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+
+    @action(detail=True, methods=["post"], url_path="generate-tasks")
+    def generate_tasks(self, request, pk=None):
+        """Fase 3: gera as tarefas do item a partir da GenerationRule cuja
+        tecnologia bate com a do item. Idempotente — chamar de novo só
+        preenche o que ainda faltar."""
+        item = self.get_object()
+        try:
+            created = generate_tasks_from_rule(item)
+        except BulkActionError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({"created": created})
+
+
+class GenerationRuleViewSet(viewsets.ModelViewSet):
+    """Fase 3: cadastro das regras de geração (tecnologia -> tipos de
+    atividade em ordem). Não é a RegistryViewSet genérica porque precisa
+    lidar com `steps` aninhado — ver GenerationRuleSerializer."""
+
+    queryset = GenerationRule.objects.prefetch_related("steps__activity_type").order_by("technology")
+    serializer_class = GenerationRuleSerializer
+    permission_classes = [ViewAwareModelPermissions]
 
 
 def _dispatch_interpretation(scope_import, provider):

@@ -73,6 +73,39 @@ def record_dispatch_event(task, collaborator):
     TaskExecutionEvent.objects.create(project_task=task, event_type=TaskExecutionEvent.EVENT_DISPATCHED, collaborator=collaborator)
 
 
+def generate_tasks_from_rule(project_item):
+    """Gera as ProjectTask do `project_item` a partir da GenerationRule cuja
+    tecnologia bate com `project_item.technology` (Fase 3) — uma tarefa por
+    etapa da regra, na ordem (`sequence` da regra vira `sequence` da
+    tarefa). Idempotente: pula etapas cujo (project_item, activity_type) já
+    existe, então clicar duas vezes não duplica. Retorna a quantidade
+    criada."""
+    from core.rules import activities_for_technology
+
+    steps = activities_for_technology(project_item.technology)
+    if not steps:
+        raise BulkActionError(f'Nenhuma regra ativa encontrada para a tecnologia "{project_item.technology}".')
+
+    existing_activity_ids = set(
+        ProjectTask.objects.filter(project_item=project_item).values_list("activity_type_id", flat=True)
+    )
+    created = []
+    with transaction.atomic():
+        for step in steps:
+            if step.activity_type_id in existing_activity_ids:
+                continue
+            created.append(
+                ProjectTask.objects.create(
+                    project=project_item.project,
+                    project_item=project_item,
+                    activity_type=step.activity_type,
+                    sequence=step.sequence,
+                    unit=step.activity_type.default_unit,
+                )
+            )
+    return len(created)
+
+
 class BulkActionError(Exception):
     """Erro de validação de uma ação em massa, com mensagem amigável."""
 

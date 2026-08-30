@@ -8,6 +8,8 @@ from core.models import (
     Client,
     Collaborator,
     Company,
+    GenerationRule,
+    GenerationRuleStep,
     JobTitle,
     Notification,
     ProjectItemType,
@@ -109,6 +111,49 @@ class ProjectItemTypeCrudSerializer(serializers.ModelSerializer):
         model = ProjectItemType
         fields = ("id", "name", "description", "is_active", "order", "created_at", "updated_at")
         read_only_fields = ("created_at", "updated_at")
+
+
+class GenerationRuleStepSerializer(serializers.ModelSerializer):
+    activity_type_name = serializers.CharField(source="activity_type.name", read_only=True)
+
+    class Meta:
+        model = GenerationRuleStep
+        fields = ("id", "activity_type", "activity_type_name", "sequence")
+
+
+class GenerationRuleSerializer(serializers.ModelSerializer):
+    steps = GenerationRuleStepSerializer(many=True)
+
+    class Meta:
+        model = GenerationRule
+        fields = ("id", "technology", "name", "is_active", "steps", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+    def create(self, validated_data):
+        steps_data = validated_data.pop("steps", [])
+        rule = GenerationRule.objects.create(**validated_data)
+        self._replace_steps(rule, steps_data)
+        return rule
+
+    def update(self, instance, validated_data):
+        steps_data = validated_data.pop("steps", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if steps_data is not None:
+            self._replace_steps(instance, steps_data)
+        return instance
+
+    def _replace_steps(self, rule, steps_data):
+        # Lista pequena (poucas etapas por regra) — substituir tudo a cada
+        # save é mais simples e seguro que fazer diff, mesmo padrão de
+        # "apagar e recriar" já aceito em confirm_scope_import pra listas
+        # pequenas geradas de uma vez.
+        rule.steps.all().delete()
+        GenerationRuleStep.objects.bulk_create(
+            GenerationRuleStep(rule=rule, activity_type=step["activity_type"], sequence=step.get("sequence", index))
+            for index, step in enumerate(steps_data)
+        )
 
 
 class JobTitleCrudSerializer(serializers.ModelSerializer):

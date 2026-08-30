@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.models import ActivityType, ProjectItemType
+from core.rules import activities_for_technology
 from projects.models import ProjectItem, ProjectTask, WorkBlock
 
 from .ai_provider import AIProviderError
@@ -55,8 +56,9 @@ def run_ai_interpretation(scope_import, provider):
         resolved_items = []
         for item in block.get("items") or []:
             matched_item_type = _resolve_by_name(item.get("item_type"), item_by_name)
+            ai_tasks = item.get("tasks") or []
             resolved_tasks = []
-            for task in item.get("tasks") or []:
+            for task in ai_tasks:
                 matched_activity = _resolve_by_name(task.get("activity_type"), activity_by_name)
                 resolved_tasks.append({
                     "activity_type_id": matched_activity["id"] if matched_activity else None,
@@ -65,6 +67,28 @@ def run_ai_interpretation(scope_import, provider):
                     "quantity_planned": task.get("quantity_planned"),
                     "unit": task.get("unit") or "",
                 })
+
+            # Fase 3: se existe uma regra determinística ativa pra essa
+            # tecnologia, ela sempre vence o que a IA propôs — regra de
+            # negócio nunca é decidida pela IA sozinha. A quantidade
+            # planejada de cada etapa herda a que a IA já tinha inferido
+            # pro item (todas as atividades da cadeia operam sobre a mesma
+            # quantidade física do item).
+            rule_steps = activities_for_technology(item.get("technology"))
+            if rule_steps:
+                reference_quantity = ai_tasks[0].get("quantity_planned") if ai_tasks else None
+                reference_unit = ai_tasks[0].get("unit") if ai_tasks else ""
+                resolved_tasks = [
+                    {
+                        "activity_type_id": step.activity_type_id,
+                        "activity_type_name": step.activity_type.name,
+                        "activity_type_unmatched": False,
+                        "quantity_planned": reference_quantity,
+                        "unit": step.activity_type.default_unit or reference_unit or "",
+                    }
+                    for step in rule_steps
+                ]
+
             resolved_items.append({
                 "internal_code": item.get("internal_code") or "",
                 "item_type_id": matched_item_type["id"] if matched_item_type else None,

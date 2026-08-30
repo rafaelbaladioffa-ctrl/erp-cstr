@@ -13,6 +13,7 @@ router.register("rack-positions", views.RackPositionViewSet, basename="rack-posi
 router.register("work-blocks", views.WorkBlockViewSet, basename="work-block")
 router.register("project-items", views.ProjectItemViewSet, basename="project-item")
 router.register("scope-imports", views.ScopeImportViewSet, basename="scope-import")
+router.register("generation-rules", views.GenerationRuleViewSet, basename="generation-rule")
 router.register("project-occurrences", views.ProjectOccurrenceViewSet, basename="project-occurrence")
 router.register("project-attachments", views.ProjectAttachmentViewSet, basename="project-attachment")
 router.register("notifications", views.NotificationViewSet, basename="notification")

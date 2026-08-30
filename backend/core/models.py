@@ -478,6 +478,44 @@ class ProjectItemType(TimestampedModel):
         return self.name
 
 
+class GenerationRule(TimestampedModel):
+    """Motor de regras determinístico (Fase 3): define, pra uma tecnologia
+    (ver projects.ProjectItem.technology), a lista ordenada de Tipos de
+    Atividade que devem ser gerados automaticamente. Casamento com
+    ProjectItem.technology é tolerante (trim + case-insensitive, ver
+    core/rules.py::activities_for_technology) — technology é texto livre
+    sem catálogo por trás, mesmo risco que já existe na Fase 4."""
+
+    technology = models.CharField("tecnologia", max_length=100, unique=True)
+    name = models.CharField("nome", max_length=150, blank=True, help_text="Rótulo amigável opcional, ex: 'Robust 2F padrão'.")
+    is_active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Regra de Geração"
+        verbose_name_plural = "Regras de Geração"
+        ordering = ("technology",)
+
+    def __str__(self):
+        return self.name or self.technology
+
+
+class GenerationRuleStep(models.Model):
+    rule = models.ForeignKey(GenerationRule, verbose_name="regra", on_delete=models.CASCADE, related_name="steps")
+    activity_type = models.ForeignKey(ActivityType, verbose_name="tipo de atividade", on_delete=models.PROTECT, related_name="rule_steps")
+    sequence = models.PositiveIntegerField("ordem", default=0)
+
+    class Meta:
+        verbose_name = "Etapa da Regra"
+        verbose_name_plural = "Etapas da Regra"
+        ordering = ("sequence", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("rule", "activity_type"), name="unique_step_per_rule"),
+        ]
+
+    def __str__(self):
+        return f"{self.rule} — {self.sequence}: {self.activity_type}"
+
+
 class TaskSequence(models.Model):
     year = models.PositiveIntegerField("ano", primary_key=True)
     last_number = models.PositiveIntegerField("último número", default=0)
