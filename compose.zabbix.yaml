@@ -62,12 +62,13 @@ services:
       # Precisa bater exatamente com o "Host name" já criado no Zabbix pelo
       # Discovery (192.168.15.90) — active checks casam pelo nome, não pelo IP.
       ZBX_HOSTNAME: "192.168.15.90"
-      # ServerActive= (pra onde o agente EMPURRA os dados, active checks) —
+      # ZBX_ACTIVESERVERS (não ZBX_SERVERACTIVE — nome real usado pelo
+      # entrypoint.sh do agente) — pra onde ele EMPURRA os dados —
       # o caminho inverso (server puxando do agente) esbarra num hairpin NAT
       # entre a rede bridge do zabbix-server e a rede host do agente (TCP não
       # volta, mesmo o ICMP funcionando); indo o agente até o server, que já
       # publica a porta 10051 pro host, funciona sem esse problema.
-      ZBX_SERVERACTIVE: 127.0.0.1
+      ZBX_ACTIVESERVERS: 127.0.0.1
     depends_on:
       - zabbix-server
 
