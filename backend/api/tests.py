@@ -536,13 +536,18 @@ class WorkBlockProjectItemApiTests(TestCase):
 
     def test_planning_summary_groups_by_block_and_activity_type(self):
         block = WorkBlock.objects.create(project=self.project, name="UMN")
-        item = ProjectItem.objects.create(project=self.project, work_block=block, item_type=self.item_type, internal_code="ROB-001")
+        # Dois ITENS diferentes no mesmo bloco, cada um com uma tarefa do
+        # mesmo tipo de atividade — não dá pra usar o mesmo item nas duas
+        # (a constraint unique_activity_per_item da Fase 1 impede duas
+        # tarefas do mesmo tipo de atividade no mesmo item).
+        item_a = ProjectItem.objects.create(project=self.project, work_block=block, item_type=self.item_type, internal_code="ROB-001")
+        item_b = ProjectItem.objects.create(project=self.project, work_block=block, item_type=self.item_type, internal_code="ROB-002")
         ProjectTask.objects.create(
-            project=self.project, activity_type=self.activity_type, project_item=item, work_block=block,
+            project=self.project, activity_type=self.activity_type, project_item=item_a, work_block=block,
             quantity_planned="20", quantity_completed="20", status=ProjectTask.STATUS_COMPLETED, order=1,
         )
         ProjectTask.objects.create(
-            project=self.project, activity_type=self.activity_type, project_item=item, work_block=block,
+            project=self.project, activity_type=self.activity_type, project_item=item_b, work_block=block,
             quantity_planned="15", quantity_completed="0", status=ProjectTask.STATUS_NOT_STARTED, order=2,
         )
         # Tarefa sem bloco/tipo de atividade (caminho antigo) — deve cair no
