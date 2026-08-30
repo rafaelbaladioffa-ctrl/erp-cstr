@@ -1,4 +1,5 @@
 import csv
+from decimal import Decimal
 
 from django.db import models
 from django.http import FileResponse, HttpResponse
@@ -19,12 +20,14 @@ from core.access_scope import (
 )
 from core.csv_io import MAX_CSV_UPLOAD_BYTES, build_csv_content, import_csv_rows
 from core.models import (
+    ActivityType,
     Category,
     Client,
     Collaborator,
     Company,
     JobTitle,
     Notification,
+    ProjectItemType,
     ProjectType,
     Responsible,
     Site,
@@ -32,7 +35,17 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianDailyPresence, TechnicianStatusEvent
-from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
+from projects.models import (
+    Project,
+    ProjectAttachment,
+    ProjectItem,
+    ProjectOccurrence,
+    ProjectTask,
+    ProjectTaskAssignment,
+    RackPosition,
+    WorkBlock,
+    merged_worked_hours,
+)
 from projects.services import (
     BulkActionError,
     add_custom_tasks_to_project,
@@ -51,6 +64,7 @@ from updates.project_pdf import build_project_daily_update_pdf
 
 from .permissions import IsSuperUser, RequireChangePermissionForActions, ViewAwareModelPermissions
 from .serializers import (
+    ActivityTypeCrudSerializer,
     AuditLogSerializer,
     ClientCrudSerializer,
     ClientSerializer,
@@ -65,6 +79,8 @@ from .serializers import (
     ProjectAttachmentSerializer,
     ProjectDailyUpdateCreateSerializer,
     ProjectDailyUpdateSerializer,
+    ProjectItemSerializer,
+    ProjectItemTypeCrudSerializer,
     ProjectOccurrenceSerializer,
     ProjectSerializer,
     ProjectTaskBulkActionSerializer,
@@ -78,6 +94,7 @@ from .serializers import (
     SiteSerializer,
     TaskCrudSerializer,
     TechnicianDailyPresenceSerializer,
+    WorkBlockSerializer,
 )
 
 
@@ -404,6 +421,58 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
         serializer = RackPositionSerializer(positions, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=["get"], url_path="work-blocks")
+    def work_blocks(self, request, pk=None):
+        project = self.get_object()
+        blocks = project.work_blocks.all().order_by("order", "name")
+        return Response(WorkBlockSerializer(blocks, many=True).data)
+
+    @action(detail=True, methods=["get"])
+    def items(self, request, pk=None):
+        project = self.get_object()
+        items = project.items.select_related("work_block", "item_type").order_by("order", "id")
+        work_block_id = request.query_params.get("work_block")
+        if work_block_id:
+            items = items.filter(work_block_id=work_block_id)
+        return Response(ProjectItemSerializer(items, many=True).data)
+
+    @action(detail=True, methods=["get"], url_path="planning-summary")
+    def planning_summary(self, request, pk=None):
+        """Resumo agregado por (bloco, tipo de atividade): quantidade
+        planejada/concluída e contagem de tarefas — calculado em Python a
+        partir das tarefas já carregadas, mesmo estilo de
+        hours_by_collaborator (sem .annotate()). Alimenta tanto o anel de
+        progresso por bloco quanto a tabela "planejado x executado" por tipo
+        de atividade — o frontend agrupa/soma esse mesmo array das duas
+        formas."""
+        project = self.get_object()
+        tasks = list(project.project_tasks.select_related("work_block", "activity_type"))
+
+        groups: dict[tuple, dict] = {}
+        for task in tasks:
+            key = (task.work_block_id, task.activity_type_id)
+            group = groups.get(key)
+            if group is None:
+                group = {
+                    "work_block_id": task.work_block_id,
+                    "work_block_name": task.work_block.name if task.work_block_id else None,
+                    "activity_type_id": task.activity_type_id,
+                    "activity_type_name": task.activity_type.name if task.activity_type_id else None,
+                    "quantity_planned": Decimal("0"),
+                    "quantity_completed": Decimal("0"),
+                    "task_count": 0,
+                    "completed_task_count": 0,
+                }
+                groups[key] = group
+            group["quantity_planned"] += task.quantity_planned or Decimal("0")
+            group["quantity_completed"] += task.quantity_completed or Decimal("0")
+            group["task_count"] += 1
+            if task.status == ProjectTask.STATUS_COMPLETED:
+                group["completed_task_count"] += 1
+
+        data = sorted(groups.values(), key=lambda g: (g["work_block_name"] or "", g["activity_type_name"] or ""))
+        return Response(data)
+
     @action(detail=True, methods=["post"], url_path="rack-positions/bulk")
     def rack_positions_bulk(self, request, pk=None):
         project = self.get_object()
@@ -497,7 +566,11 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             if invalid:
                 names = ", ".join(rp.position for rp in invalid)
                 return Response({"detail": f"Rack Position(s) que não pertencem a este projeto: {names}."}, status=400)
-        has_input = data["status"] or data["planned_start"] or data["planned_end"] or data["estimated_hours"] is not None or collaborators or rack_positions
+        has_input = (
+            data["status"] or data["planned_start"] or data["planned_end"] or data["estimated_hours"] is not None
+            or collaborators or rack_positions or data["work_block"] is not None or data["activity_type"] is not None
+            or data["quantity_planned"] is not None or data["quantity_completed"] is not None
+        )
         if not has_input:
             return Response({"detail": "Informe ao menos um valor para a atualização em massa."}, status=400)
         updated = apply_bulk_task_update(
@@ -508,6 +581,10 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             estimated_hours=data["estimated_hours"],
             collaborators=collaborators,
             rack_positions=rack_positions,
+            work_block=data["work_block"],
+            activity_type=data["activity_type"],
+            quantity_planned=data["quantity_planned"],
+            quantity_completed=data["quantity_completed"],
         )
         return Response({"updated": updated})
 
@@ -587,6 +664,35 @@ class RackPositionViewSet(viewsets.ModelViewSet):
         project_id = self.request.query_params.get("project")
         if project_id:
             queryset = queryset.filter(project_id=project_id)
+        return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+
+
+class WorkBlockViewSet(viewsets.ModelViewSet):
+    queryset = WorkBlock.objects.select_related("project").order_by("project_id", "order", "name")
+    serializer_class = WorkBlockSerializer
+    permission_classes = [ViewAwareModelPermissions]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get("project")
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+
+
+class ProjectItemViewSet(viewsets.ModelViewSet):
+    queryset = ProjectItem.objects.select_related("project", "work_block", "item_type").order_by("project_id", "order", "id")
+    serializer_class = ProjectItemSerializer
+    permission_classes = [ViewAwareModelPermissions]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get("project")
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        work_block_id = self.request.query_params.get("work_block")
+        if work_block_id:
+            queryset = queryset.filter(work_block_id=work_block_id)
         return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
 
 
@@ -678,6 +784,18 @@ class CategoryViewSet(RegistryViewSet):
 class ProjectTypeViewSet(RegistryViewSet):
     queryset = ProjectType.objects.order_by("name")
     serializer_class = ProjectTypeCrudSerializer
+    search_fields = ("name",)
+
+
+class ActivityTypeViewSet(RegistryViewSet):
+    queryset = ActivityType.objects.order_by("order", "name")
+    serializer_class = ActivityTypeCrudSerializer
+    search_fields = ("name", "code")
+
+
+class ProjectItemTypeViewSet(RegistryViewSet):
+    queryset = ProjectItemType.objects.order_by("order", "name")
+    serializer_class = ProjectItemTypeCrudSerializer
     search_fields = ("name",)
 
     @action(detail=False, methods=["post"], url_path="bulk-create")

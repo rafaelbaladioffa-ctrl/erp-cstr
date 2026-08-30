@@ -10,6 +10,8 @@ router = DefaultRouter()
 router.register("projects", views.ProjectViewSet, basename="project")
 router.register("project-tasks", views.ProjectTaskViewSet, basename="project-task")
 router.register("rack-positions", views.RackPositionViewSet, basename="rack-position")
+router.register("work-blocks", views.WorkBlockViewSet, basename="work-block")
+router.register("project-items", views.ProjectItemViewSet, basename="project-item")
 router.register("project-occurrences", views.ProjectOccurrenceViewSet, basename="project-occurrence")
 router.register("project-attachments", views.ProjectAttachmentViewSet, basename="project-attachment")
 router.register("notifications", views.NotificationViewSet, basename="notification")
@@ -30,6 +32,8 @@ router.register("registry/clients", views.ClientRegistryViewSet, basename="regis
 router.register("registry/responsibles", views.ResponsibleViewSet, basename="registry-responsible")
 router.register("registry/collaborators", views.CollaboratorRegistryViewSet, basename="registry-collaborator")
 router.register("registry/tasks", views.TaskViewSet, basename="registry-task")
+router.register("registry/activity-types", views.ActivityTypeViewSet, basename="registry-activity-type")
+router.register("registry/project-item-types", views.ProjectItemTypeViewSet, basename="registry-project-item-type")
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),

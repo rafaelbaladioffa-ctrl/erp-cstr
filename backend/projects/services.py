@@ -155,11 +155,18 @@ def import_tasks_from_project_type(project):
 
 
 def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, planned_end=None,
-                            estimated_hours=None, collaborators=None, rack_positions=None):
+                            estimated_hours=None, collaborators=None, rack_positions=None,
+                            work_block=None, activity_type=None, quantity_planned=None, quantity_completed=None):
     """Aplica os valores informados (todos opcionais) às ProjectTasks do
     queryset `project_tasks`. `collaborators`/`rack_positions`, quando
     informados, SUBSTITUEM o conjunto atual de cada tarefa (não somam).
-    Retorna a quantidade de tarefas afetadas, ou 0 se nada foi informado."""
+    Retorna a quantidade de tarefas afetadas, ou 0 se nada foi informado.
+
+    Não aceita reatribuir `project_item` em massa de propósito: isso
+    precisaria passar por Model.save() pra manter `work_block` sincronizado
+    (ver ProjectTask.save()), e QuerySet.update() (usado abaixo) não chama
+    save() — se algum dia isso for necessário, precisa de um loop
+    instância-a-instância como o de `collaborators`/`rack_positions`."""
     updates = {}
     if status:
         updates["status"] = status
@@ -177,6 +184,14 @@ def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, pl
         updates["planned_end"] = planned_end
     if estimated_hours is not None:
         updates["estimated_hours"] = estimated_hours
+    if work_block is not None:
+        updates["work_block"] = work_block
+    if activity_type is not None:
+        updates["activity_type"] = activity_type
+    if quantity_planned is not None:
+        updates["quantity_planned"] = quantity_planned
+    if quantity_completed is not None:
+        updates["quantity_completed"] = quantity_completed
 
     updated = 0
     if updates:

@@ -3,12 +3,14 @@ from rest_framework import serializers
 
 from audit.models import AuditLog
 from core.models import (
+    ActivityType,
     Category,
     Client,
     Collaborator,
     Company,
     JobTitle,
     Notification,
+    ProjectItemType,
     ProjectType,
     Responsible,
     Site,
@@ -18,7 +20,16 @@ from core.models import (
     update_person,
 )
 from dispatch.models import TechnicianDailyPresence
-from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
+from projects.models import (
+    Project,
+    ProjectAttachment,
+    ProjectItem,
+    ProjectOccurrence,
+    ProjectTask,
+    RackPosition,
+    WorkBlock,
+    merged_worked_hours,
+)
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
 
@@ -82,6 +93,20 @@ class ProjectTypeCrudSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProjectType
         fields = ("id", "name", "description", "is_active", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+
+class ActivityTypeCrudSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ActivityType
+        fields = ("id", "name", "code", "description", "default_unit", "is_active", "order", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+
+class ProjectItemTypeCrudSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectItemType
+        fields = ("id", "name", "description", "is_active", "order", "created_at", "updated_at")
         read_only_fields = ("created_at", "updated_at")
 
 
@@ -334,6 +359,29 @@ class RackPositionSerializer(serializers.ModelSerializer):
         read_only_fields = ("created_at", "updated_at")
 
 
+class WorkBlockSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkBlock
+        fields = ("id", "project", "name", "code", "description", "order", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+
+class ProjectItemSerializer(serializers.ModelSerializer):
+    item_type_name = serializers.CharField(source="item_type.name", read_only=True)
+    work_block_name = serializers.CharField(source="work_block.name", read_only=True, default="")
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = ProjectItem
+        fields = (
+            "id", "project", "work_block", "work_block_name", "internal_code", "item_type", "item_type_name",
+            "technology", "fiber_count", "connector_type_a", "connector_type_b", "part_number", "length_meters",
+            "origin", "destination", "route", "priority", "complexity", "metadata", "status", "status_display",
+            "order", "notes", "created_at", "updated_at",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+
 class ProjectTaskSerializer(serializers.ModelSerializer):
     task_name = serializers.CharField(source="display_name", read_only=True)
     project_name = serializers.CharField(source="project.name", read_only=True)
@@ -541,6 +589,12 @@ class ProjectTaskBulkActionSerializer(serializers.Serializer):
         queryset=Collaborator.objects.filter(is_active=True), many=True, required=False, default=list
     )
     rack_position_ids = serializers.PrimaryKeyRelatedField(queryset=RackPosition.objects.all(), many=True, required=False, default=list)
+    work_block = serializers.PrimaryKeyRelatedField(queryset=WorkBlock.objects.all(), required=False, allow_null=True, default=None)
+    activity_type = serializers.PrimaryKeyRelatedField(
+        queryset=ActivityType.objects.filter(is_active=True), required=False, allow_null=True, default=None
+    )
+    quantity_planned = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True, default=None)
+    quantity_completed = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True, default=None)
 
     def validate(self, attrs):
         if attrs.get("planned_start") and attrs.get("planned_end") and attrs["planned_end"] < attrs["planned_start"]:
