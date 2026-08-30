@@ -497,12 +497,17 @@ async function start() {
   });
 }
 
+// Loga antes de morrer, mas deixa o processo reiniciar limpo (via restart: unless-stopped do Docker) —
+// continuar rodando depois de uncaughtException/unhandledRejection deixa o processo em estado
+// inconsistente (sockets/listeners zumbis do Baileys), o que causava loop de reconexão.
 process.on("unhandledRejection", (err) => {
   console.error("Promise rejeitada sem tratamento:", err);
+  process.exit(1);
 });
 
 process.on("uncaughtException", (err) => {
   console.error("Exceção não capturada:", err);
+  process.exit(1);
 });
 
 start().catch((err) => {
