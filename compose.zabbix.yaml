@@ -62,11 +62,6 @@ services:
       # Precisa bater exatamente com o "Host name" já criado no Zabbix pelo
       # Discovery (192.168.15.90) — active checks casam pelo nome, não pelo IP.
       ZBX_HOSTNAME: "192.168.15.90"
-      # Server= (allowlist de quem pode consultar o agente via passive check):
-      # o zabbix-server está numa rede Docker diferente (bridge própria),
-      # então chega aqui com um IP de origem que não é 127.0.0.1 nem
-      # 192.168.15.90 — libera geral já que isso só é alcançável na LAN de casa.
-      ZBX_SERVER_HOST: 0.0.0.0/0
       # ServerActive= (pra onde o agente EMPURRA os dados, active checks) —
       # o caminho inverso (server puxando do agente) esbarra num hairpin NAT
       # entre a rede bridge do zabbix-server e a rede host do agente (TCP não
