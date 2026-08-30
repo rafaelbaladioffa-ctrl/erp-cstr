@@ -496,8 +496,11 @@ class WorkBlockProjectItemApiTests(TestCase):
         self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
         self.project = Project.objects.create(company=self.company, name="Projeto Planejamento", status=Project.STATUS_IN_PROGRESS)
         self.other_project = Project.objects.create(company=self.company, name="Outro Projeto")
-        self.item_type = ProjectItemType.objects.create(name="Cabo óptico")
-        self.activity_type = ActivityType.objects.create(name="Lançamento de cabo óptico")
+        # Nomes distintos dos já semeados pela migration 0032 (core.ActivityType/
+        # ProjectItemType têm o catálogo padrão pré-populado no banco de teste
+        # também, já que migrations de dados rodam ao montar o banco de teste).
+        self.item_type = ProjectItemType.objects.create(name="Cabo óptico (teste)")
+        self.activity_type = ActivityType.objects.create(name="Lançamento de cabo óptico (teste)")
         user = User.objects.create_superuser(username="planning_admin", email="planning@example.com", password="test-password")
         self.client_api.force_authenticate(user=user)
 
@@ -597,13 +600,13 @@ class WorkBlockProjectItemApiTests(TestCase):
         self.assertIsNone(pt.activity_type_id)
 
     def test_activity_type_registry_crud(self):
-        create = self.client_api.post("/api/registry/activity-types/", {"name": "Handover", "default_unit": "un"})
+        create = self.client_api.post("/api/registry/activity-types/", {"name": "Handover (teste)", "default_unit": "un"})
         self.assertEqual(create.status_code, 201, create.data)
-        listed = self.client_api.get("/api/registry/activity-types/", {"search": "Handover"})
+        listed = self.client_api.get("/api/registry/activity-types/", {"search": "Handover (teste)"})
         self.assertEqual(listed.data["count"], 1)
 
     def test_project_item_type_registry_crud(self):
-        create = self.client_api.post("/api/registry/project-item-types/", {"name": "Equipamento"})
+        create = self.client_api.post("/api/registry/project-item-types/", {"name": "Equipamento de teste"})
         self.assertEqual(create.status_code, 201, create.data)
         listed = self.client_api.get("/api/registry/project-item-types/")
         self.assertGreaterEqual(listed.data["count"], 1)
