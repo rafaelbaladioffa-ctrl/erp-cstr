@@ -16,6 +16,8 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from projects.models import Project, ProjectItem, ProjectTask, RackPosition, WorkBlock
+from scope_import.ai_provider import AIProviderError, OpenRouterProvider
+from scope_import.models import ScopeImport
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
 
@@ -615,6 +617,152 @@ class WorkBlockProjectItemApiTests(TestCase):
         self.assertEqual(create.status_code, 201, create.data)
         listed = self.client_api.get("/api/registry/project-item-types/")
         self.assertGreaterEqual(listed.data["count"], 1)
+
+
+class ScopeImportApiTests(TestCase):
+    """Fase 4 do módulo de tarefas: importação de escopo assistida por IA.
+    `OpenRouterProvider.interpret_scope` é sempre mockado — o teste nunca
+    deve bater na API real do OpenRouter."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(company=self.company, name="Projeto Importação", status=Project.STATUS_IN_PROGRESS)
+        self.item_type = ProjectItemType.objects.create(name="Cabo óptico (scope-teste)")
+        self.activity_type = ActivityType.objects.create(name="Lançamento de cabo óptico (scope-teste)")
+        self.user = User.objects.create_superuser(username="scope_admin", email="scope@example.com", password="test-password")
+        self.client_api.force_authenticate(user=self.user)
+
+    def _ai_response(self, item_type_name=None, activity_type_name=None):
+        return {
+            "work_blocks": [
+                {
+                    "name": "UMN",
+                    "items": [
+                        {
+                            "internal_code": "UMN-CB-001",
+                            "item_type": item_type_name or self.item_type.name,
+                            "technology": "Robust 2F",
+                            "fiber_count": None,
+                            "length_meters": 20,
+                            "origin": "Rack A",
+                            "destination": "Rack B",
+                            "route": "",
+                            "priority": "medium",
+                            "complexity": "simple",
+                            "tasks": [
+                                {
+                                    "activity_type": activity_type_name or self.activity_type.name,
+                                    "quantity_planned": 20,
+                                    "unit": "m",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+    @patch.object(OpenRouterProvider, "interpret_scope")
+    def test_create_runs_interpretation_and_becomes_ready(self, mock_interpret):
+        mock_interpret.return_value = self._ai_response()
+
+        response = self.client_api.post("/api/scope-imports/", {"project": self.project.pk, "raw_text": "lançar cabo Robust 2F 20m entre rack A e B"}, format="json")
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["status"], ScopeImport.STATUS_READY)
+        self.assertEqual(response.data["requested_by"], self.user.pk)
+        blocks = response.data["ai_raw_response"]["work_blocks"]
+        item = blocks[0]["items"][0]
+        self.assertEqual(item["item_type_id"], self.item_type.pk)
+        self.assertFalse(item["item_type_unmatched"])
+        task = item["tasks"][0]
+        self.assertEqual(task["activity_type_id"], self.activity_type.pk)
+        self.assertFalse(task["activity_type_unmatched"])
+
+    @patch.object(OpenRouterProvider, "interpret_scope")
+    def test_create_marks_unmatched_catalog_values(self, mock_interpret):
+        mock_interpret.return_value = self._ai_response(item_type_name="Tipo Inventado", activity_type_name="Atividade Inventada")
+
+        response = self.client_api.post("/api/scope-imports/", {"project": self.project.pk, "raw_text": "texto qualquer"}, format="json")
+
+        self.assertEqual(response.status_code, 201, response.data)
+        item = response.data["ai_raw_response"]["work_blocks"][0]["items"][0]
+        self.assertIsNone(item["item_type_id"])
+        self.assertTrue(item["item_type_unmatched"])
+        task = item["tasks"][0]
+        self.assertIsNone(task["activity_type_id"])
+        self.assertTrue(task["activity_type_unmatched"])
+
+    @patch.object(OpenRouterProvider, "interpret_scope")
+    def test_create_marks_failed_on_provider_error(self, mock_interpret):
+        mock_interpret.side_effect = AIProviderError("timeout simulado")
+
+        response = self.client_api.post("/api/scope-imports/", {"project": self.project.pk, "raw_text": "texto qualquer"}, format="json")
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["status"], ScopeImport.STATUS_FAILED)
+        self.assertIn("timeout simulado", response.data["error_message"])
+
+    @patch.object(OpenRouterProvider, "interpret_scope")
+    def test_retry_reprocesses_same_row(self, mock_interpret):
+        mock_interpret.side_effect = AIProviderError("falha passageira")
+        created = self.client_api.post("/api/scope-imports/", {"project": self.project.pk, "raw_text": "texto qualquer"}, format="json")
+        scope_import_id = created.data["id"]
+
+        mock_interpret.side_effect = None
+        mock_interpret.return_value = self._ai_response()
+        response = self.client_api.post(f"/api/scope-imports/{scope_import_id}/retry/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], ScopeImport.STATUS_READY)
+        self.assertEqual(ScopeImport.objects.count(), 1)
+
+    @patch.object(OpenRouterProvider, "interpret_scope")
+    def test_confirm_creates_records_linked_to_scope_import(self, mock_interpret):
+        mock_interpret.return_value = self._ai_response()
+        created = self.client_api.post("/api/scope-imports/", {"project": self.project.pk, "raw_text": "texto qualquer"}, format="json")
+        reviewed_payload = created.data["ai_raw_response"]
+
+        response = self.client_api.post(
+            f"/api/scope-imports/{created.data['id']}/confirm/", {"reviewed_payload": reviewed_payload}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["counts"], {"work_blocks": 1, "items": 1, "tasks": 1})
+        self.assertEqual(response.data["scope_import"]["status"], ScopeImport.STATUS_CONFIRMED)
+
+        block = WorkBlock.objects.get(project=self.project, name="UMN")
+        item = ProjectItem.objects.get(project=self.project, internal_code="UMN-CB-001")
+        task = ProjectTask.objects.get(project_item=item)
+        self.assertEqual(block.scope_import_id, created.data["id"])
+        self.assertEqual(item.scope_import_id, created.data["id"])
+        self.assertEqual(task.scope_import_id, created.data["id"])
+        self.assertEqual(item.work_block_id, block.pk)
+        self.assertEqual(task.work_block_id, block.pk)
+
+    @patch.object(OpenRouterProvider, "interpret_scope")
+    def test_confirm_rejects_unresolved_catalog_reference(self, mock_interpret):
+        mock_interpret.return_value = self._ai_response(item_type_name="Tipo Inventado")
+        created = self.client_api.post("/api/scope-imports/", {"project": self.project.pk, "raw_text": "texto qualquer"}, format="json")
+        reviewed_payload = created.data["ai_raw_response"]
+
+        response = self.client_api.post(
+            f"/api/scope-imports/{created.data['id']}/confirm/", {"reviewed_payload": reviewed_payload}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(ProjectItem.objects.count(), 0)
+
+    @patch.object(OpenRouterProvider, "interpret_scope")
+    def test_discard_marks_status(self, mock_interpret):
+        mock_interpret.return_value = self._ai_response()
+        created = self.client_api.post("/api/scope-imports/", {"project": self.project.pk, "raw_text": "texto qualquer"}, format="json")
+
+        response = self.client_api.post(f"/api/scope-imports/{created.data['id']}/discard/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], ScopeImport.STATUS_DISCARDED)
 
 
 class RegistryCsvApiTests(TestCase):

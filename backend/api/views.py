@@ -55,6 +55,9 @@ from projects.services import (
     create_task_instances,
     import_tasks_from_project_type,
 )
+from scope_import.ai_provider import OpenRouterProvider
+from scope_import.models import ScopeImport
+from scope_import.services import ScopeImportConfirmError, confirm_scope_import, run_ai_interpretation
 from technical.models import MyTask
 from updates.mail import send_daily_update_emails
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
@@ -90,6 +93,7 @@ from .serializers import (
     RackPositionBulkCreateSerializer,
     RackPositionSerializer,
     ResponsibleCrudSerializer,
+    ScopeImportSerializer,
     SiteCrudSerializer,
     SiteSerializer,
     TaskCrudSerializer,
@@ -694,6 +698,56 @@ class ProjectItemViewSet(viewsets.ModelViewSet):
         if work_block_id:
             queryset = queryset.filter(work_block_id=work_block_id)
         return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+
+
+class ScopeImportViewSet(viewsets.ModelViewSet):
+    """Importação de escopo assistida por IA (Fase 4): `create` já dispara a
+    interpretação (síncrona, não há fila assíncrona nesse projeto — ver
+    scope_import/services.py). `confirm` cria de fato os WorkBlock/
+    ProjectItem/ProjectTask a partir da estrutura revisada pelo usuário."""
+
+    queryset = ScopeImport.objects.select_related("project", "requested_by", "reviewed_by").order_by("-created_at")
+    serializer_class = ScopeImportSerializer
+    permission_classes = [ViewAwareModelPermissions]
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get("project")
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+
+    def perform_create(self, serializer):
+        scope_import = serializer.save(requested_by=self.request.user)
+        run_ai_interpretation(scope_import, OpenRouterProvider())
+
+    @action(detail=True, methods=["post"])
+    def retry(self, request, pk=None):
+        """Reprocessa o mesmo raw_text (sem duplicar a linha) — útil quando a
+        IA falhou por erro de rede/timeout passageiro."""
+        scope_import = self.get_object()
+        run_ai_interpretation(scope_import, OpenRouterProvider())
+        return Response(self.get_serializer(scope_import).data)
+
+    @action(detail=True, methods=["post"])
+    def confirm(self, request, pk=None):
+        scope_import = self.get_object()
+        if scope_import.status != ScopeImport.STATUS_READY:
+            return Response({"detail": "Só é possível confirmar uma importação com status 'Pronto para revisão'."}, status=400)
+        reviewed_payload = request.data.get("reviewed_payload")
+        try:
+            counts = confirm_scope_import(scope_import, reviewed_payload, request.user)
+        except ScopeImportConfirmError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({"scope_import": self.get_serializer(scope_import).data, "counts": counts})
+
+    @action(detail=True, methods=["post"])
+    def discard(self, request, pk=None):
+        scope_import = self.get_object()
+        scope_import.status = ScopeImport.STATUS_DISCARDED
+        scope_import.save(update_fields=["status", "updated_at"])
+        return Response(self.get_serializer(scope_import).data)
 
 
 class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):

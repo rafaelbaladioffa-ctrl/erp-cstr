@@ -30,6 +30,7 @@ from projects.models import (
     WorkBlock,
     merged_worked_hours,
 )
+from scope_import.models import ScopeImport
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
 
@@ -380,6 +381,24 @@ class ProjectItemSerializer(serializers.ModelSerializer):
             "order", "notes", "created_at", "updated_at",
         )
         read_only_fields = ("created_at", "updated_at")
+
+
+class ScopeImportSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    requested_by_name = serializers.CharField(source="requested_by.get_full_name", read_only=True, default="")
+    reviewed_by_name = serializers.CharField(source="reviewed_by.get_full_name", read_only=True, default="")
+
+    class Meta:
+        model = ScopeImport
+        fields = (
+            "id", "project", "raw_text", "status", "status_display", "ai_provider", "ai_model",
+            "ai_raw_response", "reviewed_payload", "error_message", "requested_by", "requested_by_name",
+            "reviewed_by", "reviewed_by_name", "confirmed_at", "created_at", "updated_at",
+        )
+        read_only_fields = (
+            "status", "ai_provider", "ai_model", "ai_raw_response", "reviewed_payload", "error_message",
+            "requested_by", "reviewed_by", "confirmed_at", "created_at", "updated_at",
+        )
 
 
 class ProjectTaskSerializer(serializers.ModelSerializer):

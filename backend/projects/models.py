@@ -208,6 +208,14 @@ class WorkBlock(TimestampedModel):
     code = models.CharField("código", max_length=30, blank=True)
     description = models.TextField("descrição", blank=True)
     order = models.PositiveIntegerField("ordem", default=0)
+    scope_import = models.ForeignKey(
+        "scope_import.ScopeImport",
+        verbose_name="importação de escopo",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="work_blocks_created",
+    )
 
     class Meta:
         verbose_name = "Bloco de Trabalho"
@@ -263,6 +271,14 @@ class ProjectItem(TimestampedModel):
     status = models.CharField("status", max_length=20, choices=STATUS_CHOICES, default=STATUS_NOT_STARTED)
     order = models.PositiveIntegerField("ordem", default=0)
     notes = models.TextField("observações", blank=True)
+    scope_import = models.ForeignKey(
+        "scope_import.ScopeImport",
+        verbose_name="importação de escopo",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="items_created",
+    )
 
     class Meta:
         verbose_name = "Item do Projeto"
@@ -369,6 +385,14 @@ class ProjectTask(TimestampedModel):
     )
     complexity = models.CharField("complexidade", max_length=20, choices=COMPLEXITY_CHOICES, blank=True)
     instructions = models.TextField("instruções", blank=True)
+    scope_import = models.ForeignKey(
+        "scope_import.ScopeImport",
+        verbose_name="importação de escopo",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tasks_created",
+    )
 
     class Meta:
         verbose_name = "Tarefa do Projeto"
