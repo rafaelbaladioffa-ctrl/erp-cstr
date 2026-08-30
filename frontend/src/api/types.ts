@@ -429,6 +429,11 @@ export interface OperationsBoardAssignee {
   queue_order: number;
 }
 
+export interface OperationsBoardBlockingTask {
+  task_id: number;
+  name: string;
+}
+
 export interface OperationsBoardTask {
   id: number;
   name: string;
@@ -437,6 +442,7 @@ export interface OperationsBoardTask {
   site_name: string;
   estimated_hours: string | null;
   assignees: OperationsBoardAssignee[];
+  blocked_by: OperationsBoardBlockingTask[];
 }
 
 export interface OperationsBoardStats {
@@ -622,6 +628,22 @@ export interface TechnicalPerformanceData {
     total_links_executed: number;
   };
   collaborators: CollaboratorPerformanceRow[];
+}
+
+export interface ActivityProductivityRow {
+  activity_type_id: number;
+  activity_type_name: string;
+  technology: string;
+  complexity: string;
+  complexity_display: string;
+  sample_count: number;
+  avg_hours_per_unit: number;
+  total_hours: number;
+  total_quantity: string;
+}
+
+export interface ActivityProductivityData {
+  rows: ActivityProductivityRow[];
 }
 
 export interface UserOption {

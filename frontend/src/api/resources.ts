@@ -23,6 +23,7 @@ import type {
   ProjectItem,
   ProjectItemType,
   ProjectOccurrence,
+  ActivityProductivityData,
   ProjectsPerformanceData,
   ProjectTask,
   ProjectTaskBulkPayload,
@@ -247,6 +248,8 @@ export const dashboardApi = {
     apiClient.get<ProjectsPerformanceData>("/dashboard/projects/", { params }).then((r) => r.data),
   technical: (params?: Record<string, string>) =>
     apiClient.get<TechnicalPerformanceData>("/dashboard/technical/", { params }).then((r) => r.data),
+  activityProductivity: (params?: Record<string, string>) =>
+    apiClient.get<ActivityProductivityData>("/dashboard/activity-productivity/", { params }).then((r) => r.data),
 };
 
 export const clientsApi = {

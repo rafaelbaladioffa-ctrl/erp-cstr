@@ -91,6 +91,7 @@ export default function MyTasks() {
   const [presence, setPresence] = useState<TechnicianPresence | null>(null);
   const [outcomeByTask, setOutcomeByTask] = useState<Record<number, string>>({});
   const [quantityByTask, setQuantityByTask] = useState<Record<number, string>>({});
+  const [quantityCompletedByTask, setQuantityCompletedByTask] = useState<Record<number, string>>({});
 
   function loadTasks() {
     return myTasksApi.list().then((data) => setTasks(data.results));
@@ -151,6 +152,7 @@ export default function MyTasks() {
       actual_end: t.actual_end || nowISO(),
       completion_outcome: outcomeByTask[t.id] || "completed",
       quantity_done: quantityByTask[t.id] || "",
+      quantity_completed: t.quantity_planned ? quantityCompletedByTask[t.id] || undefined : undefined,
     });
   }
 
@@ -287,6 +289,16 @@ export default function MyTasks() {
                     value={quantityByTask[t.id] ?? ""}
                     onChange={(e) => setQuantityByTask((prev) => ({ ...prev, [t.id]: e.target.value }))}
                   />
+                  {t.quantity_planned && (
+                    <input
+                      type="number"
+                      className="input mt-quantity-input"
+                      style={{ width: "calc(100% - 32px)" }}
+                      placeholder={`Quantidade concluída (planejado: ${t.quantity_planned}${t.unit ? ` ${t.unit}` : ""})`}
+                      value={quantityCompletedByTask[t.id] ?? t.quantity_completed ?? ""}
+                      onChange={(e) => setQuantityCompletedByTask((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                    />
+                  )}
                 </>
               )}
 
