@@ -238,7 +238,7 @@ async function captureOperationsPrint() {
   try {
     const page = await browser.newPage();
     await page.setExtraHTTPHeaders({ "X-Bot-Secret": API_SECRET });
-    await page.setViewport({ width: 1148, height: 900 });
+    await page.setViewport({ width: 1260, height: 900, deviceScaleFactor: 2 });
     await page.goto(`${API_URL}/bot/operations-print/?site=all`, { waitUntil: "networkidle0", timeout: 30000 });
     const shot = await page.screenshot({ type: "png", fullPage: true });
     return Buffer.isBuffer(shot) ? shot : Buffer.from(shot);
