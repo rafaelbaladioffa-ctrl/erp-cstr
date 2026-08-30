@@ -64,7 +64,7 @@ networks:
   default:
     driver: bridge
     driver_opts:
-      com.docker.network.driver.mtu: 1492
+      com.docker.network.driver.mtu: 1400
 
 volumes:
   postgres_data:
