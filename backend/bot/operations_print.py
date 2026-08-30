@@ -256,6 +256,12 @@ class OperationsPrintView(APIView):
             for h in range(WINDOW_START_HOUR, WINDOW_END_HOUR + 1)
         ]
 
+        techs_with_queue = sorted(
+            (t for t in board["technicians"] if t["queue"]), key=lambda t: len(t["queue"]), reverse=True
+        )
+        side_groups = [{"tech": t, "count": len(t["queue"]), "items": t["queue"][:2]} for t in techs_with_queue[:3]]
+        other_count = len(techs_with_queue) - len(side_groups)
+
         context = {
             "stats": board["stats"],
             "pool": board["pool"],
@@ -263,5 +269,7 @@ class OperationsPrintView(APIView):
             "hour_marks": hour_marks,
             "now_label": now.strftime("%d/%m/%Y %H:%M"),
             "now_pct": _fmt(_pct(now, now)),
+            "side_groups": side_groups,
+            "other_count": other_count,
         }
         return render(request, "bot/operations_print.html", context)

@@ -5,79 +5,99 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    width: 1180px;
-    background: #0a1729;
+    width: 1220px;
+    background: #eef1f4;
     font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    padding: 24px;
-    color: #fff;
+    padding: 20px;
+    color: #172033;
   }
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
-  .title { font-size: 20px; font-weight: 700; }
-  .subtitle { font-size: 12px; color: #6c7d97; margin-top: 2px; }
-  .ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .ring {
-    width: 60px; height: 60px; border-radius: 50%;
-    background: conic-gradient(#f16023 {{ stats.progress_pct }}%, #1c2438 0);
-    display: flex; align-items: center; justify-content: center;
-  }
-  .ring-inner {
-    width: 48px; height: 48px; border-radius: 50%; background: #0a1729;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 700;
-  }
-  .ring-label { font-size: 9.5px; color: #6c7d97; text-transform: uppercase; letter-spacing: 0.03em; }
-  .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 18px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .title { font-size: 18px; font-weight: 800; }
+  .subtitle { font-size: 11px; color: #8993a0; margin-top: 2px; }
+
+  /* ---- stat row ---- */
+  .stat-row { display: flex; gap: 12px; align-items: stretch; margin-bottom: 14px; }
+  .stat-grid { flex: 1; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
   .stat-card {
-    background: #131c30; border-radius: 10px; padding: 12px 14px;
-    display: flex; align-items: flex-start; justify-content: space-between; gap: 6px;
+    background: #fff; border: 1px solid #d7dde2; border-radius: 6px;
+    padding: 10px 12px 12px; display: flex; align-items: flex-start; justify-content: space-between;
   }
-  .stat-label { font-size: 9px; color: #6c7d97; letter-spacing: 0.03em; text-transform: uppercase; font-weight: 700; }
-  .stat-value { font-size: 21px; font-weight: 700; margin-top: 6px; }
-  .stat-icon {
-    width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  .stat-label { font-size: 9px; color: #8993a0; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+  .stat-value { font-size: 19px; font-weight: 800; margin-top: 5px; }
+  .stat-icon { width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .progress-card {
+    width: 140px; flex-shrink: 0; background: #fff; border: 1px solid #d7dde2; border-radius: 6px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
   }
-  .columns { display: grid; grid-template-columns: 1fr 1.3fr; gap: 14px; margin-bottom: 14px; align-items: start; }
-  .panel { background: #131c30; border-radius: 10px; padding: 14px; }
-  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-  .panel-title { font-size: 13px; font-weight: 700; }
-  .panel-hint { font-size: 10.5px; color: #6c7d97; }
-  .tech-list { display: flex; flex-direction: column; gap: 6px; }
-  .tech-row { display: flex; align-items: center; gap: 10px; background: #1c2438; border-radius: 8px; padding: 7px 10px; }
-  .avatar {
-    width: 28px; height: 28px; border-radius: 50%; background: #2a3450;
+  .progress-ring {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: conic-gradient(#f16023 {{ stats.progress_pct }}%, #eef1f4 0);
     display: flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 700; position: relative; flex-shrink: 0;
   }
-  .dot { position: absolute; bottom: -1px; right: -1px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid #1c2438; }
-  .tech-name { font-size: 12px; font-weight: 500; }
-  .tech-status { font-size: 10.5px; margin-top: 1px; }
-  .pool-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  .pool-table th {
-    text-align: left; font-size: 9.5px; color: #6c7d97; text-transform: uppercase;
-    letter-spacing: 0.02em; padding: 0 8px 8px; font-weight: 700;
+  .progress-ring-inner {
+    width: 42px; height: 42px; border-radius: 50%; background: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800;
   }
-  .pool-table td { padding: 7px 8px; background: #1c2438; }
-  .pool-table tr + tr td { border-top: 4px solid #131c30; }
-  .pool-table td:first-child { border-radius: 8px 0 0 8px; font-weight: 600; }
-  .pool-table td:last-child { border-radius: 0 8px 8px 0; }
-  .badge { display: inline-block; font-size: 9.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
-  .badge-wait { background: #263352; color: #9aa7c0; }
-  .badge-go { background: #142238; color: #5b9bff; }
-  .empty { color: #6c7d97; font-size: 11.5px; padding: 10px 0; }
-  .timeline-wrap { display: flex; }
-  .tl-labels { width: 190px; flex-shrink: 0; }
-  .tl-ruler-spacer { height: 22px; }
-  .tl-body { flex: 1; position: relative; }
-  .tl-ruler { position: relative; height: 22px; border-bottom: 1px solid #263352; margin-bottom: 4px; }
-  .tl-tick { position: absolute; top: 0; font-size: 9px; color: #6c7d97; transform: translateX(-50%); }
-  .tl-row-label { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 0; }
-  .tl-row-name { font-size: 11px; font-weight: 500; }
-  .tl-row-site { font-size: 9.5px; color: #6c7d97; }
-  .tl-track { position: relative; border-bottom: 1px solid #182034; }
-  .tl-bar { position: absolute; border-radius: 5px; display: flex; align-items: center; padding: 0 6px; overflow: hidden; }
-  .tl-bar-label { font-size: 9px; font-weight: 600; color: #0a1729; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .footer { text-align: center; font-size: 10px; color: #465066; margin-top: 4px; }
+  .progress-label { font-size: 9.5px; font-weight: 700; color: #8993a0; text-transform: uppercase; letter-spacing: 0.03em; }
+
+  /* ---- collapsed Técnicos / Pool headers ---- */
+  .collapsed-row { display: flex; gap: 12px; margin-bottom: 14px; }
+  .collapsed-card {
+    flex: 1; background: #fff; border: 1px solid #d7dde2; border-radius: 6px;
+    padding: 11px 14px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .collapsed-title { font-size: 13px; font-weight: 700; }
+  .collapsed-hint { font-size: 10.5px; color: #8993a0; }
+
+  /* ---- timeline layout ---- */
+  .tod-layout { display: flex; gap: 14px; align-items: stretch; }
+  .tod-tech-panel { flex: 1; min-width: 0; background: #fff; border: 1px solid #d7dde2; border-radius: 6px; overflow: hidden; }
+  .tod-side-panel { width: 300px; flex-shrink: 0; background: #fff; border: 1px solid #d7dde2; border-radius: 6px; display: flex; flex-direction: column; }
+
+  .tod-panel-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px 8px; border-bottom: 1px solid #d7dde2; position: relative; }
+  .tod-tech-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+  .tod-ruler { position: relative; flex: 1; margin-left: 190px; height: 16px; }
+  .tod-ruler-tick { position: absolute; font-size: 9px; color: #8993a0; transform: translateX(-50%); }
+
+  .tod-row { display: flex; border-bottom: 1px solid #eef1f4; padding: 8px 0; }
+  .tod-row-info { width: 190px; flex-shrink: 0; padding: 0 12px; }
+  .tod-row-name-line { display: flex; align-items: center; gap: 8px; }
+  .tod-row-avatar {
+    width: 26px; height: 26px; border-radius: 50%; background: #eef1f4; color: #172033;
+    display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+    position: relative; flex-shrink: 0;
+  }
+  .tod-row-avatar-dot { position: absolute; bottom: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%; border: 2px solid #fff; }
+  .tod-row-name { font-size: 11.5px; font-weight: 700; }
+  .tod-status-badge { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-top: 2px; }
+  .tod-row-sites { font-size: 9.5px; color: #8993a0; margin-top: 3px; }
+  .tod-row-stats { font-size: 9.5px; color: #8993a0; margin-top: 1px; }
+  .tod-track { position: relative; flex: 1; }
+  .tod-bar { position: absolute; border-radius: 5px; display: flex; align-items: center; padding: 0 6px; overflow: hidden; }
+  .tod-bar-label { font-size: 9px; font-weight: 700; color: #172033; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tod-empty-row { flex: 1; display: flex; align-items: center; font-size: 10.5px; color: #8993a0; padding-left: 8px; }
+
+  /* ---- side panel ---- */
+  .tod-side-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid #d7dde2; }
+  .tod-side-title { font-size: 12.5px; font-weight: 700; }
+  .tod-side-body { padding: 12px 14px; flex: 1; }
+  .tod-tech-group { margin-bottom: 12px; }
+  .tod-tech-group-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .tod-tech-group-name { font-size: 11.5px; font-weight: 700; }
+  .tod-count-badge { font-size: 9.5px; font-weight: 700; background: #fff1e9; color: #f16023; border-radius: 999px; padding: 1px 7px; }
+  .tod-activity-card { border: 1px solid #d7dde2; border-radius: 6px; padding: 7px 9px; margin-bottom: 6px; }
+  .tod-activity-name { font-size: 10.5px; font-weight: 600; }
+  .tod-activity-project { font-size: 9.5px; color: #8993a0; margin-top: 1px; }
+  .tod-others-row { display: flex; justify-content: space-between; align-items: center; border: 1px solid #d7dde2; border-radius: 6px; padding: 8px 10px; font-size: 10.5px; color: #5b6b78; font-weight: 600; }
+  .tod-viewall-link { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-top: 1px solid #d7dde2; font-size: 10.5px; font-weight: 700; color: #2563eb; }
+  .empty-hint { color: #8993a0; font-size: 11px; padding: 10px 2px; }
+
+  .legend-row { display: flex; flex-wrap: wrap; gap: 12px; padding: 10px 14px; border-top: 1px solid #d7dde2; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 9.5px; color: #5b6b78; }
+  .legend-swatch { width: 9px; height: 9px; border-radius: 2px; }
+
+  .footer { text-align: center; font-size: 10px; color: #8993a0; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -86,128 +106,133 @@
       <div class="title">Operação do Dia</div>
       <div class="subtitle">{{ now_label }}</div>
     </div>
-    <div class="ring-wrap">
-      <div class="ring"><div class="ring-inner">{{ stats.progress_pct }}%</div></div>
-      <div class="ring-label">Progresso</div>
-    </div>
   </div>
 
-  <div class="stats">
-    <div class="stat-card">
-      <div><div class="stat-label">Planejadas</div><div class="stat-value">{{ stats.planned }}</div></div>
-      <div class="stat-icon" style="background:#3a2417;color:#f16023;">&#128203;</div>
-    </div>
-    <div class="stat-card">
-      <div><div class="stat-label">Em execução</div><div class="stat-value" style="color:#5b9bff;">{{ stats.active }}</div></div>
-      <div class="stat-icon" style="background:#142238;color:#5b9bff;">&#9654;</div>
-    </div>
-    <div class="stat-card">
-      <div><div class="stat-label">Concluídas</div><div class="stat-value" style="color:#34d399;">{{ stats.completed }}</div></div>
-      <div class="stat-icon" style="background:#103324;color:#34d399;">&#10003;</div>
-    </div>
-    <div class="stat-card">
-      <div><div class="stat-label">Pendentes</div><div class="stat-value">{{ stats.pending }}</div></div>
-      <div class="stat-icon" style="background:#1c2438;color:#8a93a6;">&#8987;</div>
-    </div>
-    <div class="stat-card">
-      <div><div class="stat-label">No site</div><div class="stat-value" style="color:#2dd4bf;">{{ stats.technicians_on_site }}</div></div>
-      <div class="stat-icon" style="background:#103330;color:#2dd4bf;">&#128101;</div>
-    </div>
-    <div class="stat-card">
-      <div><div class="stat-label">Ausentes</div><div class="stat-value" style="color:#f87171;">{{ stats.technicians_absent }}</div></div>
-      <div class="stat-icon" style="background:#3a1616;color:#f87171;">&#8856;</div>
-    </div>
-  </div>
-
-  <div class="columns">
-    <div class="panel">
-      <div class="panel-head">
-        <div class="panel-title">Técnicos</div>
-        <div class="panel-hint">{{ tech_rows|length }} no site hoje</div>
+  <div class="stat-row">
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div><div class="stat-label">Atividades Planejadas</div><div class="stat-value">{{ stats.planned }}</div></div>
+        <div class="stat-icon" style="background:#fff1e9;color:#f16023;">&#128203;</div>
       </div>
-      <div class="tech-list">
-        {% for row in tech_rows %}
-        <div class="tech-row">
-          <div class="avatar">{{ row.initials }}
-            <span class="dot" style="background:{{ row.status_color }};"></span>
-          </div>
-          <div style="min-width:0;flex:1;">
-            <div class="tech-name">{{ row.tech.name }}</div>
-            <div class="tech-status" style="color:{{ row.status_color }};">
-              {% if row.current_task_name %}{{ row.current_task_name }}{% else %}{{ row.tech.presence_status_display }}{% endif %}
+      <div class="stat-card">
+        <div><div class="stat-label">Em Execução</div><div class="stat-value">{{ stats.active }}</div></div>
+        <div class="stat-icon" style="background:#eff4ff;color:#2563eb;">&#9654;</div>
+      </div>
+      <div class="stat-card">
+        <div><div class="stat-label">Concluídas</div><div class="stat-value">{{ stats.completed }}</div></div>
+        <div class="stat-icon" style="background:#e9f9ef;color:#16a34a;">&#10003;</div>
+      </div>
+      <div class="stat-card">
+        <div><div class="stat-label">Pendentes</div><div class="stat-value">{{ stats.pending }}</div></div>
+        <div class="stat-icon" style="background:#eef1f4;color:#5b6b78;">&#8987;</div>
+      </div>
+      <div class="stat-card">
+        <div><div class="stat-label">Técnicos no Site</div><div class="stat-value">{{ stats.technicians_on_site }}</div></div>
+        <div class="stat-icon" style="background:#e2f4f1;color:#0f766e;">&#128101;</div>
+      </div>
+      <div class="stat-card">
+        <div><div class="stat-label">Técnicos Ausentes</div><div class="stat-value">{{ stats.technicians_absent }}</div></div>
+        <div class="stat-icon" style="background:#fdeaea;color:#dc2626;">&#8856;</div>
+      </div>
+    </div>
+    <div class="progress-card">
+      <div class="progress-ring"><div class="progress-ring-inner">{{ stats.progress_pct }}%</div></div>
+      <div class="progress-label">Progresso do Dia</div>
+    </div>
+  </div>
+
+  <div class="collapsed-row">
+    <div class="collapsed-card">
+      <div class="collapsed-title">Técnicos</div>
+      <div class="collapsed-hint">{{ tech_rows|length }} no site hoje</div>
+    </div>
+    <div class="collapsed-card">
+      <div class="collapsed-title">Pool de Atividades do Dia</div>
+      <div class="collapsed-hint">{{ pool|length }} pendentes</div>
+    </div>
+  </div>
+
+  <div class="tod-layout">
+    <div class="tod-tech-panel">
+      <div class="tod-panel-head">
+        <div class="tod-tech-title">Técnicos ({{ tech_rows|length }})</div>
+        <div class="tod-ruler">
+          {% for m in hour_marks %}
+          <span class="tod-ruler-tick" style="left:{{ m.left }}%;">{{ m.hour }}:00</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% for row in tech_rows %}
+      <div class="tod-row" style="min-height:{{ row.height|add:36 }}px;">
+        <div class="tod-row-info">
+          <div class="tod-row-name-line">
+            <div class="tod-row-avatar">{{ row.initials }}
+              <span class="tod-row-avatar-dot" style="background:{{ row.status_color }};"></span>
+            </div>
+            <div style="min-width:0;flex:1;">
+              <div class="tod-row-name">{{ row.tech.name }}</div>
+              <span class="tod-status-badge" style="background:{{ row.status_color }}29;color:{{ row.status_color }};">
+                {% if row.current_task_name %}Em execução{% else %}{{ row.tech.presence_status_display }}{% endif %}
+              </span>
             </div>
           </div>
+          <div class="tod-row-sites">{{ row.tech.site_name }}</div>
         </div>
-        {% endfor %}
-        {% if not tech_rows %}<div class="empty">Nenhum técnico vinculado a este site.</div>{% endif %}
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <div class="panel-title">Pool de atividades do dia</div>
-        <div class="panel-hint">{{ pool|length }} pendentes</div>
-      </div>
-      {% if pool %}
-      <table class="pool-table">
-        <thead>
-          <tr><th>Atividade</th><th>Projeto</th><th>Duração est.</th><th>Status</th></tr>
-        </thead>
-        <tbody>
-          {% for task in pool %}
-          <tr>
-            <td>{{ task.name }}</td>
-            <td>{{ task.project_name }}{% if task.project_code %} · {{ task.project_code }}{% endif %}</td>
-            <td>{% if task.estimated_hours %}{{ task.estimated_hours }}h{% else %}—{% endif %}</td>
-            <td>
-              {% if task.assignees %}
-              <span class="badge badge-go">Despachada</span>
-              {% else %}
-              <span class="badge badge-wait">Aguardando despacho</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <div class="empty">Nenhuma atividade pendente neste site.</div>
-      {% endif %}
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-title" style="margin-bottom:10px;">Timeline operacional</div>
-    <div class="timeline-wrap">
-      <div class="tl-labels">
-        <div class="tl-ruler-spacer"></div>
-        {% for row in tech_rows %}
-        <div class="tl-row-label" style="height:{{ row.height }}px;">
-          <div class="avatar" style="width:22px;height:22px;font-size:9px;">{{ row.initials }}</div>
-          <div>
-            <div class="tl-row-name">{{ row.tech.name }}</div>
-            <div class="tl-row-site">{{ row.tech.site_name }}</div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-      <div class="tl-body">
-        <div class="tl-ruler">
-          {% for m in hour_marks %}
-          <span class="tl-tick" style="left:{{ m.left }}%;">{{ m.hour }}h</span>
-          {% endfor %}
-          <div style="position:absolute;top:0;bottom:0;left:{{ now_pct }}%;width:2px;background:#f16023;"></div>
-        </div>
-        {% for row in tech_rows %}
-        <div class="tl-track" style="height:{{ row.height }}px;">
+        {% if row.bars %}
+        <div class="tod-track">
           {% for bar in row.bars %}
-          <div class="tl-bar" style="left:{{ bar.left }}%;width:{{ bar.width }}%;top:{{ bar.top }}px;height:{{ bar.height }}px;background:{{ bar.color }};">
-            <span class="tl-bar-label">{{ bar.label }}</span>
+          <div class="tod-bar" style="left:{{ bar.left }}%;width:{{ bar.width }}%;top:{{ bar.top }}px;height:{{ bar.height }}px;background:{{ bar.color }};">
+            <span class="tod-bar-label">{{ bar.label }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="tod-empty-row">{{ row.tech.presence_status_display }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% if not tech_rows %}<div class="empty-hint">Nenhum técnico vinculado a este site.</div>{% endif %}
+
+      <div class="legend-row">
+        <div class="legend-item"><span class="legend-swatch" style="background:#5b9bff;"></span>Concluída</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#fbbf24;"></span>Em execução</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#34d399;"></span>Disponível</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#f16023;"></span>Pausa</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#a78bfa;"></span>Horário de Almoço</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#5b9bff;"></span>Particular</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#f87171;"></span>Sem Acesso ao Site</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#f16023;"></span>Aguardando Liberações</div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#d7dde2;"></span>Não iniciado / Fim de Expediente</div>
+      </div>
+    </div>
+
+    <div class="tod-side-panel">
+      <div class="tod-side-head">
+        <div class="tod-side-title">Próximas atividades / Operações</div>
+      </div>
+      <div class="tod-side-body">
+        {% for g in side_groups %}
+        <div class="tod-tech-group">
+          <div class="tod-tech-group-head">
+            <div class="tod-tech-group-name">{{ g.tech.name }}</div>
+            <span class="tod-count-badge">{{ g.count }}</span>
+          </div>
+          {% for item in g.items %}
+          <div class="tod-activity-card">
+            <div class="tod-activity-name">{{ item.task_name }}</div>
+            <div class="tod-activity-project">{{ item.project_name }}</div>
           </div>
           {% endfor %}
         </div>
         {% endfor %}
+        {% if other_count > 0 %}
+        <div class="tod-others-row">
+          <span>Outros técnicos ({{ other_count }})</span>
+        </div>
+        {% endif %}
+        {% if not side_groups %}<div class="empty-hint">Nenhuma atividade pendente na fila.</div>{% endif %}
       </div>
+      <div class="tod-viewall-link">Ver todas as atividades do dia &#8594;</div>
     </div>
   </div>
 
