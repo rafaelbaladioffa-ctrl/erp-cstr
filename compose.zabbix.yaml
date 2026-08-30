@@ -57,9 +57,10 @@ services:
     image: zabbix/zabbix-agent2:alpine-7.0-latest
     container_name: zabbix-agent
     restart: unless-stopped
+    network_mode: host
     environment:
       ZBX_HOSTNAME: notebook-servidor
-      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_HOST: 127.0.0.1
     depends_on:
       - zabbix-server
 
