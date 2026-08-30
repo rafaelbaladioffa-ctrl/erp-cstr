@@ -348,7 +348,15 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     queue_order = serializers.SerializerMethodField()
 
     class Meta:
-        extra_kwargs = {"work_block": {"read_only": True}}
+        # activity_type/project_item são opcionais no modelo (null=True,
+        # blank=True) — sem isso, o DRF marca os dois como obrigatórios
+        # sozinho por causa do UniqueConstraint condicional entre eles
+        # (unique_activity_per_item), que ele não sabe tratar como opcional.
+        extra_kwargs = {
+            "work_block": {"read_only": True},
+            "activity_type": {"required": False},
+            "project_item": {"required": False},
+        }
         model = ProjectTask
         fields = (
             "id",
