@@ -315,6 +315,21 @@ export interface PlanningSummaryRow {
   completed_task_count: number;
 }
 
+export interface GenerationRuleStep {
+  id: number;
+  activity_type: number;
+  activity_type_name: string;
+  sequence: number;
+}
+
+export interface GenerationRule {
+  id: number;
+  technology: string;
+  name: string;
+  is_active: boolean;
+  steps: GenerationRuleStep[];
+}
+
 export interface ScopeImportTaskDraft {
   activity_type_id: number | null;
   activity_type_name: string;

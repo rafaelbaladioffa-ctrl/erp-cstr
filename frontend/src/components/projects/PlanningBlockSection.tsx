@@ -16,6 +16,7 @@ export default function PlanningBlockSection({
   canChangeTask,
   onAddItem,
   onAddTask,
+  onGenerateFromRule,
 }: {
   block: WorkBlock | null;
   items: ProjectItem[];
@@ -29,6 +30,7 @@ export default function PlanningBlockSection({
   canChangeTask: boolean;
   onAddItem: () => void;
   onAddTask: (item: ProjectItem) => void;
+  onGenerateFromRule: (item: ProjectItem) => void;
 }) {
   const [openItems, setOpenItems] = useState<Record<number, boolean>>({});
   const pct = taskCount > 0 ? Math.round((completedTaskCount / taskCount) * 100) : 0;
@@ -92,15 +94,18 @@ export default function PlanningBlockSection({
                       </div>
                     ))}
                     {canChangeTask && (
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={() => onAddTask(item)}
-                        style={{ marginTop: 6 }}
-                      >
-                        <Icon name="add" style={{ fontSize: 13 }} />
-                        Tarefa
-                      </button>
+                      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => onAddTask(item)}>
+                          <Icon name="add" style={{ fontSize: 13 }} />
+                          Tarefa
+                        </button>
+                        {item.technology && (
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => onGenerateFromRule(item)} title="Gerar tarefas a partir da Regra de Geração cadastrada pra essa tecnologia">
+                            <Icon name="auto_fix_high" style={{ fontSize: 13 }} />
+                            Gerar pela Regra
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

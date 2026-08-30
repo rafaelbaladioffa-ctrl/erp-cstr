@@ -44,6 +44,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       { to: "/dashboard", label: "Dashboard", icon: "dashboard", permissions: [PERMS.viewProject, PERMS.viewCollaborator] },
       { to: "/cadastros", label: "Cadastros Gerais", icon: "inventory_2", permissions: CADASTROS_PERMS },
+      { to: "/regras-de-geracao", label: "Regras de Geração", icon: "rule", permission: PERMS.viewGenerationRule },
     ],
   },
   {
@@ -64,6 +65,7 @@ const AREA_LABELS: Record<string, { area: string; page: string }> = {
   "/atualizacoes-diarias": { area: "Atualizações", page: "Atualizações Diárias" },
   "/atualizacoes-projeto": { area: "Atualizações", page: "Atualizações de Projetos" },
   "/cadastros": { area: "Sistema", page: "Cadastros Gerais" },
+  "/regras-de-geracao": { area: "Sistema", page: "Regras de Geração" },
   "/minhas-tarefas": { area: "Técnico", page: "Minhas Tarefas" },
   "/auditoria": { area: "Segurança", page: "Log" },
 };

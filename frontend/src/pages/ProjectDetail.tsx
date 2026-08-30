@@ -171,6 +171,22 @@ export default function ProjectDetail() {
       });
   }
 
+  function handleGenerateFromRule(item: ProjectItem) {
+    projectItemsApi
+      .generateTasks(item.id)
+      .then((res) => {
+        if (res.created === 0) {
+          alert("Nenhuma tarefa nova gerada — ou já existem todas as etapas da regra pra esse item, ou não há regra cadastrada pra essa tecnologia.");
+        }
+        reload();
+        reloadPlanning();
+      })
+      .catch((err: unknown) => {
+        const axiosErr = err as { response?: { data?: { detail?: string } } };
+        alert(axiosErr.response?.data?.detail || "Não foi possível gerar as tarefas pela regra.");
+      });
+  }
+
   function reloadHours() {
     if (!projectId) return;
     setHoursLoading(true);
@@ -1173,6 +1189,7 @@ export default function ProjectDetail() {
                       setNewTaskForItem(item);
                       setPlanningTaskFormOpen(true);
                     }}
+                    onGenerateFromRule={handleGenerateFromRule}
                   />
                 );
               })}
@@ -1199,6 +1216,7 @@ export default function ProjectDetail() {
                     setNewTaskForItem(item);
                     setPlanningTaskFormOpen(true);
                   }}
+                  onGenerateFromRule={handleGenerateFromRule}
                 />
               )}
 

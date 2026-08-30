@@ -8,6 +8,7 @@ import AuditLog from "./pages/AuditLog";
 import CadastrosPage from "./pages/cadastros/CadastrosPage";
 import Dashboard from "./pages/Dashboard";
 import DailyUpdates from "./pages/DailyUpdates";
+import GenerationRulesPage from "./pages/GenerationRulesPage";
 import ImportProjectScope from "./pages/ImportProjectScope";
 import Login from "./pages/Login";
 import MyTasks from "./pages/MyTasks";
@@ -145,6 +146,14 @@ export default function App() {
               <RequireAnyPermission permissions={CADASTROS_PERMS}>
                 <CadastrosPage />
               </RequireAnyPermission>
+            }
+          />
+          <Route
+            path="/regras-de-geracao"
+            element={
+              <RequirePermission permission={PERMS.viewGenerationRule}>
+                <GenerationRulesPage />
+              </RequirePermission>
             }
           />
           <Route

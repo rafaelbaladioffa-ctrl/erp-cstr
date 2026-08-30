@@ -24,6 +24,7 @@ import type {
   ProjectItemType,
   ProjectOccurrence,
   ActivityProductivityData,
+  GenerationRule,
   ProjectsPerformanceData,
   ProjectTask,
   ProjectTaskBulkPayload,
@@ -79,7 +80,13 @@ export const registryApi = {
 };
 
 export const workBlocksApi = crud<WorkBlock>("/work-blocks");
-export const projectItemsApi = crud<ProjectItem>("/project-items");
+export const projectItemsApi = {
+  ...crud<ProjectItem>("/project-items"),
+  generateTasks: (id: number) =>
+    apiClient.post<{ created: number }>(`/project-items/${id}/generate-tasks/`).then((r) => r.data),
+};
+
+export const generationRulesApi = crud<GenerationRule>("/generation-rules");
 
 export const scopeImportsApi = {
   list: (projectId: number) =>
