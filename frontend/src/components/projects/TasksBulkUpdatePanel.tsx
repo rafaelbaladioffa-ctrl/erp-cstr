@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { projectsApi } from "../../api/resources";
-import type { CollaboratorFull, Project, RackPosition } from "../../api/types";
+import type { ActivityType, CollaboratorFull, Project, RackPosition, WorkBlock } from "../../api/types";
 import Icon from "../ui/Icon";
 
 const STATUS_OPTIONS = [
@@ -17,6 +17,8 @@ export default function TasksBulkUpdatePanel({
   selectedIds,
   collaborators,
   rackPositions,
+  workBlocks,
+  activityTypes,
   onClear,
   onApplied,
 }: {
@@ -24,6 +26,8 @@ export default function TasksBulkUpdatePanel({
   selectedIds: number[];
   collaborators: CollaboratorFull[];
   rackPositions: RackPosition[];
+  workBlocks?: WorkBlock[];
+  activityTypes?: ActivityType[];
   onClear: () => void;
   onApplied: () => void;
 }) {
@@ -33,6 +37,10 @@ export default function TasksBulkUpdatePanel({
   const [estimatedHours, setEstimatedHours] = useState("");
   const [collaboratorIds, setCollaboratorIds] = useState<number[]>([]);
   const [rackPositionIds, setRackPositionIds] = useState<number[]>([]);
+  const [workBlockId, setWorkBlockId] = useState("");
+  const [activityTypeId, setActivityTypeId] = useState("");
+  const [quantityPlanned, setQuantityPlanned] = useState("");
+  const [quantityCompleted, setQuantityCompleted] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -54,6 +62,10 @@ export default function TasksBulkUpdatePanel({
         estimated_hours: estimatedHours || undefined,
         collaborator_ids: collaboratorIds,
         rack_position_ids: rackPositionIds,
+        work_block: workBlockId ? Number(workBlockId) : undefined,
+        activity_type: activityTypeId ? Number(activityTypeId) : undefined,
+        quantity_planned: quantityPlanned || undefined,
+        quantity_completed: quantityCompleted || undefined,
       });
       alert(`${result.updated} Tarefa(s) atualizada(s) em massa.`);
       onApplied();
@@ -149,6 +161,45 @@ export default function TasksBulkUpdatePanel({
           </div>
         )}
       </div>
+
+      {(workBlocks || activityTypes) && (
+        <div className="dynamic-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
+          {workBlocks && (
+            <div className="field-group">
+              <span className="field-label">Bloco de Trabalho</span>
+              <select className="select" value={workBlockId} onChange={(e) => setWorkBlockId(e.target.value)}>
+                <option value="">Manter bloco atual</option>
+                {workBlocks.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {activityTypes && (
+            <div className="field-group">
+              <span className="field-label">Tipo de Atividade</span>
+              <select className="select" value={activityTypeId} onChange={(e) => setActivityTypeId(e.target.value)}>
+                <option value="">Manter tipo atual</option>
+                {activityTypes.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="field-group">
+            <span className="field-label">Quantidade Planejada</span>
+            <input type="number" className="input" value={quantityPlanned} onChange={(e) => setQuantityPlanned(e.target.value)} />
+          </div>
+          <div className="field-group">
+            <span className="field-label">Quantidade Concluída</span>
+            <input type="number" className="input" value={quantityCompleted} onChange={(e) => setQuantityCompleted(e.target.value)} />
+          </div>
+        </div>
+      )}
 
       {error && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{error}</p>}
 

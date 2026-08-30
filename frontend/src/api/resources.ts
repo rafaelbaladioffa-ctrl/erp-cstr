@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
 import type {
+  ActivityType,
   AuditLogEntry,
   Category,
   ClientFull,
@@ -15,9 +16,12 @@ import type {
   OperationsReports,
   OperationsTimeline,
   Paginated,
+  PlanningSummaryRow,
   Project,
   ProjectAttachment,
   ProjectDailyUpdate,
+  ProjectItem,
+  ProjectItemType,
   ProjectOccurrence,
   ProjectsPerformanceData,
   ProjectTask,
@@ -32,6 +36,7 @@ import type {
   SiteFull,
   SiteMapData,
   TaskFull,
+  WorkBlock,
 } from "./types";
 
 function crud<T extends { id: number }>(basePath: string) {
@@ -65,7 +70,12 @@ export const registryApi = {
   responsibles: crud<ResponsibleFull>("/registry/responsibles"),
   collaborators: crud<CollaboratorFull>("/registry/collaborators"),
   tasks: crud<TaskFull>("/registry/tasks"),
+  activityTypes: crud<ActivityType>("/registry/activity-types"),
+  projectItemTypes: crud<ProjectItemType>("/registry/project-item-types"),
 };
+
+export const workBlocksApi = crud<WorkBlock>("/work-blocks");
+export const projectItemsApi = crud<ProjectItem>("/project-items");
 
 export const auditLogApi = {
   list: (params?: Record<string, string>) =>
@@ -158,6 +168,13 @@ export const projectsApi = {
       .then((r) => r.data),
   hoursByCollaborator: (id: number) =>
     apiClient.get<CollaboratorHours[]>(`/projects/${id}/hours-by-collaborator/`).then((r) => r.data),
+  workBlocks: (id: number) => apiClient.get<WorkBlock[]>(`/projects/${id}/work-blocks/`).then((r) => r.data),
+  items: (id: number, workBlockId?: number) =>
+    apiClient
+      .get<ProjectItem[]>(`/projects/${id}/items/`, { params: workBlockId ? { work_block: String(workBlockId) } : undefined })
+      .then((r) => r.data),
+  planningSummary: (id: number) =>
+    apiClient.get<PlanningSummaryRow[]>(`/projects/${id}/planning-summary/`).then((r) => r.data),
 };
 
 export const rackPositionsApi = {

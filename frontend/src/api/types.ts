@@ -239,6 +239,80 @@ export interface ProjectTask {
   completion_outcome: string;
   quantity_done: string;
   notes: string;
+  activity_type: number | null;
+  project_item: number | null;
+  work_block: number | null; // somente leitura — sincronizado a partir de project_item.work_block
+  quantity_planned: string | null;
+  quantity_completed: string | null;
+  unit: string;
+  priority: string;
+  sequence: number;
+  complexity: string;
+  instructions: string;
+}
+
+export interface WorkBlock {
+  id: number;
+  project: number;
+  name: string;
+  code: string;
+  description: string;
+  order: number;
+}
+
+export interface ProjectItem {
+  id: number;
+  project: number;
+  work_block: number | null;
+  work_block_name?: string;
+  internal_code: string;
+  item_type: number;
+  item_type_name?: string;
+  technology: string;
+  fiber_count: number | null;
+  connector_type_a: string;
+  connector_type_b: string;
+  part_number: string;
+  length_meters: string | null;
+  origin: string;
+  destination: string;
+  route: string;
+  priority: string;
+  complexity: string;
+  metadata: Record<string, unknown>;
+  status: "not_started" | "in_progress" | "completed" | "canceled";
+  status_display: string;
+  order: number;
+  notes: string;
+}
+
+export interface ActivityType {
+  id: number;
+  name: string;
+  code: string;
+  description: string;
+  default_unit: string;
+  is_active: boolean;
+  order: number;
+}
+
+export interface ProjectItemType {
+  id: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+  order: number;
+}
+
+export interface PlanningSummaryRow {
+  work_block_id: number | null;
+  work_block_name: string | null;
+  activity_type_id: number | null;
+  activity_type_name: string | null;
+  quantity_planned: string;
+  quantity_completed: string;
+  task_count: number;
+  completed_task_count: number;
 }
 
 export interface TechnicianPresence {
@@ -525,6 +599,10 @@ export interface ProjectTaskBulkPayload {
   estimated_hours?: number | string | null;
   collaborator_ids?: number[];
   rack_position_ids?: number[];
+  work_block?: number | null;
+  activity_type?: number | null;
+  quantity_planned?: number | string | null;
+  quantity_completed?: number | string | null;
 }
 
 export interface ProjectTaskCreatePayload {

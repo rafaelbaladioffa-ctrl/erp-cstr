@@ -1,22 +1,48 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { projectAttachmentsApi, projectOccurrencesApi, projectsApi, projectTasksApi, rackPositionsApi, registryApi } from "../api/resources";
-import type { CollaboratorFull, CollaboratorHours, Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition } from "../api/types";
+import {
+  projectAttachmentsApi,
+  projectItemsApi,
+  projectOccurrencesApi,
+  projectsApi,
+  projectTasksApi,
+  rackPositionsApi,
+  registryApi,
+  workBlocksApi,
+} from "../api/resources";
+import type {
+  ActivityType,
+  CollaboratorFull,
+  CollaboratorHours,
+  PlanningSummaryRow,
+  Project,
+  ProjectAttachment,
+  ProjectItem,
+  ProjectItemType,
+  ProjectOccurrence,
+  ProjectTask,
+  RackPosition,
+  WorkBlock,
+} from "../api/types";
+import PlanningBlockSection from "../components/projects/PlanningBlockSection";
+import ProjectItemFormModal from "../components/projects/ProjectItemFormModal";
 import ProjectOccurrenceFormModal from "../components/projects/ProjectOccurrenceFormModal";
 import ProjectTaskFormModal from "../components/projects/ProjectTaskFormModal";
 import RackPositionBulkModal from "../components/projects/RackPositionBulkModal";
 import RackPositionFormModal from "../components/projects/RackPositionFormModal";
 import TasksBulkUpdatePanel from "../components/projects/TasksBulkUpdatePanel";
 import TasksCatalogAddModal from "../components/projects/TasksCatalogAddModal";
+import WorkBlockFormModal from "../components/projects/WorkBlockFormModal";
 import BulkNamesModal from "../components/ui/BulkNamesModal";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
+import PlannedVsExecutedBar from "../components/ui/PlannedVsExecutedBar";
 import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
 
-type DetailTab = "tasks" | "hours" | "occurrences" | "attachments";
+type DetailTab = "tasks" | "hours" | "occurrences" | "attachments" | "planning";
 
 const SEVERITY_TONE: Record<string, { bg: string; color: string }> = {
   low: { bg: "var(--bg)", color: "var(--text-muted)" },
@@ -50,6 +76,21 @@ export default function ProjectDetail() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [importingTasks, setImportingTasks] = useState(false);
 
+  const [workBlocks, setWorkBlocks] = useState<WorkBlock[]>([]);
+  const [items, setItems] = useState<ProjectItem[]>([]);
+  const [planningSummary, setPlanningSummary] = useState<PlanningSummaryRow[]>([]);
+  const [planningLoading, setPlanningLoading] = useState(false);
+  const [openBlocks, setOpenBlocks] = useState<Record<number, boolean>>({});
+  const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
+  const [itemTypes, setItemTypes] = useState<ProjectItemType[]>([]);
+  const [selectedItemTaskIds, setSelectedItemTaskIds] = useState<number[]>([]);
+  const [workBlockFormOpen, setWorkBlockFormOpen] = useState(false);
+  const [editingWorkBlock, setEditingWorkBlock] = useState<WorkBlock | null>(null);
+  const [itemFormOpen, setItemFormOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<ProjectItem | null>(null);
+  const [planningTaskFormOpen, setPlanningTaskFormOpen] = useState(false);
+  const [newTaskForItem, setNewTaskForItem] = useState<ProjectItem | null>(null);
+
   const [hours, setHours] = useState<CollaboratorHours[]>([]);
   const [hoursLoading, setHoursLoading] = useState(false);
 
@@ -70,6 +111,7 @@ export default function ProjectDetail() {
   const canAddTask = hasPerm(user, PERMS.addProjectTask);
   const canChangeTask = hasPerm(user, PERMS.changeProjectTask);
   const canDeleteTask = hasPerm(user, PERMS.deleteProjectTask);
+  const canAddWorkBlock = hasPerm(user, PERMS.addWorkBlock);
   const canAddOccurrence = hasPerm(user, PERMS.addProjectOccurrence);
   const canChangeOccurrence = hasPerm(user, PERMS.changeProjectOccurrence);
   const canDeleteOccurrence = hasPerm(user, PERMS.deleteProjectOccurrence);
@@ -96,6 +138,21 @@ export default function ProjectDetail() {
       })
       .finally(() => {
         if (mountedRef.current) setLoading(false);
+      });
+  }
+
+  function reloadPlanning() {
+    if (!projectId) return;
+    setPlanningLoading(true);
+    Promise.all([projectsApi.workBlocks(projectId), projectsApi.items(projectId), projectsApi.planningSummary(projectId)])
+      .then(([blockData, itemData, summaryData]) => {
+        if (!mountedRef.current) return;
+        setWorkBlocks(blockData);
+        setItems(itemData);
+        setPlanningSummary(summaryData);
+      })
+      .finally(() => {
+        if (mountedRef.current) setPlanningLoading(false);
       });
   }
 
@@ -144,6 +201,12 @@ export default function ProjectDetail() {
     registryApi.collaborators.list({ page_size: "500" } as never).then((r) => {
       if (mountedRef.current) setCollaborators(r.results);
     });
+    registryApi.activityTypes.list({ page_size: "500", is_active: "true" } as never).then((r) => {
+      if (mountedRef.current) setActivityTypes(r.results);
+    });
+    registryApi.projectItemTypes.list({ page_size: "500", is_active: "true" } as never).then((r) => {
+      if (mountedRef.current) setItemTypes(r.results);
+    });
     return () => {
       mountedRef.current = false;
     };
@@ -154,6 +217,7 @@ export default function ProjectDetail() {
     if (activeTab === "hours" && hours.length === 0 && !hoursLoading) reloadHours();
     if (activeTab === "occurrences" && occurrences.length === 0 && !occurrencesLoading) reloadOccurrences();
     if (activeTab === "attachments" && attachments.length === 0 && !attachmentsLoading) reloadAttachments();
+    if (activeTab === "planning" && workBlocks.length === 0 && !planningLoading) reloadPlanning();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, projectId]);
 
@@ -191,6 +255,41 @@ export default function ProjectDetail() {
     await projectTasksApi.remove(task.id);
     setSelectedTaskIds((prev) => prev.filter((id) => id !== task.id));
     reload();
+  }
+
+  function closeWorkBlockModal() {
+    setWorkBlockFormOpen(false);
+    setEditingWorkBlock(null);
+  }
+
+  function handleWorkBlockSaved() {
+    closeWorkBlockModal();
+    reloadPlanning();
+  }
+
+  function closeItemModal() {
+    setItemFormOpen(false);
+    setEditingItem(null);
+  }
+
+  function handleItemSaved() {
+    closeItemModal();
+    reloadPlanning();
+  }
+
+  function closePlanningTaskModal() {
+    setPlanningTaskFormOpen(false);
+    setNewTaskForItem(null);
+  }
+
+  function handlePlanningTaskSaved() {
+    closePlanningTaskModal();
+    reload();
+    reloadPlanning();
+  }
+
+  function toggleItemTaskSelection(taskId: number) {
+    setSelectedItemTaskIds((prev) => (prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]));
   }
 
   function closeOccurrenceModal() {
@@ -464,6 +563,9 @@ export default function ProjectDetail() {
         </button>
         <button className={`tab-btn${activeTab === "attachments" ? " active" : ""}`} onClick={() => setActiveTab("attachments")}>
           Anexos
+        </button>
+        <button className={`tab-btn${activeTab === "planning" ? " active" : ""}`} onClick={() => setActiveTab("planning")}>
+          Planejamento
         </button>
       </div>
 
@@ -837,6 +939,155 @@ export default function ProjectDetail() {
         </>
       )}
 
+      {activeTab === "planning" && (
+        <>
+          {planningLoading && workBlocks.length === 0 ? (
+            <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+          ) : (
+            <>
+              <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+                <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>Planejado x Executado</h2>
+                {canAddWorkBlock && (
+                  <button className="btn btn-primary btn-sm" onClick={() => setWorkBlockFormOpen(true)}>
+                    <Icon name="add" style={{ fontSize: 15 }} />
+                    Novo Bloco
+                  </button>
+                )}
+              </div>
+
+              <div className="card" style={{ marginBottom: 20 }}>
+                <div className="table-wrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Tipo de Atividade</th>
+                        <th>Planejado x Executado</th>
+                        <th>Tarefas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const byActivity = new Map<number, { name: string; planned: number; completed: number; taskCount: number; completedCount: number }>();
+                        for (const row of planningSummary) {
+                          if (row.activity_type_id == null) continue;
+                          const existing = byActivity.get(row.activity_type_id) ?? {
+                            name: row.activity_type_name || "—",
+                            planned: 0,
+                            completed: 0,
+                            taskCount: 0,
+                            completedCount: 0,
+                          };
+                          existing.planned += Number(row.quantity_planned || 0);
+                          existing.completed += Number(row.quantity_completed || 0);
+                          existing.taskCount += row.task_count;
+                          existing.completedCount += row.completed_task_count;
+                          byActivity.set(row.activity_type_id, existing);
+                        }
+                        const rows = [...byActivity.values()];
+                        return rows.length > 0 ? (
+                          rows.map((row) => (
+                            <tr key={row.name}>
+                              <td>{row.name}</td>
+                              <td>
+                                <PlannedVsExecutedBar planned={row.planned} executed={row.completed} />
+                              </td>
+                              <td>
+                                {row.completedCount}/{row.taskCount}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={3}>
+                              <div className="table-empty">Nenhuma tarefa com Tipo de Atividade cadastrada ainda.</div>
+                            </td>
+                          </tr>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {selectedItemTaskIds.length > 0 && (canChangeTask || canDeleteTask) && (
+                <TasksBulkUpdatePanel
+                  project={project}
+                  selectedIds={selectedItemTaskIds}
+                  collaborators={collaborators}
+                  rackPositions={rackPositions}
+                  workBlocks={workBlocks}
+                  activityTypes={activityTypes}
+                  onClear={() => setSelectedItemTaskIds([])}
+                  onApplied={() => {
+                    setSelectedItemTaskIds([]);
+                    reload();
+                    reloadPlanning();
+                  }}
+                />
+              )}
+
+              {workBlocks.map((block) => {
+                const summaryRows = planningSummary.filter((r) => r.work_block_id === block.id);
+                const taskCount = summaryRows.reduce((sum, r) => sum + r.task_count, 0);
+                const completedTaskCount = summaryRows.reduce((sum, r) => sum + r.completed_task_count, 0);
+                return (
+                  <PlanningBlockSection
+                    key={block.id}
+                    block={block}
+                    items={items.filter((i) => i.work_block === block.id)}
+                    tasks={tasks}
+                    open={openBlocks[block.id] ?? false}
+                    onToggle={() => setOpenBlocks((prev) => ({ ...prev, [block.id]: !prev[block.id] }))}
+                    taskCount={taskCount}
+                    completedTaskCount={completedTaskCount}
+                    selectedTaskIds={selectedItemTaskIds}
+                    onToggleTaskSelection={toggleItemTaskSelection}
+                    canChangeTask={canChangeTask}
+                    onAddItem={() => {
+                      setEditingItem(null);
+                      setItemFormOpen(true);
+                    }}
+                    onAddTask={(item) => {
+                      setNewTaskForItem(item);
+                      setPlanningTaskFormOpen(true);
+                    }}
+                  />
+                );
+              })}
+
+              {items.some((i) => !i.work_block) && (
+                <PlanningBlockSection
+                  block={null}
+                  items={items.filter((i) => !i.work_block)}
+                  tasks={tasks}
+                  open={openBlocks[0] ?? false}
+                  onToggle={() => setOpenBlocks((prev) => ({ ...prev, 0: !prev[0] }))}
+                  taskCount={planningSummary.filter((r) => r.work_block_id === null && r.activity_type_id !== null).reduce((s, r) => s + r.task_count, 0)}
+                  completedTaskCount={planningSummary
+                    .filter((r) => r.work_block_id === null && r.activity_type_id !== null)
+                    .reduce((s, r) => s + r.completed_task_count, 0)}
+                  selectedTaskIds={selectedItemTaskIds}
+                  onToggleTaskSelection={toggleItemTaskSelection}
+                  canChangeTask={canChangeTask}
+                  onAddItem={() => {
+                    setEditingItem(null);
+                    setItemFormOpen(true);
+                  }}
+                  onAddTask={(item) => {
+                    setNewTaskForItem(item);
+                    setPlanningTaskFormOpen(true);
+                  }}
+                />
+              )}
+
+              {workBlocks.length === 0 && items.length === 0 && (
+                <div className="empty-state">Nenhum bloco ou item cadastrado ainda. Crie um Bloco pra começar a organizar o planejamento.</div>
+              )}
+            </>
+          )}
+        </>
+      )}
+
       {rackFormOpen && <RackPositionFormModal projectId={project.id} rackPosition={editingRack} onClose={closeRackModals} onSaved={handleRackSaved} />}
       {rackBulkOpen && <RackPositionBulkModal projectId={project.id} onClose={closeRackModals} onSaved={handleRackSaved} />}
       {taskFormOpen && (
@@ -845,8 +1096,36 @@ export default function ProjectDetail() {
           projectTask={editingTask}
           existingTasks={tasks}
           rackPositions={rackPositions}
+          activityTypes={activityTypes}
+          items={items}
           onClose={closeTaskModals}
           onSaved={handleTaskSaved}
+        />
+      )}
+      {planningTaskFormOpen && (
+        <ProjectTaskFormModal
+          project={project}
+          projectTask={null}
+          existingTasks={tasks}
+          rackPositions={rackPositions}
+          activityTypes={activityTypes}
+          items={items}
+          defaultProjectItemId={newTaskForItem?.id}
+          onClose={closePlanningTaskModal}
+          onSaved={handlePlanningTaskSaved}
+        />
+      )}
+      {workBlockFormOpen && (
+        <WorkBlockFormModal projectId={project.id} workBlock={editingWorkBlock} onClose={closeWorkBlockModal} onSaved={handleWorkBlockSaved} />
+      )}
+      {itemFormOpen && (
+        <ProjectItemFormModal
+          projectId={project.id}
+          item={editingItem}
+          workBlocks={workBlocks}
+          itemTypes={itemTypes}
+          onClose={closeItemModal}
+          onSaved={handleItemSaved}
         />
       )}
       {taskCatalogOpen && (
