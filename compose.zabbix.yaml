@@ -60,7 +60,11 @@ services:
     network_mode: host
     environment:
       ZBX_HOSTNAME: notebook-servidor
-      ZBX_SERVER_HOST: 127.0.0.1
+      # Server= (allowlist de quem pode consultar o agente): o zabbix-server
+      # está numa rede Docker diferente (bridge própria), então chega aqui
+      # com um IP de origem que não é 127.0.0.1 nem 192.168.15.90 — libera
+      # geral já que isso só é alcançável dentro da própria LAN de casa.
+      ZBX_SERVER_HOST: 0.0.0.0/0
     depends_on:
       - zabbix-server
 
