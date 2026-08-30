@@ -433,6 +433,51 @@ class ProjectType(TimestampedModel):
         return self.name or "Tipo de projeto sem identificação"
 
 
+class ActivityType(TimestampedModel):
+    """Catálogo padronizado de tipos de atividade (Lançamento, Patching,
+    Certificação etc.) — separado da Tarefa (core.Task) pra não misturar
+    o TIPO de atividade com a variação de material/metragem de um item
+    específico do projeto (ver projects.ProjectItem/ProjectTask)."""
+
+    name = models.CharField("nome", max_length=150, unique=True)
+    code = models.CharField("código", max_length=30, blank=True)
+    description = models.TextField("descrição", blank=True)
+    default_unit = models.CharField(
+        "unidade padrão",
+        max_length=20,
+        blank=True,
+        help_text="Sugestão de unidade pra quantidade (ex: m, un, porta, ponta) — editável por tarefa.",
+    )
+    is_active = models.BooleanField("ativo", default=True)
+    order = models.PositiveIntegerField("ordem", default=0)
+
+    class Meta:
+        verbose_name = "Tipo de Atividade"
+        verbose_name_plural = "Tipos de Atividade"
+        ordering = ("order", "name")
+
+    def __str__(self):
+        return self.name
+
+
+class ProjectItemType(TimestampedModel):
+    """Catálogo pequeno pro tipo de item técnico do projeto (cabo, link,
+    rack, equipamento etc.) — ver projects.ProjectItem."""
+
+    name = models.CharField("nome", max_length=100, unique=True)
+    description = models.TextField("descrição", blank=True)
+    is_active = models.BooleanField("ativo", default=True)
+    order = models.PositiveIntegerField("ordem", default=0)
+
+    class Meta:
+        verbose_name = "Tipo de Item"
+        verbose_name_plural = "Tipos de Item"
+        ordering = ("order", "name")
+
+    def __str__(self):
+        return self.name
+
+
 class TaskSequence(models.Model):
     year = models.PositiveIntegerField("ano", primary_key=True)
     last_number = models.PositiveIntegerField("último número", default=0)
