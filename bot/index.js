@@ -356,6 +356,11 @@ async function start() {
     logger,
     printQRInTerminal: false,
     version,
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    keepAliveIntervalMs: 20000,
   });
 
   sock.ev.on("creds.update", saveCreds);
