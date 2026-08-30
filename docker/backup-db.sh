@@ -9,7 +9,7 @@ set -a
 . "$PROJECT_DIR/.env"
 set +a
 
-BACKUP_DIR="$HOME/db_backups"
+BACKUP_DIR="$(dirname "$PROJECT_DIR")/db_backups"
 KEEP_DAYS=14
 STAMP=$(date +%Y%m%d_%H%M%S)
 FILE="$BACKUP_DIR/erp_backup_$STAMP.dump"
