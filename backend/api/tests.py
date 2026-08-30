@@ -9,13 +9,13 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from audit.models import AuditLog
-from core.models import Category, Client, Collaborator, Company, Person, ProjectType, Site, Task
+from core.models import ActivityType, Category, Client, Collaborator, Company, Person, ProjectItemType, ProjectType, Site, Task
 
 
 def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
-from projects.models import Project, ProjectTask, RackPosition
+from projects.models import Project, ProjectItem, ProjectTask, RackPosition, WorkBlock
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
 
@@ -484,6 +484,129 @@ class ProjectTaskRackPositionExplodeApiTests(TestCase):
         ProjectTask.objects.create(project=self.project, task=self.task, order=1)
         response = self.client_api.post("/api/project-tasks/", {"project": self.project.pk, "task": self.task.pk})
         self.assertEqual(response.status_code, 400)
+
+
+class WorkBlockProjectItemApiTests(TestCase):
+    """Fase 2 do módulo de tarefas: WorkBlock/ProjectItem (CRUD escopado por
+    projeto), catálogos ActivityType/ProjectItemType, e o resumo agregado
+    planning-summary."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(company=self.company, name="Projeto Planejamento", status=Project.STATUS_IN_PROGRESS)
+        self.other_project = Project.objects.create(company=self.company, name="Outro Projeto")
+        self.item_type = ProjectItemType.objects.create(name="Cabo óptico")
+        self.activity_type = ActivityType.objects.create(name="Lançamento de cabo óptico")
+        user = User.objects.create_superuser(username="planning_admin", email="planning@example.com", password="test-password")
+        self.client_api.force_authenticate(user=user)
+
+    def test_work_block_create_list_scoped_by_project(self):
+        create = self.client_api.post("/api/work-blocks/", {"project": self.project.pk, "name": "UMN"})
+        self.assertEqual(create.status_code, 201, create.data)
+        WorkBlock.objects.create(project=self.other_project, name="Bloco de outro projeto")
+
+        listed = self.client_api.get("/api/work-blocks/", {"project": self.project.pk})
+        self.assertEqual(listed.data["count"], 1)
+        self.assertEqual(listed.data["results"][0]["name"], "UMN")
+
+    def test_project_item_create_and_filter_by_work_block(self):
+        block = WorkBlock.objects.create(project=self.project, name="BFC")
+        other_block = WorkBlock.objects.create(project=self.project, name="EG1")
+        ProjectItem.objects.create(project=self.project, work_block=block, item_type=self.item_type, internal_code="ROB-001")
+        ProjectItem.objects.create(project=self.project, work_block=other_block, item_type=self.item_type, internal_code="ROB-002")
+
+        response = self.client_api.get(f"/api/projects/{self.project.pk}/items/", {"work_block": block.pk})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["internal_code"], "ROB-001")
+
+    def test_project_item_rejects_cross_project_via_api_scoping(self):
+        foreign_item = ProjectItem.objects.create(project=self.other_project, item_type=self.item_type, internal_code="X")
+        response = self.client_api.get(f"/api/project-items/{foreign_item.pk}/", {"project": self.project.pk})
+        # Escopado por ?project= no queryset — some da listagem filtrada, mas o
+        # detail continua acessível por pk direto (mesmo padrão do RackPositionViewSet,
+        # que não isola detail por query param). Confirma só que o filtro por
+        # querystring de fato exclui itens de outro projeto na listagem.
+        listed = self.client_api.get("/api/project-items/", {"project": self.project.pk})
+        self.assertNotIn(foreign_item.pk, [row["id"] for row in listed.data["results"]])
+
+    def test_planning_summary_groups_by_block_and_activity_type(self):
+        block = WorkBlock.objects.create(project=self.project, name="UMN")
+        item = ProjectItem.objects.create(project=self.project, work_block=block, item_type=self.item_type, internal_code="ROB-001")
+        ProjectTask.objects.create(
+            project=self.project, activity_type=self.activity_type, project_item=item, work_block=block,
+            quantity_planned="20", quantity_completed="20", status=ProjectTask.STATUS_COMPLETED, order=1,
+        )
+        ProjectTask.objects.create(
+            project=self.project, activity_type=self.activity_type, project_item=item, work_block=block,
+            quantity_planned="15", quantity_completed="0", status=ProjectTask.STATUS_NOT_STARTED, order=2,
+        )
+        # Tarefa sem bloco/tipo de atividade (caminho antigo) — deve cair no
+        # "balde" null, sem quebrar o agrupamento das outras.
+        ProjectTask.objects.create(project=self.project, custom_name="Tarefa avulsa antiga", order=3)
+
+        response = self.client_api.get(f"/api/projects/{self.project.pk}/planning-summary/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = {(row["work_block_id"], row["activity_type_id"]): row for row in response.data}
+        grouped = rows[(block.pk, self.activity_type.pk)]
+        self.assertEqual(grouped["task_count"], 2)
+        self.assertEqual(grouped["completed_task_count"], 1)
+        self.assertEqual(str(grouped["quantity_planned"]), "35.00")
+        self.assertEqual(str(grouped["quantity_completed"]), "20.00")
+        null_bucket = rows[(None, None)]
+        self.assertEqual(null_bucket["task_count"], 1)
+
+    def test_bulk_update_new_fields(self):
+        pt = ProjectTask.objects.create(project=self.project, custom_name="Tarefa", order=1)
+        block = WorkBlock.objects.create(project=self.project, name="UMN")
+
+        response = self.client_api.post(
+            f"/api/projects/{self.project.pk}/tasks/bulk/",
+            {
+                "action": "update",
+                "task_ids": [pt.pk],
+                "work_block": block.pk,
+                "activity_type": self.activity_type.pk,
+                "quantity_planned": "42.5",
+                "quantity_completed": "10",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["updated"], 1)
+        pt.refresh_from_db()
+        self.assertEqual(pt.work_block_id, block.pk)
+        self.assertEqual(pt.activity_type_id, self.activity_type.pk)
+        self.assertEqual(str(pt.quantity_planned), "42.50")
+
+    def test_bulk_update_old_shape_payload_unaffected(self):
+        """Regressão: chamar tasks/bulk sem nenhum dos 4 campos novos da
+        Fase 2 continua se comportando exatamente como antes."""
+        pt = ProjectTask.objects.create(project=self.project, custom_name="Tarefa", order=1)
+        response = self.client_api.post(
+            f"/api/projects/{self.project.pk}/tasks/bulk/",
+            {"action": "update", "task_ids": [pt.pk], "status": ProjectTask.STATUS_IN_PROGRESS},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        pt.refresh_from_db()
+        self.assertEqual(pt.status, ProjectTask.STATUS_IN_PROGRESS)
+        self.assertIsNone(pt.work_block_id)
+        self.assertIsNone(pt.activity_type_id)
+
+    def test_activity_type_registry_crud(self):
+        create = self.client_api.post("/api/registry/activity-types/", {"name": "Handover", "default_unit": "un"})
+        self.assertEqual(create.status_code, 201, create.data)
+        listed = self.client_api.get("/api/registry/activity-types/", {"search": "Handover"})
+        self.assertEqual(listed.data["count"], 1)
+
+    def test_project_item_type_registry_crud(self):
+        create = self.client_api.post("/api/registry/project-item-types/", {"name": "Equipamento"})
+        self.assertEqual(create.status_code, 201, create.data)
+        listed = self.client_api.get("/api/registry/project-item-types/")
+        self.assertGreaterEqual(listed.data["count"], 1)
 
 
 class RegistryCsvApiTests(TestCase):
