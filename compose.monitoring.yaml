@@ -1,3 +1,5 @@
+name: erp-cstr-monitoring
+
 services:
   netdata:
     image: netdata/netdata
