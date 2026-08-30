@@ -9,6 +9,8 @@ urlpatterns = [
     path("daily-broadcast/", views.BotDailyBroadcastView.as_view(), name="bot-daily-broadcast"),
     path("my-tasks/", views.BotMyTasksView.as_view(), name="bot-my-tasks"),
     path("sites/", views.BotSitesView.as_view(), name="bot-sites"),
+    path("tech-status/sites/", views.BotTechStatusSitesView.as_view(), name="bot-tech-status-sites"),
+    path("tech-status/", views.BotTechStatusView.as_view(), name="bot-tech-status"),
     path("projects/", views.BotProjectsView.as_view(), name="bot-projects"),
     path("project-update/", views.BotProjectUpdateView.as_view(), name="bot-project-update"),
     path(

@@ -18,6 +18,7 @@ const MENU_OPTIONS = [
   { number: "1", key: "alocacao", label: "Alocação (projeto e site de hoje)" },
   { number: "2", key: "atualizacao_projetos", label: "Atualização de projetos" },
   { number: "3", key: "minhas_tarefas", label: "Minhas tarefas" },
+  { number: "4", key: "status_tecnicos", label: "Status dos técnicos" },
 ];
 
 const MENU_TEXT =
@@ -102,6 +103,27 @@ async function fetchMyTasksByName(name) {
   );
 
   return `Olá, ${data.collaborator_name}! Suas tarefas pendentes:\n\n${blocks.join("\n\n")}`;
+}
+
+async function fetchTechStatus(siteId, siteLabel) {
+  const data = await botGet("/bot/tech-status/", siteId ? { site_id: siteId } : undefined);
+  if (!data.technicians.length) {
+    return `Nenhum técnico ativo vinculado a ${siteLabel}.`;
+  }
+
+  const line = (t) => `• *${t.name}* — ${t.status}${t.current_task ? ` (${t.current_task})` : ""}`;
+
+  if (siteId) {
+    return `👷 Status dos técnicos — ${siteLabel}:\n\n${data.technicians.map(line).join("\n")}`;
+  }
+
+  const bySite = new Map();
+  for (const t of data.technicians) {
+    if (!bySite.has(t.site_name)) bySite.set(t.site_name, []);
+    bySite.get(t.site_name).push(t);
+  }
+  const blocks = [...bySite.entries()].map(([site, techs]) => `*${site}*\n` + techs.map(line).join("\n"));
+  return `👷 Status dos técnicos — todos os sites:\n\n${blocks.join("\n\n")}`;
 }
 
 function formatProjectUpdate(p) {
@@ -424,6 +446,39 @@ async function start() {
             await sock.sendMessage(jid, { text: `Qual site?\n\n${list}\n\nDigite o número.` });
             continue;
           }
+
+          if (option.key === "status_tecnicos") {
+            const sites = await botGet("/bot/tech-status/sites/");
+            if (!sites.length) {
+              sessions.delete(jid);
+              await sock.sendMessage(jid, { text: "Não encontrei nenhum site com técnico ativo vinculado no momento." });
+              continue;
+            }
+            sessions.set(jid, { state: "select_status_site", sites });
+            const list = sites.map((s, i) => `${i + 1}️⃣ ${s.name}`).join("\n");
+            await sock.sendMessage(jid, {
+              text: `De qual site você quer ver o status dos técnicos?\n\n0️⃣ Todos os sites\n${list}\n\nDigite o número.`,
+            });
+            continue;
+          }
+        }
+
+        if (session.state === "select_status_site") {
+          sessions.delete(jid);
+          if (text === "0" || text.includes("todos")) {
+            const reply = await fetchTechStatus(null, "todos os sites");
+            await sock.sendMessage(jid, { text: reply });
+            continue;
+          }
+          const index = parseInt(text, 10) - 1;
+          const site = session.sites[index];
+          if (!site) {
+            await sock.sendMessage(jid, { text: "Número inválido. Digite /bot para recomeçar." });
+            continue;
+          }
+          const reply = await fetchTechStatus(site.id, site.name);
+          await sock.sendMessage(jid, { text: reply });
+          continue;
         }
 
         if (session.state === "select_site") {

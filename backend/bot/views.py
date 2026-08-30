@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.operations import build_board_data
 from core.models import Collaborator, Site
 from core.phone_utils import phones_match
 from projects.models import Project, ProjectTask
@@ -186,6 +187,45 @@ class BotSitesView(APIView):
     def get(self, request):
         sites = Site.objects.filter(projects__is_active=True).distinct().order_by("name")
         return Response([{"id": s.id, "name": s.name or s.code or f"Site #{s.id}"} for s in sites])
+
+
+class BotTechStatusSitesView(APIView):
+    """GET /api/bot/tech-status/sites/
+
+    Lista os sites que têm ao menos um técnico ativo vinculado, para o
+    técnico/gestor escolher no fluxo "Status dos Técnicos" do bot."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        sites = Site.objects.filter(collaborators__is_active=True).distinct().order_by("name")
+        return Response([{"id": s.id, "name": s.name or s.code or f"Site #{s.id}"} for s in sites])
+
+
+class BotTechStatusView(APIView):
+    """GET /api/bot/tech-status/?site_id=<id, opcional>
+
+    Usado pelo bot do WhatsApp: status de presença de cada técnico ativo
+    agora — de um site específico, ou de todos (sem 'site_id'). Reaproveita
+    build_board_data (mesma lógica da Central de Operações)."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        site_id = request.query_params.get("site_id") or None
+        board = build_board_data(site_id)
+        technicians = [
+            {
+                "name": t["name"],
+                "site_name": t["site_name"],
+                "status": t["presence_status_display"],
+                "current_task": t["current_tasks"][0]["name"] if t["current_tasks"] else None,
+            }
+            for t in board["technicians"]
+        ]
+        return Response({"technicians": technicians})
 
 
 class BotProjectsView(APIView):
