@@ -1121,7 +1121,7 @@ class TaskExecutionEventApiTests(TestCase):
         self.item_type = ProjectItemType.objects.create(name="Cabo (evento-teste)")
         self.item = ProjectItem.objects.create(project=self.project, item_type=self.item_type, technology="Robust 2F", internal_code="EV-001")
 
-        self.tech_user = User.objects.create_user(username="tecnico1", email="tecnico1@example.com", password="test-password")
+        self.tech_user = User.objects.create_superuser(username="tecnico1", email="tecnico1@example.com", password="test-password")
         person = Person.objects.create(name="Técnico Um", company=self.company, user=self.tech_user)
         self.collaborator = Collaborator.objects.create(person=person)
 
