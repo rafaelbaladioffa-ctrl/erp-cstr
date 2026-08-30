@@ -18,6 +18,7 @@ def make_collaborator(company, name, **kwargs):
 from projects.models import Project, ProjectItem, ProjectTask, RackPosition, WorkBlock
 from scope_import.ai_provider import AIProviderError, OpenRouterProvider
 from scope_import.models import ScopeImport
+from scope_import.services import run_ai_interpretation
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
 
@@ -632,6 +633,14 @@ class ScopeImportApiTests(TestCase):
         self.activity_type = ActivityType.objects.create(name="Lançamento de cabo óptico (scope-teste)")
         self.user = User.objects.create_superuser(username="scope_admin", email="scope@example.com", password="test-password")
         self.client_api.force_authenticate(user=self.user)
+        # Em produção a interpretação roda numa thread separada (ver
+        # api.views._dispatch_interpretation) — numa thread de verdade ela
+        # usaria uma conexão de banco fora da transação do teste e nunca
+        # veria os fixtures criados acima. Substitui por execução síncrona
+        # só pra teste, mantendo a mesma lógica de negócio (run_ai_interpretation).
+        dispatch_patcher = patch("api.views._dispatch_interpretation", side_effect=run_ai_interpretation)
+        self.addCleanup(dispatch_patcher.stop)
+        dispatch_patcher.start()
 
     def _ai_response(self, item_type_name=None, activity_type_name=None):
         return {

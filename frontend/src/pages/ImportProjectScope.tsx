@@ -44,15 +44,50 @@ export default function ImportProjectScope() {
     }
   }
 
+  // A interpretação roda em segundo plano no backend (pode levar minutos
+  // em escopos grandes — o domínio da API fica atrás do Cloudflare, que
+  // corta qualquer requisição individual em ~100s, então a chamada à IA
+  // não pode ficar presa numa única requisição). Enquanto o status for
+  // "processing", consulta o registro a cada poucos segundos até terminar.
+  useEffect(() => {
+    if (!scopeImport || scopeImport.status !== "processing") return;
+    let cancelled = false;
+    const interval = setInterval(() => {
+      scopeImportsApi
+        .get(scopeImport.id)
+        .then((updated) => {
+          if (cancelled || updated.status === "processing") return;
+          applyInterpretationResult(updated);
+          setInterpreting(false);
+        })
+        .catch(() => {
+          // instabilidade passageira de rede — tenta de novo no próximo tick
+        });
+    }, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [scopeImport]);
+
   function handleInterpret() {
     if (!projectId || !rawText.trim()) return;
     setInterpreting(true);
     setError("");
     scopeImportsApi
       .create(projectId, rawText)
-      .then(applyInterpretationResult)
-      .catch((err) => setError(errorMessage(err, "Falha ao interpretar o escopo.")))
-      .finally(() => setInterpreting(false));
+      .then((created) => {
+        if (created.status === "processing") {
+          setScopeImport(created);
+        } else {
+          applyInterpretationResult(created);
+          setInterpreting(false);
+        }
+      })
+      .catch((err) => {
+        setError(errorMessage(err, "Falha ao interpretar o escopo."));
+        setInterpreting(false);
+      });
   }
 
   function handleRetry() {
@@ -61,9 +96,18 @@ export default function ImportProjectScope() {
     setError("");
     scopeImportsApi
       .retry(scopeImport.id)
-      .then(applyInterpretationResult)
-      .catch((err) => setError(errorMessage(err, "Falha ao interpretar o escopo.")))
-      .finally(() => setInterpreting(false));
+      .then((updated) => {
+        if (updated.status === "processing") {
+          setScopeImport(updated);
+        } else {
+          applyInterpretationResult(updated);
+          setInterpreting(false);
+        }
+      })
+      .catch((err) => {
+        setError(errorMessage(err, "Falha ao interpretar o escopo."));
+        setInterpreting(false);
+      });
   }
 
   function handleConfirm() {
@@ -127,7 +171,7 @@ export default function ImportProjectScope() {
             )}
             <button className="btn btn-primary" onClick={handleInterpret} disabled={interpreting || !rawText.trim()}>
               <Icon name="auto_awesome" style={{ fontSize: 15 }} />
-              {interpreting ? "Interpretando com IA... (pode levar até 1 minuto)" : "Interpretar com IA"}
+              {interpreting ? "Interpretando com IA... (pode levar alguns minutos em escopos grandes)" : "Interpretar com IA"}
             </button>
           </div>
         </div>

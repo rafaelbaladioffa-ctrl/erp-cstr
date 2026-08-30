@@ -1,4 +1,5 @@
 import csv
+import threading
 from decimal import Decimal
 
 from django.db import models
@@ -700,10 +701,23 @@ class ProjectItemViewSet(viewsets.ModelViewSet):
         return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
 
 
+def _dispatch_interpretation(scope_import, provider):
+    """Roda a interpretação por IA numa thread separada, fora do ciclo da
+    requisição — extraído numa função própria (em vez de chamar
+    threading.Thread direto no ViewSet) só pra dar um ponto único pra
+    substituir por execução síncrona nos testes (ver api/tests.py)."""
+    threading.Thread(target=run_ai_interpretation, args=(scope_import, provider), daemon=True).start()
+
+
 class ScopeImportViewSet(viewsets.ModelViewSet):
-    """Importação de escopo assistida por IA (Fase 4): `create` já dispara a
-    interpretação (síncrona, não há fila assíncrona nesse projeto — ver
-    scope_import/services.py). `confirm` cria de fato os WorkBlock/
+    """Importação de escopo assistida por IA (Fase 4): `create`/`retry`
+    disparam a interpretação em uma thread em segundo plano e retornam na
+    hora (status PROCESSING) — a chamada à IA pode passar de 1-2 minutos
+    pra escopos grandes, e o domínio da API fica atrás do Cloudflare, que
+    corta qualquer requisição em ~100s independente do timeout configurado
+    no backend. O frontend consulta (`GET /scope-imports/{id}/`) até o
+    status deixar de ser PROCESSING (ver scope_import/services.py pra
+    detalhe da chamada em si). `confirm` cria de fato os WorkBlock/
     ProjectItem/ProjectTask a partir da estrutura revisada pelo usuário."""
 
     queryset = ScopeImport.objects.select_related("project", "requested_by", "reviewed_by").order_by("-created_at")
@@ -719,15 +733,17 @@ class ScopeImportViewSet(viewsets.ModelViewSet):
         return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
 
     def perform_create(self, serializer):
-        scope_import = serializer.save(requested_by=self.request.user)
-        run_ai_interpretation(scope_import, OpenRouterProvider())
+        scope_import = serializer.save(requested_by=self.request.user, status=ScopeImport.STATUS_PROCESSING)
+        _dispatch_interpretation(scope_import, OpenRouterProvider())
 
     @action(detail=True, methods=["post"])
     def retry(self, request, pk=None):
         """Reprocessa o mesmo raw_text (sem duplicar a linha) — útil quando a
         IA falhou por erro de rede/timeout passageiro."""
         scope_import = self.get_object()
-        run_ai_interpretation(scope_import, OpenRouterProvider())
+        scope_import.status = ScopeImport.STATUS_PROCESSING
+        scope_import.save(update_fields=["status", "updated_at"])
+        _dispatch_interpretation(scope_import, OpenRouterProvider())
         return Response(self.get_serializer(scope_import).data)
 
     @action(detail=True, methods=["post"])

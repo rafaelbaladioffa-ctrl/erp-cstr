@@ -82,7 +82,7 @@ class AIProvider(abc.ABC):
 
 
 class OpenRouterProvider(AIProvider):
-    def __init__(self, api_key=None, model=None, timeout=75):
+    def __init__(self, api_key=None, model=None, timeout=180):
         self.api_key = api_key if api_key is not None else settings.OPENROUTER_API_KEY
         self.model = model if model is not None else settings.OPENROUTER_MODEL
         self.timeout = timeout
