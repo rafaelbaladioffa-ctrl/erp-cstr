@@ -85,7 +85,7 @@ export default function ProjectItemFormModal({
     setSaving(true);
     setErrors({});
     try {
-      const payload = { ...values, work_block: values.work_block || null };
+      const payload = { ...values, work_block: (values.work_block as number | null | undefined) || null };
       if (item) {
         await projectItemsApi.update(item.id, payload);
       } else {
