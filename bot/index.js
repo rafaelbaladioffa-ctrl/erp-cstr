@@ -356,11 +356,6 @@ async function start() {
     logger,
     printQRInTerminal: false,
     version,
-    syncFullHistory: false,
-    markOnlineOnConnect: false,
-    connectTimeoutMs: 60000,
-    defaultQueryTimeoutMs: 60000,
-    keepAliveIntervalMs: 20000,
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -375,7 +370,7 @@ async function start() {
       currentSock = null;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log(`Conexão com o WhatsApp fechada (statusCode=${statusCode}, motivo=${lastDisconnect?.error?.message}).`, shouldReconnect ? "Reconectando..." : "Sessão deslogada — apague o volume de auth e escaneie o QR de novo.");
+      console.log("Conexão com o WhatsApp fechada.", shouldReconnect ? "Reconectando..." : "Sessão deslogada — apague o volume de auth e escaneie o QR de novo.");
       if (shouldReconnect) start();
     } else if (connection === "open") {
       console.log("Bot conectado ao WhatsApp com sucesso.");
@@ -496,19 +491,6 @@ async function start() {
     }
   });
 }
-
-// Loga antes de morrer, mas deixa o processo reiniciar limpo (via restart: unless-stopped do Docker) —
-// continuar rodando depois de uncaughtException/unhandledRejection deixa o processo em estado
-// inconsistente (sockets/listeners zumbis do Baileys), o que causava loop de reconexão.
-process.on("unhandledRejection", (err) => {
-  console.error("Promise rejeitada sem tratamento:", err);
-  process.exit(1);
-});
-
-process.on("uncaughtException", (err) => {
-  console.error("Exceção não capturada:", err);
-  process.exit(1);
-});
 
 start().catch((err) => {
   console.error("Falha ao iniciar o bot:", err);
