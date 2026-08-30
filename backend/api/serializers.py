@@ -348,6 +348,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     queue_order = serializers.SerializerMethodField()
 
     class Meta:
+        extra_kwargs = {"work_block": {"read_only": True}}
         model = ProjectTask
         fields = (
             "id",
@@ -375,6 +376,16 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "completion_outcome",
             "quantity_done",
             "notes",
+            "activity_type",
+            "project_item",
+            "work_block",
+            "quantity_planned",
+            "quantity_completed",
+            "unit",
+            "priority",
+            "sequence",
+            "complexity",
+            "instructions",
         )
 
     def get_rack_position_labels(self, obj):
@@ -401,8 +412,9 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
         project = attrs.get("project") or getattr(self.instance, "project", None)
         task = attrs.get("task") if "task" in attrs else getattr(self.instance, "task", None)
         custom_name = attrs.get("custom_name") if "custom_name" in attrs else getattr(self.instance, "custom_name", "")
-        if not task and not (custom_name or "").strip():
-            raise serializers.ValidationError({"custom_name": "Informe uma Tarefa do catálogo ou um nome avulso."})
+        activity_type = attrs.get("activity_type") if "activity_type" in attrs else getattr(self.instance, "activity_type", None)
+        if not task and not (custom_name or "").strip() and not activity_type:
+            raise serializers.ValidationError({"custom_name": "Informe uma Tarefa do catálogo, um nome avulso, ou um Tipo de Atividade."})
         if rack_positions:
             invalid = [rp for rp in rack_positions if rp.project_id != project.pk]
             if invalid:
