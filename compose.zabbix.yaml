@@ -69,12 +69,11 @@ services:
       # volta, mesmo o ICMP funcionando); indo o agente até o server, que já
       # publica a porta 10051 pro host, funciona sem esse problema.
       #
-      # ZBX_SERVER_HOST tem um default embutido na imagem ("zabbix-server")
-      # que o entrypoint SEMPRE prepend na lista de ZBX_ACTIVESERVERS quando
-      # não está vazio — sem sobrescrever aqui também, o agente tentava
-      # "zabbix-server" (não resolve fora da rede bridge) antes do 127.0.0.1.
+      # Só ZBX_SERVER_HOST é suficiente — o entrypoint usa esse valor como
+      # base tanto pro Server (passive) quanto pro ServerActive quando
+      # ZBX_ACTIVESERVERS não está setado; definir os dois causava duplicata
+      # ("127.0.0.1" especificado duas vezes) e o agente recusava subir.
       ZBX_SERVER_HOST: 127.0.0.1
-      ZBX_ACTIVESERVERS: 127.0.0.1
     depends_on:
       - zabbix-server
 
