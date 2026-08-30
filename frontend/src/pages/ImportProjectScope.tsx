@@ -127,7 +127,7 @@ export default function ImportProjectScope() {
             )}
             <button className="btn btn-primary" onClick={handleInterpret} disabled={interpreting || !rawText.trim()}>
               <Icon name="auto_awesome" style={{ fontSize: 15 }} />
-              {interpreting ? "Interpretando com IA... (pode levar até 30s)" : "Interpretar com IA"}
+              {interpreting ? "Interpretando com IA... (pode levar até 1 minuto)" : "Interpretar com IA"}
             </button>
           </div>
         </div>
