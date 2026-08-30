@@ -8,6 +8,7 @@ import AuditLog from "./pages/AuditLog";
 import CadastrosPage from "./pages/cadastros/CadastrosPage";
 import Dashboard from "./pages/Dashboard";
 import DailyUpdates from "./pages/DailyUpdates";
+import ImportProjectScope from "./pages/ImportProjectScope";
 import Login from "./pages/Login";
 import MyTasks from "./pages/MyTasks";
 import OperationsBoard from "./pages/OperationsBoard";
@@ -103,6 +104,14 @@ export default function App() {
             element={
               <RequirePermission permission={PERMS.viewProject}>
                 <ProjectDetail />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/projetos/:id/importar-escopo"
+            element={
+              <RequirePermission permission={PERMS.addScopeImport}>
+                <ImportProjectScope />
               </RequirePermission>
             }
           />

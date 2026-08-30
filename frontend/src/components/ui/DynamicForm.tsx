@@ -57,7 +57,7 @@ export default function DynamicForm({
   );
 }
 
-function renderInput(field: FieldConfig, value: unknown, onChange: (name: string, value: unknown) => void) {
+export function renderInput(field: FieldConfig, value: unknown, onChange: (name: string, value: unknown) => void) {
   switch (field.type) {
     case "textarea":
       return (

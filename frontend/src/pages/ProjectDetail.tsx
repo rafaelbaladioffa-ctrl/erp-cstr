@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   projectAttachmentsApi,
   projectItemsApi,
@@ -53,6 +53,7 @@ const SEVERITY_TONE: Record<string, { bg: string; color: string }> = {
 
 export default function ProjectDetail() {
   const { id } = useParams();
+  const location = useLocation();
   const { user } = useAuth();
   const projectId = Number(id);
 
@@ -61,7 +62,9 @@ export default function ProjectDetail() {
   const [rackPositions, setRackPositions] = useState<RackPosition[]>([]);
   const [collaborators, setCollaborators] = useState<CollaboratorFull[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<DetailTab>("tasks");
+  const [activeTab, setActiveTab] = useState<DetailTab>(
+    (location.state as { tab?: DetailTab } | null)?.tab ?? "tasks"
+  );
   const [tasksOpen, setTasksOpen] = useState(false);
   const [descriptionOpen, setDescriptionOpen] = useState(false);
 
@@ -112,6 +115,7 @@ export default function ProjectDetail() {
   const canChangeTask = hasPerm(user, PERMS.changeProjectTask);
   const canDeleteTask = hasPerm(user, PERMS.deleteProjectTask);
   const canAddWorkBlock = hasPerm(user, PERMS.addWorkBlock);
+  const canImportScope = hasPerm(user, PERMS.addScopeImport);
   const canAddOccurrence = hasPerm(user, PERMS.addProjectOccurrence);
   const canChangeOccurrence = hasPerm(user, PERMS.changeProjectOccurrence);
   const canDeleteOccurrence = hasPerm(user, PERMS.deleteProjectOccurrence);
@@ -947,12 +951,20 @@ export default function ProjectDetail() {
             <>
               <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
                 <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>Planejado x Executado</h2>
-                {canAddWorkBlock && (
-                  <button className="btn btn-primary btn-sm" onClick={() => setWorkBlockFormOpen(true)}>
-                    <Icon name="add" style={{ fontSize: 15 }} />
-                    Novo Bloco
-                  </button>
-                )}
+                <div className="section-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {canImportScope && (
+                    <Link className="btn btn-outline btn-sm" to={`/projetos/${project.id}/importar-escopo`}>
+                      <Icon name="auto_awesome" style={{ fontSize: 15 }} />
+                      Importar Escopo
+                    </Link>
+                  )}
+                  {canAddWorkBlock && (
+                    <button className="btn btn-primary btn-sm" onClick={() => setWorkBlockFormOpen(true)}>
+                      <Icon name="add" style={{ fontSize: 15 }} />
+                      Novo Bloco
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="card" style={{ marginBottom: 20 }}>

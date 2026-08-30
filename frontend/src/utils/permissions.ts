@@ -52,6 +52,8 @@ export const PERMS = {
   deleteProjectItem: "projects.delete_projectitem",
   viewActivityType: "core.view_activitytype",
   viewProjectItemType: "core.view_projectitemtype",
+  viewScopeImport: "scope_import.view_scopeimport",
+  addScopeImport: "scope_import.add_scopeimport",
   viewProjectOccurrence: "projects.view_projectoccurrence",
   addProjectOccurrence: "projects.add_projectoccurrence",
   changeProjectOccurrence: "projects.change_projectoccurrence",

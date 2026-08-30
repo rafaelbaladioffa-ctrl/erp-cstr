@@ -315,6 +315,64 @@ export interface PlanningSummaryRow {
   completed_task_count: number;
 }
 
+export interface ScopeImportTaskDraft {
+  activity_type_id: number | null;
+  activity_type_name: string;
+  activity_type_unmatched: boolean;
+  quantity_planned: number | string | null;
+  unit: string;
+}
+
+export interface ScopeImportItemDraft {
+  internal_code: string;
+  item_type_id: number | null;
+  item_type_name: string;
+  item_type_unmatched: boolean;
+  technology: string;
+  fiber_count: number | null;
+  length_meters: number | string | null;
+  origin: string;
+  destination: string;
+  route: string;
+  priority: string;
+  complexity: string;
+  tasks: ScopeImportTaskDraft[];
+}
+
+export interface ScopeImportBlockDraft {
+  name: string;
+  items: ScopeImportItemDraft[];
+}
+
+export interface ScopeImportPayload {
+  work_blocks: ScopeImportBlockDraft[];
+}
+
+export interface ScopeImport {
+  id: number;
+  project: number;
+  raw_text: string;
+  status: "draft" | "processing" | "ready" | "failed" | "confirmed" | "discarded";
+  status_display: string;
+  ai_provider: string;
+  ai_model: string;
+  ai_raw_response: ScopeImportPayload | null;
+  reviewed_payload: ScopeImportPayload | null;
+  error_message: string;
+  requested_by: number | null;
+  requested_by_name: string;
+  reviewed_by: number | null;
+  reviewed_by_name: string;
+  confirmed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScopeImportConfirmResult {
+  scope_import: ScopeImport;
+  counts: { work_blocks: number; items: number; tasks: number };
+}
+
 export interface TechnicianPresence {
   id: number;
   collaborator: number;

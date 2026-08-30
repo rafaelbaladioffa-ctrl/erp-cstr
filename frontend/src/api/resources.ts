@@ -30,6 +30,9 @@ import type {
   ProjectType,
   RackPosition,
   ResponsibleFull,
+  ScopeImport,
+  ScopeImportConfirmResult,
+  ScopeImportPayload,
   TechnicalPerformanceData,
   TechnicianPresence,
   UserOption,
@@ -76,6 +79,18 @@ export const registryApi = {
 
 export const workBlocksApi = crud<WorkBlock>("/work-blocks");
 export const projectItemsApi = crud<ProjectItem>("/project-items");
+
+export const scopeImportsApi = {
+  list: (projectId: number) =>
+    apiClient.get<Paginated<ScopeImport>>("/scope-imports/", { params: { project: String(projectId) } }).then((r) => r.data),
+  get: (id: number) => apiClient.get<ScopeImport>(`/scope-imports/${id}/`).then((r) => r.data),
+  create: (projectId: number, rawText: string) =>
+    apiClient.post<ScopeImport>("/scope-imports/", { project: projectId, raw_text: rawText }).then((r) => r.data),
+  retry: (id: number) => apiClient.post<ScopeImport>(`/scope-imports/${id}/retry/`).then((r) => r.data),
+  confirm: (id: number, reviewedPayload: ScopeImportPayload) =>
+    apiClient.post<ScopeImportConfirmResult>(`/scope-imports/${id}/confirm/`, { reviewed_payload: reviewedPayload }).then((r) => r.data),
+  discard: (id: number) => apiClient.post<ScopeImport>(`/scope-imports/${id}/discard/`).then((r) => r.data),
+};
 
 export const auditLogApi = {
   list: (params?: Record<string, string>) =>
