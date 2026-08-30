@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
   projectAttachmentsApi,
@@ -44,6 +44,14 @@ import { PERMS, hasPerm } from "../utils/permissions";
 
 type DetailTab = "tasks" | "hours" | "occurrences" | "attachments" | "planning";
 
+const TASK_STATUS_OPTIONS = [
+  { value: "not_started", label: "Não Iniciada" },
+  { value: "in_progress", label: "Em Andamento" },
+  { value: "paused", label: "Pausada" },
+  { value: "completed", label: "Concluída" },
+  { value: "canceled", label: "Cancelada" },
+];
+
 const SEVERITY_TONE: Record<string, { bg: string; color: string }> = {
   low: { bg: "var(--bg)", color: "var(--text-muted)" },
   medium: { bg: "var(--blue-soft)", color: "var(--blue)" },
@@ -78,6 +86,9 @@ export default function ProjectDetail() {
   const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [importingTasks, setImportingTasks] = useState(false);
+  const [taskSearch, setTaskSearch] = useState("");
+  const [taskStatusFilter, setTaskStatusFilter] = useState("");
+  const [taskSortMode, setTaskSortMode] = useState<"default" | "item" | "status">("default");
 
   const [workBlocks, setWorkBlocks] = useState<WorkBlock[]>([]);
   const [items, setItems] = useState<ProjectItem[]>([]);
@@ -368,11 +379,99 @@ export default function ProjectDetail() {
   }
 
   function toggleSelectAll() {
-    setSelectedTaskIds((prev) => (prev.length === tasks.length ? [] : tasks.map((t) => t.id)));
+    setSelectedTaskIds((prev) => (prev.length === filteredTasks.length ? [] : filteredTasks.map((t) => t.id)));
   }
+
+  const filteredTasks = useMemo(() => {
+    const query = taskSearch.trim().toLowerCase();
+    return tasks.filter((t) => {
+      if (taskStatusFilter && t.status !== taskStatusFilter) return false;
+      if (query && !t.task_name.toLowerCase().includes(query)) return false;
+      return true;
+    });
+  }, [tasks, taskSearch, taskStatusFilter]);
+
+  const taskGroups = useMemo(() => {
+    if (taskSortMode === "default") return null;
+    if (taskSortMode === "status") {
+      const order = TASK_STATUS_OPTIONS.map((o) => o.value);
+      return order
+        .map((status) => ({
+          key: status,
+          label: TASK_STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status,
+          tasks: filteredTasks.filter((t) => t.status === status),
+        }))
+        .filter((group) => group.tasks.length > 0);
+    }
+    // "item": uma seção por Item do Projeto (project_item), reunindo as
+    // tarefas geradas pra ele (ex: várias atividades num mesmo item
+    // importado por escopo); tarefas sem item caem num balde único.
+    const byItem = new Map<number, ProjectTask[]>();
+    const withoutItem: ProjectTask[] = [];
+    filteredTasks.forEach((t) => {
+      if (t.project_item == null) {
+        withoutItem.push(t);
+        return;
+      }
+      const list = byItem.get(t.project_item) ?? [];
+      list.push(t);
+      byItem.set(t.project_item, list);
+    });
+    const groups = Array.from(byItem.entries()).map(([itemId, itemTasks]) => {
+      const label = itemTasks[0].task_name.includes(" - ")
+        ? itemTasks[0].task_name.split(" - ").slice(1).join(" - ")
+        : `Item #${itemId}`;
+      return { key: `item-${itemId}`, label, tasks: itemTasks };
+    });
+    groups.sort((a, b) => a.label.localeCompare(b.label));
+    if (withoutItem.length > 0) groups.push({ key: "sem-item", label: "Sem Item", tasks: withoutItem });
+    return groups;
+  }, [filteredTasks, taskSortMode]);
 
   if (loading) return <p style={{ color: "var(--text-muted)" }}>Carregando...</p>;
   if (!project) return <p style={{ color: "var(--text-muted)" }}>Projeto não encontrado.</p>;
+
+  const taskColumnCount = 3 + (canChangeTask || canDeleteTask ? 2 : 0) + (project.has_rack_positions ? 1 : 0);
+
+  function renderTaskRow(task: ProjectTask) {
+    return (
+      <tr key={task.id}>
+        {(canChangeTask || canDeleteTask) && (
+          <td>
+            <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />
+          </td>
+        )}
+        <td>{task.task_name}</td>
+        {project!.has_rack_positions && <td>{task.rack_position_labels.join(", ") || "—"}</td>}
+        <td>
+          <StatusBadge status={task.status} label={task.status_display} />
+        </td>
+        <td>{task.collaborators.map((c) => c.name).join(", ") || "—"}</td>
+        {(canChangeTask || canDeleteTask) && (
+          <td>
+            <div style={{ display: "flex", gap: 8 }}>
+              {canChangeTask && (
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => {
+                    setEditingTask(task);
+                    setTaskFormOpen(true);
+                  }}
+                >
+                  <Icon name="edit" style={{ fontSize: 14 }} />
+                </button>
+              )}
+              {canDeleteTask && (
+                <button className="btn btn-outline btn-sm" onClick={() => handleDeleteTask(task)} style={{ color: "var(--red)" }}>
+                  <Icon name="delete" style={{ fontSize: 14 }} />
+                </button>
+              )}
+            </div>
+          </td>
+        )}
+      </tr>
+    );
+  }
 
   return (
     <div>
@@ -626,6 +725,40 @@ export default function ProjectDetail() {
                 />
               )}
 
+              <div className="filter-row" style={{ marginBottom: 12 }}>
+                <div className="field-group" style={{ flex: 1, minWidth: 220 }}>
+                  <span className="field-label">Buscar</span>
+                  <div className="search-input-wrap">
+                    <Icon name="search" />
+                    <input
+                      className="input"
+                      placeholder="Buscar por nome da tarefa..."
+                      value={taskSearch}
+                      onChange={(e) => setTaskSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="field-group">
+                  <span className="field-label">Status</span>
+                  <select className="select" value={taskStatusFilter} onChange={(e) => setTaskStatusFilter(e.target.value)}>
+                    <option value="">Todos</option>
+                    {TASK_STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field-group">
+                  <span className="field-label">Organizar por</span>
+                  <select className="select" value={taskSortMode} onChange={(e) => setTaskSortMode(e.target.value as typeof taskSortMode)}>
+                    <option value="default">Padrão</option>
+                    <option value="item">Agrupar por Item</option>
+                    <option value="status">Agrupar por Status</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="card">
                 <div className="table-wrap">
                   <table className="table">
@@ -633,7 +766,7 @@ export default function ProjectDetail() {
                       <tr>
                         {(canChangeTask || canDeleteTask) && (
                           <th style={{ width: 32 }}>
-                            <input type="checkbox" checked={tasks.length > 0 && selectedTaskIds.length === tasks.length} onChange={toggleSelectAll} />
+                            <input type="checkbox" checked={filteredTasks.length > 0 && selectedTaskIds.length === filteredTasks.length} onChange={toggleSelectAll} />
                           </th>
                         )}
                         <th>Tarefa</th>
@@ -644,54 +777,31 @@ export default function ProjectDetail() {
                       </tr>
                     </thead>
                     <tbody>
-                  {tasks.map((task) => (
-                    <tr key={task.id}>
-                      {(canChangeTask || canDeleteTask) && (
-                        <td>
-                          <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />
-                        </td>
+                      {taskGroups
+                        ? taskGroups.map((group) => (
+                            <Fragment key={group.key}>
+                              <tr>
+                                <td colSpan={taskColumnCount} style={{ background: "var(--bg)", fontWeight: 700, fontSize: 12.5 }}>
+                                  {group.label} <span style={{ fontWeight: 500, color: "var(--text-faint)" }}>({group.tasks.length})</span>
+                                </td>
+                              </tr>
+                              {group.tasks.map(renderTaskRow)}
+                            </Fragment>
+                          ))
+                        : filteredTasks.map(renderTaskRow)}
+                      {filteredTasks.length === 0 && (
+                        <tr>
+                          <td colSpan={taskColumnCount}>
+                            <div className="table-empty">
+                              {tasks.length === 0 ? "Nenhuma tarefa cadastrada." : "Nenhuma tarefa encontrada com esse filtro."}
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                      <td>{task.task_name}</td>
-                      {project.has_rack_positions && <td>{task.rack_position_labels.join(", ") || "—"}</td>}
-                      <td>
-                        <StatusBadge status={task.status} label={task.status_display} />
-                      </td>
-                      <td>{task.collaborators.map((c) => c.name).join(", ") || "—"}</td>
-                      {(canChangeTask || canDeleteTask) && (
-                        <td>
-                          <div style={{ display: "flex", gap: 8 }}>
-                            {canChangeTask && (
-                              <button
-                                className="btn btn-outline btn-sm"
-                                onClick={() => {
-                                  setEditingTask(task);
-                                  setTaskFormOpen(true);
-                                }}
-                              >
-                                <Icon name="edit" style={{ fontSize: 14 }} />
-                              </button>
-                            )}
-                            {canDeleteTask && (
-                              <button className="btn btn-outline btn-sm" onClick={() => handleDeleteTask(task)} style={{ color: "var(--red)" }}>
-                                <Icon name="delete" style={{ fontSize: 14 }} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                  {tasks.length === 0 && (
-                    <tr>
-                      <td colSpan={project.has_rack_positions ? 6 : 5}>
-                        <div className="table-empty">Nenhuma tarefa cadastrada.</div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </>
           )}
         </>
