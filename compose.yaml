@@ -52,8 +52,9 @@ services:
       context: .
       dockerfile: docker/whatsapp-bot/Dockerfile
     restart: unless-stopped
+    network_mode: host
     environment:
-      BOT_API_URL: ${BOT_API_URL:-http://backend:8000/api}
+      BOT_API_URL: ${BOT_API_URL:-http://localhost:8000/api}
       BOT_API_SECRET: ${WHATSAPP_BOT_SECRET:-}
     volumes:
       - whatsapp_auth:/app/auth_info
