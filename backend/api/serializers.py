@@ -348,15 +348,18 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     queue_order = serializers.SerializerMethodField()
 
     class Meta:
-        # activity_type/project_item são opcionais no modelo (null=True,
-        # blank=True) — sem isso, o DRF marca os dois como obrigatórios
-        # sozinho por causa do UniqueConstraint condicional entre eles
-        # (unique_activity_per_item), que ele não sabe tratar como opcional.
-        extra_kwargs = {
-            "work_block": {"read_only": True},
-            "activity_type": {"required": False},
-            "project_item": {"required": False},
-        }
+        # Sem isso, o DRF gera sozinho um UniqueTogetherValidator pro
+        # UniqueConstraint condicional unique_activity_per_item
+        # (project_item + activity_type) e força os dois campos a virarem
+        # obrigatórios no serializer — mesmo os dois sendo opcionais no
+        # modelo (null=True, blank=True), e mesmo passando required=False
+        # via extra_kwargs (o validador automático sobrepõe isso). A
+        # constraint em si continua garantida pelo banco; só o validador
+        # automático de "campo obrigatório pra checar unicidade" é que
+        # não faz sentido aqui, já que a maioria das tarefas nem usa esse
+        # par de campos (caminho antigo: task/custom_name).
+        validators = []
+        extra_kwargs = {"work_block": {"read_only": True}}
         model = ProjectTask
         fields = (
             "id",
