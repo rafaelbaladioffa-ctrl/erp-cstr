@@ -15,7 +15,8 @@ from core.models import ActivityType, Category, Client, Collaborator, Company, P
 def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
-from projects.models import Project, ProjectItem, ProjectTask, RackPosition, WorkBlock
+from projects.models import Project, ProjectItem, ProjectTask, RackPosition, TaskDependency, TaskExecutionEvent, WorkBlock
+from projects.analytics import build_activity_productivity
 from scope_import.ai_provider import AIProviderError, OpenRouterProvider
 from scope_import.models import ScopeImport
 from scope_import.services import run_ai_interpretation
@@ -1105,3 +1106,114 @@ class ClientUserAccessScopeApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         names = {row["name"] for row in response.data["results"]}
         self.assertEqual(names, {"Projeto A1"})
+
+
+class TaskExecutionEventApiTests(TestCase):
+    """Fase 5: instrumentação de TaskExecutionEvent (STARTED/COMPLETED via
+    Minhas Tarefas, DISPATCHED via despacho) e as métricas/pool que
+    dependem dela."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(company=self.company, name="Projeto Execução", status=Project.STATUS_IN_PROGRESS)
+        self.activity_type = ActivityType.objects.create(name="Lançamento (evento-teste)")
+        self.item_type = ProjectItemType.objects.create(name="Cabo (evento-teste)")
+        self.item = ProjectItem.objects.create(project=self.project, item_type=self.item_type, technology="Robust 2F", internal_code="EV-001")
+
+        self.tech_user = User.objects.create_user(username="tecnico1", email="tecnico1@example.com", password="test-password")
+        person = Person.objects.create(name="Técnico Um", company=self.company, user=self.tech_user)
+        self.collaborator = Collaborator.objects.create(person=person)
+
+        self.admin = User.objects.create_superuser(username="event_admin", email="event_admin@example.com", password="test-password")
+
+    def _create_task(self, **extra):
+        task = ProjectTask.objects.create(
+            project=self.project, activity_type=self.activity_type, project_item=self.item,
+            quantity_planned="20", unit="m", order=1, **extra,
+        )
+        task.collaborators.set([self.collaborator])
+        return task
+
+    def test_transition_to_in_progress_creates_started_event(self):
+        task = self._create_task()
+        self.client_api.force_authenticate(user=self.tech_user)
+
+        response = self.client_api.patch(
+            f"/api/my-tasks/{task.pk}/", {"status": ProjectTask.STATUS_IN_PROGRESS, "actual_start": timezone.now().isoformat()}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        events = list(TaskExecutionEvent.objects.filter(project_task=task))
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].event_type, TaskExecutionEvent.EVENT_STARTED)
+        self.assertEqual(events[0].collaborator_id, self.collaborator.pk)
+
+    def test_transition_to_completed_records_quantity_delta(self):
+        task = self._create_task(status=ProjectTask.STATUS_IN_PROGRESS, actual_start=timezone.now(), quantity_completed="5")
+        self.client_api.force_authenticate(user=self.tech_user)
+
+        response = self.client_api.patch(
+            f"/api/my-tasks/{task.pk}/",
+            {"status": ProjectTask.STATUS_COMPLETED, "actual_end": timezone.now().isoformat(), "quantity_completed": "20"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        event = TaskExecutionEvent.objects.get(project_task=task, event_type=TaskExecutionEvent.EVENT_COMPLETED)
+        self.assertEqual(str(event.quantity_delta), "15.00")
+
+    def test_no_event_when_status_unchanged(self):
+        task = self._create_task(status=ProjectTask.STATUS_IN_PROGRESS, actual_start=timezone.now())
+        self.client_api.force_authenticate(user=self.tech_user)
+
+        response = self.client_api.patch(f"/api/my-tasks/{task.pk}/", {"notes": "só uma observação"}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(TaskExecutionEvent.objects.filter(project_task=task).count(), 0)
+
+    def test_dispatch_creates_dispatched_event(self):
+        task = ProjectTask.objects.create(project=self.project, custom_name="Tarefa avulsa", order=1)
+        self.client_api.force_authenticate(user=self.admin)
+
+        response = self.client_api.post(f"/api/project-tasks/{task.pk}/dispatch/", {"collaborator_ids": [self.collaborator.pk]}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        event = TaskExecutionEvent.objects.get(project_task=task, event_type=TaskExecutionEvent.EVENT_DISPATCHED)
+        self.assertEqual(event.collaborator_id, self.collaborator.pk)
+
+    def test_build_activity_productivity_aggregates_by_activity_and_technology(self):
+        ProjectTask.objects.create(
+            project=self.project, activity_type=self.activity_type, project_item=self.item,
+            status=ProjectTask.STATUS_COMPLETED, quantity_completed="10", actual_hours="2", order=2,
+        )
+        other_item = ProjectItem.objects.create(project=self.project, item_type=self.item_type, technology="Robust 2F", internal_code="EV-002")
+        ProjectTask.objects.create(
+            project=self.project, activity_type=self.activity_type, project_item=other_item,
+            status=ProjectTask.STATUS_COMPLETED, quantity_completed="10", actual_hours="4", order=3,
+        )
+
+        data = build_activity_productivity()
+
+        row = next(r for r in data["rows"] if r["activity_type_id"] == self.activity_type.pk)
+        self.assertEqual(row["sample_count"], 2)
+        self.assertEqual(row["total_quantity"], "20.00")
+        self.assertEqual(row["avg_hours_per_unit"], 0.3)  # (2+4)h / 20 unidades
+
+    def test_pool_marks_blocked_by_pending_dependency(self):
+        blocking_task = self._create_task(status=ProjectTask.STATUS_NOT_STARTED)
+        # Dependência exige o mesmo project_item — precisa de um segundo
+        # activity_type, já que (project_item, activity_type) é único.
+        second_activity_type = ActivityType.objects.create(name="Certificação (evento-teste)")
+        blocked_task = ProjectTask.objects.create(
+            project=self.project, activity_type=second_activity_type, project_item=self.item,
+            order=4, planned_start=timezone.now(),
+        )
+        TaskDependency.objects.create(task=blocked_task, depends_on=blocking_task)
+
+        self.client_api.force_authenticate(user=self.admin)
+        response = self.client_api.get("/api/operations/board/", {"site": "all"})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        pool_row = next(row for row in response.data["pool"] if row["id"] == blocked_task.pk)
+        self.assertEqual([b["task_id"] for b in pool_row["blocked_by"]], [blocking_task.pk])

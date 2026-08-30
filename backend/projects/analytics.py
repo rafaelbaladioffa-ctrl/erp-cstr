@@ -6,6 +6,7 @@ executados etc.) — mantida lá para não duplicar o texto.
 """
 
 from datetime import date
+from decimal import Decimal
 
 from django.utils import timezone
 
@@ -155,3 +156,59 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
     }
 
     return {"summary": summary, "collaborators": rows}
+
+
+def build_activity_productivity(*, activity_type_id=None, technology=None):
+    """Agrega horas realizadas por unidade concluída, dimensionado por Tipo
+    de Atividade + Tecnologia do Item + Complexidade — insumo pra medir
+    produtividade real (Fase 5) e, no futuro, prever prazo de projeto a
+    partir do escopo. Usa `actual_hours / quantity_completed` como proxy
+    enquanto o volume de TaskExecutionEvent ainda é baixo; migrar pra
+    `productive_seconds` normalizado quando houver histórico suficiente."""
+    queryset = (
+        ProjectTask.objects.filter(
+            status=ProjectTask.STATUS_COMPLETED,
+            activity_type__isnull=False,
+            quantity_completed__isnull=False,
+            actual_hours__isnull=False,
+        )
+        .exclude(quantity_completed=0)
+        .select_related("activity_type", "project_item")
+    )
+    if activity_type_id:
+        queryset = queryset.filter(activity_type_id=activity_type_id)
+    if technology:
+        queryset = queryset.filter(project_item__technology__iexact=technology)
+
+    groups = {}
+    for task in queryset:
+        technology_value = task.project_item.technology if task.project_item_id else ""
+        key = (task.activity_type_id, technology_value.strip().casefold(), task.complexity)
+        group = groups.get(key)
+        if group is None:
+            group = {
+                "activity_type_id": task.activity_type_id,
+                "activity_type_name": task.activity_type.name,
+                "technology": technology_value,
+                "complexity": task.complexity,
+                "complexity_display": task.get_complexity_display() if task.complexity else "",
+                "sample_count": 0,
+                "total_hours": 0.0,
+                "total_quantity": Decimal("0"),
+            }
+            groups[key] = group
+        group["sample_count"] += 1
+        group["total_hours"] += float(task.actual_hours)
+        group["total_quantity"] += task.quantity_completed
+
+    rows = []
+    for group in groups.values():
+        total_quantity = group.pop("total_quantity")
+        total_hours = group.pop("total_hours")
+        group["avg_hours_per_unit"] = round(total_hours / float(total_quantity), 3) if total_quantity else 0
+        group["total_hours"] = round(total_hours, 2)
+        group["total_quantity"] = str(total_quantity)
+        rows.append(group)
+    rows.sort(key=lambda r: (r["activity_type_name"], r["technology"]))
+
+    return {"rows": rows}

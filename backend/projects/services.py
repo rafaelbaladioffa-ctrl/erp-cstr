@@ -4,12 +4,73 @@ CRUD: importar Tarefas do catálogo do Tipo de Projeto, ações em massa sobre
 as Tarefas do Projeto e cadastro em massa de Rack Positions.
 """
 
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from .models import Project, ProjectTask, RackPosition
+from .models import Project, ProjectTask, RackPosition, TaskExecutionEvent
+
+# Mapa (status anterior -> status novo) -> tipo de evento, pras transições
+# que não são só "virou completed/canceled" (essas duas são tratadas à
+# parte em record_task_transition, valem pra qualquer status de origem).
+_EVENT_TYPE_BY_TRANSITION = {
+    (ProjectTask.STATUS_NOT_STARTED, ProjectTask.STATUS_IN_PROGRESS): TaskExecutionEvent.EVENT_STARTED,
+    (ProjectTask.STATUS_PAUSED, ProjectTask.STATUS_IN_PROGRESS): TaskExecutionEvent.EVENT_RESUMED,
+    (ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED): TaskExecutionEvent.EVENT_PAUSED,
+    (ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_NOT_STARTED): TaskExecutionEvent.EVENT_REOPENED,
+    (ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_IN_PROGRESS): TaskExecutionEvent.EVENT_REOPENED,
+    (ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_PAUSED): TaskExecutionEvent.EVENT_REOPENED,
+}
+
+
+def record_task_transition(task, previous_status, previous_quantity_completed, collaborator=None):
+    """Registra um TaskExecutionEvent pra transição de status que a `task`
+    acabou de sofrer (chamado explicitamente pelo chamador — MyTaskViewSet.
+    update — depois do save(), não de dentro de Model.save(), justamente
+    pra ter acesso a quem fez a mudança, coisa que save() não sabe).
+    Silenciosamente não grava nada se `status` não mudou, ou se a transição
+    não é uma das mapeadas (ex: not_started -> canceled direto) — melhor
+    não logar do que logar um tipo de evento errado."""
+    if task.status == previous_status:
+        return
+    if task.status == ProjectTask.STATUS_COMPLETED:
+        event_type = TaskExecutionEvent.EVENT_COMPLETED
+    elif task.status == ProjectTask.STATUS_CANCELED:
+        event_type = TaskExecutionEvent.EVENT_CANCELLED
+    else:
+        event_type = _EVENT_TYPE_BY_TRANSITION.get((previous_status, task.status))
+    if event_type is None:
+        return
+
+    quantity_delta = None
+    current_qty = task.quantity_completed
+    if current_qty is not None or previous_quantity_completed is not None:
+        delta = (current_qty or Decimal("0")) - (previous_quantity_completed or Decimal("0"))
+        if delta != 0:
+            quantity_delta = delta
+
+    # Segundos produtivos só são calculados no evento de conclusão, a
+    # partir do actual_hours que ProjectTask.save() já calcula sozinho —
+    # detalhar produtivo/improdutivo por evento intermediário (pausa,
+    # retomada) é refinamento de fase futura, não bloqueia o valor desta.
+    productive_seconds = None
+    if event_type == TaskExecutionEvent.EVENT_COMPLETED and task.actual_hours is not None:
+        productive_seconds = int(task.actual_hours * 3600)
+
+    TaskExecutionEvent.objects.create(
+        project_task=task,
+        event_type=event_type,
+        collaborator=collaborator,
+        quantity_delta=quantity_delta,
+        productive_seconds=productive_seconds,
+    )
+
+
+def record_dispatch_event(task, collaborator):
+    TaskExecutionEvent.objects.create(project_task=task, event_type=TaskExecutionEvent.EVENT_DISPATCHED, collaborator=collaborator)
 
 
 class BulkActionError(Exception):

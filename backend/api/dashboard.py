@@ -25,7 +25,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from projects.analytics import build_projects_performance, build_technical_performance, parse_date
+from projects.analytics import build_activity_productivity, build_projects_performance, build_technical_performance, parse_date
 
 
 class HasDashboardPermission(IsAuthenticated):
@@ -82,5 +82,23 @@ class TechnicalPerformanceView(APIView):
             company_id=request.query_params.get("company"),
             date_from=parse_date(request.query_params.get("date_from")),
             date_to=parse_date(request.query_params.get("date_to")),
+        )
+        return Response(data)
+
+
+class ActivityProductivityView(APIView):
+    """GET /api/dashboard/activity-productivity/
+
+    Produtividade real (horas por unidade concluída) por Tipo de Atividade
+    + Tecnologia do Item + Complexidade — insumo pra medir o que hoje não é
+    medido (Fase 5) e, no futuro, prever prazo de projeto a partir do
+    escopo. Filtros opcionais: activity_type, technology."""
+
+    permission_classes = [ProjectsPerformancePermission]
+
+    def get(self, request):
+        data = build_activity_productivity(
+            activity_type_id=request.query_params.get("activity_type"),
+            technology=request.query_params.get("technology"),
         )
         return Response(data)

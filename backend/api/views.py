@@ -55,6 +55,8 @@ from projects.services import (
     create_rack_positions_bulk,
     create_task_instances,
     import_tasks_from_project_type,
+    record_dispatch_event,
+    record_task_transition,
 )
 from scope_import.ai_provider import OpenRouterProvider
 from scope_import.models import ScopeImport
@@ -651,6 +653,7 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
                 collaborator=collaborator,
                 defaults={"dispatched_by": request.user, "queue_order": next_order},
             )
+            record_dispatch_event(task, collaborator)
 
         # `task` veio de self.get_object(), que já tinha prefetch_related("collaborators")
         # rodado (vazio, antes do despacho acima) — refresh_from_db() limpa esse cache
@@ -1193,8 +1196,13 @@ class MyTaskViewSet(
         return self.queryset.filter(collaborators=collaborator).order_by("planned_start", "order", "id")
 
     def update(self, request, *args, **kwargs):
+        before = self.get_object()
+        previous_status, previous_quantity_completed = before.status, before.quantity_completed
         response = super().update(request, *args, **kwargs)
         instance = self.get_object()
+        record_task_transition(
+            instance, previous_status, previous_quantity_completed, get_collaborator_role(request.user)
+        )
         self._sync_presence_with_task(request, instance)
         response.data = ProjectTaskSerializer(instance, context=self.get_serializer_context()).data
         return response

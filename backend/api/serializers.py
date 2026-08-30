@@ -639,6 +639,7 @@ class MyTaskUpdateSerializer(serializers.ModelSerializer):
             "actual_hours",
             "completion_outcome",
             "quantity_done",
+            "quantity_completed",
             "notes",
         )
 
