@@ -57,8 +57,8 @@ export default function TasksBulkUpdatePanel({
         action: "update",
         task_ids: selectedIds,
         status: status || undefined,
-        planned_start: plannedStart || undefined,
-        planned_end: plannedEnd || undefined,
+        planned_start: plannedStart ? `${plannedStart}T00:00` : undefined,
+        planned_end: plannedEnd ? `${plannedEnd}T00:00` : undefined,
         estimated_hours: estimatedHours || undefined,
         collaborator_ids: collaboratorIds,
         rack_position_ids: rackPositionIds,
@@ -116,11 +116,11 @@ export default function TasksBulkUpdatePanel({
         </div>
         <div className="field-group">
           <span className="field-label">Início</span>
-          <input type="datetime-local" className="input" value={plannedStart} onChange={(e) => setPlannedStart(e.target.value)} />
+          <input type="date" className="input" value={plannedStart} onChange={(e) => setPlannedStart(e.target.value)} />
         </div>
         <div className="field-group">
           <span className="field-label">Término</span>
-          <input type="datetime-local" className="input" value={plannedEnd} onChange={(e) => setPlannedEnd(e.target.value)} />
+          <input type="date" className="input" value={plannedEnd} onChange={(e) => setPlannedEnd(e.target.value)} />
         </div>
         <div className="field-group">
           <span className="field-label">Horas</span>
