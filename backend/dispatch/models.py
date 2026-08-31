@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
@@ -148,3 +149,37 @@ class CollaboratorPair(TimestampedModel):
             conflicting = conflicting.exclude(pk=self.pk)
         if conflicting.exists():
             raise ValidationError("Um dos técnicos já está em outra dupla ativa.")
+
+
+class TechnicianAbsence(TimestampedModel):
+    """Ausência planejada de um técnico (férias, atestado, folga etc.) —
+    período de datas em que ele não deve aparecer como disponível na
+    Central de Operações, mesmo sem ninguém marcar presença manualmente
+    naquele dia. Separado de TechnicianDailyPresence (que é o check-in do
+    próprio dia, feito pelo técnico) porque uma ausência planejada é
+    cadastrada com antecedência, por um administrador, e cobre um período
+    de dias — não faz sentido criar uma linha de presença por dia."""
+
+    collaborator = models.ForeignKey(Collaborator, verbose_name="técnico", on_delete=models.CASCADE, related_name="absences")
+    date_from = models.DateField("de")
+    date_to = models.DateField("até")
+    reason = models.CharField("motivo", max_length=150, blank=True, help_text="Ex: Férias, Atestado médico, Folga.")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="criado por", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        verbose_name = "Ausência de Técnico"
+        verbose_name_plural = "Ausências de Técnico"
+        ordering = ("-date_from",)
+        constraints = [
+            models.CheckConstraint(check=models.Q(date_to__gte=models.F("date_from")), name="absence_date_to_after_from"),
+        ]
+
+    def __str__(self):
+        return f"{self.collaborator} — {self.date_from:%d/%m/%Y} a {self.date_to:%d/%m/%Y}"
+
+    def clean(self):
+        super().clean()
+        if self.date_from and self.date_to and self.date_to < self.date_from:
+            raise ValidationError({"date_to": "A data final não pode ser anterior à data inicial."})

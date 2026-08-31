@@ -32,6 +32,7 @@ import type {
   SiteFull,
   SiteMapData,
   TaskFull,
+  TechnicianAbsence,
 } from "./types";
 
 function crud<T extends { id: number }>(basePath: string) {
@@ -79,6 +80,20 @@ export const sitesMapApi = {
     apiClient
       .post<{ updated: number; failed: number; skipped_manual: number }>("/registry/sites/regeocode-bulk/", ids ? { ids } : {})
       .then((r) => r.data),
+};
+
+export const technicianAbsencesApi = {
+  list: (collaboratorId?: number) =>
+    apiClient
+      .get<Paginated<TechnicianAbsence>>("/technician-absences/", {
+        params: collaboratorId ? { collaborator: String(collaboratorId) } : undefined,
+      })
+      .then((r) => r.data),
+  create: (payload: { collaborator: number; date_from: string; date_to: string; reason?: string }) =>
+    apiClient.post<TechnicianAbsence>("/technician-absences/", payload).then((r) => r.data),
+  update: (id: number, payload: Partial<Pick<TechnicianAbsence, "date_from" | "date_to" | "reason">>) =>
+    apiClient.patch<TechnicianAbsence>(`/technician-absences/${id}/`, payload).then((r) => r.data),
+  remove: (id: number) => apiClient.delete(`/technician-absences/${id}/`),
 };
 
 export const bulkCreateApi = {

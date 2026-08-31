@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.models import Collaborator
-from dispatch.models import CollaboratorPair, TechnicianDailyPresence, TechnicianStatusEvent
+from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import ProjectTask, ProjectTaskAssignment
 
 
@@ -122,19 +122,29 @@ def build_board_data(site_id):
     collaborator_ids = [c.id for c in collaborators_qs]
     status_events_by_collaborator = _status_events_data(collaborator_ids, today)
     pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
+    absences_today = {
+        a.collaborator_id: a
+        for a in TechnicianAbsence.objects.filter(
+            collaborator_id__in=collaborator_ids, date_from__lte=today, date_to__gte=today
+        )
+    }
 
     technicians = []
     for collaborator in collaborators_qs:
         presence = presences.get(collaborator.id)
+        absence = absences_today.get(collaborator.id)
         technicians.append(
             {
                 "id": collaborator.id,
                 "name": collaborator.person.name if collaborator.person_id else str(collaborator),
                 "site_name": _site_label(collaborator),
-                "presence_status": presence.status if presence else TechnicianDailyPresence.STATUS_NOT_STARTED,
+                "presence_status": "on_leave" if absence else (presence.status if presence else TechnicianDailyPresence.STATUS_NOT_STARTED),
                 "presence_status_display": (
-                    presence.get_status_display() if presence else "Indisponível"
+                    (absence.reason or "Férias / Ausência") if absence
+                    else presence.get_status_display() if presence else "Indisponível"
                 ),
+                "on_leave": absence is not None,
+                "leave_until": absence.date_to if absence else None,
                 "checked_in_at": presence.checked_in_at if presence else None,
                 "checked_out_at": presence.checked_out_at if presence else None,
                 "current_tasks": _current_tasks_data(collaborator),

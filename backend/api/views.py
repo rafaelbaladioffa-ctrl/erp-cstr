@@ -31,7 +31,7 @@ from core.models import (
     Task,
     get_collaborator_role,
 )
-from dispatch.models import CollaboratorPair, TechnicianDailyPresence, TechnicianStatusEvent
+from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -77,6 +77,7 @@ from .serializers import (
     SiteCrudSerializer,
     SiteSerializer,
     TaskCrudSerializer,
+    TechnicianAbsenceSerializer,
     TechnicianDailyPresenceSerializer,
 )
 
@@ -1140,6 +1141,28 @@ class TechnicianPresenceViewSet(viewsets.GenericViewSet):
             collaborator=presence.collaborator, date=presence.date, status=status_value, changed_at=now
         )
         return Response(TechnicianDailyPresenceSerializer(presence).data)
+
+
+class TechnicianAbsenceViewSet(viewsets.ModelViewSet):
+    """Ausências planejadas (férias, atestado, folga) cadastradas por um
+    administrador — ver dispatch.models.TechnicianAbsence. Diferente de
+    TechnicianPresenceViewSet (self-service, só o dia de hoje, o próprio
+    técnico), aqui quem cadastra é a operação, com antecedência, pra
+    qualquer técnico e período."""
+
+    queryset = TechnicianAbsence.objects.select_related("collaborator__person").order_by("-date_from")
+    serializer_class = TechnicianAbsenceSerializer
+    permission_classes = [ViewAwareModelPermissions]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        collaborator_id = self.request.query_params.get("collaborator")
+        if collaborator_id:
+            queryset = queryset.filter(collaborator_id=collaborator_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
 
 class AuditLogViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

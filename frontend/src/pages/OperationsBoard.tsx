@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsBoard as OperationsBoardData, OperationsBoardTechnician, StatusEvent, TimelineBlock } from "../api/types";
+import TechnicianAbsenceFormModal from "../components/projects/TechnicianAbsenceFormModal";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import {
@@ -56,6 +57,7 @@ export default function OperationsBoard() {
   const [poolOpen, setPoolOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
   const [othersOpen, setOthersOpen] = useState(false);
+  const [absenceTech, setAbsenceTech] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(() => {
     sitesApi.list().then((data) => {
@@ -306,14 +308,14 @@ export default function OperationsBoard() {
                     : busyStatus
                       ? BUSY_COLOR[busyStatus]
                       : PRESENCE_COLOR[tech.presence_status];
-                  const dispatchable = tech.presence_status !== "not_started" && tech.presence_status !== "off_duty";
+                  const dispatchable = !tech.on_leave && tech.presence_status !== "not_started" && tech.presence_status !== "off_duty";
                   const selectable = selectedTask != null && dispatchable;
                   const isSelected = selectedTechs.includes(tech.id);
                   return (
                     <div
                       key={tech.id}
                       className={`ops-tech-row${selectable ? " selectable" : ""}${isSelected ? " selected" : ""}${
-                        tech.presence_status === "off_duty" || tech.presence_status === "not_started" ? " dim" : ""
+                        tech.on_leave || tech.presence_status === "off_duty" || tech.presence_status === "not_started" ? " dim" : ""
                       }`}
                       onClick={() => toggleTech(tech.id, selectable)}
                     >
@@ -354,6 +356,26 @@ export default function OperationsBoard() {
                           </div>
                         )}
                       </div>
+                      <button
+                        type="button"
+                        className="ops-tech-absence-btn"
+                        title="Ausências planejadas (férias, atestado, folga)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAbsenceTech({ id: tech.id, name: tech.name });
+                        }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "var(--text-faint)",
+                          display: "flex",
+                          alignItems: "center",
+                          padding: 4,
+                        }}
+                      >
+                        <Icon name="event_busy" style={{ fontSize: 18 }} />
+                      </button>
                     </div>
                   );
                 });
@@ -677,6 +699,14 @@ export default function OperationsBoard() {
           </div>
           <div className="tod-footer-hint">Clique em uma atividade para ver detalhes completos.</div>
         </>
+      )}
+      {absenceTech && (
+        <TechnicianAbsenceFormModal
+          collaboratorId={absenceTech.id}
+          collaboratorName={absenceTech.name}
+          onClose={() => setAbsenceTech(null)}
+          onSaved={() => siteId != null && loadAll(siteId)}
+        />
       )}
     </div>
   );

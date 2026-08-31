@@ -262,6 +262,17 @@ export interface PairPartner {
   name: string;
 }
 
+export interface TechnicianAbsence {
+  id: number;
+  collaborator: number;
+  collaborator_name: string;
+  date_from: string;
+  date_to: string;
+  reason: string;
+  created_by: number | null;
+  created_at: string;
+}
+
 export interface OperationsBoardCurrentTask {
   id: number;
   name: string;
@@ -289,6 +300,8 @@ export interface OperationsBoardTechnician {
   queue: OperationsBoardQueueItem[];
   status_events: StatusEvent[];
   pair_partner: PairPartner | null;
+  on_leave: boolean;
+  leave_until: string | null;
 }
 
 export interface OperationsBoardAssignee {

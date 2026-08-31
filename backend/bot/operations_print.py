@@ -31,6 +31,7 @@ PRESENCE_COLOR = {
     "site_blocked": "#f87171",
     "awaiting_release": "#f16023",
     "off_duty": "#6c7d97",
+    "on_leave": "#9333ea",
 }
 BUSY_COLOR = {"in_progress": "#fbbf24", "paused": "#f16023"}
 DONE_COLOR = "#5b9bff"

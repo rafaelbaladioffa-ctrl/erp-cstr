@@ -9,6 +9,7 @@ export const PRESENCE_COLOR: Record<string, string> = {
   site_blocked: "var(--red)",
   awaiting_release: "var(--orange)",
   off_duty: "var(--text-faint)",
+  on_leave: "var(--purple)",
 };
 
 export const BUSY_COLOR: Record<string, string> = {

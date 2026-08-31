@@ -20,6 +20,7 @@ router.register("daily-updates", views.DailyUpdateViewSet, basename="daily-updat
 router.register("project-updates", views.ProjectDailyUpdateViewSet, basename="project-update")
 router.register("my-tasks", views.MyTaskViewSet, basename="my-task")
 router.register("technician-presence", views.TechnicianPresenceViewSet, basename="technician-presence")
+router.register("technician-absences", views.TechnicianAbsenceViewSet, basename="technician-absence")
 router.register("audit-logs", views.AuditLogViewSet, basename="audit-log")
 router.register("registry/companies", views.CompanyViewSet, basename="registry-company")
 router.register("registry/categories", views.CategoryViewSet, basename="registry-category")

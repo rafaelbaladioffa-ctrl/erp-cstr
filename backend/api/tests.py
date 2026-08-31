@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import Permission
@@ -15,7 +15,7 @@ from core.models import Category, Client, Collaborator, Company, Person, Project
 def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
-from dispatch.models import CollaboratorPair
+from dispatch.models import CollaboratorPair, TechnicianAbsence
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -861,3 +861,85 @@ class ProjectTaskDispatchApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
+
+
+class TechnicianAbsenceApiTests(TestCase):
+    """CRUD de TechnicianAbsence e o efeito de uma ausência ativa sobre a
+    Central de Operações (build_board_data)."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.collaborator = make_collaborator(self.company, "Técnico Ausente")
+        self.admin = User.objects.create_superuser(username="absence_admin", email="absence_admin@example.com", password="test-password")
+        self.client_api.force_authenticate(user=self.admin)
+
+    def test_create_absence_sets_created_by(self):
+        today = timezone.localdate()
+        response = self.client_api.post(
+            "/api/technician-absences/",
+            {
+                "collaborator": self.collaborator.pk,
+                "date_from": str(today),
+                "date_to": str(today + timedelta(days=5)),
+                "reason": "Férias",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        absence = TechnicianAbsence.objects.get(pk=response.data["id"])
+        self.assertEqual(absence.created_by, self.admin)
+
+    def test_date_to_before_date_from_rejected(self):
+        today = timezone.localdate()
+        response = self.client_api.post(
+            "/api/technician-absences/",
+            {"collaborator": self.collaborator.pk, "date_from": str(today), "date_to": str(today - timedelta(days=1))},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(TechnicianAbsence.objects.exists())
+
+    def test_list_filters_by_collaborator(self):
+        other = make_collaborator(self.company, "Outro Técnico")
+        today = timezone.localdate()
+        TechnicianAbsence.objects.create(collaborator=self.collaborator, date_from=today, date_to=today, created_by=self.admin)
+        TechnicianAbsence.objects.create(collaborator=other, date_from=today, date_to=today, created_by=self.admin)
+
+        response = self.client_api.get(f"/api/technician-absences/?collaborator={self.collaborator.pk}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["collaborator"], self.collaborator.pk)
+
+    def test_board_marks_technician_on_leave(self):
+        today = timezone.localdate()
+        TechnicianAbsence.objects.create(
+            collaborator=self.collaborator, date_from=today, date_to=today, reason="Atestado médico", created_by=self.admin
+        )
+
+        response = self.client_api.get("/api/operations/board/?site=all")
+
+        self.assertEqual(response.status_code, 200)
+        tech = next(t for t in response.data["technicians"] if t["id"] == self.collaborator.pk)
+        self.assertTrue(tech["on_leave"])
+        self.assertEqual(tech["presence_status"], "on_leave")
+        self.assertEqual(tech["presence_status_display"], "Atestado médico")
+
+    def test_board_ignores_absence_outside_range(self):
+        today = timezone.localdate()
+        TechnicianAbsence.objects.create(
+            collaborator=self.collaborator,
+            date_from=today - timedelta(days=10),
+            date_to=today - timedelta(days=5),
+            created_by=self.admin,
+        )
+
+        response = self.client_api.get("/api/operations/board/?site=all")
+
+        self.assertEqual(response.status_code, 200)
+        tech = next(t for t in response.data["technicians"] if t["id"] == self.collaborator.pk)
+        self.assertFalse(tech["on_leave"])
+        self.assertEqual(tech["presence_status"], "not_started")

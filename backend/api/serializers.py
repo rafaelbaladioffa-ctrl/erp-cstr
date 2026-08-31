@@ -17,7 +17,7 @@ from core.models import (
     get_or_create_person,
     update_person,
 )
-from dispatch.models import TechnicianDailyPresence
+from dispatch.models import TechnicianAbsence, TechnicianDailyPresence
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
@@ -556,6 +556,22 @@ class TechnicianDailyPresenceSerializer(serializers.ModelSerializer):
         model = TechnicianDailyPresence
         fields = ("id", "collaborator", "date", "status", "status_display", "checked_in_at", "checked_out_at")
         read_only_fields = ("collaborator", "date", "status", "checked_in_at", "checked_out_at")
+
+
+class TechnicianAbsenceSerializer(serializers.ModelSerializer):
+    collaborator_name = serializers.CharField(source="collaborator.person.name", read_only=True, default="")
+
+    class Meta:
+        model = TechnicianAbsence
+        fields = ("id", "collaborator", "collaborator_name", "date_from", "date_to", "reason", "created_by", "created_at")
+        read_only_fields = ("created_by", "created_at")
+
+    def validate(self, attrs):
+        date_from = attrs.get("date_from", getattr(self.instance, "date_from", None))
+        date_to = attrs.get("date_to", getattr(self.instance, "date_to", None))
+        if date_from and date_to and date_to < date_from:
+            raise serializers.ValidationError({"date_to": "A data final não pode ser anterior à data inicial."})
+        return attrs
 
 
 class DailyUpdateAllocationSerializer(serializers.ModelSerializer):
