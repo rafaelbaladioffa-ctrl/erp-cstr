@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { projectTasksApi, projectsApi, registryApi } from "../../api/resources";
-import type { ActivityType, CollaboratorFull, Project, ProjectItem, ProjectTask, RackPosition, TaskFull } from "../../api/types";
+import type { CollaboratorFull, Project, ProjectTask, RackPosition, TaskFull } from "../../api/types";
 import DynamicForm, { type FieldConfig, type FormValues } from "../ui/DynamicForm";
 import Modal from "../ui/Modal";
 
@@ -19,9 +19,6 @@ export default function ProjectTaskFormModal({
   projectTask,
   existingTasks,
   rackPositions,
-  activityTypes,
-  items,
-  defaultProjectItemId,
   onClose,
   onSaved,
 }: {
@@ -29,20 +26,9 @@ export default function ProjectTaskFormModal({
   projectTask: ProjectTask | null;
   existingTasks: ProjectTask[];
   rackPositions: RackPosition[];
-  /** Presentes só quando aberto a partir da aba Planejamento — habilitam o
-   * modo "Tipo de Atividade + Item" além do modo catálogo de sempre. */
-  activityTypes?: ActivityType[];
-  items?: ProjectItem[];
-  /** Pré-seleciona o item quando aberto a partir do botão "+ Tarefa" de um
-   * item específico na aba Planejamento — força o modo planning também. */
-  defaultProjectItemId?: number;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const supportsPlanningMode = Boolean(activityTypes && items);
-  const [mode, setMode] = useState<"catalog" | "planning">(
-    projectTask?.activity_type || defaultProjectItemId ? "planning" : "catalog"
-  );
   const [catalogTasks, setCatalogTasks] = useState<TaskFull[]>([]);
   const [collaborators, setCollaborators] = useState<CollaboratorFull[]>([]);
   const [loadingRefs, setLoadingRefs] = useState(true);
@@ -56,20 +42,12 @@ export default function ProjectTaskFormModal({
         }
       : {
           task: null,
-          activity_type: null,
-          project_item: defaultProjectItemId ?? items?.[0]?.id ?? null,
           status: "not_started",
           planned_start: null,
           planned_end: null,
           estimated_hours: null,
           collaborator_ids: [],
           rack_positions: [],
-          quantity_planned: null,
-          quantity_completed: null,
-          unit: "",
-          priority: "",
-          complexity: "",
-          instructions: "",
           notes: "",
         }
   );
@@ -149,58 +127,12 @@ export default function ProjectTaskFormModal({
     return base;
   }, [availableCatalogTasks, companyCollaborators, project.has_rack_positions, rackPositions]);
 
-  const planningFields: FieldConfig[] = useMemo(() => {
-    const base: FieldConfig[] = [
-      {
-        name: "activity_type",
-        label: "Tipo de Atividade",
-        type: "select",
-        required: true,
-        options: (activityTypes ?? []).map((a) => ({ value: a.id, label: a.name })),
-      },
-      {
-        name: "project_item",
-        label: "Item do Projeto",
-        type: "select",
-        required: true,
-        options: (items ?? []).map((i) => ({ value: i.id, label: i.internal_code || i.item_type_name || `Item #${i.id}` })),
-      },
-      { name: "status", label: "Status", type: "select", required: true, options: STATUS_OPTIONS },
-      { name: "quantity_planned", label: "Quantidade Planejada", type: "number" },
-      { name: "quantity_completed", label: "Quantidade Concluída", type: "number" },
-      { name: "unit", label: "Unidade", type: "text" },
-      {
-        name: "collaborator_ids",
-        label: "Responsáveis",
-        type: "multiselect",
-        span: 2,
-        options: companyCollaborators.map((c) => ({ value: c.id, label: c.name })),
-      },
-      { name: "instructions", label: "Instruções", type: "textarea", span: 2 },
-      { name: "notes", label: "Observações", type: "textarea", span: 2 },
-    ];
-    return base;
-  }, [activityTypes, items, companyCollaborators]);
-
   async function handleSave() {
     setSaving(true);
     setErrors({});
     try {
       if (projectTask) {
         await projectTasksApi.update(projectTask.id, values);
-      } else if (mode === "planning") {
-        await projectTasksApi.create({
-          project: project.id,
-          activity_type: values.activity_type as number,
-          project_item: values.project_item as number,
-          status: values.status as string,
-          quantity_planned: values.quantity_planned as string | null,
-          quantity_completed: values.quantity_completed as string | null,
-          unit: values.unit as string,
-          instructions: values.instructions as string,
-          notes: values.notes as string,
-          collaborator_ids: (values.collaborator_ids as number[] | undefined) ?? [],
-        });
       } else {
         const rackPositionIds = (values.rack_positions as number[] | undefined) ?? [];
         const result = await projectsApi.createTasks(project.id, {
@@ -238,31 +170,14 @@ export default function ProjectTaskFormModal({
             <p style={{ color: "var(--text-muted)", fontSize: 12.5, marginBottom: 10 }}>
               Tarefa: <strong>{projectTask.task_name}</strong> (não é possível trocar a tarefa após criada)
             </p>
-          ) : (
-            supportsPlanningMode && (
-              <div className="tabs" style={{ marginBottom: 14 }}>
-                <button type="button" className={`tab-btn${mode === "catalog" ? " active" : ""}`} onClick={() => setMode("catalog")}>
-                  Tarefa do Catálogo
-                </button>
-                <button type="button" className={`tab-btn${mode === "planning" ? " active" : ""}`} onClick={() => setMode("planning")}>
-                  Tipo de Atividade + Item
-                </button>
-              </div>
-            )
-          )}
+          ) : null}
           <DynamicForm
-            fields={
-              mode === "planning"
-                ? planningFields
-                : projectTask
-                  ? fields.filter((f) => f.name !== "task")
-                  : fields
-            }
+            fields={projectTask ? fields.filter((f) => f.name !== "task") : fields}
             values={values}
             errors={errors}
             onChange={(name, value) => setValues((prev) => ({ ...prev, [name]: value }))}
           />
-          {!projectTask && mode === "catalog" && project.has_rack_positions && (
+          {!projectTask && project.has_rack_positions && (
             <p style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: -6, marginBottom: 12 }}>
               Selecionar vários Rack Positions cria uma tarefa separada para cada um (não uma tarefa só cobrindo todos).
             </p>

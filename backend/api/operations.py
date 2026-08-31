@@ -152,7 +152,7 @@ def build_board_data(site_id):
         pool_qs = pool_qs.filter(project__site_id=site_id)
     pool = (
         pool_qs.select_related("project", "project__site", "task")
-        .prefetch_related("assignments__collaborator__person", "dependencies__depends_on")
+        .prefetch_related("assignments__collaborator__person")
         .order_by("order", "id")
     )
     pool_data = [
@@ -166,14 +166,6 @@ def build_board_data(site_id):
             "assignees": [
                 {"collaborator_id": a.collaborator_id, "name": a.collaborator.person.name, "queue_order": a.queue_order}
                 for a in t.assignments.all()
-            ],
-            # Dependências (TaskDependency) ainda não concluídas — só
-            # informa, não impede o despacho (o front decide desabilitar
-            # ou só avisar).
-            "blocked_by": [
-                {"task_id": dep.depends_on_id, "name": dep.depends_on.display_name}
-                for dep in t.dependencies.all()
-                if dep.depends_on.status != ProjectTask.STATUS_COMPLETED
             ],
         }
         for t in pool

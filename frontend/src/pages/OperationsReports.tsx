@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { dashboardApi, operationsApi, sitesApi, type Site } from "../api/resources";
-import type { ActivityProductivityRow, OperationsReports } from "../api/types";
+import { operationsApi, sitesApi, type Site } from "../api/resources";
+import type { OperationsReports } from "../api/types";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 
@@ -32,11 +32,9 @@ export default function OperationsReportsPage() {
   const [dateTo, setDateTo] = useState(() => todayISO());
   const [data, setData] = useState<OperationsReports | null>(null);
   const [loading, setLoading] = useState(false);
-  const [productivityRows, setProductivityRows] = useState<ActivityProductivityRow[]>([]);
 
   useEffect(() => {
     sitesApi.list().then((res) => setSites(res.results));
-    dashboardApi.activityProductivity().then((res) => setProductivityRows(res.rows)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -259,44 +257,6 @@ export default function OperationsReportsPage() {
                 </tbody>
               </table>
               {activities.length === 0 && <div className="table-empty">Nenhuma atividade concluída no período.</div>}
-            </div>
-          </div>
-
-          <div className="ops-pool-card" style={{ marginBottom: 16 }}>
-            <div className="ops-card-head">
-              <div className="ops-card-title">Produtividade por Atividade e Tecnologia</div>
-              <div className="ops-card-hint">
-                Horas por unidade concluída — histórico completo (não filtra por período/site). {productivityRows.length} combinação(ões)
-              </div>
-            </div>
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Atividade</th>
-                    <th>Tecnologia</th>
-                    <th>Complexidade</th>
-                    <th>Horas / Unidade</th>
-                    <th>Amostras</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {productivityRows.map((row, idx) => (
-                    <tr key={idx}>
-                      <td style={{ fontWeight: 700 }}>{row.activity_type_name}</td>
-                      <td>{row.technology || "—"}</td>
-                      <td>{row.complexity_display || "—"}</td>
-                      <td>{row.avg_hours_per_unit}h</td>
-                      <td>{row.sample_count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {productivityRows.length === 0 && (
-                <div className="table-empty">
-                  Ainda sem dado suficiente — precisa de tarefas concluídas com quantidade planejada e concluída.
-                </div>
-              )}
             </div>
           </div>
 

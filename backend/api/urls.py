@@ -3,17 +3,13 @@ from rest_framework.routers import DefaultRouter
 
 from . import views
 from .auth_views import ThrottledTokenObtainPairView, ThrottledTokenRefreshView
-from .dashboard import ActivityProductivityView, ProjectsPerformanceView, TechnicalPerformanceView
+from .dashboard import ProjectsPerformanceView, TechnicalPerformanceView
 from .operations import OperationsBoardView, OperationsReportsView, OperationsTimelineView
 
 router = DefaultRouter()
 router.register("projects", views.ProjectViewSet, basename="project")
 router.register("project-tasks", views.ProjectTaskViewSet, basename="project-task")
 router.register("rack-positions", views.RackPositionViewSet, basename="rack-position")
-router.register("work-blocks", views.WorkBlockViewSet, basename="work-block")
-router.register("project-items", views.ProjectItemViewSet, basename="project-item")
-router.register("scope-imports", views.ScopeImportViewSet, basename="scope-import")
-router.register("generation-rules", views.GenerationRuleViewSet, basename="generation-rule")
 router.register("project-occurrences", views.ProjectOccurrenceViewSet, basename="project-occurrence")
 router.register("project-attachments", views.ProjectAttachmentViewSet, basename="project-attachment")
 router.register("notifications", views.NotificationViewSet, basename="notification")
@@ -34,8 +30,6 @@ router.register("registry/clients", views.ClientRegistryViewSet, basename="regis
 router.register("registry/responsibles", views.ResponsibleViewSet, basename="registry-responsible")
 router.register("registry/collaborators", views.CollaboratorRegistryViewSet, basename="registry-collaborator")
 router.register("registry/tasks", views.TaskViewSet, basename="registry-task")
-router.register("registry/activity-types", views.ActivityTypeViewSet, basename="registry-activity-type")
-router.register("registry/project-item-types", views.ProjectItemTypeViewSet, basename="registry-project-item-type")
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),
@@ -46,7 +40,6 @@ urlpatterns = [
     path("search/", views.GlobalSearchView.as_view(), name="global-search"),
     path("dashboard/projects/", ProjectsPerformanceView.as_view(), name="dashboard-projects"),
     path("dashboard/technical/", TechnicalPerformanceView.as_view(), name="dashboard-technical"),
-    path("dashboard/activity-productivity/", ActivityProductivityView.as_view(), name="dashboard-activity-productivity"),
     path("operations/board/", OperationsBoardView.as_view(), name="operations-board"),
     path("operations/timeline/", OperationsTimelineView.as_view(), name="operations-timeline"),
     path("operations/reports/", OperationsReportsView.as_view(), name="operations-reports"),

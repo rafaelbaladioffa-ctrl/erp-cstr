@@ -1,6 +1,4 @@
 import csv
-import threading
-from decimal import Decimal
 
 from django.db import models
 from django.http import FileResponse, HttpResponse
@@ -21,15 +19,12 @@ from core.access_scope import (
 )
 from core.csv_io import MAX_CSV_UPLOAD_BYTES, build_csv_content, import_csv_rows
 from core.models import (
-    ActivityType,
     Category,
     Client,
     Collaborator,
     Company,
-    GenerationRule,
     JobTitle,
     Notification,
-    ProjectItemType,
     ProjectType,
     Responsible,
     Site,
@@ -37,17 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianDailyPresence, TechnicianStatusEvent
-from projects.models import (
-    Project,
-    ProjectAttachment,
-    ProjectItem,
-    ProjectOccurrence,
-    ProjectTask,
-    ProjectTaskAssignment,
-    RackPosition,
-    WorkBlock,
-    merged_worked_hours,
-)
+from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
     add_custom_tasks_to_project,
@@ -55,14 +40,8 @@ from projects.services import (
     apply_bulk_task_update,
     create_rack_positions_bulk,
     create_task_instances,
-    generate_tasks_from_rule,
     import_tasks_from_project_type,
-    record_dispatch_event,
-    record_task_transition,
 )
-from scope_import.ai_provider import OpenRouterProvider
-from scope_import.models import ScopeImport
-from scope_import.services import ScopeImportConfirmError, confirm_scope_import, run_ai_interpretation
 from technical.models import MyTask
 from updates.mail import send_daily_update_emails
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
@@ -72,7 +51,6 @@ from updates.project_pdf import build_project_daily_update_pdf
 
 from .permissions import IsSuperUser, RequireChangePermissionForActions, ViewAwareModelPermissions
 from .serializers import (
-    ActivityTypeCrudSerializer,
     AuditLogSerializer,
     ClientCrudSerializer,
     ClientSerializer,
@@ -87,24 +65,19 @@ from .serializers import (
     ProjectAttachmentSerializer,
     ProjectDailyUpdateCreateSerializer,
     ProjectDailyUpdateSerializer,
-    ProjectItemSerializer,
-    ProjectItemTypeCrudSerializer,
     ProjectOccurrenceSerializer,
     ProjectSerializer,
     ProjectTaskBulkActionSerializer,
     ProjectTaskCreateSerializer,
     ProjectTaskSerializer,
-    GenerationRuleSerializer,
     ProjectTypeCrudSerializer,
     RackPositionBulkCreateSerializer,
     RackPositionSerializer,
     ResponsibleCrudSerializer,
-    ScopeImportSerializer,
     SiteCrudSerializer,
     SiteSerializer,
     TaskCrudSerializer,
     TechnicianDailyPresenceSerializer,
-    WorkBlockSerializer,
 )
 
 
@@ -431,58 +404,6 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
         serializer = RackPositionSerializer(positions, many=True)
         return Response(serializer.data)
 
-    @action(detail=True, methods=["get"], url_path="work-blocks")
-    def work_blocks(self, request, pk=None):
-        project = self.get_object()
-        blocks = project.work_blocks.all().order_by("order", "name")
-        return Response(WorkBlockSerializer(blocks, many=True).data)
-
-    @action(detail=True, methods=["get"])
-    def items(self, request, pk=None):
-        project = self.get_object()
-        items = project.items.select_related("work_block", "item_type").order_by("order", "id")
-        work_block_id = request.query_params.get("work_block")
-        if work_block_id:
-            items = items.filter(work_block_id=work_block_id)
-        return Response(ProjectItemSerializer(items, many=True).data)
-
-    @action(detail=True, methods=["get"], url_path="planning-summary")
-    def planning_summary(self, request, pk=None):
-        """Resumo agregado por (bloco, tipo de atividade): quantidade
-        planejada/concluída e contagem de tarefas — calculado em Python a
-        partir das tarefas já carregadas, mesmo estilo de
-        hours_by_collaborator (sem .annotate()). Alimenta tanto o anel de
-        progresso por bloco quanto a tabela "planejado x executado" por tipo
-        de atividade — o frontend agrupa/soma esse mesmo array das duas
-        formas."""
-        project = self.get_object()
-        tasks = list(project.project_tasks.select_related("work_block", "activity_type"))
-
-        groups: dict[tuple, dict] = {}
-        for task in tasks:
-            key = (task.work_block_id, task.activity_type_id)
-            group = groups.get(key)
-            if group is None:
-                group = {
-                    "work_block_id": task.work_block_id,
-                    "work_block_name": task.work_block.name if task.work_block_id else None,
-                    "activity_type_id": task.activity_type_id,
-                    "activity_type_name": task.activity_type.name if task.activity_type_id else None,
-                    "quantity_planned": Decimal("0"),
-                    "quantity_completed": Decimal("0"),
-                    "task_count": 0,
-                    "completed_task_count": 0,
-                }
-                groups[key] = group
-            group["quantity_planned"] += task.quantity_planned or Decimal("0")
-            group["quantity_completed"] += task.quantity_completed or Decimal("0")
-            group["task_count"] += 1
-            if task.status == ProjectTask.STATUS_COMPLETED:
-                group["completed_task_count"] += 1
-
-        data = sorted(groups.values(), key=lambda g: (g["work_block_name"] or "", g["activity_type_name"] or ""))
-        return Response(data)
-
     @action(detail=True, methods=["post"], url_path="rack-positions/bulk")
     def rack_positions_bulk(self, request, pk=None):
         project = self.get_object()
@@ -576,11 +497,7 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             if invalid:
                 names = ", ".join(rp.position for rp in invalid)
                 return Response({"detail": f"Rack Position(s) que não pertencem a este projeto: {names}."}, status=400)
-        has_input = (
-            data["status"] or data["planned_start"] or data["planned_end"] or data["estimated_hours"] is not None
-            or collaborators or rack_positions or data["work_block"] is not None or data["activity_type"] is not None
-            or data["quantity_planned"] is not None or data["quantity_completed"] is not None
-        )
+        has_input = data["status"] or data["planned_start"] or data["planned_end"] or data["estimated_hours"] is not None or collaborators or rack_positions
         if not has_input:
             return Response({"detail": "Informe ao menos um valor para a atualização em massa."}, status=400)
         updated = apply_bulk_task_update(
@@ -591,10 +508,6 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             estimated_hours=data["estimated_hours"],
             collaborators=collaborators,
             rack_positions=rack_positions,
-            work_block=data["work_block"],
-            activity_type=data["activity_type"],
-            quantity_planned=data["quantity_planned"],
-            quantity_completed=data["quantity_completed"],
         )
         return Response({"updated": updated})
 
@@ -656,7 +569,6 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
                 collaborator=collaborator,
                 defaults={"dispatched_by": request.user, "queue_order": next_order},
             )
-            record_dispatch_event(task, collaborator)
 
         # `task` veio de self.get_object(), que já tinha prefetch_related("collaborators")
         # rodado (vazio, antes do despacho acima) — refresh_from_db() limpa esse cache
@@ -676,122 +588,6 @@ class RackPositionViewSet(viewsets.ModelViewSet):
         if project_id:
             queryset = queryset.filter(project_id=project_id)
         return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
-
-
-class WorkBlockViewSet(viewsets.ModelViewSet):
-    queryset = WorkBlock.objects.select_related("project").order_by("project_id", "order", "name")
-    serializer_class = WorkBlockSerializer
-    permission_classes = [ViewAwareModelPermissions]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        project_id = self.request.query_params.get("project")
-        if project_id:
-            queryset = queryset.filter(project_id=project_id)
-        return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
-
-
-class ProjectItemViewSet(viewsets.ModelViewSet):
-    queryset = ProjectItem.objects.select_related("project", "work_block", "item_type").order_by("project_id", "order", "id")
-    serializer_class = ProjectItemSerializer
-    permission_classes = [ViewAwareModelPermissions]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        project_id = self.request.query_params.get("project")
-        if project_id:
-            queryset = queryset.filter(project_id=project_id)
-        work_block_id = self.request.query_params.get("work_block")
-        if work_block_id:
-            queryset = queryset.filter(work_block_id=work_block_id)
-        return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
-
-    @action(detail=True, methods=["post"], url_path="generate-tasks")
-    def generate_tasks(self, request, pk=None):
-        """Fase 3: gera as tarefas do item a partir da GenerationRule cuja
-        tecnologia bate com a do item. Idempotente — chamar de novo só
-        preenche o que ainda faltar."""
-        item = self.get_object()
-        try:
-            created = generate_tasks_from_rule(item)
-        except BulkActionError as exc:
-            return Response({"detail": str(exc)}, status=400)
-        return Response({"created": created})
-
-
-class GenerationRuleViewSet(viewsets.ModelViewSet):
-    """Fase 3: cadastro das regras de geração (tecnologia -> tipos de
-    atividade em ordem). Não é a RegistryViewSet genérica porque precisa
-    lidar com `steps` aninhado — ver GenerationRuleSerializer."""
-
-    queryset = GenerationRule.objects.prefetch_related("steps__activity_type").order_by("technology")
-    serializer_class = GenerationRuleSerializer
-    permission_classes = [ViewAwareModelPermissions]
-
-
-def _dispatch_interpretation(scope_import, provider):
-    """Roda a interpretação por IA numa thread separada, fora do ciclo da
-    requisição — extraído numa função própria (em vez de chamar
-    threading.Thread direto no ViewSet) só pra dar um ponto único pra
-    substituir por execução síncrona nos testes (ver api/tests.py)."""
-    threading.Thread(target=run_ai_interpretation, args=(scope_import, provider), daemon=True).start()
-
-
-class ScopeImportViewSet(viewsets.ModelViewSet):
-    """Importação de escopo assistida por IA (Fase 4): `create`/`retry`
-    disparam a interpretação em uma thread em segundo plano e retornam na
-    hora (status PROCESSING) — a chamada à IA pode passar de 1-2 minutos
-    pra escopos grandes, e o domínio da API fica atrás do Cloudflare, que
-    corta qualquer requisição em ~100s independente do timeout configurado
-    no backend. O frontend consulta (`GET /scope-imports/{id}/`) até o
-    status deixar de ser PROCESSING (ver scope_import/services.py pra
-    detalhe da chamada em si). `confirm` cria de fato os WorkBlock/
-    ProjectItem/ProjectTask a partir da estrutura revisada pelo usuário."""
-
-    queryset = ScopeImport.objects.select_related("project", "requested_by", "reviewed_by").order_by("-created_at")
-    serializer_class = ScopeImportSerializer
-    permission_classes = [ViewAwareModelPermissions]
-    http_method_names = ["get", "post", "head", "options"]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        project_id = self.request.query_params.get("project")
-        if project_id:
-            queryset = queryset.filter(project_id=project_id)
-        return scope_project_queryset(queryset, self.request.user, field_prefix="project__")
-
-    def perform_create(self, serializer):
-        scope_import = serializer.save(requested_by=self.request.user, status=ScopeImport.STATUS_PROCESSING)
-        _dispatch_interpretation(scope_import, OpenRouterProvider())
-
-    @action(detail=True, methods=["post"])
-    def retry(self, request, pk=None):
-        """Reprocessa o mesmo raw_text (sem duplicar a linha) — útil quando a
-        IA falhou por erro de rede/timeout passageiro."""
-        scope_import = self.get_object()
-        scope_import.status = ScopeImport.STATUS_PROCESSING
-        scope_import.save(update_fields=["status", "updated_at"])
-        _dispatch_interpretation(scope_import, OpenRouterProvider())
-        return Response(self.get_serializer(scope_import).data)
-
-    @action(detail=True, methods=["post"])
-    def confirm(self, request, pk=None):
-        scope_import = self.get_object()
-        if scope_import.status != ScopeImport.STATUS_READY:
-            return Response({"detail": "Só é possível confirmar uma importação com status 'Pronto para revisão'."}, status=400)
-        reviewed_payload = request.data.get("reviewed_payload")
-        try:
-            counts = confirm_scope_import(scope_import, reviewed_payload, request.user)
-        except ScopeImportConfirmError as exc:
-            return Response({"detail": str(exc)}, status=400)
-        return Response({"scope_import": self.get_serializer(scope_import).data, "counts": counts})
-
-    @action(detail=True, methods=["post"])
-    def discard(self, request, pk=None):
-        scope_import = self.get_object()
-        scope_import.status = ScopeImport.STATUS_DISCARDED
-        scope_import.save(update_fields=["status", "updated_at"])
-        return Response(self.get_serializer(scope_import).data)
 
 
 class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -898,18 +694,6 @@ class ProjectTypeViewSet(RegistryViewSet):
             )
             created += int(was_created)
         return Response({"created": created})
-
-
-class ActivityTypeViewSet(RegistryViewSet):
-    queryset = ActivityType.objects.order_by("order", "name")
-    serializer_class = ActivityTypeCrudSerializer
-    search_fields = ("name", "code")
-
-
-class ProjectItemTypeViewSet(RegistryViewSet):
-    queryset = ProjectItemType.objects.order_by("order", "name")
-    serializer_class = ProjectItemTypeCrudSerializer
-    search_fields = ("name",)
 
 
 class JobTitleViewSet(RegistryViewSet):
@@ -1221,13 +1005,8 @@ class MyTaskViewSet(
         return self.queryset.filter(collaborators=collaborator).order_by("planned_start", "order", "id")
 
     def update(self, request, *args, **kwargs):
-        before = self.get_object()
-        previous_status, previous_quantity_completed = before.status, before.quantity_completed
         response = super().update(request, *args, **kwargs)
         instance = self.get_object()
-        record_task_transition(
-            instance, previous_status, previous_quantity_completed, get_collaborator_role(request.user)
-        )
         self._sync_presence_with_task(request, instance)
         response.data = ProjectTaskSerializer(instance, context=self.get_serializer_context()).data
         return response

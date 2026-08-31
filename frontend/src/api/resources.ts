@@ -1,6 +1,5 @@
 import { apiClient } from "./client";
 import type {
-  ActivityType,
   AuditLogEntry,
   Category,
   ClientFull,
@@ -16,15 +15,10 @@ import type {
   OperationsReports,
   OperationsTimeline,
   Paginated,
-  PlanningSummaryRow,
   Project,
   ProjectAttachment,
   ProjectDailyUpdate,
-  ProjectItem,
-  ProjectItemType,
   ProjectOccurrence,
-  ActivityProductivityData,
-  GenerationRule,
   ProjectsPerformanceData,
   ProjectTask,
   ProjectTaskBulkPayload,
@@ -32,16 +26,12 @@ import type {
   ProjectType,
   RackPosition,
   ResponsibleFull,
-  ScopeImport,
-  ScopeImportConfirmResult,
-  ScopeImportPayload,
   TechnicalPerformanceData,
   TechnicianPresence,
   UserOption,
   SiteFull,
   SiteMapData,
   TaskFull,
-  WorkBlock,
 } from "./types";
 
 function crud<T extends { id: number }>(basePath: string) {
@@ -75,29 +65,6 @@ export const registryApi = {
   responsibles: crud<ResponsibleFull>("/registry/responsibles"),
   collaborators: crud<CollaboratorFull>("/registry/collaborators"),
   tasks: crud<TaskFull>("/registry/tasks"),
-  activityTypes: crud<ActivityType>("/registry/activity-types"),
-  projectItemTypes: crud<ProjectItemType>("/registry/project-item-types"),
-};
-
-export const workBlocksApi = crud<WorkBlock>("/work-blocks");
-export const projectItemsApi = {
-  ...crud<ProjectItem>("/project-items"),
-  generateTasks: (id: number) =>
-    apiClient.post<{ created: number }>(`/project-items/${id}/generate-tasks/`).then((r) => r.data),
-};
-
-export const generationRulesApi = crud<GenerationRule>("/generation-rules");
-
-export const scopeImportsApi = {
-  list: (projectId: number) =>
-    apiClient.get<Paginated<ScopeImport>>("/scope-imports/", { params: { project: String(projectId) } }).then((r) => r.data),
-  get: (id: number) => apiClient.get<ScopeImport>(`/scope-imports/${id}/`).then((r) => r.data),
-  create: (projectId: number, rawText: string) =>
-    apiClient.post<ScopeImport>("/scope-imports/", { project: projectId, raw_text: rawText }).then((r) => r.data),
-  retry: (id: number) => apiClient.post<ScopeImport>(`/scope-imports/${id}/retry/`).then((r) => r.data),
-  confirm: (id: number, reviewedPayload: ScopeImportPayload) =>
-    apiClient.post<ScopeImportConfirmResult>(`/scope-imports/${id}/confirm/`, { reviewed_payload: reviewedPayload }).then((r) => r.data),
-  discard: (id: number) => apiClient.post<ScopeImport>(`/scope-imports/${id}/discard/`).then((r) => r.data),
 };
 
 export const auditLogApi = {
@@ -191,13 +158,6 @@ export const projectsApi = {
       .then((r) => r.data),
   hoursByCollaborator: (id: number) =>
     apiClient.get<CollaboratorHours[]>(`/projects/${id}/hours-by-collaborator/`).then((r) => r.data),
-  workBlocks: (id: number) => apiClient.get<WorkBlock[]>(`/projects/${id}/work-blocks/`).then((r) => r.data),
-  items: (id: number, workBlockId?: number) =>
-    apiClient
-      .get<ProjectItem[]>(`/projects/${id}/items/`, { params: workBlockId ? { work_block: String(workBlockId) } : undefined })
-      .then((r) => r.data),
-  planningSummary: (id: number) =>
-    apiClient.get<PlanningSummaryRow[]>(`/projects/${id}/planning-summary/`).then((r) => r.data),
 };
 
 export const rackPositionsApi = {
@@ -255,8 +215,6 @@ export const dashboardApi = {
     apiClient.get<ProjectsPerformanceData>("/dashboard/projects/", { params }).then((r) => r.data),
   technical: (params?: Record<string, string>) =>
     apiClient.get<TechnicalPerformanceData>("/dashboard/technical/", { params }).then((r) => r.data),
-  activityProductivity: (params?: Record<string, string>) =>
-    apiClient.get<ActivityProductivityData>("/dashboard/activity-productivity/", { params }).then((r) => r.data),
 };
 
 export const clientsApi = {

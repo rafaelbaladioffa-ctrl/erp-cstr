@@ -3,16 +3,12 @@ from rest_framework import serializers
 
 from audit.models import AuditLog
 from core.models import (
-    ActivityType,
     Category,
     Client,
     Collaborator,
     Company,
-    GenerationRule,
-    GenerationRuleStep,
     JobTitle,
     Notification,
-    ProjectItemType,
     ProjectType,
     Responsible,
     Site,
@@ -22,17 +18,7 @@ from core.models import (
     update_person,
 )
 from dispatch.models import TechnicianDailyPresence
-from projects.models import (
-    Project,
-    ProjectAttachment,
-    ProjectItem,
-    ProjectOccurrence,
-    ProjectTask,
-    RackPosition,
-    WorkBlock,
-    merged_worked_hours,
-)
-from scope_import.models import ScopeImport
+from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
 
@@ -97,63 +83,6 @@ class ProjectTypeCrudSerializer(serializers.ModelSerializer):
         model = ProjectType
         fields = ("id", "name", "description", "is_active", "created_at", "updated_at")
         read_only_fields = ("created_at", "updated_at")
-
-
-class ActivityTypeCrudSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ActivityType
-        fields = ("id", "name", "code", "description", "default_unit", "is_active", "order", "created_at", "updated_at")
-        read_only_fields = ("created_at", "updated_at")
-
-
-class ProjectItemTypeCrudSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProjectItemType
-        fields = ("id", "name", "description", "is_active", "order", "created_at", "updated_at")
-        read_only_fields = ("created_at", "updated_at")
-
-
-class GenerationRuleStepSerializer(serializers.ModelSerializer):
-    activity_type_name = serializers.CharField(source="activity_type.name", read_only=True)
-
-    class Meta:
-        model = GenerationRuleStep
-        fields = ("id", "activity_type", "activity_type_name", "sequence")
-
-
-class GenerationRuleSerializer(serializers.ModelSerializer):
-    steps = GenerationRuleStepSerializer(many=True)
-
-    class Meta:
-        model = GenerationRule
-        fields = ("id", "technology", "name", "is_active", "steps", "created_at", "updated_at")
-        read_only_fields = ("created_at", "updated_at")
-
-    def create(self, validated_data):
-        steps_data = validated_data.pop("steps", [])
-        rule = GenerationRule.objects.create(**validated_data)
-        self._replace_steps(rule, steps_data)
-        return rule
-
-    def update(self, instance, validated_data):
-        steps_data = validated_data.pop("steps", None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        if steps_data is not None:
-            self._replace_steps(instance, steps_data)
-        return instance
-
-    def _replace_steps(self, rule, steps_data):
-        # Lista pequena (poucas etapas por regra) — substituir tudo a cada
-        # save é mais simples e seguro que fazer diff, mesmo padrão de
-        # "apagar e recriar" já aceito em confirm_scope_import pra listas
-        # pequenas geradas de uma vez.
-        rule.steps.all().delete()
-        GenerationRuleStep.objects.bulk_create(
-            GenerationRuleStep(rule=rule, activity_type=step["activity_type"], sequence=step.get("sequence", index))
-            for index, step in enumerate(steps_data)
-        )
 
 
 class JobTitleCrudSerializer(serializers.ModelSerializer):
@@ -405,47 +334,6 @@ class RackPositionSerializer(serializers.ModelSerializer):
         read_only_fields = ("created_at", "updated_at")
 
 
-class WorkBlockSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = WorkBlock
-        fields = ("id", "project", "name", "code", "description", "order", "created_at", "updated_at")
-        read_only_fields = ("created_at", "updated_at")
-
-
-class ProjectItemSerializer(serializers.ModelSerializer):
-    item_type_name = serializers.CharField(source="item_type.name", read_only=True)
-    work_block_name = serializers.CharField(source="work_block.name", read_only=True, default="")
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
-
-    class Meta:
-        model = ProjectItem
-        fields = (
-            "id", "project", "work_block", "work_block_name", "internal_code", "item_type", "item_type_name",
-            "technology", "fiber_count", "connector_type_a", "connector_type_b", "part_number", "length_meters",
-            "origin", "destination", "route", "priority", "complexity", "metadata", "status", "status_display",
-            "order", "notes", "created_at", "updated_at",
-        )
-        read_only_fields = ("created_at", "updated_at")
-
-
-class ScopeImportSerializer(serializers.ModelSerializer):
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
-    requested_by_name = serializers.CharField(source="requested_by.get_full_name", read_only=True, default="")
-    reviewed_by_name = serializers.CharField(source="reviewed_by.get_full_name", read_only=True, default="")
-
-    class Meta:
-        model = ScopeImport
-        fields = (
-            "id", "project", "raw_text", "status", "status_display", "ai_provider", "ai_model",
-            "ai_raw_response", "reviewed_payload", "error_message", "requested_by", "requested_by_name",
-            "reviewed_by", "reviewed_by_name", "confirmed_at", "created_at", "updated_at",
-        )
-        read_only_fields = (
-            "status", "ai_provider", "ai_model", "ai_raw_response", "reviewed_payload", "error_message",
-            "requested_by", "reviewed_by", "confirmed_at", "created_at", "updated_at",
-        )
-
-
 class ProjectTaskSerializer(serializers.ModelSerializer):
     task_name = serializers.CharField(source="display_name", read_only=True)
     project_name = serializers.CharField(source="project.name", read_only=True)
@@ -460,18 +348,6 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     queue_order = serializers.SerializerMethodField()
 
     class Meta:
-        # Sem isso, o DRF gera sozinho um UniqueTogetherValidator pro
-        # UniqueConstraint condicional unique_activity_per_item
-        # (project_item + activity_type) e força os dois campos a virarem
-        # obrigatórios no serializer — mesmo os dois sendo opcionais no
-        # modelo (null=True, blank=True), e mesmo passando required=False
-        # via extra_kwargs (o validador automático sobrepõe isso). A
-        # constraint em si continua garantida pelo banco; só o validador
-        # automático de "campo obrigatório pra checar unicidade" é que
-        # não faz sentido aqui, já que a maioria das tarefas nem usa esse
-        # par de campos (caminho antigo: task/custom_name).
-        validators = []
-        extra_kwargs = {"work_block": {"read_only": True}}
         model = ProjectTask
         fields = (
             "id",
@@ -499,16 +375,6 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "completion_outcome",
             "quantity_done",
             "notes",
-            "activity_type",
-            "project_item",
-            "work_block",
-            "quantity_planned",
-            "quantity_completed",
-            "unit",
-            "priority",
-            "sequence",
-            "complexity",
-            "instructions",
         )
 
     def get_rack_position_labels(self, obj):
@@ -535,9 +401,8 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
         project = attrs.get("project") or getattr(self.instance, "project", None)
         task = attrs.get("task") if "task" in attrs else getattr(self.instance, "task", None)
         custom_name = attrs.get("custom_name") if "custom_name" in attrs else getattr(self.instance, "custom_name", "")
-        activity_type = attrs.get("activity_type") if "activity_type" in attrs else getattr(self.instance, "activity_type", None)
-        if not task and not (custom_name or "").strip() and not activity_type:
-            raise serializers.ValidationError({"custom_name": "Informe uma Tarefa do catálogo, um nome avulso, ou um Tipo de Atividade."})
+        if not task and not (custom_name or "").strip():
+            raise serializers.ValidationError({"custom_name": "Informe uma Tarefa do catálogo ou um nome avulso."})
         if rack_positions:
             invalid = [rp for rp in rack_positions if rp.project_id != project.pk]
             if invalid:
@@ -653,12 +518,6 @@ class ProjectTaskBulkActionSerializer(serializers.Serializer):
         queryset=Collaborator.objects.filter(is_active=True), many=True, required=False, default=list
     )
     rack_position_ids = serializers.PrimaryKeyRelatedField(queryset=RackPosition.objects.all(), many=True, required=False, default=list)
-    work_block = serializers.PrimaryKeyRelatedField(queryset=WorkBlock.objects.all(), required=False, allow_null=True, default=None)
-    activity_type = serializers.PrimaryKeyRelatedField(
-        queryset=ActivityType.objects.filter(is_active=True), required=False, allow_null=True, default=None
-    )
-    quantity_planned = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True, default=None)
-    quantity_completed = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True, default=None)
 
     def validate(self, attrs):
         if attrs.get("planned_start") and attrs.get("planned_end") and attrs["planned_end"] < attrs["planned_start"]:
@@ -684,7 +543,6 @@ class MyTaskUpdateSerializer(serializers.ModelSerializer):
             "actual_hours",
             "completion_outcome",
             "quantity_done",
-            "quantity_completed",
             "notes",
         )
 

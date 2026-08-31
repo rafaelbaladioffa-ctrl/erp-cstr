@@ -19,20 +19,7 @@ from core.admin_mixins import SelectablePageSizeAdminMixin
 from core.csv_io import MAX_CSV_UPLOAD_BYTES, neutralize_formula
 from core.models import Category, Client, Collaborator, Company, ProjectType, Responsible, Site, Task
 from .analytics import build_projects_performance, build_technical_performance, parse_date
-from .models import (
-    DashboardProxy,
-    Project,
-    ProjectAttachment,
-    ProjectHistory,
-    ProjectItem,
-    ProjectOccurrence,
-    ProjectTask,
-    ProjectTaskAssignment,
-    RackPosition,
-    TaskDependency,
-    TaskExecutionEvent,
-    WorkBlock,
-)
+from .models import DashboardProxy, Project, ProjectAttachment, ProjectHistory, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition
 from .services import (
     BulkActionError,
     add_tasks_to_project,
@@ -1036,13 +1023,13 @@ class ProjectTaskAssignmentInline(TabularInline):
 @admin.register(ProjectTask)
 class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     form = ProjectTaskAdminForm
-    list_display = ("project", "display_name_admin", "activity_type", "rack_positions_display", "collaborators_display", "status", "order", "planned_start", "planned_end")
-    list_filter = ("status", "activity_type", "project__company", "project", "rack_positions")
+    list_display = ("project", "display_name_admin", "rack_positions_display", "collaborators_display", "status", "order", "planned_start", "planned_end")
+    list_filter = ("status", "project__company", "project", "rack_positions")
     search_fields = (
         "project__code", "project__name", "task__code", "task__name", "custom_name",
         "collaborators__person__name", "rack_positions__position",
     )
-    autocomplete_fields = ("project", "task", "activity_type", "project_item", "work_block")
+    autocomplete_fields = ("project", "task")
     readonly_fields = ("created_at", "updated_at")
     inlines = (ProjectTaskAssignmentInline,)
 
@@ -1066,51 +1053,6 @@ class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     def get_model_perms(self, request):
         """Mantém as rotas para os links internos, mas oculta o submódulo do menu."""
         return {}
-
-
-@admin.register(WorkBlock)
-class WorkBlockAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("project", "order", "name", "code")
-    list_filter = ("project__company", "project")
-    search_fields = ("project__code", "project__name", "name", "code")
-    autocomplete_fields = ("project",)
-    readonly_fields = ("created_at", "updated_at")
-
-
-@admin.register(ProjectItem)
-class ProjectItemAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("project", "internal_code", "item_type", "work_block", "technology", "length_meters", "priority", "complexity", "status")
-    list_filter = ("status", "priority", "complexity", "item_type", "project__company", "project")
-    search_fields = ("project__code", "project__name", "internal_code", "technology", "part_number", "origin", "destination")
-    autocomplete_fields = ("project", "work_block")
-    readonly_fields = ("created_at", "updated_at")
-
-
-@admin.register(TaskDependency)
-class TaskDependencyAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("task", "depends_on", "created_at")
-    search_fields = ("task__custom_name", "depends_on__custom_name", "task__project__name")
-    autocomplete_fields = ("task", "depends_on")
-    readonly_fields = ("created_at",)
-
-
-@admin.register(TaskExecutionEvent)
-class TaskExecutionEventAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
-    """Log append-only — edição e exclusão desativadas de propósito (ver
-    docstring do modelo): o histórico de execução não pode ser perdido nem
-    alterado depois de registrado."""
-
-    list_display = ("project_task", "event_type", "collaborator", "occurred_at", "quantity_delta")
-    list_filter = ("event_type",)
-    search_fields = ("project_task__custom_name", "project_task__project__name", "collaborator__person__name")
-    autocomplete_fields = ("project_task", "collaborator")
-    readonly_fields = ("created_at",)
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 @admin.register(ProjectOccurrence)

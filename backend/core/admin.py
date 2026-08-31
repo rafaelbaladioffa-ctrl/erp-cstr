@@ -17,17 +17,13 @@ from .access_scope import (
 )
 from .admin_mixins import CSVImportExportMixin, SelectablePageSizeAdminMixin
 from .models import (
-    ActivityType,
     Category,
     Client,
     Collaborator,
     Company,
-    GenerationRule,
-    GenerationRuleStep,
     JobTitle,
     Notification,
     Person,
-    ProjectItemType,
     ProjectType,
     Responsible,
     Site,
@@ -523,45 +519,6 @@ class ProjectTypeAdmin(DenyClientScopedAdminMixin, CSVImportExportMixin, Selecta
             created += int(was_created)
         if created:
             self.message_user(request, f"{created} tipo(s) de projeto adicional(is) cadastrado(s).")
-
-
-@admin.register(ActivityType)
-class ActivityTypeAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("order", "name", "default_unit", "is_active")
-    list_display_links = ("name",)
-    list_editable = ("order",)
-    list_filter = ("is_active",)
-    search_fields = ("name", "code", "description")
-    readonly_fields = ("created_at", "updated_at")
-
-
-@admin.register(ProjectItemType)
-class ProjectItemTypeAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("order", "name", "is_active")
-    list_display_links = ("name",)
-    list_editable = ("order",)
-    list_filter = ("is_active",)
-    search_fields = ("name", "description")
-    readonly_fields = ("created_at", "updated_at")
-
-
-class GenerationRuleStepInline(TabularInline):
-    model = GenerationRuleStep
-    extra = 1
-    autocomplete_fields = ("activity_type",)
-
-
-@admin.register(GenerationRule)
-class GenerationRuleAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("technology", "name", "is_active", "step_count")
-    list_filter = ("is_active",)
-    search_fields = ("technology", "name")
-    readonly_fields = ("created_at", "updated_at")
-    inlines = [GenerationRuleStepInline]
-
-    def step_count(self, obj):
-        return obj.steps.count()
-    step_count.short_description = "etapas"
 
 
 class TaskAdminForm(forms.ModelForm):

@@ -36,7 +36,6 @@ INSTALLED_APPS = [
     "core",
     "users",
     "projects",
-    "scope_import",
     "updates",
     "technical",
     "dispatch",
@@ -218,11 +217,6 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "atualizacoes@consultimer.c
 # Segredo compartilhado usado pelo bot do WhatsApp para chamar a API sem
 # fazer login normal (ver api/views.BotSharedSecretPermission).
 WHATSAPP_BOT_SECRET = os.getenv("WHATSAPP_BOT_SECRET", "")
-
-# Provedor de IA usado pela Importação de Escopo (scope_import/ai_provider.py)
-# — só o backend fala com o OpenRouter, a chave nunca é exposta ao frontend.
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "")
 
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG

@@ -1,56 +1,22 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
-import {
-  projectAttachmentsApi,
-  projectItemsApi,
-  projectOccurrencesApi,
-  projectsApi,
-  projectTasksApi,
-  rackPositionsApi,
-  registryApi,
-  workBlocksApi,
-} from "../api/resources";
-import type {
-  ActivityType,
-  CollaboratorFull,
-  CollaboratorHours,
-  PlanningSummaryRow,
-  Project,
-  ProjectAttachment,
-  ProjectItem,
-  ProjectItemType,
-  ProjectOccurrence,
-  ProjectTask,
-  RackPosition,
-  WorkBlock,
-} from "../api/types";
-import PlanningBlockSection from "../components/projects/PlanningBlockSection";
-import ProjectItemFormModal from "../components/projects/ProjectItemFormModal";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useParams } from "react-router-dom";
+import { projectAttachmentsApi, projectOccurrencesApi, projectsApi, projectTasksApi, rackPositionsApi, registryApi } from "../api/resources";
+import type { CollaboratorFull, CollaboratorHours, Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition } from "../api/types";
 import ProjectOccurrenceFormModal from "../components/projects/ProjectOccurrenceFormModal";
 import ProjectTaskFormModal from "../components/projects/ProjectTaskFormModal";
 import RackPositionBulkModal from "../components/projects/RackPositionBulkModal";
 import RackPositionFormModal from "../components/projects/RackPositionFormModal";
 import TasksBulkUpdatePanel from "../components/projects/TasksBulkUpdatePanel";
 import TasksCatalogAddModal from "../components/projects/TasksCatalogAddModal";
-import WorkBlockFormModal from "../components/projects/WorkBlockFormModal";
 import BulkNamesModal from "../components/ui/BulkNamesModal";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
-import PlannedVsExecutedBar from "../components/ui/PlannedVsExecutedBar";
 import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
 
-type DetailTab = "tasks" | "hours" | "occurrences" | "attachments" | "planning";
-
-const TASK_STATUS_OPTIONS = [
-  { value: "not_started", label: "Não Iniciada" },
-  { value: "in_progress", label: "Em Andamento" },
-  { value: "paused", label: "Pausada" },
-  { value: "completed", label: "Concluída" },
-  { value: "canceled", label: "Cancelada" },
-];
+type DetailTab = "tasks" | "hours" | "occurrences" | "attachments";
 
 const SEVERITY_TONE: Record<string, { bg: string; color: string }> = {
   low: { bg: "var(--bg)", color: "var(--text-muted)" },
@@ -61,7 +27,6 @@ const SEVERITY_TONE: Record<string, { bg: string; color: string }> = {
 
 export default function ProjectDetail() {
   const { id } = useParams();
-  const location = useLocation();
   const { user } = useAuth();
   const projectId = Number(id);
 
@@ -70,9 +35,7 @@ export default function ProjectDetail() {
   const [rackPositions, setRackPositions] = useState<RackPosition[]>([]);
   const [collaborators, setCollaborators] = useState<CollaboratorFull[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<DetailTab>(
-    (location.state as { tab?: DetailTab } | null)?.tab ?? "tasks"
-  );
+  const [activeTab, setActiveTab] = useState<DetailTab>("tasks");
   const [tasksOpen, setTasksOpen] = useState(false);
   const [descriptionOpen, setDescriptionOpen] = useState(false);
 
@@ -86,24 +49,6 @@ export default function ProjectDetail() {
   const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [importingTasks, setImportingTasks] = useState(false);
-  const [taskSearch, setTaskSearch] = useState("");
-  const [taskStatusFilter, setTaskStatusFilter] = useState("");
-  const [taskSortMode, setTaskSortMode] = useState<"default" | "item" | "status">("default");
-
-  const [workBlocks, setWorkBlocks] = useState<WorkBlock[]>([]);
-  const [items, setItems] = useState<ProjectItem[]>([]);
-  const [planningSummary, setPlanningSummary] = useState<PlanningSummaryRow[]>([]);
-  const [planningLoading, setPlanningLoading] = useState(false);
-  const [openBlocks, setOpenBlocks] = useState<Record<number, boolean>>({});
-  const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
-  const [itemTypes, setItemTypes] = useState<ProjectItemType[]>([]);
-  const [selectedItemTaskIds, setSelectedItemTaskIds] = useState<number[]>([]);
-  const [workBlockFormOpen, setWorkBlockFormOpen] = useState(false);
-  const [editingWorkBlock, setEditingWorkBlock] = useState<WorkBlock | null>(null);
-  const [itemFormOpen, setItemFormOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<ProjectItem | null>(null);
-  const [planningTaskFormOpen, setPlanningTaskFormOpen] = useState(false);
-  const [newTaskForItem, setNewTaskForItem] = useState<ProjectItem | null>(null);
 
   const [hours, setHours] = useState<CollaboratorHours[]>([]);
   const [hoursLoading, setHoursLoading] = useState(false);
@@ -125,8 +70,6 @@ export default function ProjectDetail() {
   const canAddTask = hasPerm(user, PERMS.addProjectTask);
   const canChangeTask = hasPerm(user, PERMS.changeProjectTask);
   const canDeleteTask = hasPerm(user, PERMS.deleteProjectTask);
-  const canAddWorkBlock = hasPerm(user, PERMS.addWorkBlock);
-  const canImportScope = hasPerm(user, PERMS.addScopeImport);
   const canAddOccurrence = hasPerm(user, PERMS.addProjectOccurrence);
   const canChangeOccurrence = hasPerm(user, PERMS.changeProjectOccurrence);
   const canDeleteOccurrence = hasPerm(user, PERMS.deleteProjectOccurrence);
@@ -153,37 +96,6 @@ export default function ProjectDetail() {
       })
       .finally(() => {
         if (mountedRef.current) setLoading(false);
-      });
-  }
-
-  function reloadPlanning() {
-    if (!projectId) return;
-    setPlanningLoading(true);
-    Promise.all([projectsApi.workBlocks(projectId), projectsApi.items(projectId), projectsApi.planningSummary(projectId)])
-      .then(([blockData, itemData, summaryData]) => {
-        if (!mountedRef.current) return;
-        setWorkBlocks(blockData);
-        setItems(itemData);
-        setPlanningSummary(summaryData);
-      })
-      .finally(() => {
-        if (mountedRef.current) setPlanningLoading(false);
-      });
-  }
-
-  function handleGenerateFromRule(item: ProjectItem) {
-    projectItemsApi
-      .generateTasks(item.id)
-      .then((res) => {
-        if (res.created === 0) {
-          alert("Nenhuma tarefa nova gerada — ou já existem todas as etapas da regra pra esse item, ou não há regra cadastrada pra essa tecnologia.");
-        }
-        reload();
-        reloadPlanning();
-      })
-      .catch((err: unknown) => {
-        const axiosErr = err as { response?: { data?: { detail?: string } } };
-        alert(axiosErr.response?.data?.detail || "Não foi possível gerar as tarefas pela regra.");
       });
   }
 
@@ -232,12 +144,6 @@ export default function ProjectDetail() {
     registryApi.collaborators.list({ page_size: "500" } as never).then((r) => {
       if (mountedRef.current) setCollaborators(r.results);
     });
-    registryApi.activityTypes.list({ page_size: "500", is_active: "true" } as never).then((r) => {
-      if (mountedRef.current) setActivityTypes(r.results);
-    });
-    registryApi.projectItemTypes.list({ page_size: "500", is_active: "true" } as never).then((r) => {
-      if (mountedRef.current) setItemTypes(r.results);
-    });
     return () => {
       mountedRef.current = false;
     };
@@ -248,7 +154,6 @@ export default function ProjectDetail() {
     if (activeTab === "hours" && hours.length === 0 && !hoursLoading) reloadHours();
     if (activeTab === "occurrences" && occurrences.length === 0 && !occurrencesLoading) reloadOccurrences();
     if (activeTab === "attachments" && attachments.length === 0 && !attachmentsLoading) reloadAttachments();
-    if (activeTab === "planning" && workBlocks.length === 0 && !planningLoading) reloadPlanning();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, projectId]);
 
@@ -286,41 +191,6 @@ export default function ProjectDetail() {
     await projectTasksApi.remove(task.id);
     setSelectedTaskIds((prev) => prev.filter((id) => id !== task.id));
     reload();
-  }
-
-  function closeWorkBlockModal() {
-    setWorkBlockFormOpen(false);
-    setEditingWorkBlock(null);
-  }
-
-  function handleWorkBlockSaved() {
-    closeWorkBlockModal();
-    reloadPlanning();
-  }
-
-  function closeItemModal() {
-    setItemFormOpen(false);
-    setEditingItem(null);
-  }
-
-  function handleItemSaved() {
-    closeItemModal();
-    reloadPlanning();
-  }
-
-  function closePlanningTaskModal() {
-    setPlanningTaskFormOpen(false);
-    setNewTaskForItem(null);
-  }
-
-  function handlePlanningTaskSaved() {
-    closePlanningTaskModal();
-    reload();
-    reloadPlanning();
-  }
-
-  function toggleItemTaskSelection(taskId: number) {
-    setSelectedItemTaskIds((prev) => (prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]));
   }
 
   function closeOccurrenceModal() {
@@ -395,99 +265,11 @@ export default function ProjectDetail() {
   }
 
   function toggleSelectAll() {
-    setSelectedTaskIds((prev) => (prev.length === filteredTasks.length ? [] : filteredTasks.map((t) => t.id)));
+    setSelectedTaskIds((prev) => (prev.length === tasks.length ? [] : tasks.map((t) => t.id)));
   }
-
-  const filteredTasks = useMemo(() => {
-    const query = taskSearch.trim().toLowerCase();
-    return tasks.filter((t) => {
-      if (taskStatusFilter && t.status !== taskStatusFilter) return false;
-      if (query && !t.task_name.toLowerCase().includes(query)) return false;
-      return true;
-    });
-  }, [tasks, taskSearch, taskStatusFilter]);
-
-  const taskGroups = useMemo(() => {
-    if (taskSortMode === "default") return null;
-    if (taskSortMode === "status") {
-      const order = TASK_STATUS_OPTIONS.map((o) => o.value);
-      return order
-        .map((status) => ({
-          key: status,
-          label: TASK_STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status,
-          tasks: filteredTasks.filter((t) => t.status === status),
-        }))
-        .filter((group) => group.tasks.length > 0);
-    }
-    // "item": uma seção por Item do Projeto (project_item), reunindo as
-    // tarefas geradas pra ele (ex: várias atividades num mesmo item
-    // importado por escopo); tarefas sem item caem num balde único.
-    const byItem = new Map<number, ProjectTask[]>();
-    const withoutItem: ProjectTask[] = [];
-    filteredTasks.forEach((t) => {
-      if (t.project_item == null) {
-        withoutItem.push(t);
-        return;
-      }
-      const list = byItem.get(t.project_item) ?? [];
-      list.push(t);
-      byItem.set(t.project_item, list);
-    });
-    const groups = Array.from(byItem.entries()).map(([itemId, itemTasks]) => {
-      const label = itemTasks[0].task_name.includes(" - ")
-        ? itemTasks[0].task_name.split(" - ").slice(1).join(" - ")
-        : `Item #${itemId}`;
-      return { key: `item-${itemId}`, label, tasks: itemTasks };
-    });
-    groups.sort((a, b) => a.label.localeCompare(b.label));
-    if (withoutItem.length > 0) groups.push({ key: "sem-item", label: "Sem Item", tasks: withoutItem });
-    return groups;
-  }, [filteredTasks, taskSortMode]);
 
   if (loading) return <p style={{ color: "var(--text-muted)" }}>Carregando...</p>;
   if (!project) return <p style={{ color: "var(--text-muted)" }}>Projeto não encontrado.</p>;
-
-  const taskColumnCount = 3 + (canChangeTask || canDeleteTask ? 2 : 0) + (project.has_rack_positions ? 1 : 0);
-
-  function renderTaskRow(task: ProjectTask) {
-    return (
-      <tr key={task.id}>
-        {(canChangeTask || canDeleteTask) && (
-          <td>
-            <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />
-          </td>
-        )}
-        <td>{task.task_name}</td>
-        {project!.has_rack_positions && <td>{task.rack_position_labels.join(", ") || "—"}</td>}
-        <td>
-          <StatusBadge status={task.status} label={task.status_display} />
-        </td>
-        <td>{task.collaborators.map((c) => c.name).join(", ") || "—"}</td>
-        {(canChangeTask || canDeleteTask) && (
-          <td>
-            <div style={{ display: "flex", gap: 8 }}>
-              {canChangeTask && (
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={() => {
-                    setEditingTask(task);
-                    setTaskFormOpen(true);
-                  }}
-                >
-                  <Icon name="edit" style={{ fontSize: 14 }} />
-                </button>
-              )}
-              {canDeleteTask && (
-                <button className="btn btn-outline btn-sm" onClick={() => handleDeleteTask(task)} style={{ color: "var(--red)" }}>
-                  <Icon name="delete" style={{ fontSize: 14 }} />
-                </button>
-              )}
-            </div>
-          </td>
-        )}
-      </tr>
-    );
-  }
 
   return (
     <div>
@@ -683,9 +465,6 @@ export default function ProjectDetail() {
         <button className={`tab-btn${activeTab === "attachments" ? " active" : ""}`} onClick={() => setActiveTab("attachments")}>
           Anexos
         </button>
-        <button className={`tab-btn${activeTab === "planning" ? " active" : ""}`} onClick={() => setActiveTab("planning")}>
-          Planejamento
-        </button>
       </div>
 
       {activeTab === "tasks" && (
@@ -741,40 +520,6 @@ export default function ProjectDetail() {
                 />
               )}
 
-              <div className="filter-row" style={{ marginBottom: 12 }}>
-                <div className="field-group" style={{ flex: 1, minWidth: 220 }}>
-                  <span className="field-label">Buscar</span>
-                  <div className="search-input-wrap">
-                    <Icon name="search" />
-                    <input
-                      className="input"
-                      placeholder="Buscar por nome da tarefa..."
-                      value={taskSearch}
-                      onChange={(e) => setTaskSearch(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="field-group">
-                  <span className="field-label">Status</span>
-                  <select className="select" value={taskStatusFilter} onChange={(e) => setTaskStatusFilter(e.target.value)}>
-                    <option value="">Todos</option>
-                    {TASK_STATUS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field-group">
-                  <span className="field-label">Organizar por</span>
-                  <select className="select" value={taskSortMode} onChange={(e) => setTaskSortMode(e.target.value as typeof taskSortMode)}>
-                    <option value="default">Padrão</option>
-                    <option value="item">Agrupar por Item</option>
-                    <option value="status">Agrupar por Status</option>
-                  </select>
-                </div>
-              </div>
-
               <div className="card">
                 <div className="table-wrap">
                   <table className="table">
@@ -782,7 +527,7 @@ export default function ProjectDetail() {
                       <tr>
                         {(canChangeTask || canDeleteTask) && (
                           <th style={{ width: 32 }}>
-                            <input type="checkbox" checked={filteredTasks.length > 0 && selectedTaskIds.length === filteredTasks.length} onChange={toggleSelectAll} />
+                            <input type="checkbox" checked={tasks.length > 0 && selectedTaskIds.length === tasks.length} onChange={toggleSelectAll} />
                           </th>
                         )}
                         <th>Tarefa</th>
@@ -793,31 +538,54 @@ export default function ProjectDetail() {
                       </tr>
                     </thead>
                     <tbody>
-                      {taskGroups
-                        ? taskGroups.map((group) => (
-                            <Fragment key={group.key}>
-                              <tr>
-                                <td colSpan={taskColumnCount} style={{ background: "var(--bg)", fontWeight: 700, fontSize: 12.5 }}>
-                                  {group.label} <span style={{ fontWeight: 500, color: "var(--text-faint)" }}>({group.tasks.length})</span>
-                                </td>
-                              </tr>
-                              {group.tasks.map(renderTaskRow)}
-                            </Fragment>
-                          ))
-                        : filteredTasks.map(renderTaskRow)}
-                      {filteredTasks.length === 0 && (
-                        <tr>
-                          <td colSpan={taskColumnCount}>
-                            <div className="table-empty">
-                              {tasks.length === 0 ? "Nenhuma tarefa cadastrada." : "Nenhuma tarefa encontrada com esse filtro."}
-                            </div>
-                          </td>
-                        </tr>
+                  {tasks.map((task) => (
+                    <tr key={task.id}>
+                      {(canChangeTask || canDeleteTask) && (
+                        <td>
+                          <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />
+                        </td>
                       )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                      <td>{task.task_name}</td>
+                      {project.has_rack_positions && <td>{task.rack_position_labels.join(", ") || "—"}</td>}
+                      <td>
+                        <StatusBadge status={task.status} label={task.status_display} />
+                      </td>
+                      <td>{task.collaborators.map((c) => c.name).join(", ") || "—"}</td>
+                      {(canChangeTask || canDeleteTask) && (
+                        <td>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            {canChangeTask && (
+                              <button
+                                className="btn btn-outline btn-sm"
+                                onClick={() => {
+                                  setEditingTask(task);
+                                  setTaskFormOpen(true);
+                                }}
+                              >
+                                <Icon name="edit" style={{ fontSize: 14 }} />
+                              </button>
+                            )}
+                            {canDeleteTask && (
+                              <button className="btn btn-outline btn-sm" onClick={() => handleDeleteTask(task)} style={{ color: "var(--red)" }}>
+                                <Icon name="delete" style={{ fontSize: 14 }} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {tasks.length === 0 && (
+                    <tr>
+                      <td colSpan={project.has_rack_positions ? 6 : 5}>
+                        <div className="table-empty">Nenhuma tarefa cadastrada.</div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
             </>
           )}
         </>
@@ -1069,165 +837,6 @@ export default function ProjectDetail() {
         </>
       )}
 
-      {activeTab === "planning" && (
-        <>
-          {planningLoading && workBlocks.length === 0 ? (
-            <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
-          ) : (
-            <>
-              <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
-                <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>Planejado x Executado</h2>
-                <div className="section-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {canImportScope && (
-                    <Link className="btn btn-outline btn-sm" to={`/projetos/${project.id}/importar-escopo`}>
-                      <Icon name="auto_awesome" style={{ fontSize: 15 }} />
-                      Importar Escopo
-                    </Link>
-                  )}
-                  {canAddWorkBlock && (
-                    <button className="btn btn-primary btn-sm" onClick={() => setWorkBlockFormOpen(true)}>
-                      <Icon name="add" style={{ fontSize: 15 }} />
-                      Novo Bloco
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="card" style={{ marginBottom: 20 }}>
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Tipo de Atividade</th>
-                        <th>Planejado x Executado</th>
-                        <th>Tarefas</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(() => {
-                        const byActivity = new Map<number, { name: string; planned: number; completed: number; taskCount: number; completedCount: number }>();
-                        for (const row of planningSummary) {
-                          if (row.activity_type_id == null) continue;
-                          const existing = byActivity.get(row.activity_type_id) ?? {
-                            name: row.activity_type_name || "—",
-                            planned: 0,
-                            completed: 0,
-                            taskCount: 0,
-                            completedCount: 0,
-                          };
-                          existing.planned += Number(row.quantity_planned || 0);
-                          existing.completed += Number(row.quantity_completed || 0);
-                          existing.taskCount += row.task_count;
-                          existing.completedCount += row.completed_task_count;
-                          byActivity.set(row.activity_type_id, existing);
-                        }
-                        const rows = [...byActivity.values()];
-                        return rows.length > 0 ? (
-                          rows.map((row) => (
-                            <tr key={row.name}>
-                              <td>{row.name}</td>
-                              <td>
-                                <PlannedVsExecutedBar planned={row.planned} executed={row.completed} />
-                              </td>
-                              <td>
-                                {row.completedCount}/{row.taskCount}
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={3}>
-                              <div className="table-empty">Nenhuma tarefa com Tipo de Atividade cadastrada ainda.</div>
-                            </td>
-                          </tr>
-                        );
-                      })()}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {selectedItemTaskIds.length > 0 && (canChangeTask || canDeleteTask) && (
-                <TasksBulkUpdatePanel
-                  project={project}
-                  selectedIds={selectedItemTaskIds}
-                  collaborators={collaborators}
-                  rackPositions={rackPositions}
-                  workBlocks={workBlocks}
-                  activityTypes={activityTypes}
-                  onClear={() => setSelectedItemTaskIds([])}
-                  onApplied={() => {
-                    setSelectedItemTaskIds([]);
-                    reload();
-                    reloadPlanning();
-                  }}
-                />
-              )}
-
-              {workBlocks.map((block) => {
-                const summaryRows = planningSummary.filter((r) => r.work_block_id === block.id);
-                const taskCount = summaryRows.reduce((sum, r) => sum + r.task_count, 0);
-                const completedTaskCount = summaryRows.reduce((sum, r) => sum + r.completed_task_count, 0);
-                return (
-                  <PlanningBlockSection
-                    key={block.id}
-                    block={block}
-                    items={items.filter((i) => i.work_block === block.id)}
-                    tasks={tasks}
-                    open={openBlocks[block.id] ?? false}
-                    onToggle={() => setOpenBlocks((prev) => ({ ...prev, [block.id]: !prev[block.id] }))}
-                    taskCount={taskCount}
-                    completedTaskCount={completedTaskCount}
-                    selectedTaskIds={selectedItemTaskIds}
-                    onToggleTaskSelection={toggleItemTaskSelection}
-                    canChangeTask={canChangeTask}
-                    onAddItem={() => {
-                      setEditingItem(null);
-                      setItemFormOpen(true);
-                    }}
-                    onAddTask={(item) => {
-                      setNewTaskForItem(item);
-                      setPlanningTaskFormOpen(true);
-                    }}
-                    onGenerateFromRule={handleGenerateFromRule}
-                  />
-                );
-              })}
-
-              {items.some((i) => !i.work_block) && (
-                <PlanningBlockSection
-                  block={null}
-                  items={items.filter((i) => !i.work_block)}
-                  tasks={tasks}
-                  open={openBlocks[0] ?? false}
-                  onToggle={() => setOpenBlocks((prev) => ({ ...prev, 0: !prev[0] }))}
-                  taskCount={planningSummary.filter((r) => r.work_block_id === null && r.activity_type_id !== null).reduce((s, r) => s + r.task_count, 0)}
-                  completedTaskCount={planningSummary
-                    .filter((r) => r.work_block_id === null && r.activity_type_id !== null)
-                    .reduce((s, r) => s + r.completed_task_count, 0)}
-                  selectedTaskIds={selectedItemTaskIds}
-                  onToggleTaskSelection={toggleItemTaskSelection}
-                  canChangeTask={canChangeTask}
-                  onAddItem={() => {
-                    setEditingItem(null);
-                    setItemFormOpen(true);
-                  }}
-                  onAddTask={(item) => {
-                    setNewTaskForItem(item);
-                    setPlanningTaskFormOpen(true);
-                  }}
-                  onGenerateFromRule={handleGenerateFromRule}
-                />
-              )}
-
-              {workBlocks.length === 0 && items.length === 0 && (
-                <div className="empty-state">Nenhum bloco ou item cadastrado ainda. Crie um Bloco pra começar a organizar o planejamento.</div>
-              )}
-            </>
-          )}
-        </>
-      )}
-
       {rackFormOpen && <RackPositionFormModal projectId={project.id} rackPosition={editingRack} onClose={closeRackModals} onSaved={handleRackSaved} />}
       {rackBulkOpen && <RackPositionBulkModal projectId={project.id} onClose={closeRackModals} onSaved={handleRackSaved} />}
       {taskFormOpen && (
@@ -1236,36 +845,8 @@ export default function ProjectDetail() {
           projectTask={editingTask}
           existingTasks={tasks}
           rackPositions={rackPositions}
-          activityTypes={activityTypes}
-          items={items}
           onClose={closeTaskModals}
           onSaved={handleTaskSaved}
-        />
-      )}
-      {planningTaskFormOpen && (
-        <ProjectTaskFormModal
-          project={project}
-          projectTask={null}
-          existingTasks={tasks}
-          rackPositions={rackPositions}
-          activityTypes={activityTypes}
-          items={items}
-          defaultProjectItemId={newTaskForItem?.id}
-          onClose={closePlanningTaskModal}
-          onSaved={handlePlanningTaskSaved}
-        />
-      )}
-      {workBlockFormOpen && (
-        <WorkBlockFormModal projectId={project.id} workBlock={editingWorkBlock} onClose={closeWorkBlockModal} onSaved={handleWorkBlockSaved} />
-      )}
-      {itemFormOpen && (
-        <ProjectItemFormModal
-          projectId={project.id}
-          item={editingItem}
-          workBlocks={workBlocks}
-          itemTypes={itemTypes}
-          onClose={closeItemModal}
-          onSaved={handleItemSaved}
         />
       )}
       {taskCatalogOpen && (

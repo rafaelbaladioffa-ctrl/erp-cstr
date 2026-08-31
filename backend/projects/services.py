@@ -4,106 +4,12 @@ CRUD: importar Tarefas do catálogo do Tipo de Projeto, ações em massa sobre
 as Tarefas do Projeto e cadastro em massa de Rack Positions.
 """
 
-from decimal import Decimal
-
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from .models import Project, ProjectTask, RackPosition, TaskExecutionEvent
-
-# Mapa (status anterior -> status novo) -> tipo de evento, pras transições
-# que não são só "virou completed/canceled" (essas duas são tratadas à
-# parte em record_task_transition, valem pra qualquer status de origem).
-_EVENT_TYPE_BY_TRANSITION = {
-    (ProjectTask.STATUS_NOT_STARTED, ProjectTask.STATUS_IN_PROGRESS): TaskExecutionEvent.EVENT_STARTED,
-    (ProjectTask.STATUS_PAUSED, ProjectTask.STATUS_IN_PROGRESS): TaskExecutionEvent.EVENT_RESUMED,
-    (ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED): TaskExecutionEvent.EVENT_PAUSED,
-    (ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_NOT_STARTED): TaskExecutionEvent.EVENT_REOPENED,
-    (ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_IN_PROGRESS): TaskExecutionEvent.EVENT_REOPENED,
-    (ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_PAUSED): TaskExecutionEvent.EVENT_REOPENED,
-}
-
-
-def record_task_transition(task, previous_status, previous_quantity_completed, collaborator=None):
-    """Registra um TaskExecutionEvent pra transição de status que a `task`
-    acabou de sofrer (chamado explicitamente pelo chamador — MyTaskViewSet.
-    update — depois do save(), não de dentro de Model.save(), justamente
-    pra ter acesso a quem fez a mudança, coisa que save() não sabe).
-    Silenciosamente não grava nada se `status` não mudou, ou se a transição
-    não é uma das mapeadas (ex: not_started -> canceled direto) — melhor
-    não logar do que logar um tipo de evento errado."""
-    if task.status == previous_status:
-        return
-    if task.status == ProjectTask.STATUS_COMPLETED:
-        event_type = TaskExecutionEvent.EVENT_COMPLETED
-    elif task.status == ProjectTask.STATUS_CANCELED:
-        event_type = TaskExecutionEvent.EVENT_CANCELLED
-    else:
-        event_type = _EVENT_TYPE_BY_TRANSITION.get((previous_status, task.status))
-    if event_type is None:
-        return
-
-    quantity_delta = None
-    current_qty = task.quantity_completed
-    if current_qty is not None or previous_quantity_completed is not None:
-        delta = (current_qty or Decimal("0")) - (previous_quantity_completed or Decimal("0"))
-        if delta != 0:
-            quantity_delta = delta
-
-    # Segundos produtivos só são calculados no evento de conclusão, a
-    # partir do actual_hours que ProjectTask.save() já calcula sozinho —
-    # detalhar produtivo/improdutivo por evento intermediário (pausa,
-    # retomada) é refinamento de fase futura, não bloqueia o valor desta.
-    productive_seconds = None
-    if event_type == TaskExecutionEvent.EVENT_COMPLETED and task.actual_hours is not None:
-        productive_seconds = int(task.actual_hours * 3600)
-
-    TaskExecutionEvent.objects.create(
-        project_task=task,
-        event_type=event_type,
-        collaborator=collaborator,
-        quantity_delta=quantity_delta,
-        productive_seconds=productive_seconds,
-    )
-
-
-def record_dispatch_event(task, collaborator):
-    TaskExecutionEvent.objects.create(project_task=task, event_type=TaskExecutionEvent.EVENT_DISPATCHED, collaborator=collaborator)
-
-
-def generate_tasks_from_rule(project_item):
-    """Gera as ProjectTask do `project_item` a partir da GenerationRule cuja
-    tecnologia bate com `project_item.technology` (Fase 3) — uma tarefa por
-    etapa da regra, na ordem (`sequence` da regra vira `sequence` da
-    tarefa). Idempotente: pula etapas cujo (project_item, activity_type) já
-    existe, então clicar duas vezes não duplica. Retorna a quantidade
-    criada."""
-    from core.rules import activities_for_technology
-
-    steps = activities_for_technology(project_item.technology)
-    if not steps:
-        raise BulkActionError(f'Nenhuma regra ativa encontrada para a tecnologia "{project_item.technology}".')
-
-    existing_activity_ids = set(
-        ProjectTask.objects.filter(project_item=project_item).values_list("activity_type_id", flat=True)
-    )
-    created = []
-    with transaction.atomic():
-        for step in steps:
-            if step.activity_type_id in existing_activity_ids:
-                continue
-            created.append(
-                ProjectTask.objects.create(
-                    project=project_item.project,
-                    project_item=project_item,
-                    activity_type=step.activity_type,
-                    sequence=step.sequence,
-                    unit=step.activity_type.default_unit,
-                )
-            )
-    return len(created)
+from .models import Project, ProjectTask, RackPosition
 
 
 class BulkActionError(Exception):
@@ -249,18 +155,11 @@ def import_tasks_from_project_type(project):
 
 
 def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, planned_end=None,
-                            estimated_hours=None, collaborators=None, rack_positions=None,
-                            work_block=None, activity_type=None, quantity_planned=None, quantity_completed=None):
+                            estimated_hours=None, collaborators=None, rack_positions=None):
     """Aplica os valores informados (todos opcionais) às ProjectTasks do
     queryset `project_tasks`. `collaborators`/`rack_positions`, quando
     informados, SUBSTITUEM o conjunto atual de cada tarefa (não somam).
-    Retorna a quantidade de tarefas afetadas, ou 0 se nada foi informado.
-
-    Não aceita reatribuir `project_item` em massa de propósito: isso
-    precisaria passar por Model.save() pra manter `work_block` sincronizado
-    (ver ProjectTask.save()), e QuerySet.update() (usado abaixo) não chama
-    save() — se algum dia isso for necessário, precisa de um loop
-    instância-a-instância como o de `collaborators`/`rack_positions`."""
+    Retorna a quantidade de tarefas afetadas, ou 0 se nada foi informado."""
     updates = {}
     if status:
         updates["status"] = status
@@ -278,14 +177,6 @@ def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, pl
         updates["planned_end"] = planned_end
     if estimated_hours is not None:
         updates["estimated_hours"] = estimated_hours
-    if work_block is not None:
-        updates["work_block"] = work_block
-    if activity_type is not None:
-        updates["activity_type"] = activity_type
-    if quantity_planned is not None:
-        updates["quantity_planned"] = quantity_planned
-    if quantity_completed is not None:
-        updates["quantity_completed"] = quantity_completed
 
     updated = 0
     if updates:

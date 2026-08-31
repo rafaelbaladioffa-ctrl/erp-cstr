@@ -400,18 +400,7 @@ export default function OperationsBoard() {
                             onClick={() => selectTask(task.id)}
                             style={{ cursor: "pointer", background: selectedTask === task.id ? "var(--orange-soft)" : undefined }}
                           >
-                            <td style={{ fontWeight: 700 }}>
-                              {task.name}
-                              {task.blocked_by.length > 0 && (
-                                <span
-                                  className="badge"
-                                  title={`Aguardando: ${task.blocked_by.map((b) => b.name).join(", ")}`}
-                                  style={{ background: "var(--red-soft)", color: "var(--red)", marginLeft: 8 }}
-                                >
-                                  Bloqueada
-                                </span>
-                              )}
-                            </td>
+                            <td style={{ fontWeight: 700 }}>{task.name}</td>
                             <td>
                               {task.project_name} {task.project_code ? `· ${task.project_code}` : ""}
                             </td>
@@ -431,8 +420,6 @@ export default function OperationsBoard() {
                             <td>
                               <button
                                 className="btn btn-outline btn-sm"
-                                disabled={task.blocked_by.length > 0}
-                                title={task.blocked_by.length > 0 ? "Bloqueada por dependência pendente" : undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   selectTask(task.id);

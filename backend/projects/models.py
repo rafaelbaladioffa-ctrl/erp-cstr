@@ -3,39 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
-from core.models import (
-    ActivityType,
-    Category,
-    Client,
-    Collaborator,
-    Company,
-    ProjectItemType,
-    ProjectType,
-    Responsible,
-    Site,
-    Task,
-    TimestampedModel,
-)
-
-PRIORITY_LOW = "low"
-PRIORITY_MEDIUM = "medium"
-PRIORITY_HIGH = "high"
-PRIORITY_CRITICAL = "critical"
-PRIORITY_CHOICES = (
-    (PRIORITY_LOW, "Baixa"),
-    (PRIORITY_MEDIUM, "Média"),
-    (PRIORITY_HIGH, "Alta"),
-    (PRIORITY_CRITICAL, "Crítica"),
-)
-
-COMPLEXITY_SIMPLE = "simple"
-COMPLEXITY_MEDIUM = "medium"
-COMPLEXITY_COMPLEX = "complex"
-COMPLEXITY_CHOICES = (
-    (COMPLEXITY_SIMPLE, "Simples"),
-    (COMPLEXITY_MEDIUM, "Média"),
-    (COMPLEXITY_COMPLEX, "Complexa"),
-)
+from core.models import Category, Client, Collaborator, Company, ProjectType, Responsible, Site, Task, TimestampedModel
 
 
 class ProjectSequence(models.Model):
@@ -196,107 +164,6 @@ class RackPosition(TimestampedModel):
             raise ValidationError({"project": "O projeto selecionado não tem Rack Position ativado."})
 
 
-class WorkBlock(TimestampedModel):
-    """Agrupamento visual de tarefas/itens dentro de um projeto (ex: UMN,
-    BFC, EG1, Preparação, Finalização) — pra não jogar centenas de tarefas
-    numa tela só. Progresso consolidado (ex: "17/24 — 71%") é sempre
-    calculado na hora a partir das ProjectTask do bloco, nunca guardado
-    aqui, pra não correr o risco de ficar desatualizado."""
-
-    project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="work_blocks")
-    name = models.CharField("nome", max_length=150)
-    code = models.CharField("código", max_length=30, blank=True)
-    description = models.TextField("descrição", blank=True)
-    order = models.PositiveIntegerField("ordem", default=0)
-    scope_import = models.ForeignKey(
-        "scope_import.ScopeImport",
-        verbose_name="importação de escopo",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="work_blocks_created",
-    )
-
-    class Meta:
-        verbose_name = "Bloco de Trabalho"
-        verbose_name_plural = "Blocos de Trabalho"
-        ordering = ("order", "name")
-        constraints = [
-            models.UniqueConstraint(
-                fields=("project", "name"),
-                condition=~models.Q(name=""),
-                name="unique_nonempty_workblock_name_per_project",
-            )
-        ]
-
-    def __str__(self):
-        return f"{self.project} - {self.name}"
-
-
-class ProjectItem(TimestampedModel):
-    """Item técnico do projeto — o que fisicamente/logicamente precisa ser
-    executado (ex: 'cabo Robust 2F de 20m', 'link óptico', 'rack'). Uma
-    tarefa (ProjectTask) é uma atividade (ActivityType) aplicada a um item
-    — ver ProjectTask.project_item/activity_type."""
-
-    STATUS_NOT_STARTED = "not_started"
-    STATUS_IN_PROGRESS = "in_progress"
-    STATUS_COMPLETED = "completed"
-    STATUS_CANCELED = "canceled"
-    STATUS_CHOICES = (
-        (STATUS_NOT_STARTED, "Não Iniciado"),
-        (STATUS_IN_PROGRESS, "Em Andamento"),
-        (STATUS_COMPLETED, "Concluído"),
-        (STATUS_CANCELED, "Cancelado"),
-    )
-
-    project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="items")
-    work_block = models.ForeignKey(
-        WorkBlock, verbose_name="bloco de trabalho", on_delete=models.SET_NULL, null=True, blank=True, related_name="items"
-    )
-    internal_code = models.CharField("código interno", max_length=50, blank=True)
-    item_type = models.ForeignKey(ProjectItemType, verbose_name="tipo", on_delete=models.PROTECT, related_name="project_items")
-    technology = models.CharField("tecnologia", max_length=100, blank=True)
-    fiber_count = models.PositiveIntegerField("quantidade de fibras", null=True, blank=True)
-    connector_type_a = models.CharField("tipo de conector A", max_length=50, blank=True)
-    connector_type_b = models.CharField("tipo de conector B", max_length=50, blank=True)
-    part_number = models.CharField("part number", max_length=100, blank=True)
-    length_meters = models.DecimalField("metragem", max_digits=10, decimal_places=2, null=True, blank=True)
-    origin = models.CharField("origem", max_length=150, blank=True)
-    destination = models.CharField("destino", max_length=150, blank=True)
-    route = models.CharField("rota", max_length=255, blank=True)
-    priority = models.CharField("prioridade", max_length=20, choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM)
-    complexity = models.CharField("complexidade", max_length=20, choices=COMPLEXITY_CHOICES, default=COMPLEXITY_MEDIUM)
-    metadata = models.JSONField("metadados", default=dict, blank=True)
-    status = models.CharField("status", max_length=20, choices=STATUS_CHOICES, default=STATUS_NOT_STARTED)
-    order = models.PositiveIntegerField("ordem", default=0)
-    notes = models.TextField("observações", blank=True)
-    scope_import = models.ForeignKey(
-        "scope_import.ScopeImport",
-        verbose_name="importação de escopo",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="items_created",
-    )
-
-    class Meta:
-        verbose_name = "Item do Projeto"
-        verbose_name_plural = "Itens do Projeto"
-        ordering = ("order", "id")
-        constraints = [
-            models.UniqueConstraint(
-                fields=("project", "internal_code"),
-                condition=~models.Q(internal_code=""),
-                name="unique_nonempty_item_code_per_project",
-            )
-        ]
-        indexes = [models.Index(fields=("project", "work_block"))]
-
-    def __str__(self):
-        return self.internal_code or f"{self.item_type} - {self.project}"
-
-
 class ProjectTask(TimestampedModel):
     STATUS_NOT_STARTED = "not_started"
     STATUS_IN_PROGRESS = "in_progress"
@@ -359,74 +226,25 @@ class ProjectTask(TimestampedModel):
     )
     quantity_done = models.CharField("quantidade executada", max_length=100, blank=True)
 
-    # --- Campos novos (padronização/rastreabilidade) — todos opcionais,
-    # convivem com task/custom_name sem substituí-los. Ver clean()/
-    # display_name mais abaixo para como os dois caminhos coexistem. ---
-    activity_type = models.ForeignKey(
-        ActivityType, verbose_name="tipo de atividade", on_delete=models.PROTECT,
-        null=True, blank=True, related_name="project_tasks",
-    )
-    project_item = models.ForeignKey(
-        ProjectItem, verbose_name="item do projeto", on_delete=models.PROTECT,
-        null=True, blank=True, related_name="project_tasks",
-    )
-    work_block = models.ForeignKey(
-        WorkBlock, verbose_name="bloco de trabalho", on_delete=models.SET_NULL,
-        null=True, blank=True, related_name="project_tasks",
-        help_text="Preenchido automaticamente a partir do bloco do item do projeto (ver save()).",
-    )
-    quantity_planned = models.DecimalField("quantidade planejada", max_digits=10, decimal_places=2, null=True, blank=True)
-    quantity_completed = models.DecimalField("quantidade concluída", max_digits=10, decimal_places=2, null=True, blank=True)
-    unit = models.CharField("unidade", max_length=20, blank=True, help_text="Ex: m, un, porta, ponta, link, caixa.")
-    priority = models.CharField("prioridade", max_length=20, choices=PRIORITY_CHOICES, blank=True)
-    sequence = models.PositiveIntegerField(
-        "sequência", default=0,
-        help_text="Posição da atividade dentro da cadeia do item (ex: Lançamento=1, Organização=2...) — não confundir com 'ordem' (exibição geral) nem com a fila de despacho do técnico.",
-    )
-    complexity = models.CharField("complexidade", max_length=20, choices=COMPLEXITY_CHOICES, blank=True)
-    instructions = models.TextField("instruções", blank=True)
-    scope_import = models.ForeignKey(
-        "scope_import.ScopeImport",
-        verbose_name="importação de escopo",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="tasks_created",
-    )
-
     class Meta:
         verbose_name = "Tarefa do Projeto"
         verbose_name_plural = "Tarefas do Projeto"
         ordering = ("order", "id")
-        constraints = [
-            models.UniqueConstraint(
-                fields=("project_item", "activity_type"),
-                condition=models.Q(project_item__isnull=False) & models.Q(activity_type__isnull=False),
-                name="unique_activity_per_item",
-            )
-        ]
 
     def __str__(self):
         return f"{self.project} - {self.display_name}"
 
     @property
     def display_name(self):
-        """Nome de exibição: prefere o Tipo de Atividade padronizado quando
-        a tarefa já usa o modelo novo (activity_type + project_item), senão
-        cai no comportamento de sempre — Tarefa do catálogo ou nome avulso —
-        pra tarefas antigas continuarem exibindo exatamente como antes."""
-        if self.activity_type_id:
-            label = self.activity_type.name
-            if self.project_item_id:
-                label = f"{label} - {self.project_item}"
-            return label
+        """Nome de exibição: usa a Tarefa do catálogo quando vinculada,
+        senão o nome avulso digitado (uma das duas sempre existe — ver clean())."""
         return self.task.name if self.task_id else self.custom_name
 
     def clean(self):
         super().clean()
         errors = {}
-        if not self.task_id and not self.custom_name.strip() and not self.activity_type_id:
-            errors["custom_name"] = "Informe uma Tarefa do catálogo, um nome avulso, ou um Tipo de Atividade."
+        if not self.task_id and not self.custom_name.strip():
+            errors["custom_name"] = "Informe uma Tarefa do catálogo ou um nome avulso."
         if self.planned_start and self.planned_end and self.planned_end < self.planned_start:
             errors["planned_end"] = "O término previsto não pode ser anterior ao início previsto."
         if self.actual_start and self.actual_end and self.actual_end < self.actual_start:
@@ -471,11 +289,6 @@ class ProjectTask(TimestampedModel):
     def save(self, *args, **kwargs):
         previous = ProjectTask.objects.filter(pk=self.pk).first() if self.pk else None
         now = timezone.now()
-
-        # work_block é uma cópia denormalizada do bloco do item vinculado —
-        # sempre a fonte de verdade é project_item.work_block, isso aqui só
-        # evita um join extra em toda listagem/consulta agrupada por bloco.
-        self.work_block_id = self.project_item.work_block_id if self.project_item_id else self.work_block_id
 
         if previous and previous.status != self.status:
             if self.status == self.STATUS_PAUSED:
@@ -535,106 +348,6 @@ class ProjectTaskAssignment(TimestampedModel):
 
     def __str__(self):
         return f"{self.project_task} → {self.collaborator}"
-
-
-class TaskDependency(models.Model):
-    """Dependência entre tarefas (ex: Lançamento → Organização → Patching →
-    Certificação). A regra de que as duas tarefas pertencem ao mesmo
-    ProjectItem é validada em clean() (não dá pra expressar em CHECK
-    constraint comparando FK de duas linhas diferentes — mesmo padrão já
-    usado em ProjectTask.validate_unique_for_rack_positions). "Disponível
-    pra despacho" é sempre calculado na hora (sem dependências, ou todas
-    com status=completed), não existe uma flag guardada aqui."""
-
-    task = models.ForeignKey(ProjectTask, verbose_name="tarefa", on_delete=models.CASCADE, related_name="dependencies")
-    depends_on = models.ForeignKey(
-        ProjectTask, verbose_name="depende de", on_delete=models.CASCADE, related_name="dependents"
-    )
-    created_at = models.DateTimeField("criado em", auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Dependência de Tarefa"
-        verbose_name_plural = "Dependências de Tarefa"
-        constraints = [
-            models.UniqueConstraint(fields=("task", "depends_on"), name="unique_task_dependency"),
-            models.CheckConstraint(check=~models.Q(task=models.F("depends_on")), name="dependency_not_self"),
-        ]
-
-    def __str__(self):
-        return f"{self.task} depende de {self.depends_on}"
-
-    def clean(self):
-        super().clean()
-        if self.task_id and self.depends_on_id and self.task_id == self.depends_on_id:
-            raise ValidationError({"depends_on": "Uma tarefa não pode depender de si mesma."})
-        if (
-            self.task_id
-            and self.depends_on_id
-            and self.task.project_item_id
-            and self.depends_on.project_item_id
-            and self.task.project_item_id != self.depends_on.project_item_id
-        ):
-            raise ValidationError({"depends_on": "As duas tarefas precisam pertencer ao mesmo item do projeto."})
-
-
-class TaskExecutionEvent(models.Model):
-    """Log de execução, append-only — nunca editar/apagar uma linha depois
-    de criada (não tem updated_at de propósito; ver TaskExecutionEventAdmin
-    pra reforçar isso no admin). Registra cada evento (despacho, início,
-    pausa, retomada, conclusão, reabertura, cancelamento) separadamente, em
-    vez de só guardar uma duração final — assim o histórico não se perde
-    quando a tarefa é editada ou reaberta."""
-
-    EVENT_DISPATCHED = "DISPATCHED"
-    EVENT_STARTED = "STARTED"
-    EVENT_PAUSED = "PAUSED"
-    EVENT_RESUMED = "RESUMED"
-    EVENT_COMPLETED = "COMPLETED"
-    EVENT_REOPENED = "REOPENED"
-    EVENT_CANCELLED = "CANCELLED"
-    EVENT_CHOICES = (
-        (EVENT_DISPATCHED, "Despachada"),
-        (EVENT_STARTED, "Iniciada"),
-        (EVENT_PAUSED, "Pausada"),
-        (EVENT_RESUMED, "Retomada"),
-        (EVENT_COMPLETED, "Concluída"),
-        (EVENT_REOPENED, "Reaberta"),
-        (EVENT_CANCELLED, "Cancelada"),
-    )
-
-    # PROTECT (não CASCADE, diferente de ProjectTaskAssignment) — de
-    # propósito: impede apagar uma ProjectTask que já tem histórico de
-    # execução, força cancelamento em vez de exclusão.
-    project_task = models.ForeignKey(
-        ProjectTask, verbose_name="tarefa", on_delete=models.PROTECT, related_name="execution_events"
-    )
-    event_type = models.CharField("evento", max_length=20, choices=EVENT_CHOICES)
-    collaborator = models.ForeignKey(
-        Collaborator, verbose_name="técnico", on_delete=models.PROTECT,
-        null=True, blank=True, related_name="task_execution_events",
-    )
-    occurred_at = models.DateTimeField("ocorrido em", default=timezone.now)
-    quantity_delta = models.DecimalField(
-        "quantidade incremental", max_digits=10, decimal_places=2, null=True, blank=True,
-        help_text="Incremento concluído NESTE evento — não o total acumulado.",
-    )
-    productive_seconds = models.PositiveIntegerField("segundos produtivos", null=True, blank=True)
-    unproductive_seconds = models.PositiveIntegerField("segundos improdutivos", null=True, blank=True)
-    notes = models.TextField("observações", blank=True)
-    metadata = models.JSONField("metadados", default=dict, blank=True)
-    created_at = models.DateTimeField("registrado em", auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Evento de Execução"
-        verbose_name_plural = "Eventos de Execução"
-        ordering = ("occurred_at",)
-        indexes = [
-            models.Index(fields=("project_task", "occurred_at")),
-            models.Index(fields=("collaborator", "occurred_at")),
-        ]
-
-    def __str__(self):
-        return f"{self.project_task} - {self.get_event_type_display()}"
 
 
 def merged_worked_hours(tasks):
