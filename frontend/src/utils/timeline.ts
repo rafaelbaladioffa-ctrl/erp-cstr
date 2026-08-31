@@ -19,7 +19,7 @@ export const BUSY_COLOR: Record<string, string> = {
 export const DONE_COLOR = "var(--blue)";
 
 export const PRESENCE_LABEL: Record<string, string> = {
-  not_started: "Não chegou",
+  not_started: "Indisponível",
   available: "Disponível",
   in_progress: "Em Execução",
   lunch: "Horário de Almoço",

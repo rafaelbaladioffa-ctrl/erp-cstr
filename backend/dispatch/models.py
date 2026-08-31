@@ -22,7 +22,7 @@ class TechnicianDailyPresence(TimestampedModel):
     STATUS_AWAITING_RELEASE = "awaiting_release"
     STATUS_OFF_DUTY = "off_duty"
     STATUS_CHOICES = (
-        (STATUS_NOT_STARTED, "Não chegou"),
+        (STATUS_NOT_STARTED, "Indisponível"),
         (STATUS_AVAILABLE, "Disponível"),
         (STATUS_IN_PROGRESS, "Em Execução"),
         (STATUS_LUNCH, "Horário de Almoço"),

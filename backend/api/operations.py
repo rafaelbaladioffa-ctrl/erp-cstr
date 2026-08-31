@@ -133,7 +133,7 @@ def build_board_data(site_id):
                 "site_name": _site_label(collaborator),
                 "presence_status": presence.status if presence else TechnicianDailyPresence.STATUS_NOT_STARTED,
                 "presence_status_display": (
-                    presence.get_status_display() if presence else "Não chegou"
+                    presence.get_status_display() if presence else "Indisponível"
                 ),
                 "checked_in_at": presence.checked_in_at if presence else None,
                 "checked_out_at": presence.checked_out_at if presence else None,

@@ -35,7 +35,7 @@ PRESENCE_COLOR = {
 BUSY_COLOR = {"in_progress": "#fbbf24", "paused": "#f16023"}
 DONE_COLOR = "#5b9bff"
 PRESENCE_LABEL = {
-    "not_started": "Não chegou",
+    "not_started": "Indisponível",
     "available": "Disponível",
     "in_progress": "Em Execução",
     "lunch": "Horário de Almoço",
