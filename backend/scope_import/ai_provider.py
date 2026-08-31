@@ -111,6 +111,12 @@ class OpenRouterProvider(AIProvider):
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": raw_text},
                     ],
+                    # Além de forçar o modelo a responder só JSON, isso faz o
+                    # roteador openrouter/free filtrar pra só modelos que
+                    # suportam saída estruturada — sem isso ele podia cair
+                    # num modelo que devolve texto solto (ex: preâmbulo de
+                    # moderação em vez do JSON esperado).
+                    "response_format": {"type": "json_object"},
                 },
                 timeout=self.timeout,
             )
