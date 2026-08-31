@@ -26,7 +26,7 @@ const TASK_STATUS_OPTIONS = [
   { value: "canceled", label: "Cancelada" },
 ];
 
-type TaskSortColumn = "task_name" | "status" | "planned_start" | "technicians";
+type TaskSortColumn = "task_name" | "status" | "technicians";
 
 const SEVERITY_TONE: Record<string, { bg: string; color: string }> = {
   low: { bg: "var(--bg)", color: "var(--text-muted)" },
@@ -63,7 +63,6 @@ export default function ProjectDetail() {
   const [taskStatusFilter, setTaskStatusFilter] = useState("");
   const [taskSortColumn, setTaskSortColumn] = useState<TaskSortColumn | null>(null);
   const [taskSortDirection, setTaskSortDirection] = useState<"asc" | "desc">("asc");
-  const [schedulingTaskId, setSchedulingTaskId] = useState<number | null>(null);
 
   const [hours, setHours] = useState<CollaboratorHours[]>([]);
   const [hoursLoading, setHoursLoading] = useState(false);
@@ -292,15 +291,6 @@ export default function ProjectDetail() {
     }
   }
 
-  function handleSetPlannedStart(task: ProjectTask, value: string) {
-    setSchedulingTaskId(task.id);
-    projectTasksApi
-      .update(task.id, { planned_start: value ? `${value}T00:00` : null })
-      .then(() => reload())
-      .catch(() => alert("Não foi possível atualizar a data de agendamento."))
-      .finally(() => setSchedulingTaskId(null));
-  }
-
   const filteredTasks = useMemo(() => {
     const query = taskSearch.trim().toLowerCase();
     let result = tasks.filter((t) => {
@@ -314,7 +304,6 @@ export default function ProjectDetail() {
         let cmp = 0;
         if (taskSortColumn === "task_name") cmp = a.task_name.localeCompare(b.task_name);
         else if (taskSortColumn === "status") cmp = a.status_display.localeCompare(b.status_display);
-        else if (taskSortColumn === "planned_start") cmp = (a.planned_start || "").localeCompare(b.planned_start || "");
         else if (taskSortColumn === "technicians") {
           const nameA = a.collaborators[0]?.name || "";
           const nameB = b.collaborators[0]?.name || "";
@@ -584,7 +573,7 @@ export default function ProjectDetail() {
               )}
 
               <div className="filter-row" style={{ marginBottom: 12 }}>
-                <div className="field-group" style={{ flex: 1, minWidth: 220 }}>
+                <div className="field-group" style={{ width: 220 }}>
                   <span className="field-label">Buscar</span>
                   <div className="search-input-wrap">
                     <Icon name="search" />
@@ -626,9 +615,6 @@ export default function ProjectDetail() {
                         <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("status")}>
                           Status{sortIndicator("status")}
                         </th>
-                        <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("planned_start")}>
-                          Agendamento{sortIndicator("planned_start")}
-                        </th>
                         <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("technicians")}>
                           Técnicos{sortIndicator("technicians")}
                         </th>
@@ -647,20 +633,6 @@ export default function ProjectDetail() {
                       {project.has_rack_positions && <td>{task.rack_position_labels.join(", ") || "—"}</td>}
                       <td>
                         <StatusBadge status={task.status} label={task.status_display} />
-                      </td>
-                      <td>
-                        {canChangeTask ? (
-                          <input
-                            type="date"
-                            className="input"
-                            style={{ minWidth: 140 }}
-                            disabled={schedulingTaskId === task.id}
-                            value={task.planned_start ? task.planned_start.slice(0, 10) : ""}
-                            onChange={(e) => handleSetPlannedStart(task, e.target.value)}
-                          />
-                        ) : (
-                          task.planned_start?.slice(0, 10) || "—"
-                        )}
                       </td>
                       <td>{task.collaborators.map((c) => c.name).join(", ") || "—"}</td>
                       {(canChangeTask || canDeleteTask) && (
@@ -689,7 +661,7 @@ export default function ProjectDetail() {
                   ))}
                   {filteredTasks.length === 0 && (
                     <tr>
-                      <td colSpan={project.has_rack_positions ? 7 : 6}>
+                      <td colSpan={project.has_rack_positions ? 6 : 5}>
                         <div className="table-empty">
                           {tasks.length === 0 ? "Nenhuma tarefa cadastrada." : "Nenhuma tarefa encontrada com esse filtro."}
                         </div>
