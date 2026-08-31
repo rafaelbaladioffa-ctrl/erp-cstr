@@ -48,6 +48,7 @@ export default function OperationsBoard() {
   >({});
   const [loading, setLoading] = useState(false);
   const [dispatching, setDispatching] = useState(false);
+  const [undispatchingId, setUndispatchingId] = useState<number | null>(null);
   const [selectedTask, setSelectedTask] = useState<number | null>(null);
   const [selectedTechs, setSelectedTechs] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -115,6 +116,17 @@ export default function OperationsBoard() {
       if (siteId != null) loadAll(siteId);
     } finally {
       setDispatching(false);
+    }
+  }
+
+  async function handleUndispatch(taskId: number) {
+    if (!confirm("Remover o despacho dessa tarefa? Os técnicos voltam a ficar disponíveis pro pool.")) return;
+    setUndispatchingId(taskId);
+    try {
+      await operationsApi.undispatch(taskId);
+      if (siteId != null) loadAll(siteId);
+    } finally {
+      setUndispatchingId(null);
     }
   }
 
@@ -418,15 +430,30 @@ export default function OperationsBoard() {
                               )}
                             </td>
                             <td>
-                              <button
-                                className="btn btn-outline btn-sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  selectTask(task.id);
-                                }}
-                              >
-                                Despachar
-                              </button>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button
+                                  className="btn btn-outline btn-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    selectTask(task.id);
+                                  }}
+                                >
+                                  Despachar
+                                </button>
+                                {task.assignees.length > 0 && (
+                                  <button
+                                    className="btn btn-outline btn-sm"
+                                    style={{ color: "var(--red)" }}
+                                    disabled={undispatchingId === task.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleUndispatch(task.id);
+                                    }}
+                                  >
+                                    {undispatchingId === task.id ? "Removendo..." : "Remover Despacho"}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}

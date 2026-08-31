@@ -281,6 +281,10 @@ export const operationsApi = {
     apiClient
       .post<ProjectTask>(`/project-tasks/${taskId}/dispatch/`, { collaborator_ids: collaboratorIds })
       .then((r) => r.data),
+  undispatch: (taskId: number, collaboratorIds?: number[]) =>
+    apiClient
+      .post<ProjectTask>(`/project-tasks/${taskId}/undispatch/`, { collaborator_ids: collaboratorIds || [] })
+      .then((r) => r.data),
   timeline: (siteId: number | "all", date?: string) =>
     apiClient
       .get<OperationsTimeline>("/operations/timeline/", { params: { site: String(siteId), ...(date ? { date } : {}) } })

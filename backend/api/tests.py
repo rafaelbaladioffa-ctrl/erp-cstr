@@ -15,7 +15,8 @@ from core.models import Category, Client, Collaborator, Company, Person, Project
 def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
-from projects.models import Project, ProjectTask, RackPosition
+from dispatch.models import CollaboratorPair
+from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
 
@@ -817,3 +818,46 @@ class ClientUserAccessScopeApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         names = {row["name"] for row in response.data["results"]}
         self.assertEqual(names, {"Projeto A1"})
+
+
+class ProjectTaskDispatchApiTests(TestCase):
+    """dispatch/undispatch de ProjectTaskAssignment via ProjectTaskViewSet."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(company=self.company, name="Projeto Despacho", status=Project.STATUS_IN_PROGRESS)
+        self.task = ProjectTask.objects.create(project=self.project, custom_name="Tarefa avulsa", order=1)
+        self.collaborator_a = make_collaborator(self.company, "Técnico A")
+        self.collaborator_b = make_collaborator(self.company, "Técnico B")
+        self.admin = User.objects.create_superuser(username="dispatch_admin", email="dispatch_admin@example.com", password="test-password")
+        self.client_api.force_authenticate(user=self.admin)
+
+    def test_undispatch_removes_single_collaborator(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk, self.collaborator_b.pk]}, format="json")
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 2)
+
+        response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/undispatch/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        remaining = ProjectTaskAssignment.objects.filter(project_task=self.task)
+        self.assertEqual(remaining.count(), 1)
+        self.assertEqual(remaining.first().collaborator_id, self.collaborator_b.pk)
+
+    def test_undispatch_without_ids_removes_all(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk, self.collaborator_b.pk]}, format="json")
+
+        response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/undispatch/", {}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
+
+    def test_undispatch_removes_paired_partner_too(self):
+        CollaboratorPair.objects.create(collaborator_a=self.collaborator_a, collaborator_b=self.collaborator_b, is_active=True)
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json")
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 2)
+
+        response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/undispatch/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)

@@ -516,7 +516,7 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
     queryset = ProjectTask.objects.select_related("task", "project").prefetch_related("collaborators", "rack_positions")
     serializer_class = ProjectTaskSerializer
     permission_classes = [ViewAwareModelPermissions]
-    change_permission_actions = ("dispatch_task",)
+    change_permission_actions = ("dispatch_task", "undispatch_task")
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -573,6 +573,31 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
         # `task` veio de self.get_object(), que já tinha prefetch_related("collaborators")
         # rodado (vazio, antes do despacho acima) — refresh_from_db() limpa esse cache
         # de prefetch pra refletir as ProjectTaskAssignment recém-criadas na resposta.
+        task.refresh_from_db()
+        return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"], url_path="undispatch")
+    def undispatch_task(self, request, pk=None):
+        """Desfaz o despacho: remove a ProjectTaskAssignment de um ou mais
+        técnicos (ou de todos, se collaborator_ids não for informado).
+        Não mexe no status da tarefa — só tira quem estava designado."""
+        task = self.get_object()
+        collaborator_ids = list(request.data.get("collaborator_ids") or [])
+
+        if collaborator_ids:
+            # Mesma expansão de duplas fixas do despacho — remover só um dos
+            # dois deixaria a dupla quebrada de forma inconsistente.
+            paired = CollaboratorPair.objects.filter(
+                is_active=True
+            ).filter(models.Q(collaborator_a_id__in=collaborator_ids) | models.Q(collaborator_b_id__in=collaborator_ids))
+            for pair in paired:
+                collaborator_ids.append(pair.collaborator_a_id)
+                collaborator_ids.append(pair.collaborator_b_id)
+            collaborator_ids = list(dict.fromkeys(collaborator_ids))
+            task.assignments.filter(collaborator_id__in=collaborator_ids).delete()
+        else:
+            task.assignments.all().delete()
+
         task.refresh_from_db()
         return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
 
