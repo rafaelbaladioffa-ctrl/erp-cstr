@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { projectAttachmentsApi, projectOccurrencesApi, projectsApi, projectTasksApi, rackPositionsApi, registryApi } from "../api/resources";
 import type { CollaboratorFull, CollaboratorHours, Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition } from "../api/types";
@@ -17,6 +17,16 @@ import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 type DetailTab = "tasks" | "hours" | "occurrences" | "attachments";
+
+const TASK_STATUS_OPTIONS = [
+  { value: "not_started", label: "Não Iniciada" },
+  { value: "in_progress", label: "Em Andamento" },
+  { value: "paused", label: "Pausada" },
+  { value: "completed", label: "Concluída" },
+  { value: "canceled", label: "Cancelada" },
+];
+
+type TaskSortColumn = "task_name" | "status" | "planned_start" | "technicians";
 
 const SEVERITY_TONE: Record<string, { bg: string; color: string }> = {
   low: { bg: "var(--bg)", color: "var(--text-muted)" },
@@ -49,6 +59,11 @@ export default function ProjectDetail() {
   const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [importingTasks, setImportingTasks] = useState(false);
+  const [taskSearch, setTaskSearch] = useState("");
+  const [taskStatusFilter, setTaskStatusFilter] = useState("");
+  const [taskSortColumn, setTaskSortColumn] = useState<TaskSortColumn | null>(null);
+  const [taskSortDirection, setTaskSortDirection] = useState<"asc" | "desc">("asc");
+  const [schedulingTaskId, setSchedulingTaskId] = useState<number | null>(null);
 
   const [hours, setHours] = useState<CollaboratorHours[]>([]);
   const [hoursLoading, setHoursLoading] = useState(false);
@@ -265,7 +280,55 @@ export default function ProjectDetail() {
   }
 
   function toggleSelectAll() {
-    setSelectedTaskIds((prev) => (prev.length === tasks.length ? [] : tasks.map((t) => t.id)));
+    setSelectedTaskIds((prev) => (prev.length === filteredTasks.length ? [] : filteredTasks.map((t) => t.id)));
+  }
+
+  function toggleTaskSort(column: TaskSortColumn) {
+    if (taskSortColumn === column) {
+      setTaskSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setTaskSortColumn(column);
+      setTaskSortDirection("asc");
+    }
+  }
+
+  function handleSetPlannedStart(task: ProjectTask, value: string) {
+    setSchedulingTaskId(task.id);
+    projectTasksApi
+      .update(task.id, { planned_start: value ? `${value}T00:00` : null })
+      .then(() => reload())
+      .catch(() => alert("Não foi possível atualizar a data de agendamento."))
+      .finally(() => setSchedulingTaskId(null));
+  }
+
+  const filteredTasks = useMemo(() => {
+    const query = taskSearch.trim().toLowerCase();
+    let result = tasks.filter((t) => {
+      if (taskStatusFilter && t.status !== taskStatusFilter) return false;
+      if (query && !t.task_name.toLowerCase().includes(query)) return false;
+      return true;
+    });
+    if (taskSortColumn) {
+      const dir = taskSortDirection === "asc" ? 1 : -1;
+      result = [...result].sort((a, b) => {
+        let cmp = 0;
+        if (taskSortColumn === "task_name") cmp = a.task_name.localeCompare(b.task_name);
+        else if (taskSortColumn === "status") cmp = a.status_display.localeCompare(b.status_display);
+        else if (taskSortColumn === "planned_start") cmp = (a.planned_start || "").localeCompare(b.planned_start || "");
+        else if (taskSortColumn === "technicians") {
+          const nameA = a.collaborators[0]?.name || "";
+          const nameB = b.collaborators[0]?.name || "";
+          cmp = nameA.localeCompare(nameB);
+        }
+        return cmp * dir;
+      });
+    }
+    return result;
+  }, [tasks, taskSearch, taskStatusFilter, taskSortColumn, taskSortDirection]);
+
+  function sortIndicator(column: TaskSortColumn) {
+    if (taskSortColumn !== column) return null;
+    return <Icon name={taskSortDirection === "asc" ? "arrow_upward" : "arrow_downward"} style={{ fontSize: 14, verticalAlign: "middle", marginLeft: 4 }} />;
   }
 
   if (loading) return <p style={{ color: "var(--text-muted)" }}>Carregando...</p>;
@@ -520,6 +583,32 @@ export default function ProjectDetail() {
                 />
               )}
 
+              <div className="filter-row" style={{ marginBottom: 12 }}>
+                <div className="field-group" style={{ flex: 1, minWidth: 220 }}>
+                  <span className="field-label">Buscar</span>
+                  <div className="search-input-wrap">
+                    <Icon name="search" />
+                    <input
+                      className="input"
+                      placeholder="Buscar por nome da tarefa..."
+                      value={taskSearch}
+                      onChange={(e) => setTaskSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="field-group">
+                  <span className="field-label">Status</span>
+                  <select className="select" value={taskStatusFilter} onChange={(e) => setTaskStatusFilter(e.target.value)}>
+                    <option value="">Todos</option>
+                    {TASK_STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="card">
                 <div className="table-wrap">
                   <table className="table">
@@ -527,18 +616,27 @@ export default function ProjectDetail() {
                       <tr>
                         {(canChangeTask || canDeleteTask) && (
                           <th style={{ width: 32 }}>
-                            <input type="checkbox" checked={tasks.length > 0 && selectedTaskIds.length === tasks.length} onChange={toggleSelectAll} />
+                            <input type="checkbox" checked={filteredTasks.length > 0 && selectedTaskIds.length === filteredTasks.length} onChange={toggleSelectAll} />
                           </th>
                         )}
-                        <th>Tarefa</th>
+                        <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("task_name")}>
+                          Tarefa{sortIndicator("task_name")}
+                        </th>
                         {project.has_rack_positions && <th>Rack Position</th>}
-                        <th>Status</th>
-                        <th>Técnicos</th>
+                        <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("status")}>
+                          Status{sortIndicator("status")}
+                        </th>
+                        <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("planned_start")}>
+                          Agendamento{sortIndicator("planned_start")}
+                        </th>
+                        <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("technicians")}>
+                          Técnicos{sortIndicator("technicians")}
+                        </th>
                         {(canChangeTask || canDeleteTask) && <th>Ações</th>}
                       </tr>
                     </thead>
                     <tbody>
-                  {tasks.map((task) => (
+                  {filteredTasks.map((task) => (
                     <tr key={task.id}>
                       {(canChangeTask || canDeleteTask) && (
                         <td>
@@ -549,6 +647,20 @@ export default function ProjectDetail() {
                       {project.has_rack_positions && <td>{task.rack_position_labels.join(", ") || "—"}</td>}
                       <td>
                         <StatusBadge status={task.status} label={task.status_display} />
+                      </td>
+                      <td>
+                        {canChangeTask ? (
+                          <input
+                            type="date"
+                            className="input"
+                            style={{ minWidth: 140 }}
+                            disabled={schedulingTaskId === task.id}
+                            value={task.planned_start ? task.planned_start.slice(0, 10) : ""}
+                            onChange={(e) => handleSetPlannedStart(task, e.target.value)}
+                          />
+                        ) : (
+                          task.planned_start?.slice(0, 10) || "—"
+                        )}
                       </td>
                       <td>{task.collaborators.map((c) => c.name).join(", ") || "—"}</td>
                       {(canChangeTask || canDeleteTask) && (
@@ -575,10 +687,12 @@ export default function ProjectDetail() {
                       )}
                     </tr>
                   ))}
-                  {tasks.length === 0 && (
+                  {filteredTasks.length === 0 && (
                     <tr>
-                      <td colSpan={project.has_rack_positions ? 6 : 5}>
-                        <div className="table-empty">Nenhuma tarefa cadastrada.</div>
+                      <td colSpan={project.has_rack_positions ? 7 : 6}>
+                        <div className="table-empty">
+                          {tasks.length === 0 ? "Nenhuma tarefa cadastrada." : "Nenhuma tarefa encontrada com esse filtro."}
+                        </div>
                       </td>
                     </tr>
                   )}
