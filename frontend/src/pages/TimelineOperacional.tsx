@@ -39,6 +39,7 @@ type ViewMode = "day" | "week" | "month";
 export default function TimelineOperacional() {
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState<number | "all">("all");
+  const [selectedTechIds, setSelectedTechIds] = useState<number[]>([]);
   const [date, setDate] = useState(() => todayISO());
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -70,16 +71,18 @@ export default function TimelineOperacional() {
   const nowPct = isToday ? pct(now, base) : null;
 
   const techRows = reorderRowsByPair(
-    technicians.map((tech) => {
-      const segments = buildTechSegments(tech.blocks, tech.status_events, now, isToday);
-      const lanedSegments = assignLanes(segments);
-      return {
-        tech,
-        lanedSegments,
-        laneCount: lanedSegments[0]?.laneCount ?? 1,
-        doneCount: tech.blocks.filter((b) => b.status === "completed").length,
-      };
-    })
+    technicians
+      .filter((tech) => selectedTechIds.length === 0 || selectedTechIds.includes(tech.id))
+      .map((tech) => {
+        const segments = buildTechSegments(tech.blocks, tech.status_events, now, isToday);
+        const lanedSegments = assignLanes(segments);
+        return {
+          tech,
+          lanedSegments,
+          laneCount: lanedSegments[0]?.laneCount ?? 1,
+          doneCount: tech.blocks.filter((b) => b.status === "completed").length,
+        };
+      })
   );
   const trackHeight = (count: number) => (count <= 1 ? 52 : 10 + count * 30);
   const barTop = (index: number, count: number) => (count <= 1 ? 8 : 6 + index * 30);
@@ -133,6 +136,29 @@ export default function TimelineOperacional() {
                 </option>
               ))}
             </select>
+          </div>
+          <div className="field-group">
+            <label className="field-label">
+              Técnicos {selectedTechIds.length > 0 && `(${selectedTechIds.length} selecionado(s))`}
+            </label>
+            <select
+              multiple
+              className="input"
+              style={{ height: 96, minWidth: 220 }}
+              value={selectedTechIds.map(String)}
+              onChange={(e) => setSelectedTechIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
+            >
+              {technicians.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            {selectedTechIds.length > 0 && (
+              <button className="btn btn-outline btn-sm" style={{ marginTop: 6 }} onClick={() => setSelectedTechIds([])}>
+                Limpar seleção
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -281,7 +307,13 @@ export default function TimelineOperacional() {
               })}
             </div>
           </div>
-          {technicians.length === 0 && <div className="empty-state">Nenhum técnico encontrado para {formatDateBR(date)}.</div>}
+          {techRows.length === 0 && (
+            <div className="empty-state">
+              {technicians.length === 0
+                ? `Nenhum técnico encontrado para ${formatDateBR(date)}.`
+                : "Nenhum dos técnicos selecionados está disponível neste filtro."}
+            </div>
+          )}
         </div>
       )}
     </div>
