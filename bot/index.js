@@ -156,6 +156,21 @@ function phoneToJid(rawPhone) {
   return null; // número curto/inválido demais para confiar
 }
 
+// now.toLocaleDateString/toLocaleTimeString("pt-BR", ...) formata só o
+// IDIOMA — o fuso usado continua sendo o do sistema operacional do
+// container, que aqui não é America/Sao_Paulo (por padrão os containers
+// rodam em UTC). Sem isso, uma mensagem enviada às 18h (horário de
+// Brasília) saía com "21:00" escrito na legenda. Corrige subtraindo 3h
+// fixas (mesmo raciocínio já usado no agendamento via hourUTC — Brasil não
+// tem mais horário de verão desde 2019) e formatando o resultado como UTC,
+// que não depende de dado de fuso-horário (tzdata) instalado na imagem.
+function formatBrazilDateTime(date) {
+  const brazilTime = new Date(date.getTime() - 3 * 60 * 60 * 1000);
+  const dateLabel = brazilTime.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  const timeLabel = brazilTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+  return `${dateLabel} ${timeLabel}`;
+}
+
 function formatBroadcastMessage(t, date) {
   const lines = t.allocations.map(
     (a) => `• ${a.project}${a.code ? ` (${a.code})` : ""} — Site: ${a.site || "não informado"}`
@@ -282,8 +297,7 @@ async function runOperationsPrintBroadcast(sock, overridePhone) {
 
   console.log(`${label}: capturando imagem da Central de Operações...`);
   const image = await captureOperationsPrint();
-  const now = new Date();
-  const caption = `📸 Operação do Dia — ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  const caption = `📸 Operação do Dia — ${formatBrazilDateTime(new Date())}`;
 
   console.log(`${label}: enviando para ${recipients.length} destinatário(s).`);
   for (const r of recipients) {
