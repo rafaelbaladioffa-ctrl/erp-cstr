@@ -531,7 +531,9 @@ class RackPositionBulkCreateSerializer(serializers.Serializer):
 
 class MyTaskUpdateSerializer(serializers.ModelSerializer):
     """Usado em /api/my-tasks/: o técnico só pode alterar o andamento da
-    própria tarefa, não o projeto/tarefa/responsáveis atribuídos."""
+    própria tarefa, não o projeto/tarefa/responsáveis atribuídos. Um técnico
+    pode ter várias tarefas em andamento ao mesmo tempo — sem essa
+    restrição de propósito."""
 
     class Meta:
         model = ProjectTask
@@ -545,22 +547,6 @@ class MyTaskUpdateSerializer(serializers.ModelSerializer):
             "quantity_done",
             "notes",
         )
-
-    def validate(self, attrs):
-        if attrs.get("status") == ProjectTask.STATUS_IN_PROGRESS:
-            request = self.context.get("request")
-            collaborator = get_collaborator_role(request.user) if request else None
-            if collaborator is not None:
-                conflict = ProjectTask.objects.filter(
-                    collaborators=collaborator, status=ProjectTask.STATUS_IN_PROGRESS
-                )
-                if self.instance is not None:
-                    conflict = conflict.exclude(pk=self.instance.pk)
-                if conflict.exists():
-                    raise serializers.ValidationError(
-                        {"status": "Você já tem uma atividade em execução. Finalize ou pause antes de iniciar outra."}
-                    )
-        return attrs
 
 
 class TechnicianDailyPresenceSerializer(serializers.ModelSerializer):

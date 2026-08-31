@@ -168,7 +168,6 @@ export default function MyTasks() {
     );
   }
 
-  const hasActiveTask = tasks.some((t) => t.status === "in_progress");
   const visibleTasks = tasks.filter((t) => tabOf(t.status) === activeTab);
   const isOffDuty = presence?.status === "off_duty";
   const isAutoInProgress = presence?.status === "in_progress";
@@ -247,7 +246,6 @@ export default function MyTasks() {
         {visibleTasks.map((t) => {
           const expanded = expandedId === t.id;
           const saving = savingId === t.id;
-          const blockedByAnother = t.status !== "in_progress" && hasActiveTask;
           return (
             <div key={t.id} className="mt-card" style={{ borderLeftColor: STATUS_TONE[t.status] || "var(--border)" }}>
               <button className="mt-card-header" onClick={() => setExpandedId(expanded ? null : t.id)}>
@@ -295,7 +293,7 @@ export default function MyTasks() {
                   {(t.status === "not_started" || t.status === "paused") && (
                     <button
                       onClick={() => startTask(t)}
-                      disabled={saving || blockedByAnother}
+                      disabled={saving}
                       className="mt-btn mt-btn-start"
                     >
                       <Icon name="play_arrow" style={{ fontSize: 20 }} />
@@ -322,10 +320,6 @@ export default function MyTasks() {
                   )}
                 </div>
               )}
-              {canEdit && blockedByAnother && (t.status === "not_started" || t.status === "paused") && (
-                <div className="mt-start-disabled-note">Finalize ou pause a atividade atual para iniciar esta.</div>
-              )}
-
               {expanded && (
                 <div className="mt-details">
                   <div className="mt-meta-grid">
