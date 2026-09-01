@@ -254,6 +254,7 @@ def _serialize_project_update(project):
 
     client = str(project.client) if project.client_id else (str(project.site.client) if project.site_id else None)
     status_label = dict(Project.STATUS_CHOICES).get(project.status, project.status)
+    responsible_client = project.responsible_client.person.name if project.responsible_client_id else None
     # Percentual geral de conclusão do projeto (todas as tarefas, não só as
     # de hoje) — independe de existir uma Atualização de Projeto para hoje.
     completion_percent = compute_progress_defaults(project, today)["percent"]
@@ -265,6 +266,7 @@ def _serialize_project_update(project):
         "site": project.site.name if project.site_id else None,
         "status": status_label,
         "po": project.po or None,
+        "responsible_client": responsible_client,
         "completion_percent": completion_percent,
         "planned_start": project.planned_start.isoformat() if project.planned_start else None,
         "planned_end": project.planned_end.isoformat() if project.planned_end else None,
@@ -305,12 +307,12 @@ class BotProjectUpdateView(APIView):
 
         if project_id:
             projects = Project.objects.filter(pk=project_id, is_active=True).select_related(
-                "client", "site", "site__client"
+                "client", "site", "site__client", "responsible_client__person"
             )
         else:
             projects = (
                 Project.objects.filter(site_id=site_id, is_active=True)
-                .select_related("client", "site", "site__client")
+                .select_related("client", "site", "site__client", "responsible_client__person")
                 .order_by("name")
             )
 

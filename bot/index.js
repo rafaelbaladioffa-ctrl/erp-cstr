@@ -128,9 +128,11 @@ async function fetchTechStatus(siteId, siteLabel) {
 
 function formatProjectUpdate(p) {
   const lines = [
-    `📋 *${p.code ? `${p.code} - ` : ""}${p.name}*`,
-    `Cliente: ${p.client || "não informado"} | Site: ${p.site || "não informado"}`,
-    `Status: ${p.status}${p.po ? ` | PO: ${p.po}` : ""}`,
+    `📋 *${p.name}*`,
+    `PO: ${p.po || "não informado"}`,
+    `Responsável Cliente: ${p.responsible_client || "não informado"}`,
+    `Início previsto: ${p.planned_start ? formatDate(p.planned_start) : "não informado"}`,
+    `Término previsto: ${p.planned_end ? formatDate(p.planned_end) : "não informado"}`,
     `Progresso do projeto: ${p.completion_percent}%`,
   ];
 
