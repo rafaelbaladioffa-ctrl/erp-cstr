@@ -143,7 +143,9 @@ export default function OperationsBoard() {
   // linha, e as 3 colunas (nomes/timeline/fila) precisam da MESMA altura de
   // linha pra continuarem alinhadas.
   const techRows = reorderRowsByPair(
-    technicians.map((tech) => {
+    technicians
+      .filter((tech) => !tech.on_leave)
+      .map((tech) => {
       const { blocks = [], statusEvents = [] } = timelineByTech[tech.id] || {};
       const segments = buildTechSegments(blocks, statusEvents, nowDate, true);
       const lanedSegments = assignLanes(segments);
@@ -491,7 +493,7 @@ export default function OperationsBoard() {
           <div className="tod-layout" style={{ marginTop: 16 }}>
             <div className="tod-tech-panel">
               <div className="tod-panel-head">
-                <div className="tod-tech-title">TÉCNICOS ({technicians.length})</div>
+                <div className="tod-tech-title">TÉCNICOS ({techRows.length})</div>
                 <div className="tod-ruler">
                   {HOURS.map((h) => (
                     <span
@@ -602,7 +604,7 @@ export default function OperationsBoard() {
                   );
                 })}
               </div>
-              {technicians.length === 0 && <div className="empty-state">Nenhum técnico vinculado a este site.</div>}
+              {techRows.length === 0 && <div className="empty-state">Nenhum técnico vinculado a este site.</div>}
               <div className="tl-legend-row tod-legend-row">
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: DONE_COLOR }} />
