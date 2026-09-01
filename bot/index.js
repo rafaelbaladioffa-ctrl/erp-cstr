@@ -240,25 +240,56 @@ async function runDailyTasksBroadcast(sock) {
   await sendToRecipients(sock, data.recipients, text, "Tarefas do dia (10h)");
 }
 
+function formatProjectDailyUpdate(p, date, workdayStart, workdayEnd) {
+  const lines = [
+    "📋 Atualização Diária de Projeto",
+    "",
+    `Nome do Projeto: ${p.project}`,
+    `PO: ${p.po || "Não informada"}`,
+    `Responsável AWS: ${p.responsible_client || "Não informado"}`,
+    `Responsável CSTR: ${p.responsible_cstr || "Não informado"}`,
+    "",
+    `👷 Colaboradores: ${p.collaborators.length ? p.collaborators.join(", ") : "Não informados"}`,
+    "",
+    `📅 Data: ${formatDate(date)}`,
+    `Hora de início: ${workdayStart}`,
+    `Hora de término: ${workdayEnd}`,
+    "",
+    `📊 Percentual de Conclusão: ${p.completion_percent}%`,
+    "",
+    "🛠️ Atividades Executadas:",
+    p.activities_text || "Nenhuma atividade concluída registrada nesta data.",
+    "",
+    `✅ Certificação Finalizada: ${p.certification_done ? "Sim" : "Não"}`,
+    `🏁 Projeto finalizado: ${p.project_finished ? "Sim" : "Não"}`,
+    "",
+    "⚠️ Observações:",
+    p.summary || "Nenhuma observação.",
+  ];
+  return lines.join("\n");
+}
+
 async function runProjectUpdatesBroadcast(sock) {
   const data = await botGet("/bot/broadcasts/project-updates/");
   if (!data.projects.length) {
     console.log(`Atualização de projetos (17h): nenhum projeto alocado em ${data.date}, nada a enviar.`);
     return;
   }
-  const blocks = data.projects.map((p) => {
-    const lines = [
-      `*${p.code ? `${p.code} - ` : ""}${p.project}* — Site: ${p.site || "não informado"}`,
-      `Progresso: ${p.completion_percent}%`,
-    ];
-    lines.push(p.activities_text ? `Concluído hoje:\n${p.activities_text}` : "Nada concluído hoje.");
-    if (p.certification_done) lines.push("🏆 Certificação finalizada");
-    if (p.project_finished) lines.push("🏁 Projeto finalizado");
-    return lines.join("\n");
-  });
-  const text = `✅ Atualização de projetos — hoje (${formatDate(data.date)}):\n\n${blocks.join("\n\n")}`;
   console.log(`Atualização de projetos (17h): enviando ${data.projects.length} projeto(s) para ${data.recipients.length} destinatário(s).`);
-  await sendToRecipients(sock, data.recipients, text, "Atualização de projetos (17h)");
+  for (const r of data.recipients) {
+    const jid = phoneToJid(r.phone);
+    if (!jid) {
+      console.error(`Atualização de projetos (17h): telefone inválido para ${r.name} (${r.phone}), pulando.`);
+      continue;
+    }
+    for (const p of data.projects) {
+      try {
+        await sock.sendMessage(jid, { text: formatProjectDailyUpdate(p, data.date, data.workday_start, data.workday_end) });
+      } catch (err) {
+        console.error(`Atualização de projetos (17h): erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
+      }
+    }
+  }
 }
 
 async function captureOperationsPrint() {

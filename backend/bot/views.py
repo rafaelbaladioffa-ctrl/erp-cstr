@@ -9,7 +9,7 @@ from core.models import Collaborator, Site
 from core.phone_utils import phones_match
 from projects.models import Project, ProjectTask
 from updates.models import DailyUpdateAllocation, ProjectDailyUpdate
-from updates.project_client_mail import compute_progress_defaults
+from updates.project_client_mail import WORKDAY_END, WORKDAY_START, compute_progress_defaults
 
 from .models import BotSubscriber
 from .permissions import BotSharedSecretPermission
@@ -417,9 +417,9 @@ class BotProjectUpdatesBroadcastView(APIView):
     """GET /api/bot/broadcasts/project-updates/?date=<AAAA-MM-DD, opcional>
 
     Envio automático das 17h: para os mesmos projetos alocados na data
-    informada (padrão: hoje), traz o percentual de conclusão e as tarefas
-    concluídas naquele dia — para os destinatários cadastrados com
-    receives_project_updates=True."""
+    informada (padrão: hoje), traz o mesmo conteúdo da Atualização Diária de
+    Projeto enviada por e-mail (ver updates/project_client_mail.py) — para os
+    destinatários cadastrados com receives_project_updates=True."""
 
     permission_classes = [BotSharedSecretPermission]
     authentication_classes = []
@@ -434,28 +434,59 @@ class BotProjectUpdatesBroadcastView(APIView):
             .values_list("project_id", flat=True)
             .distinct()
         )
-        projects_qs = Project.objects.filter(pk__in=project_ids).select_related("client", "site", "site__client")
+        projects_qs = Project.objects.filter(pk__in=project_ids).select_related(
+            "responsible_client__person", "responsible_cstr__person"
+        )
+        # Se já existe uma Atualização de Projeto registrada pra essa data,
+        # usa os colaboradores e a observação que a pessoa responsável
+        # digitou lá — só o percentual/atividades/certificação continuam
+        # sempre recalculados ao vivo (mesmo critério de refresh_from_tasks()).
+        existing_updates = {
+            u.project_id: u
+            for u in ProjectDailyUpdate.objects.filter(
+                project_id__in=project_ids, date=target_date
+            ).prefetch_related("collaborators__person")
+        }
 
         projects = []
         for project in projects_qs:
             defaults = compute_progress_defaults(project, target_date)
-            client = str(project.client) if project.client_id else (str(project.site.client) if project.site_id else None)
+            existing = existing_updates.get(project.id)
+
+            if existing:
+                collaborator_names = list(
+                    existing.collaborators.order_by("person__name").values_list("person__name", flat=True)
+                )
+                summary = existing.summary or None
+            else:
+                collaborator_names = list(
+                    Collaborator.objects.filter(pk__in=defaults["collaborator_ids"])
+                    .select_related("person")
+                    .order_by("person__name")
+                    .values_list("person__name", flat=True)
+                )
+                summary = None
+
             projects.append(
                 {
                     "project": project.name,
-                    "code": project.code,
-                    "client": client,
-                    "site": project.site.name if project.site_id else None,
+                    "po": project.po or None,
+                    "responsible_client": project.responsible_client.person.name if project.responsible_client_id else None,
+                    "responsible_cstr": project.responsible_cstr.person.name if project.responsible_cstr_id else None,
+                    "collaborators": collaborator_names,
                     "completion_percent": defaults["percent"],
                     "activities_text": defaults["activities_text"] or None,
                     "certification_done": defaults["certification_done"],
                     "project_finished": defaults["project_finished"],
+                    "summary": summary,
                 }
             )
 
         return Response(
             {
                 "date": target_date.isoformat(),
+                "workday_start": WORKDAY_START,
+                "workday_end": WORKDAY_END,
                 "projects": projects,
                 "recipients": _active_subscribers("receives_project_updates"),
             }
