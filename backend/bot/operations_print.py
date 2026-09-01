@@ -208,7 +208,11 @@ class OperationsPrintView(APIView):
         timeline = build_timeline_data(site_id, today)
         timeline_by_id = {t["id"]: t for t in timeline["technicians"]}
 
-        ordered_technicians = _group_by_pair(board["technicians"])
+        # Técnico com ausência planejada (férias, atestado, folga) não entra
+        # no print — é ruído pra quem recebe a imagem no WhatsApp; quem
+        # precisa gerenciar a ausência em si faz isso pela Central de
+        # Operações, não por aqui.
+        ordered_technicians = [t for t in _group_by_pair(board["technicians"]) if not t["on_leave"]]
 
         tech_rows = []
         for tech in ordered_technicians:
