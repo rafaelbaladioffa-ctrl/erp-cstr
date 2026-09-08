@@ -278,7 +278,11 @@ export const usersApi = {
 };
 
 export const myTasksApi = {
-  list: () => apiClient.get<Paginated<ProjectTask>>("/my-tasks/").then((r) => r.data),
+  // page_size alto: a tela mostra a lista inteira do técnico (filtrada em
+  // abas por status no cliente), não um browse paginado — sem isso, tarefas
+  // recém-despachadas sem planned_start caem nas últimas posições da
+  // ordenação e ficam invisíveis por estarem numa "página 2" nunca pedida.
+  list: () => apiClient.get<Paginated<ProjectTask>>("/my-tasks/", { params: { page_size: "500" } }).then((r) => r.data),
   update: (id: number, payload: Partial<ProjectTask>) =>
     apiClient.patch<ProjectTask>(`/my-tasks/${id}/`, payload).then((r) => r.data),
 };
