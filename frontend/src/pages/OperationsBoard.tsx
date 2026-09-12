@@ -563,7 +563,7 @@ export default function OperationsBoard() {
                             const rightPct = segment.end ? pct(segment.end, base) : nowPct;
                             const width = Math.max(1, rightPct - left);
                             const top = laneCount <= 1 ? 8 : 6 + lane * 46;
-                            const height = laneCount <= 1 ? 28 : 20;
+                            const height = laneCount <= 1 ? 14 : 10;
                             const barKey = `${tech.id}-seg-${idx}`;
                             const isExpanded = expandedBar === barKey;
                             return (
@@ -591,7 +591,7 @@ export default function OperationsBoard() {
                                   left: `${pct(bar.start, base)}%`,
                                   width: `${Math.max(1, pct(bar.end, base) - pct(bar.start, base))}%`,
                                   top: laneCount <= 1 ? 8 : 6 + bar.lane * 46,
-                                  height: laneCount <= 1 ? 28 : 20,
+                                  height: laneCount <= 1 ? 14 : 10,
                                 }}
                               >
                                 <span className="tod-bar-label">{bar.label}</span>
