@@ -1329,6 +1329,14 @@ const taskRuleSimulatorTool: ToolConfig = {
   perms: { view: PERMS.viewTaskTemplateRule },
 };
 
+const sowImportTool: ToolConfig = {
+  kind: "tool",
+  key: "sow-import",
+  label: "Importar SOW",
+  icon: "upload_file",
+  perms: { view: PERMS.viewSowImport },
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -1357,5 +1365,10 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     icon: "lan",
     entities: [masterDataSiteEntity, locationEntity, deviceTypeEntity],
   },
-  { key: "planejamento", label: "Planejamento", icon: "insights", entities: [scopeItemEntity, generatedTaskEntity] },
+  {
+    key: "planejamento",
+    label: "Planejamento",
+    icon: "insights",
+    entities: [scopeItemEntity, generatedTaskEntity, sowImportTool],
+  },
 ];

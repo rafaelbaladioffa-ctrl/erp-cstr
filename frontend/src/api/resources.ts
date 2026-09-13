@@ -46,6 +46,11 @@ import type {
   ScopeItem,
   ScopeItemGenerateTasksResult,
   ScopeItemResolutionResult,
+  SowApproveItemResult,
+  SowApproveSelectedResult,
+  SowImport,
+  SowParsedItem,
+  SowRejectSelectedResult,
   TaskFull,
   TaskTemplate,
   TaskTemplateRule,
@@ -130,6 +135,47 @@ export const masterDataApi = {
       apiClient
         .get<Paginated<GeneratedTaskDependency>>("/master-data/generated-task-dependencies/", { params })
         .then((r) => r.data),
+  },
+};
+
+export const planningApi = {
+  sowImports: {
+    ...crud<SowImport>("/planning/sow-imports"),
+    // create() do crud<> genérico já lida com JSON; upload de arquivo
+    // precisa de multipart (o backend aceita os dois, ver
+    // SowImportViewSet.parser_classes).
+    createWithFile: (payload: { title: string; source_type: string; source_text?: string; source_file?: File }) => {
+      const form = new FormData();
+      form.append("title", payload.title);
+      form.append("source_type", payload.source_type);
+      if (payload.source_text) form.append("source_text", payload.source_text);
+      if (payload.source_file) form.append("source_file", payload.source_file);
+      return apiClient
+        .post<SowImport>("/planning/sow-imports/", form, { headers: { "Content-Type": "multipart/form-data" } })
+        .then((r) => r.data);
+    },
+    items: (id: number) =>
+      apiClient.get<SowParsedItem[]>(`/planning/sow-imports/${id}/items/`).then((r) => r.data),
+    process: (id: number) => apiClient.post<SowImport>(`/planning/sow-imports/${id}/process/`).then((r) => r.data),
+    reprocess: (id: number) => apiClient.post<SowImport>(`/planning/sow-imports/${id}/reprocess/`).then((r) => r.data),
+    approveSelected: (id: number, itemIds: number[]) =>
+      apiClient
+        .post<SowApproveSelectedResult>(`/planning/sow-imports/${id}/approve-selected/`, { item_ids: itemIds })
+        .then((r) => r.data),
+    rejectSelected: (id: number, itemIds: number[]) =>
+      apiClient
+        .post<SowRejectSelectedResult>(`/planning/sow-imports/${id}/reject-selected/`, { item_ids: itemIds })
+        .then((r) => r.data),
+    finalize: (id: number) => apiClient.post<SowImport>(`/planning/sow-imports/${id}/finalize/`).then((r) => r.data),
+  },
+  sowParsedItems: {
+    ...crud<SowParsedItem>("/planning/sow-parsed-items"),
+    approve: (id: number) =>
+      apiClient.post<SowApproveItemResult>(`/planning/sow-parsed-items/${id}/approve/`).then((r) => r.data),
+    reject: (id: number) =>
+      apiClient.post<SowParsedItem>(`/planning/sow-parsed-items/${id}/reject/`).then((r) => r.data),
+    reprocess: (id: number) =>
+      apiClient.post<SowParsedItem>(`/planning/sow-parsed-items/${id}/reprocess/`).then((r) => r.data),
   },
 };
 

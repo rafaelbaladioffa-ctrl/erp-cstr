@@ -32,6 +32,8 @@ from master_data.models import (
     Path,
     ScopeItem,
     ScopeItemPath,
+    SowImport,
+    SowParsedItem,
     TaskTemplate,
     TaskTemplateRule,
     TaskTemplateStep,
@@ -39,6 +41,7 @@ from master_data.models import (
     normalize_alias_text,
 )
 from master_data.models import Site as MasterDataSite
+from master_data.services.sow_parser.service import UnsupportedSourceTypeError, extract_text_from_file
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
@@ -1008,6 +1011,229 @@ class GeneratedTaskDependencyCrudSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = fields
+
+
+class SowImportSerializer(serializers.ModelSerializer):
+    """Planejamento > Importar SOW. `source_file` é write-only (aceita
+    multipart no create); a leitura usa `source_file_url`. Campos de
+    processamento (status/parser_version/ai_*/total_*/error_message) só
+    são gravados pelo service layer (master_data.services.sow_parser.
+    service), nunca diretamente pelo formulário — ver
+    SowImportViewSet.process/reprocess."""
+
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+    source_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SowImport
+        fields = (
+            "id",
+            "code",
+            "title",
+            "source_type",
+            "source_file",
+            "source_file_url",
+            "source_text",
+            "original_filename",
+            "mime_type",
+            "status",
+            "parser_version",
+            "ai_provider",
+            "ai_model",
+            "processing_started_at",
+            "processing_finished_at",
+            "total_items_detected",
+            "total_items_approved",
+            "total_items_rejected",
+            "total_warnings",
+            "error_message",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = (
+            "id",
+            "code",
+            "original_filename",
+            "mime_type",
+            "status",
+            "parser_version",
+            "ai_provider",
+            "ai_model",
+            "processing_started_at",
+            "processing_finished_at",
+            "total_items_detected",
+            "total_items_approved",
+            "total_items_rejected",
+            "total_warnings",
+            "error_message",
+            "created_at",
+            "updated_at",
+        )
+        extra_kwargs = {"source_file": {"write_only": True, "required": False}}
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+    def get_source_file_url(self, obj):
+        if not obj.source_file:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(obj.source_file.url) if request else obj.source_file.url
+
+    def validate(self, attrs):
+        if self.instance is None:
+            source_file = attrs.get("source_file")
+            source_text = (attrs.get("source_text") or "").strip()
+            if not source_file and not source_text:
+                raise serializers.ValidationError(
+                    {"source_text": "Informe o texto do SOW ou envie um arquivo."}
+                )
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        source_file = validated_data.pop("source_file", None)
+        instance = SowImport(created_by=user, updated_by=user, **validated_data)
+        if source_file is not None:
+            instance.source_file = source_file
+            instance.original_filename = source_file.name
+            instance.mime_type = getattr(source_file, "content_type", "") or ""
+            if not instance.source_text:
+                try:
+                    instance.source_text = extract_text_from_file(source_file)
+                except UnsupportedSourceTypeError as exc:
+                    instance.status = "FAILED"
+                    instance.error_message = str(exc)
+        instance.save()
+        return instance
+
+
+class SowParsedItemSerializer(serializers.ModelSerializer):
+    """Preview revisável de um item extraído de um SowImport (ver
+    docstring de SowParsedItem). `raw_text` nunca é editável (evidência de
+    auditoria); `review_status`/`approved_scope_item`/`reviewed_by`/
+    `reviewed_at` só são gravados pelas actions approve/reject (nunca por
+    PATCH direto — ver validate() abaixo, que também bloqueia qualquer
+    edição depois de aprovado)."""
+
+    sow_import_code = serializers.CharField(source="sow_import.code", read_only=True)
+    suggested_cable_family_code = serializers.SerializerMethodField()
+    suggested_cable_family_name = serializers.SerializerMethodField()
+    suggested_cable_spec_code = serializers.SerializerMethodField()
+    suggested_network_code = serializers.SerializerMethodField()
+    suggested_workstream_code = serializers.SerializerMethodField()
+    suggested_paths = serializers.PrimaryKeyRelatedField(queryset=Path.objects.all(), many=True, required=False)
+    suggested_path_codes = serializers.SerializerMethodField()
+    approved_scope_item_id = serializers.IntegerField(read_only=True)
+    approved_scope_item_code = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.SerializerMethodField()
+    confidence_band = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SowParsedItem
+        fields = (
+            "id",
+            "sow_import",
+            "sow_import_code",
+            "sequence",
+            "raw_text",
+            "item_type",
+            "suggested_cable_family",
+            "suggested_cable_family_code",
+            "suggested_cable_family_name",
+            "suggested_cable_spec",
+            "suggested_cable_spec_code",
+            "suggested_network",
+            "suggested_network_code",
+            "suggested_workstream",
+            "suggested_workstream_code",
+            "suggested_paths",
+            "suggested_path_codes",
+            "quantity",
+            "unit",
+            "length_type",
+            "length_m",
+            "medium",
+            "preterminated",
+            "color",
+            "fiber_count",
+            "confidence_score",
+            "confidence_band",
+            "review_status",
+            "requires_review",
+            "warnings",
+            "ai_raw_payload",
+            "normalization_metadata",
+            "approved_scope_item_id",
+            "approved_scope_item_code",
+            "reviewed_by_name",
+            "reviewed_at",
+            "active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "sow_import",
+            "sequence",
+            "raw_text",
+            "confidence_score",
+            "review_status",
+            "requires_review",
+            "warnings",
+            "ai_raw_payload",
+            "normalization_metadata",
+            "approved_scope_item_id",
+            "reviewed_at",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_suggested_cable_family_code(self, obj):
+        return obj.suggested_cable_family.code if obj.suggested_cable_family_id else None
+
+    def get_suggested_cable_family_name(self, obj):
+        return obj.suggested_cable_family.name if obj.suggested_cable_family_id else None
+
+    def get_suggested_cable_spec_code(self, obj):
+        return obj.suggested_cable_spec.code if obj.suggested_cable_spec_id else None
+
+    def get_suggested_network_code(self, obj):
+        return obj.suggested_network.code if obj.suggested_network_id else None
+
+    def get_suggested_workstream_code(self, obj):
+        return obj.suggested_workstream.code if obj.suggested_workstream_id else None
+
+    def get_suggested_path_codes(self, obj):
+        return [path.code for path in obj.suggested_paths.all()]
+
+    def get_approved_scope_item_code(self, obj):
+        return obj.approved_scope_item.code if obj.approved_scope_item_id else None
+
+    def get_reviewed_by_name(self, obj):
+        return obj.reviewed_by.get_full_name() or obj.reviewed_by.get_username() if obj.reviewed_by_id else None
+
+    def get_confidence_band(self, obj):
+        if obj.confidence_score is None:
+            return None
+        if obj.confidence_score >= 0.95:
+            return "HIGH"
+        if obj.confidence_score >= 0.80:
+            return "MEDIUM"
+        return "LOW"
+
+    def validate(self, attrs):
+        if self.instance is not None and self.instance.approved_scope_item_id:
+            raise serializers.ValidationError("Este item já foi aprovado e não pode mais ser editado.")
+        return attrs
 
 
 class ProjectTypeCrudSerializer(serializers.ModelSerializer):

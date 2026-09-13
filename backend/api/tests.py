@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -34,6 +35,8 @@ from master_data.models import (
     Path,
     ScopeItem,
     ScopeItemPath,
+    SowImport,
+    SowParsedItem,
     TaskTemplate,
     TaskTemplateRule,
     TaskTemplateStep,
@@ -4857,3 +4860,301 @@ class PathExpansionAndDependencyTests(TestCase):
         self.assertEqual(len(second.data["existing_dependencies"]), 14)
 
         self.assertEqual(GeneratedTask.objects.filter(scope_item=scope_item).count(), 14)
+
+
+class SowImportTests(TestCase):
+    """Planejamento > Importar SOW — parser determinístico + IA opcional +
+    normalização contra Master Data + preview (SowParsedItem) + revisão
+    humana + aprovação -> ScopeItem definitivo (NUNCA GeneratedTask, ver
+    docstring de SowImport em master_data/models.py). Os testes usam os
+    dados REAIS já seedados por migration (CableFamily/CableAlias/
+    CableSpec/Path) — os mesmos do critério de aceite do pedido original
+    — em vez de um fixture dedicado, para provar o parser contra o
+    cadastro de verdade."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="sow_import_admin", email="sow_import_admin@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+
+    def create_import(self, text, title="Teste de SOW"):
+        response = self.client_api.post(
+            "/api/planning/sow-imports/",
+            {"title": title, "source_type": "TEXT", "source_text": text},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        return response.data
+
+    def process(self, sow_import_id):
+        response = self.client_api.post(f"/api/planning/sow-imports/{sow_import_id}/process/")
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data
+
+    def get_items(self, sow_import_id):
+        response = self.client_api.get(f"/api/planning/sow-imports/{sow_import_id}/items/")
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data
+
+    # --- TESTE 1 ---
+    def test_deterministic_parser_resolves_mpo_family_via_part_number(self):
+        data = self.create_import("2x 72F OS2 Yellow MPO/MPO, MPO-B, 0072X6P64 with 50m")
+        self.process(data["id"])
+        item = self.get_items(data["id"])[0]
+        self.assertEqual(item["suggested_cable_family_code"], "FIB-72F-MPOB")
+        self.assertEqual(item["suggested_cable_spec_code"], "SPEC-72F-MPOB-0072X6P64")
+        self.assertEqual(item["quantity"], 2)
+        self.assertEqual(item["length_type"], "EXACT")
+        self.assertEqual(float(item["length_m"]), 50.0)
+        self.assertEqual(item["medium"], "FIBER")
+
+    # --- TESTE 2 ---
+    def test_deterministic_parser_resolves_robust_fiber_with_maximum_length(self):
+        data = self.create_import("4x 2F robust fibers up to 60m")
+        self.process(data["id"])
+        item = self.get_items(data["id"])[0]
+        self.assertEqual(item["suggested_cable_family_code"], "FIB-2F-ROBUST")
+        self.assertEqual(item["quantity"], 4)
+        self.assertEqual(item["length_type"], "MAXIMUM")
+        self.assertEqual(float(item["length_m"]), 60.0)
+
+    # --- TESTE 3 ---
+    def test_deterministic_parser_resolves_cat6_utp_as_copper(self):
+        data = self.create_import("10x CAT6 UTP up to 60m")
+        self.process(data["id"])
+        item = self.get_items(data["id"])[0]
+        self.assertEqual(item["suggested_cable_family_code"], "COP-CAT6")
+        self.assertEqual(item["quantity"], 10)
+        self.assertEqual(item["length_type"], "MAXIMUM")
+        self.assertEqual(float(item["length_m"]), 60.0)
+        self.assertEqual(item["medium"], "COPPER")
+
+    # --- TESTE 4 ---
+    def test_deterministic_parser_resolves_path_reference(self):
+        data = self.create_import("1x 18F LC-LC (45m) from A to B (Path A)")
+        self.process(data["id"])
+        item = self.get_items(data["id"])[0]
+        self.assertEqual(item["suggested_cable_family_code"], "FIB-18F-LCLC")
+        self.assertEqual(item["quantity"], 1)
+        self.assertEqual(float(item["length_m"]), 45.0)
+        self.assertEqual(item["suggested_path_codes"], ["PATH-A"])
+
+    # --- TESTE 5 ---
+    def test_part_number_alone_resolves_cable_spec_and_family(self):
+        data = self.create_import("2x 0072X6P64 with 50m")
+        self.process(data["id"])
+        item = self.get_items(data["id"])[0]
+        self.assertEqual(item["suggested_cable_spec_code"], "SPEC-72F-MPOB-0072X6P64")
+        self.assertEqual(item["suggested_cable_family_code"], "FIB-72F-MPOB")
+
+    # --- TESTE 6 ---
+    def test_ai_invented_code_is_rejected_by_backend(self):
+        with patch("master_data.services.sow_parser.service.get_ai_sow_parser") as mock_get_parser:
+            mock_get_parser.return_value.parse.return_value = [
+                {
+                    "cable_family_code": "FIB-DOES-NOT-EXIST",
+                    "quantity": 5,
+                    "paths": [],
+                    "warnings": [],
+                    "confidence_score": 0.99,
+                }
+            ]
+            data = self.create_import("5x algum cabo nao catalogado")
+            self.process(data["id"])
+        item = self.get_items(data["id"])[0]
+        self.assertIsNone(item["suggested_cable_family"])
+        self.assertTrue(any(w["code"] == "UNKNOWN_CABLE_FAMILY" for w in item["warnings"]))
+        self.assertTrue(item["requires_review"])
+
+    # --- TESTE 7 ---
+    def test_parser_ai_quantity_conflict_generates_warning_and_keeps_deterministic_value(self):
+        with patch("master_data.services.sow_parser.service.get_ai_sow_parser") as mock_get_parser:
+            mock_get_parser.return_value.parse.return_value = [
+                {"quantity": 12, "paths": [], "warnings": [], "confidence_score": 0.9}
+            ]
+            data = self.create_import("10x CAT6 UTP up to 60m")
+            self.process(data["id"])
+        item = self.get_items(data["id"])[0]
+        self.assertEqual(item["quantity"], 10)
+        conflict_warnings = [w for w in item["warnings"] if w["code"] == "PARSER_AI_CONFLICT"]
+        self.assertEqual(len(conflict_warnings), 1)
+        self.assertEqual(conflict_warnings[0]["field"], "quantity")
+
+    # --- TESTE 8 ---
+    def test_low_confidence_item_requires_review(self):
+        data = self.create_import("2x algum cabo totalmente desconhecido XYZ123")
+        self.process(data["id"])
+        item = self.get_items(data["id"])[0]
+        self.assertLess(float(item["confidence_score"]), 0.80)
+        self.assertTrue(item["requires_review"])
+        self.assertEqual(item["confidence_band"], "LOW")
+
+    # --- TESTE 9 ---
+    def test_approving_item_creates_exactly_one_scope_item(self):
+        data = self.create_import("10x CAT6 UTP up to 60m")
+        self.process(data["id"])
+        item_id = self.get_items(data["id"])[0]["id"]
+        before = ScopeItem.objects.count()
+        response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(ScopeItem.objects.count(), before + 1)
+        scope_item = ScopeItem.objects.get(pk=response.data["scope_item_id"])
+        self.assertEqual(scope_item.cable_family.code, "COP-CAT6")
+        self.assertEqual(scope_item.quantity, 10)
+        self.assertEqual(scope_item.source_type, "SOW")
+        self.assertEqual(scope_item.source_reference, data["code"])
+        self.assertFalse(scope_item.requires_review)
+
+    # --- TESTE 10 ---
+    def test_approving_again_does_not_duplicate_scope_item(self):
+        data = self.create_import("10x CAT6 UTP up to 60m")
+        self.process(data["id"])
+        item_id = self.get_items(data["id"])[0]["id"]
+        first = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        self.assertEqual(first.status_code, 200, first.data)
+        before = ScopeItem.objects.count()
+        second = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(ScopeItem.objects.count(), before)
+        self.assertEqual(first.data["scope_item_id"], second.data["scope_item_id"])
+
+    # --- TESTE 11 ---
+    def test_rejecting_item_does_not_create_scope_item(self):
+        data = self.create_import("10x CAT6 UTP up to 60m")
+        self.process(data["id"])
+        item_id = self.get_items(data["id"])[0]["id"]
+        before = ScopeItem.objects.count()
+        response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/reject/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(ScopeItem.objects.count(), before)
+        self.assertEqual(response.data["review_status"], "REJECTED")
+
+    # --- TESTE 12 ---
+    def test_finalize_blocked_with_pending_item(self):
+        data = self.create_import("10x CAT6 UTP up to 60m")
+        self.process(data["id"])
+        response = self.client_api.post(f"/api/planning/sow-imports/{data['id']}/finalize/")
+        self.assertEqual(response.status_code, 400)
+
+    # --- TESTE 13 ---
+    def test_finalize_succeeds_when_all_items_approved_or_rejected(self):
+        data = self.create_import("10x CAT6 UTP up to 60m\n4x 2F robust fibers up to 60m")
+        self.process(data["id"])
+        items = self.get_items(data["id"])
+        self.client_api.post(f"/api/planning/sow-parsed-items/{items[0]['id']}/approve/")
+        self.client_api.post(f"/api/planning/sow-parsed-items/{items[1]['id']}/reject/")
+        response = self.client_api.post(f"/api/planning/sow-imports/{data['id']}/finalize/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["status"], "APPROVED")
+        self.assertEqual(response.data["total_items_approved"], 1)
+        self.assertEqual(response.data["total_items_rejected"], 1)
+
+    # --- TESTE 14 ---
+    def test_multiple_selected_paths_create_scope_item_paths(self):
+        data = self.create_import("1x 18F LC-LC (45m)")
+        self.process(data["id"])
+        item_id = self.get_items(data["id"])[0]["id"]
+        path_a = Path.objects.get(code="PATH-A")
+        path_b = Path.objects.get(code="PATH-B")
+        patch_response = self.client_api.patch(
+            f"/api/planning/sow-parsed-items/{item_id}/",
+            {"suggested_paths": [path_a.pk, path_b.pk]},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, 200, patch_response.data)
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200, approve_response.data)
+        scope_item = ScopeItem.objects.get(pk=approve_response.data["scope_item_id"])
+        self.assertEqual(scope_item.scope_item_paths.count(), 2)
+        self.assertEqual({p.code for p in scope_item.paths}, {"PATH-A", "PATH-B"})
+
+    # --- TESTE 15 ---
+    def test_works_without_ai_api_key_deterministic_only(self):
+        with patch.dict(os.environ, {"AI_API_KEY": ""}, clear=False):
+            data = self.create_import("10x CAT6 UTP up to 60m")
+            self.process(data["id"])
+        item = self.get_items(data["id"])[0]
+        self.assertEqual(item["suggested_cable_family_code"], "COP-CAT6")
+        sow_import = SowImport.objects.get(pk=data["id"])
+        self.assertEqual(sow_import.status, "READY_FOR_REVIEW")
+        self.assertEqual(sow_import.ai_provider, "")
+
+    # --- extras: upload de arquivo (Bloco 1) ---
+    def test_text_file_upload_extracts_source_text(self):
+        upload = SimpleUploadedFile("escopo.txt", b"10x CAT6 UTP up to 60m", content_type="text/plain")
+        response = self.client_api.post(
+            "/api/planning/sow-imports/",
+            {"title": "Upload de teste", "source_type": "TEXT", "source_file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        sow_import = SowImport.objects.get(pk=response.data["id"])
+        self.assertIn("CAT6", sow_import.source_text)
+        self.assertEqual(sow_import.original_filename, "escopo.txt")
+
+    def test_binary_file_upload_returns_clear_unsupported_message_without_crashing(self):
+        upload = SimpleUploadedFile("escopo.pdf", b"\x25\x50\x44\x46\xff\xfe\x00\x01", content_type="application/pdf")
+        response = self.client_api.post(
+            "/api/planning/sow-imports/",
+            {"title": "PDF de teste", "source_type": "PDF", "source_file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        sow_import = SowImport.objects.get(pk=response.data["id"])
+        self.assertEqual(sow_import.status, "FAILED")
+        self.assertTrue(sow_import.error_message)
+        self.assertTrue(sow_import.source_file)
+
+    # --- idempotência de processamento / bloqueio de reprocessamento ---
+    def test_process_twice_is_blocked_use_reprocess_instead(self):
+        data = self.create_import("10x CAT6 UTP up to 60m")
+        self.process(data["id"])
+        response = self.client_api.post(f"/api/planning/sow-imports/{data['id']}/process/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_reprocess_blocked_after_item_approved(self):
+        data = self.create_import("10x CAT6 UTP up to 60m")
+        self.process(data["id"])
+        item_id = self.get_items(data["id"])[0]["id"]
+        self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        response = self.client_api.post(f"/api/planning/sow-imports/{data['id']}/reprocess/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_reprocess_item_updates_fields_when_not_approved(self):
+        data = self.create_import("10x CAT6 UTP up to 60m")
+        self.process(data["id"])
+        item_id = self.get_items(data["id"])[0]["id"]
+        response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/reprocess/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["suggested_cable_family_code"], "COP-CAT6")
+        history = response.data["normalization_metadata"].get("reprocess_history")
+        self.assertTrue(history)
+
+    def test_end_to_end_three_line_acceptance_scenario(self):
+        """Critério de aceite end-to-end do pedido original: colar 3 linhas,
+        processar, revisar, aprovar selecionados -> 3 ScopeItems, 0
+        GeneratedTask."""
+        text = (
+            "2x 72F OS2 Yellow MPO/MPO, MPO-B, 0072X6P64 with 50m\n"
+            "4x 2F robust fibers up to 60m\n"
+            "10x CAT6 UTP up to 60m"
+        )
+        data = self.create_import(text)
+        process_result = self.process(data["id"])
+        self.assertEqual(process_result["total_items_detected"], 3)
+        items = self.get_items(data["id"])
+        self.assertEqual(len(items), 3)
+
+        item_ids = [item["id"] for item in items]
+        response = self.client_api.post(
+            f"/api/planning/sow-imports/{data['id']}/approve-selected/",
+            {"item_ids": item_ids},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data["approved"]), 3)
+        self.assertEqual(response.data["sow_import"]["total_items_approved"], 3)
+        self.assertEqual(ScopeItem.objects.filter(source_reference=data["code"]).count(), 3)
+        self.assertEqual(GeneratedTask.objects.filter(scope_item__source_reference=data["code"]).count(), 0)

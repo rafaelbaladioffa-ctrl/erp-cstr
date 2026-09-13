@@ -87,6 +87,10 @@ export const PERMS = {
   viewTaskTemplateRule: "master_data.view_tasktemplaterule",
   viewScopeItem: "master_data.view_scopeitem",
   viewGeneratedTask: "master_data.view_generatedtask",
+  viewSowImport: "master_data.view_sowimport",
+  addSowImport: "master_data.add_sowimport",
+  changeSowImport: "master_data.change_sowimport",
+  changeSowParsedItem: "master_data.change_sowparseditem",
 };
 
 export const MASTER_DATA_PERMS = [
@@ -106,6 +110,7 @@ export const MASTER_DATA_PERMS = [
   PERMS.viewTaskTemplateRule,
   PERMS.viewScopeItem,
   PERMS.viewGeneratedTask,
+  PERMS.viewSowImport,
 ];
 
 export const CADASTROS_PERMS = [

@@ -52,6 +52,8 @@ router.register(
     views.GeneratedTaskDependencyViewSet,
     basename="master-data-generated-task-dependency",
 )
+router.register("planning/sow-imports", views.SowImportViewSet, basename="planning-sow-import")
+router.register("planning/sow-parsed-items", views.SowParsedItemViewSet, basename="planning-sow-parsed-item")
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),

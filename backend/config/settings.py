@@ -219,6 +219,17 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "atualizacoes@consultimer.c
 # fazer login normal (ver api/views.BotSharedSecretPermission).
 WHATSAPP_BOT_SECRET = os.getenv("WHATSAPP_BOT_SECRET", "")
 
+# Provider de IA usado pelo parser de SOW (Planejamento > Importar SOW —
+# ver master_data/services/sow_parser/ai_parser.py). Lido diretamente via
+# os.getenv() nesse módulo (não por settings.AI_*) para manter o parser
+# testável sem depender de configuração Django; declarado aqui só para
+# documentar as variáveis esperadas no .env do servidor. AI_API_KEY vazia
+# (padrão) faz o módulo funcionar em modo DETERMINISTIC_ONLY, sem IA —
+# nunca quebra o fluxo de importação. Nunca logar/persistir a chave.
+AI_PROVIDER = os.getenv("AI_PROVIDER", "openrouter")
+AI_API_KEY = os.getenv("AI_API_KEY", "")
+AI_MODEL = os.getenv("AI_MODEL", "")
+
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

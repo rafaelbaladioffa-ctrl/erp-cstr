@@ -5,7 +5,7 @@ from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -45,12 +45,28 @@ from master_data.models import (
     Network,
     Path,
     ScopeItem,
+    SowImport,
+    SowParsedItem,
     TaskTemplate,
     TaskTemplateRule,
     TaskTemplateStep,
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
+from master_data.services.sow_parser.service import (
+    ApprovalBlockedError,
+    FinalizeBlockedError,
+    ReprocessBlockedError,
+    SowProcessingError,
+    approve_selected as sow_approve_selected,
+    approve_sow_parsed_item,
+    finalize_sow_import,
+    process_sow_import,
+    reject_selected as sow_reject_selected,
+    reject_sow_parsed_item,
+    reprocess_sow_import,
+    reprocess_sow_parsed_item,
+)
 from master_data.services.task_dependency_generator import generate_dependencies_for_scope_item
 from master_data.services.task_generator import TaskGenerationError, generate_tasks_for_scope_item
 from master_data.services.task_rule_resolver import (
@@ -101,6 +117,8 @@ from .serializers import (
     ScopeItemCrudSerializer,
     GeneratedTaskCrudSerializer,
     GeneratedTaskDependencyCrudSerializer,
+    SowImportSerializer,
+    SowParsedItemSerializer,
     LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
@@ -1449,6 +1467,182 @@ class GeneratedTaskDependencyViewSet(viewsets.ReadOnlyModelViewSet):
             if value:
                 queryset = queryset.filter(**{field: value})
         return queryset
+
+
+class SowImportViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
+    """Planejamento > Importar SOW. Ponto de entrada do módulo de ingestão
+    inteligente de escopo (ver docstring de SowImport em
+    master_data/models.py): cria o registro (texto colado OU arquivo),
+    depois `process`/`reprocess` chamam o parser determinístico + IA
+    (master_data.services.sow_parser.service), gerando SowParsedItem
+    (preview) — nunca ScopeItem diretamente, nunca GeneratedTask."""
+
+    permission_classes = [ViewAwareModelPermissions]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    queryset = SowImport.objects.select_related("created_by", "updated_by").order_by("-created_at")
+    serializer_class = SowImportSerializer
+    change_permission_actions = ("process", "reprocess", "approve_selected", "reject_selected", "finalize")
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(models.Q(code__icontains=search) | models.Q(title__icontains=search))
+        return queryset
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    @action(detail=True, methods=["get"])
+    def items(self, request, pk=None):
+        sow_import = self.get_object()
+        items = (
+            sow_import.parsed_items.filter(active=True)
+            .select_related(
+                "suggested_cable_family",
+                "suggested_cable_spec",
+                "suggested_network",
+                "suggested_workstream",
+                "approved_scope_item",
+                "reviewed_by",
+            )
+            .prefetch_related("suggested_paths")
+            .order_by("sequence")
+        )
+        serializer = SowParsedItemSerializer(items, many=True, context=self.get_serializer_context())
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def process(self, request, pk=None):
+        sow_import = self.get_object()
+        try:
+            process_sow_import(sow_import)
+        except SowProcessingError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        sow_import.refresh_from_db()
+        return Response(self.get_serializer(sow_import).data)
+
+    @action(detail=True, methods=["post"])
+    def reprocess(self, request, pk=None):
+        sow_import = self.get_object()
+        try:
+            reprocess_sow_import(sow_import)
+        except ReprocessBlockedError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        sow_import.refresh_from_db()
+        return Response(self.get_serializer(sow_import).data)
+
+    @action(detail=True, methods=["post"], url_path="approve-selected")
+    def approve_selected(self, request, pk=None):
+        sow_import = self.get_object()
+        item_ids = list(request.data.get("item_ids") or [])
+        if not item_ids:
+            return Response({"detail": "Informe ao menos um item em item_ids."}, status=400)
+        results = sow_approve_selected(sow_import, item_ids, request.user)
+        sow_import.refresh_from_db()
+        return Response({**results, "sow_import": self.get_serializer(sow_import).data})
+
+    @action(detail=True, methods=["post"], url_path="reject-selected")
+    def reject_selected(self, request, pk=None):
+        sow_import = self.get_object()
+        item_ids = list(request.data.get("item_ids") or [])
+        if not item_ids:
+            return Response({"detail": "Informe ao menos um item em item_ids."}, status=400)
+        results = sow_reject_selected(sow_import, item_ids, request.user)
+        sow_import.refresh_from_db()
+        return Response({**results, "sow_import": self.get_serializer(sow_import).data})
+
+    @action(detail=True, methods=["post"])
+    def finalize(self, request, pk=None):
+        sow_import = self.get_object()
+        try:
+            finalize_sow_import(sow_import, request.user)
+        except FinalizeBlockedError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(self.get_serializer(sow_import).data)
+
+
+class SowParsedItemViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
+    """Preview revisável de itens extraídos de um SowImport — PATCH permite
+    correção manual dos campos sugeridos (nunca `raw_text`); `approve`/
+    `reject`/`reprocess` são as únicas ações que mudam `review_status`
+    (nunca um PATCH direto, ver SowParsedItemSerializer.validate()).
+    Criação direta é bloqueada: só o processamento de um SowImport cria
+    SowParsedItem (ver SowImportViewSet.process/reprocess)."""
+
+    permission_classes = [ViewAwareModelPermissions]
+    queryset = SowParsedItem.objects.select_related(
+        "sow_import",
+        "suggested_cable_family",
+        "suggested_cable_spec",
+        "suggested_network",
+        "suggested_workstream",
+        "approved_scope_item",
+        "reviewed_by",
+    ).prefetch_related("suggested_paths").order_by("sow_import", "sequence")
+    serializer_class = SowParsedItemSerializer
+    change_permission_actions = ("approve", "reject", "reprocess_item")
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param, field in (
+            ("sow_import", "sow_import_id"),
+            ("review_status", "review_status"),
+            ("item_type", "item_type"),
+        ):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{field: value})
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        # Bloqueado de propósito — SowParsedItem só é criado pelo
+        # processamento de um SowImport (ver docstring da classe).
+        return Response(
+            {"detail": "Itens extraídos só são criados pelo processamento de uma Importação de SOW."}, status=405
+        )
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        item = self.get_object()
+        try:
+            scope_item = approve_sow_parsed_item(item, request.user)
+        except ApprovalBlockedError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        item.refresh_from_db()
+        return Response(
+            {
+                "scope_item_id": scope_item.pk,
+                "scope_item_code": scope_item.code,
+                "item": self.get_serializer(item).data,
+            }
+        )
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        item = self.get_object()
+        try:
+            reject_sow_parsed_item(item, request.user)
+        except ApprovalBlockedError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        item.refresh_from_db()
+        return Response(self.get_serializer(item).data)
+
+    @action(detail=True, methods=["post"], url_path="reprocess")
+    def reprocess_item(self, request, pk=None):
+        item = self.get_object()
+        try:
+            reprocess_sow_parsed_item(item)
+        except ApprovalBlockedError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        item.refresh_from_db()
+        return Response(self.get_serializer(item).data)
 
 
 class ProjectTypeViewSet(RegistryViewSet):

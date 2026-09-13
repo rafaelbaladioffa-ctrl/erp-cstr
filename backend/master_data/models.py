@@ -1286,3 +1286,241 @@ class GeneratedTaskDependency(MasterDataModel):
                 )
         if errors:
             raise ValidationError(errors)
+
+
+def sow_import_upload_to(instance, filename):
+    from django.utils import timezone
+
+    return f"sow_imports/{timezone.now():%Y/%m}/{filename}"
+
+
+class SowImportSequence(models.Model):
+    """Contador atômico para gerar SowImport.code (SOW-IMPORT-NNNNNN) —
+    mesmo padrão de ScopeItemSequence/GeneratedTaskSequence."""
+
+    id = models.PositiveIntegerField(primary_key=True, default=1, editable=False)
+    last_number = models.PositiveIntegerField("último número", default=0)
+
+    class Meta:
+        verbose_name = "sequência de importações de SOW"
+        verbose_name_plural = "sequências de importações de SOW"
+
+
+class SowImport(MasterDataModel):
+    """Representa a importação de um documento/escopo (SOW) ANTES da
+    criação de ScopeItems — o ponto de entrada do módulo de ingestão
+    inteligente de escopo:
+
+    SOW/texto/arquivo -> SowImport -> parser determinístico + IA ->
+    SowParsedItem (preview revisável) -> revisão humana -> aprovação ->
+    ScopeItem definitivo.
+
+    Nunca cria GeneratedTask, nunca altera TaskTemplate, nunca cria
+    CableFamily/CableSpec/Network/Workstream/Path automaticamente — só
+    produz um preview (SowParsedItem) que o usuário revisa e aprova
+    explicitamente. Ver master_data.services.sow_parser.service."""
+
+    SOURCE_TYPE_SUGGESTIONS = ("TEXT", "PDF", "DOCX", "IMAGE", "OTHER")
+    STATUS_SUGGESTIONS = (
+        "DRAFT",
+        "PROCESSING",
+        "READY_FOR_REVIEW",
+        "PARTIALLY_REVIEWED",
+        "APPROVED",
+        "FAILED",
+        "CANCELLED",
+    )
+
+    code = models.CharField("código", max_length=30, unique=True, blank=True, editable=False)
+    title = models.CharField("título", max_length=200, blank=True)
+
+    # Texto livre (não ENUM/choices) de propósito — sugestões: TEXT, PDF,
+    # DOCX, IMAGE, OTHER. Nesta primeira versão só TEXT tem extração de
+    # texto garantida — ver
+    # master_data.services.sow_parser.service.extract_text_from_file.
+    source_type = models.CharField("tipo de origem", max_length=20, default="TEXT")
+    source_file = models.FileField("arquivo de origem", upload_to=sow_import_upload_to, null=True, blank=True)
+    source_text = models.TextField("texto de origem", blank=True)
+    original_filename = models.CharField("nome do arquivo original", max_length=255, blank=True)
+    mime_type = models.CharField("tipo MIME", max_length=100, blank=True)
+
+    # Texto livre (não ENUM/choices) de propósito — sugestões acima.
+    status = models.CharField("status", max_length=30, default="DRAFT")
+    parser_version = models.CharField("versão do parser", max_length=20, blank=True)
+    ai_provider = models.CharField("provedor de IA", max_length=50, blank=True)
+    ai_model = models.CharField("modelo de IA", max_length=100, blank=True)
+
+    processing_started_at = models.DateTimeField("início do processamento", null=True, blank=True)
+    processing_finished_at = models.DateTimeField("fim do processamento", null=True, blank=True)
+
+    total_items_detected = models.PositiveIntegerField("itens detectados", default=0)
+    total_items_approved = models.PositiveIntegerField("itens aprovados", default=0)
+    total_items_rejected = models.PositiveIntegerField("itens rejeitados", default=0)
+    total_warnings = models.PositiveIntegerField("total de warnings", default=0)
+
+    error_message = models.TextField("mensagem de erro", blank=True)
+
+    class Meta:
+        verbose_name = "Importação de SOW"
+        verbose_name_plural = "Importações de SOW"
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.code} — {self.title}" if self.title else self.code
+
+    def save(self, *args, **kwargs):
+        if self.code:
+            return super().save(*args, **kwargs)
+
+        with transaction.atomic():
+            try:
+                sequence = SowImportSequence.objects.select_for_update().get(pk=1)
+            except SowImportSequence.DoesNotExist:
+                try:
+                    with transaction.atomic():
+                        sequence = SowImportSequence.objects.create(pk=1)
+                except IntegrityError:
+                    sequence = SowImportSequence.objects.select_for_update().get(pk=1)
+
+            sequence.last_number += 1
+            sequence.save(update_fields=("last_number",))
+            self.code = f"SOW-IMPORT-{sequence.last_number:06d}"
+            return super().save(*args, **kwargs)
+
+
+class SowParsedItem(MasterDataModel):
+    """Item extraído de um SowImport ANTES de virar ScopeItem — o preview
+    revisável do módulo de ingestão. `suggested_*` são só SUGESTÕES
+    resolvidas contra o banco (nunca Master Data novo: a normalização só
+    resolve códigos já existentes, nunca cria CableFamily/Network/
+    Workstream/Path). Aprovar cria exatamente um ScopeItem (ver
+    master_data.services.sow_parser.service.approve_sow_parsed_item);
+    `approved_scope_item` garante idempotência — aprovar de novo retorna o
+    mesmo ScopeItem, nunca cria um segundo."""
+
+    REVIEW_STATUS_SUGGESTIONS = ("PENDING", "APPROVED", "REJECTED", "NEEDS_REVIEW")
+
+    sow_import = models.ForeignKey(
+        SowImport, verbose_name="importação de SOW", on_delete=models.CASCADE, related_name="parsed_items"
+    )
+    sequence = models.PositiveIntegerField("sequência", default=0)
+
+    # Preserva EXATAMENTE o trecho original que originou este item — nunca
+    # editável pelo usuário (evidência de auditoria; ver Bloco 3 do
+    # pedido: "Não permitir editar raw_text original").
+    raw_text = models.TextField("texto original", editable=False)
+    # Texto livre (não ENUM/choices) de propósito — mesmas sugestões de
+    # ScopeItem.ITEM_TYPE_SUGGESTIONS (CABLE, HARDWARE, SERVICE, OTHER).
+    item_type = models.CharField("tipo", max_length=50, blank=True)
+
+    suggested_cable_family = models.ForeignKey(
+        CableFamily,
+        verbose_name="família de cabo sugerida",
+        on_delete=models.PROTECT,
+        related_name="sow_parsed_items",
+        null=True,
+        blank=True,
+    )
+    suggested_cable_spec = models.ForeignKey(
+        CableSpec,
+        verbose_name="especificação sugerida",
+        on_delete=models.PROTECT,
+        related_name="sow_parsed_items",
+        null=True,
+        blank=True,
+    )
+    suggested_network = models.ForeignKey(
+        Network,
+        verbose_name="rede sugerida",
+        on_delete=models.PROTECT,
+        related_name="sow_parsed_items",
+        null=True,
+        blank=True,
+    )
+    suggested_workstream = models.ForeignKey(
+        Workstream,
+        verbose_name="workstream sugerido",
+        on_delete=models.PROTECT,
+        related_name="sow_parsed_items",
+        null=True,
+        blank=True,
+    )
+    suggested_paths = models.ManyToManyField(
+        Path, verbose_name="rotas sugeridas", related_name="sow_parsed_items", blank=True
+    )
+
+    quantity = models.PositiveIntegerField("quantidade", null=True, blank=True)
+    unit = models.CharField("unidade", max_length=50, blank=True)
+
+    length_type = models.CharField("tipo de metragem", max_length=50, blank=True)
+    length_m = models.DecimalField(
+        "metragem (m)",
+        max_digits=9,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+
+    medium = models.CharField("meio", max_length=50, blank=True)
+    preterminated = models.BooleanField("pré-terminado", null=True, blank=True, default=None)
+    color = models.CharField("cor", max_length=50, blank=True)
+    fiber_count = models.PositiveIntegerField("nº de fibras", null=True, blank=True)
+
+    confidence_score = models.DecimalField(
+        "confiança",
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
+    )
+    # Texto livre (não ENUM/choices) de propósito — sugestões acima.
+    review_status = models.CharField("status de revisão", max_length=20, default="PENDING")
+    requires_review = models.BooleanField("exige revisão", default=False)
+
+    # Lista de {"code", "field", "message", "critical"} — ver
+    # master_data.services.sow_parser.normalizer.
+    warnings = models.JSONField("warnings", default=list, blank=True)
+    # Payload bruto retornado pela IA para este item (ou {} quando a IA não
+    # foi usada/não resolveu este item) — nunca editado, só auditoria.
+    ai_raw_payload = models.JSONField("payload bruto da IA", default=dict, blank=True, editable=False)
+    # Detalhes de resolução/conflito (parser × IA, spec/family etc.) — só
+    # auditoria, mesmo espírito de ScopeItem.normalization_metadata.
+    normalization_metadata = models.JSONField(
+        "metadados de normalização", default=dict, blank=True, editable=False
+    )
+
+    approved_scope_item = models.OneToOneField(
+        ScopeItem,
+        verbose_name="item de escopo aprovado",
+        on_delete=models.PROTECT,
+        related_name="sow_parsed_item",
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="revisado por",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        editable=False,
+        related_name="+",
+    )
+    reviewed_at = models.DateTimeField("revisado em", null=True, blank=True, editable=False)
+
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Item Extraído de SOW"
+        verbose_name_plural = "Itens Extraídos de SOW"
+        ordering = ("sow_import", "sequence")
+        constraints = [
+            models.UniqueConstraint(fields=("sow_import", "sequence"), name="unique_sow_parsed_item_sequence"),
+        ]
+
+    def __str__(self):
+        preview = (self.raw_text or "")[:50]
+        return f"{self.sow_import.code} #{self.sequence} — {preview}"

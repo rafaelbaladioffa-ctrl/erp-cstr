@@ -494,6 +494,101 @@ export interface ScopeItemGenerateTasksResult {
   warnings: string[];
 }
 
+export interface SowWarning {
+  code: string;
+  field: string;
+  message: string;
+  critical: boolean;
+}
+
+export interface SowImport {
+  id: number;
+  code: string;
+  title: string;
+  source_type: string;
+  source_file?: File | null;
+  source_file_url: string | null;
+  source_text: string;
+  original_filename: string;
+  mime_type: string;
+  status: string;
+  parser_version: string;
+  ai_provider: string;
+  ai_model: string;
+  processing_started_at: string | null;
+  processing_finished_at: string | null;
+  total_items_detected: number;
+  total_items_approved: number;
+  total_items_rejected: number;
+  total_warnings: number;
+  error_message: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
+export interface SowParsedItem {
+  id: number;
+  sow_import: number;
+  sow_import_code: string;
+  sequence: number;
+  raw_text: string;
+  item_type: string;
+  suggested_cable_family: number | null;
+  suggested_cable_family_code: string | null;
+  suggested_cable_family_name: string | null;
+  suggested_cable_spec: number | null;
+  suggested_cable_spec_code: string | null;
+  suggested_network: number | null;
+  suggested_network_code: string | null;
+  suggested_workstream: number | null;
+  suggested_workstream_code: string | null;
+  suggested_paths: number[];
+  suggested_path_codes: string[];
+  quantity: number | null;
+  unit: string;
+  length_type: string;
+  length_m: string | null;
+  medium: string;
+  preterminated: boolean | null;
+  color: string;
+  fiber_count: number | null;
+  confidence_score: string | null;
+  confidence_band: "HIGH" | "MEDIUM" | "LOW" | null;
+  review_status: string;
+  requires_review: boolean;
+  warnings: SowWarning[];
+  ai_raw_payload: Record<string, unknown>;
+  normalization_metadata: Record<string, unknown>;
+  approved_scope_item_id: number | null;
+  approved_scope_item_code: string | null;
+  reviewed_by_name: string | null;
+  reviewed_at: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SowApproveSelectedResult {
+  approved: { item_id: number; scope_item_code: string }[];
+  errors: { item_id: number; detail: string }[];
+  sow_import: SowImport;
+}
+
+export interface SowRejectSelectedResult {
+  rejected: number[];
+  errors: { item_id: number; detail: string }[];
+  sow_import: SowImport;
+}
+
+export interface SowApproveItemResult {
+  scope_item_id: number;
+  scope_item_code: string;
+  item: SowParsedItem;
+}
+
 export interface TaskTemplate {
   id: number;
   code: string;

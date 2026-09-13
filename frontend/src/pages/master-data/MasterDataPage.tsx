@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { masterDataApi } from "../../api/resources";
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
+import SowImportPanel from "../../components/master-data/SowImportPanel";
 import TaskRuleSimulatorPanel from "../../components/master-data/TaskRuleSimulatorPanel";
 import Icon from "../../components/ui/Icon";
 import PageHeader from "../../components/ui/PageHeader";
@@ -163,7 +164,11 @@ export default function MasterDataPage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             {activeEntity ? (
               isToolConfig(activeEntity) ? (
-                <TaskRuleSimulatorPanel key={activeEntity.key} refs={refs} />
+                activeEntity.key === "sow-import" ? (
+                  <SowImportPanel key={activeEntity.key} refs={refs} />
+                ) : (
+                  <TaskRuleSimulatorPanel key={activeEntity.key} refs={refs} />
+                )
               ) : (
                 <EntityCrudPanel key={activeEntity.key} entity={activeEntity} refs={refs} refsLoaded={refsLoaded} />
               )

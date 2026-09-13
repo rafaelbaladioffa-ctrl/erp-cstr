@@ -18,6 +18,8 @@ from .models import (
     ScopeItem,
     ScopeItemPath,
     Site,
+    SowImport,
+    SowParsedItem,
     TaskTemplate,
     TaskTemplateRule,
     TaskTemplateStep,
@@ -441,6 +443,86 @@ class ScopeItemAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAd
         "resolved_rule",
         "resolved_template",
         "rule_resolution_status",
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(SowImport)
+class SowImportAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = (
+        "code",
+        "title",
+        "source_type",
+        "status",
+        "total_items_detected",
+        "total_items_approved",
+        "total_items_rejected",
+        "total_warnings",
+        "updated_at",
+    )
+    list_filter = ("source_type", "status")
+    search_fields = ("code", "title", "source_text")
+    readonly_fields = (
+        "code",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+        "processing_started_at",
+        "processing_finished_at",
+        "total_items_detected",
+        "total_items_approved",
+        "total_items_rejected",
+        "total_warnings",
+        "error_message",
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(SowParsedItem)
+class SowParsedItemAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = (
+        "sow_import",
+        "sequence",
+        "item_type",
+        "suggested_cable_family",
+        "quantity",
+        "confidence_score",
+        "review_status",
+        "requires_review",
+        "active",
+    )
+    list_filter = ("item_type", "review_status", "requires_review", "active")
+    search_fields = ("sow_import__code", "raw_text")
+    autocomplete_fields = (
+        "sow_import",
+        "suggested_cable_family",
+        "suggested_cable_spec",
+        "suggested_network",
+        "suggested_workstream",
+        "suggested_paths",
+    )
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+        "raw_text",
+        "ai_raw_payload",
+        "normalization_metadata",
+        "approved_scope_item",
+        "reviewed_by",
+        "reviewed_at",
     )
 
     def save_model(self, request, obj, form, change):
