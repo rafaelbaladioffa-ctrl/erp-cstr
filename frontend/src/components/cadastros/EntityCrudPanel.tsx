@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { sitesMapApi } from "../../api/resources";
+import { masterDataApi, sitesMapApi } from "../../api/resources";
+import type { CableAlias } from "../../api/types";
 import { useAuth } from "../../context/AuthContext";
 import { PERMS, hasPerm } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../../pages/cadastros/registryConfig";
@@ -43,8 +44,16 @@ export default function EntityCrudPanel({
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  // Só usado pela Família de Cabo: lista de aliases apontando para o
+  // registro em edição, mostrada como seção somente-leitura no modal (o
+  // equivalente mais próximo de "tela de detalhes" que este painel genérico
+  // tem hoje — ver EntityConfig/masterDataConfig para o resto da entidade).
+  const [familyAliases, setFamilyAliases] = useState<CableAlias[]>([]);
+  const [familyAliasesLoading, setFamilyAliasesLoading] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -66,6 +75,7 @@ export default function EntityCrudPanel({
   useEffect(() => {
     reload();
     setSearch("");
+    setFilterValues({});
     setPage(1);
     setCsvImportOpen(false);
     setBulkCreateOpen(false);
@@ -96,10 +106,17 @@ export default function EntityCrudPanel({
   }
 
   const filtered = useMemo(() => {
-    if (!search) return rows;
-    const lower = search.toLowerCase();
-    return rows.filter((row) => JSON.stringify(row).toLowerCase().includes(lower));
-  }, [rows, search]);
+    let result = rows;
+    for (const filter of entity.filters ?? []) {
+      const value = filterValues[filter.key];
+      if (value) result = result.filter((row) => String(row[filter.key] ?? "") === value);
+    }
+    if (search) {
+      const lower = search.toLowerCase();
+      result = result.filter((row) => JSON.stringify(row).toLowerCase().includes(lower));
+    }
+    return result;
+  }, [rows, search, filterValues, entity.filters]);
 
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
@@ -108,6 +125,7 @@ export default function EntityCrudPanel({
     setEditingId(null);
     setFormValues(entity.emptyValues);
     setFormErrors({});
+    setFamilyAliases([]);
     setModalOpen(true);
   }
 
@@ -122,6 +140,15 @@ export default function EntityCrudPanel({
     setFormValues({ ...row });
     setFormErrors({});
     setModalOpen(true);
+    if (entity.key === "cable-families") {
+      setFamilyAliasesLoading(true);
+      masterDataApi.cableAliases
+        .list({ cable_family: String(row.id) })
+        .then((data) => setFamilyAliases(data.results))
+        .finally(() => setFamilyAliasesLoading(false));
+    } else {
+      setFamilyAliases([]);
+    }
   }
 
   async function handleSave() {
@@ -243,6 +270,25 @@ export default function EntityCrudPanel({
               }}
             />
           </div>
+          {entity.filters?.map((filter) => (
+            <select
+              key={filter.key}
+              className="select"
+              style={{ maxWidth: 220 }}
+              value={filterValues[filter.key] ?? ""}
+              onChange={(e) => {
+                setFilterValues((prev) => ({ ...prev, [filter.key]: e.target.value }));
+                setPage(1);
+              }}
+            >
+              <option value="">{filter.label}</option>
+              {filter.options(refs).map((opt) => (
+                <option key={opt.value} value={String(opt.value)}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          ))}
         </div>
 
         {loading ? (
@@ -358,6 +404,36 @@ export default function EntityCrudPanel({
           />
           {formErrors.non_field_errors && (
             <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{formErrors.non_field_errors.join(" ")}</p>
+          )}
+          {editingId && entity.key === "cable-families" && (
+            <div style={{ marginTop: 8, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--text-faint)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: 8,
+                }}
+              >
+                Aliases ({familyAliases.length})
+              </div>
+              {familyAliasesLoading ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+              ) : familyAliases.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhum alias cadastrado para esta família ainda.</p>
+              ) : (
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text)" }}>
+                  {familyAliases.map((a) => (
+                    <li key={a.id}>
+                      {a.alias}
+                      {a.alias_type ? ` (${a.alias_type})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
             <button className="btn btn-outline" onClick={() => setModalOpen(false)}>

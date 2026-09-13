@@ -1,7 +1,16 @@
 import { masterDataApi } from "../../api/resources";
-import type { CableFamily } from "../../api/types";
+import type { CableAlias, CableFamily } from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
-import type { EntityConfig } from "../cadastros/registryConfig";
+import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
+
+/** Espelha master_data.models.CableAlias.ALIAS_TYPE_SUGGESTIONS no backend —
+ * não é um ENUM rígido (o campo é texto livre), só as opções mostradas no
+ * filtro e como sugestão no formulário. */
+const ALIAS_TYPE_SUGGESTIONS = ["NAME_VARIATION", "PART_NUMBER", "LEGACY_NAME", "SOW_TERM", "INTERNAL_TERM"];
+
+function cableFamilyOptions(refs: ReferenceData) {
+  return refs.cableFamilies.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }));
+}
 
 /** Cadastros Mestres: catálogo técnico/operacional normalizado (famílias
  * de cabo, futuramente conectores, certificações, dispositivos etc.) —
@@ -96,8 +105,45 @@ const cableFamilyEntity: EntityConfig<CableFamily> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const cableAliasEntity: EntityConfig<CableAlias> = {
+  key: "cable-aliases",
+  label: "Aliases de Cabos",
+  icon: "alt_route",
+  singular: "Alias de Cabo",
+  description: "Formas alternativas de escrita (SOWs, cutsheets, documentos) que apontam para uma Família de Cabo canônica.",
+  createLabel: "Novo Alias de Cabo",
+  perms: modelPerms("master_data", "cablealias"),
+  api: masterDataApi.cableAliases,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "alias", label: "Alias" },
+    { key: "cable_family_name", label: "Família Canônica" },
+    { key: "cable_family_code", label: "Código da Família" },
+    { key: "alias_type", label: "Tipo", render: (row) => row.alias_type || "—" },
+  ],
+  filters: [
+    { key: "cable_family", label: "Todas as Famílias", options: cableFamilyOptions },
+    { key: "alias_type", label: "Todos os Tipos", options: () => ALIAS_TYPE_SUGGESTIONS.map((t) => ({ value: t, label: t })) },
+  ],
+  fields: (refs) => [
+    { name: "cable_family", label: "Família de Cabo", type: "select", required: true, span: 2, options: cableFamilyOptions(refs) },
+    { name: "alias", label: "Alias", type: "text", required: true, span: 2, placeholder: "Ex: 8F LC Trunk Fiber" },
+    {
+      name: "alias_type",
+      label: "Tipo do Alias",
+      type: "text",
+      placeholder: "Ex: NAME_VARIATION, PART_NUMBER, LEGACY_NAME, SOW_TERM, INTERNAL_TERM",
+    },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativo" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+  ],
+  emptyValues: { cable_family: null, alias: "", alias_type: "", description: "", active: true },
+  rowLabel: (row) => `${row.alias} → ${row.cable_family_code}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
-  { key: "engenharia", label: "Engenharia", icon: "cable", entities: [cableFamilyEntity] },
+  { key: "engenharia", label: "Engenharia", icon: "cable", entities: [cableFamilyEntity, cableAliasEntity] },
   { key: "operacao", label: "Operação", icon: "engineering", entities: [] },
   { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [] },
   { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },

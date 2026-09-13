@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { masterDataApi } from "../../api/resources";
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
 import Icon from "../../components/ui/Icon";
 import PageHeader from "../../components/ui/PageHeader";
@@ -14,10 +15,29 @@ const EMPTY_REFS: ReferenceData = {
   clients: [],
   projectTypes: [],
   collaborators: [],
+  cableFamilies: [],
 };
 
 export default function MasterDataPage() {
   const { user } = useAuth();
+
+  const [refs, setRefs] = useState<ReferenceData>(EMPTY_REFS);
+  const [refsLoaded, setRefsLoaded] = useState(false);
+
+  useEffect(() => {
+    // Cadastros Mestres não tem tantos cadastros quanto Cadastros Gerais
+    // ainda — hoje só Aliases de Cabo precisa de uma referência (a lista de
+    // Famílias, para o seletor/filtro). Promise.allSettled deixa fácil
+    // acrescentar mais entradas conforme novos cadastros forem chegando.
+    Promise.allSettled([masterDataApi.cableFamilies.list({ page_size: "500" } as never)])
+      .then(([cableFamilies]) => {
+        setRefs({
+          ...EMPTY_REFS,
+          cableFamilies: cableFamilies.status === "fulfilled" ? cableFamilies.value.results : [],
+        });
+      })
+      .finally(() => setRefsLoaded(true));
+  }, []);
 
   const categories = useMemo(
     () =>
@@ -110,7 +130,7 @@ export default function MasterDataPage() {
 
           <div style={{ flex: 1, minWidth: 0 }}>
             {activeEntity ? (
-              <EntityCrudPanel entity={activeEntity} refs={EMPTY_REFS} refsLoaded={true} />
+              <EntityCrudPanel entity={activeEntity} refs={refs} refsLoaded={refsLoaded} />
             ) : (
               <div className="empty-state">Selecione um cadastro na lista ao lado.</div>
             )}

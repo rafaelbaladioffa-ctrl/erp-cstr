@@ -18,7 +18,7 @@ from core.models import (
     update_person,
 )
 from dispatch.models import TechnicianAbsence, TechnicianDailyPresence
-from master_data.models import CableFamily
+from master_data.models import CableAlias, CableFamily, normalize_alias_text
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
@@ -114,6 +114,67 @@ class CableFamilyCrudSerializer(serializers.ModelSerializer):
 
     def get_updated_by_name(self, obj):
         return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+
+class CableAliasCrudSerializer(serializers.ModelSerializer):
+    # Só leitura: calculado a partir de `alias` no model (clean()/save()),
+    # nunca recebido do cliente — evita que a API deixe o front enviar um
+    # valor de normalização divergente do que o backend realmente vai usar
+    # para checar duplicidade.
+    normalized_alias = serializers.CharField(read_only=True)
+    cable_family_code = serializers.CharField(source="cable_family.code", read_only=True)
+    cable_family_name = serializers.CharField(source="cable_family.name", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CableAlias
+        fields = (
+            "id",
+            "cable_family",
+            "cable_family_code",
+            "cable_family_name",
+            "alias",
+            "normalized_alias",
+            "alias_type",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+    def validate(self, attrs):
+        # A unicidade de fato é do valor NORMALIZADO (o unique=True do model
+        # já protege no banco) — validado aqui explicitamente para devolver
+        # um erro de formulário legível em vez de deixar estourar um
+        # IntegrityError 500 (mesmo espírito de "detectar conflito e não
+        # aceitar silenciosamente" pedido para esta entidade).
+        alias = attrs.get("alias", getattr(self.instance, "alias", None))
+        if alias:
+            normalized = normalize_alias_text(alias)
+            conflict = CableAlias.objects.filter(normalized_alias=normalized)
+            if self.instance is not None:
+                conflict = conflict.exclude(pk=self.instance.pk)
+            existing = conflict.first()
+            if existing:
+                raise serializers.ValidationError(
+                    {
+                        "alias": (
+                            f'Já existe um alias equivalente cadastrado ("{existing.alias}"), '
+                            f"apontando para {existing.cable_family.code}."
+                        )
+                    }
+                )
+        return attrs
 
 
 class ProjectTypeCrudSerializer(serializers.ModelSerializer):

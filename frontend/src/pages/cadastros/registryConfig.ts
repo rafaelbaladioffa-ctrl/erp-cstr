@@ -1,5 +1,6 @@
 import { bulkCreateApi, registryApi } from "../../api/resources";
 import type {
+  CableFamily,
   Category,
   ClientFull,
   CollaboratorFull,
@@ -11,13 +12,22 @@ import type {
   SiteFull,
   TaskFull,
 } from "../../api/types";
-import type { FieldConfig, FormValues } from "../../components/ui/DynamicForm";
+import type { FieldConfig, FieldOption, FormValues } from "../../components/ui/DynamicForm";
 import { modelPerms, type ModelPerms } from "../../utils/permissions";
 
 export interface ColumnConfig<T> {
   key: string;
   label: string;
   render?: (row: T) => string;
+}
+
+/** Filtro adicional (além da busca por texto) exibido como um <select> na
+ * barra de filtros — ex: filtrar Aliases de Cabo por Família ou por Tipo.
+ * Comparação sempre por igualdade de string contra `row[key]`. */
+export interface FilterConfig {
+  key: string;
+  label: string;
+  options: (refs: ReferenceData) => FieldOption[];
 }
 
 export interface EntityConfig<T extends { id: number; is_active?: boolean }> {
@@ -50,6 +60,9 @@ export interface EntityConfig<T extends { id: number; is_active?: boolean }> {
    * Ativar/Inativar — para cadastros que não podem ser apagados de fato
    * uma vez persistidos (podem já ter sido usados em projetos/escopos). */
   disableHardDelete?: boolean;
+  /** Filtros extras (além da busca por texto) exibidos como <select> na
+   * barra de filtros — ex: por Família ou por Tipo de Alias. */
+  filters?: FilterConfig[];
   /** Padrão "Adicionar Vários" do Admin: textarea com um nome por linha,
    * cada linha vira um registro separado com os mesmos dados complementares. */
   bulkCreate?: {
@@ -68,6 +81,9 @@ export interface ReferenceData {
   clients: ClientFull[];
   projectTypes: ProjectType[];
   collaborators: CollaboratorFull[];
+  /** Só usado por Cadastros Mestres (ex: seletor de família em Aliases de
+   * Cabo) — vazio para quem só usa Cadastros Gerais. */
+  cableFamilies: CableFamily[];
 }
 
 function companyOptions(refs: ReferenceData) {

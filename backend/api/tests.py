@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -16,7 +17,7 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
-from master_data.models import CableFamily
+from master_data.models import CableAlias, CableFamily
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -1044,3 +1045,116 @@ class CableFamilyApiTests(TestCase):
         self.assertTrue(CableFamily.objects.filter(pk=family.pk).exists())
         family.refresh_from_db()
         self.assertFalse(family.active)
+
+
+class CableAliasApiTests(TestCase):
+    """Cadastros Mestres > Engenharia > Aliases de Cabos — CRUD, normalização,
+    duplicidade, busca, filtros e ausência de hard delete."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(username="cable_alias_admin", email="cable_alias@example.com", password="test-password")
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo do CableFamilyApiTests: o seed
+        # real (0002/0004/0006) roda também no banco de testes.
+        self.family = CableFamily.objects.create(code="TST-8F-LCLC", name="8F LC-LC de teste", medium="FIBER")
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-aliases/",
+            {"cable_family": self.family.pk, "alias": "8F LC TEST"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        alias = CableAlias.objects.get(pk=response.data["id"])
+        self.assertEqual(alias.created_by, self.admin)
+        self.assertEqual(alias.updated_by, self.admin)
+        self.assertEqual(response.data["cable_family_code"], "TST-8F-LCLC")
+
+    def test_alias_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-aliases/",
+            {"cable_family": self.family.pk},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("alias", response.data)
+
+    def test_cable_family_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-aliases/",
+            {"alias": "8F LC SEM FAMILIA"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cable_family", response.data)
+
+    def test_normalization(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-aliases/",
+            {"cable_family": self.family.pk, "alias": "  8f   lc<>lc  "},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["normalized_alias"], "8F LC<>LC")
+
+    def test_duplicate_normalized_alias_rejected(self):
+        CableAlias.objects.create(cable_family=self.family, alias="8F LC-LC")
+        response = self.client_api.post(
+            "/api/master-data/cable-aliases/",
+            # Mesmo alias com espaçamento/caixa diferentes -> mesmo normalized_alias.
+            {"cable_family": self.family.pk, "alias": "  8f lc-lc "},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("alias", response.data)
+        self.assertEqual(CableAlias.objects.filter(normalized_alias="8F LC-LC").count(), 1)
+
+    def test_search_by_alias_and_family(self):
+        other_family = CableFamily.objects.create(code="TST-CAT6", name="CAT6 de teste", medium="COPPER")
+        CableAlias.objects.create(cable_family=self.family, alias="8F LC TRUNK FIBER TEST")
+        CableAlias.objects.create(cable_family=other_family, alias="CAT6 UTP TEST")
+
+        by_alias = self.client_api.get("/api/master-data/cable-aliases/", {"search": "trunk fiber test"})
+        self.assertEqual(by_alias.data["count"], 1)
+        self.assertEqual(by_alias.data["results"][0]["cable_family_code"], "TST-8F-LCLC")
+
+        by_family_code = self.client_api.get("/api/master-data/cable-aliases/", {"search": "TST-CAT6"})
+        self.assertEqual(by_family_code.data["count"], 1)
+        self.assertEqual(by_family_code.data["results"][0]["alias"], "CAT6 UTP TEST")
+
+    def test_filter_by_cable_family(self):
+        other_family = CableFamily.objects.create(code="TST-OTHER", name="Outra família")
+        CableAlias.objects.create(cable_family=self.family, alias="ALIAS A TEST")
+        CableAlias.objects.create(cable_family=other_family, alias="ALIAS B TEST")
+
+        response = self.client_api.get("/api/master-data/cable-aliases/", {"cable_family": self.family.pk})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["alias"], "ALIAS A TEST")
+
+    def test_filter_by_alias_type(self):
+        CableAlias.objects.create(cable_family=self.family, alias="PN-TEST-0001", alias_type="PART_NUMBER")
+        CableAlias.objects.create(cable_family=self.family, alias="NOME ALTERNATIVO TEST", alias_type="NAME_VARIATION")
+
+        response = self.client_api.get("/api/master-data/cable-aliases/", {"alias_type": "PART_NUMBER"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["alias"], "PN-TEST-0001")
+
+    def test_deactivate_does_not_hard_delete(self):
+        alias = CableAlias.objects.create(cable_family=self.family, alias="ALIAS PARA INATIVAR TEST", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/cable-aliases/{alias.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(CableAlias.objects.filter(pk=alias.pk).exists())
+        alias.refresh_from_db()
+        self.assertFalse(alias.active)
+
+    def test_cable_family_foreign_key_integrity(self):
+        alias = CableAlias.objects.create(cable_family=self.family, alias="ALIAS COM FK TEST")
+        with self.assertRaises(ProtectedError):
+            self.family.delete()
+        alias.refresh_from_db()
+        self.assertEqual(alias.cable_family_id, self.family.pk)

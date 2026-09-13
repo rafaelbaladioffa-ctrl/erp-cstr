@@ -146,6 +146,22 @@ export interface CableFamily {
   updated_by_name: string | null;
 }
 
+export interface CableAlias {
+  id: number;
+  cable_family: number;
+  cable_family_code: string;
+  cable_family_name: string;
+  alias: string;
+  normalized_alias: string;
+  alias_type: string;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;

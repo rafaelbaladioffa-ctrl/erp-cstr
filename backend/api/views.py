@@ -32,7 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
-from master_data.models import CableFamily
+from master_data.models import CableAlias, CableFamily
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -58,6 +58,7 @@ from .serializers import (
     CollaboratorCrudSerializer,
     CollaboratorSerializer,
     CompanyCrudSerializer,
+    CableAliasCrudSerializer,
     CableFamilyCrudSerializer,
     CategoryCrudSerializer,
     DailyUpdateSerializer,
@@ -718,6 +719,34 @@ class CableFamilyViewSet(RegistryViewSet):
     serializer_class = CableFamilyCrudSerializer
     search_fields = ("code", "name", "description")
     active_field = "active"
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class CableAliasViewSet(RegistryViewSet):
+    """Cadastros Mestres > Engenharia > Aliases de Cabos. Mesmo padrão de
+    CableFamilyViewSet (catálogo interno, active_field="active"); acrescenta
+    filtro exato por família e por tipo de alias além da busca/is_active
+    herdados de RegistryViewSet."""
+
+    queryset = CableAlias.objects.select_related("cable_family", "created_by", "updated_by").order_by("alias")
+    serializer_class = CableAliasCrudSerializer
+    search_fields = ("alias", "normalized_alias", "cable_family__name", "cable_family__code")
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        cable_family_id = self.request.query_params.get("cable_family")
+        if cable_family_id:
+            queryset = queryset.filter(cable_family_id=cable_family_id)
+        alias_type = self.request.query_params.get("alias_type")
+        if alias_type:
+            queryset = queryset.filter(alias_type=alias_type)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, updated_by=self.request.user)

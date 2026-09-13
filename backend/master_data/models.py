@@ -1,7 +1,29 @@
+import re
+
 from django.conf import settings
 from django.db import models
 
 from core.models import TimestampedModel
+
+# Variantes tipográficas de traço (en-dash, em-dash, sinal de menos etc.)
+# que devem virar o hífen ASCII comum na normalização — diferente de "/" e
+# "<>", que são separadores com significado técnico distinto e não são
+# alterados (ver normalize_alias_text).
+_DASH_VARIANTS = str.maketrans({"–": "-", "—": "-", "−": "-", "‐": "-", "‑": "-"})
+
+
+def normalize_alias_text(value: str) -> str:
+    """Normaliza um alias de cabo para fins de deduplicação/comparação:
+    remove espaços nas pontas, converte para maiúsculas, colapsa espaços
+    internos repetidos em um único espaço, e converte variantes tipográficas
+    de traço para o hífen ASCII comum. NÃO unifica separadores com
+    significado técnico distinto ("-", "/", "<>") — "8F LC-LC", "8F LC/LC" e
+    "8F LC<>LC" são grafias igualmente válidas e devem continuar existindo
+    como aliases separados apontando para a mesma família."""
+    if not value:
+        return ""
+    text = value.strip().upper().translate(_DASH_VARIANTS)
+    return re.sub(r"\s+", " ", text)
 
 
 class MasterDataModel(TimestampedModel):
@@ -66,23 +88,54 @@ class CableFamily(MasterDataModel):
         return f"{self.code} — {self.name}"
 
 
-class CableAlias(TimestampedModel):
-    """Forma alternativa de escrita que aponta para uma Família de Cabo
-    canônica (ex: "8F LC/LC", "8F LC Trunk Fiber" -> FIB-8F-LCLC) — base
-    para a normalização automática de escopos por IA numa fase futura.
-    Só o modelo/admin existem por enquanto; sem tela/API dedicada ainda."""
+class CableAlias(MasterDataModel):
+    """Forma alternativa de escrita (encontrada em SOWs, cutsheets e outros
+    documentos) que aponta para uma Família de Cabo canônica — ex: "8F LC/LC",
+    "8F LC Trunk Fiber" -> FIB-8F-LCLC. Base para a normalização automática
+    de texto livre por uma IA numa fase futura; nesta etapa só cadastro e
+    consulta (Cadastros Mestres > Engenharia > Aliases de Cabos)."""
 
-    cable_family = models.ForeignKey(CableFamily, verbose_name="família de cabo", on_delete=models.CASCADE, related_name="aliases")
-    alias_text = models.CharField("texto do alias", max_length=150)
-    is_active = models.BooleanField("ativo", default=True)
+    # Sugestões de uso (não é ENUM/choices — texto livre para não travar
+    # tipos novos que apareçam na prática): NAME_VARIATION, PART_NUMBER,
+    # LEGACY_NAME, SOW_TERM, INTERNAL_TERM.
+    ALIAS_TYPE_SUGGESTIONS = (
+        "NAME_VARIATION",
+        "PART_NUMBER",
+        "LEGACY_NAME",
+        "SOW_TERM",
+        "INTERNAL_TERM",
+    )
+
+    cable_family = models.ForeignKey(
+        CableFamily, verbose_name="família de cabo", on_delete=models.PROTECT, related_name="aliases"
+    )
+    alias = models.CharField("alias", max_length=200)
+    # Preenchido automaticamente em clean()/save() a partir de `alias` — não
+    # é editável diretamente (nem pela API, nem pelo Admin).
+    normalized_alias = models.CharField(
+        "alias normalizado", max_length=200, unique=True, editable=False, blank=True
+    )
+    alias_type = models.CharField("tipo do alias", max_length=50, blank=True)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
 
     class Meta:
         verbose_name = "Alias de Cabo"
         verbose_name_plural = "Aliases de Cabo"
-        ordering = ("alias_text",)
-        constraints = [
-            models.UniqueConstraint(fields=("cable_family", "alias_text"), name="unique_alias_per_family"),
-        ]
+        ordering = ("alias",)
 
     def __str__(self):
-        return f"{self.alias_text} → {self.cable_family.code}"
+        return f"{self.alias} → {self.cable_family.code}"
+
+    def clean(self):
+        super().clean()
+        self.normalized_alias = normalize_alias_text(self.alias)
+
+    def save(self, *args, **kwargs):
+        # Recalculado aqui também (e não só em clean()) para cobrir todo
+        # caminho de gravação que não passe por full_clean() — seeds via
+        # update_or_create/admin/API (a API valida duplicidade de forma
+        # explícita em CableAliasCrudSerializer.validate(), não depende de
+        # full_clean() ser chamado).
+        self.normalized_alias = normalize_alias_text(self.alias)
+        super().save(*args, **kwargs)
