@@ -128,10 +128,6 @@
   background: #101b2d;
 }
 
-[data-theme="dark"] .table tbody tr:nth-child(even) {
-  background: #101a2b;
-}
-
 [data-theme="dark"] .table tbody tr:hover {
   background: #16233a;
 }
@@ -937,20 +933,20 @@ textarea {
 
 .table thead th {
   text-align: left;
-  padding: 9px 16px;
-  font-size: 10.5px;
-  font-weight: 700;
+  padding: 12px 16px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  background: #e8edf1;
+  letter-spacing: 0.05em;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .table tbody td {
-  padding: 10px 16px;
-  border-bottom: 1px solid #eef1f3;
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
   color: var(--text);
   vertical-align: middle;
 }
@@ -959,12 +955,8 @@ textarea {
   border-bottom: none;
 }
 
-.table tbody tr:nth-child(even) {
-  background: #fafbfc;
-}
-
 .table tbody tr:hover {
-  background: #eef6ff;
+  background: var(--bg);
 }
 
 .table-empty {
@@ -998,7 +990,7 @@ textarea {
 
 .progress-fill {
   height: 100%;
-  background: var(--orange);
+  background: var(--blue);
   border-radius: 999px;
 }
 
