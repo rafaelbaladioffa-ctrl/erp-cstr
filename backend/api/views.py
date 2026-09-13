@@ -32,7 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Workstream
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -63,6 +63,7 @@ from .serializers import (
     CableSpecCrudSerializer,
     ActivityCrudSerializer,
     NetworkCrudSerializer,
+    WorkstreamCrudSerializer,
     CertificationTypeCrudSerializer,
     CategoryCrudSerializer,
     DailyUpdateSerializer,
@@ -851,6 +852,33 @@ class NetworkViewSet(RegistryViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         for param in ("domain", "medium"):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{param: value})
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class WorkstreamViewSet(RegistryViewSet):
+    """Cadastros Mestres > Operação > Workstreams. Catálogo canônico das
+    frentes operacionais de execução — mesmo padrão de NetworkViewSet;
+    filtros exatos por categoria e meio padrão além da busca/is_active
+    herdados de RegistryViewSet. Sem relação com Network nesta etapa
+    (deliberadamente fora de escopo — ver docstring do model)."""
+
+    queryset = Workstream.objects.select_related("created_by", "updated_by").order_by("code")
+    serializer_class = WorkstreamCrudSerializer
+    search_fields = ("code", "name", "category", "default_medium", "description")
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param in ("category", "default_medium"):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{param: value})

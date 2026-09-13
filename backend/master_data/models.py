@@ -346,3 +346,37 @@ class Network(MasterDataModel):
 
     def __str__(self):
         return f"{self.code} — {self.name}"
+
+
+class Workstream(MasterDataModel):
+    """Catálogo canônico de frentes operacionais de execução — COMO o
+    escopo é agrupado dentro de um projeto para planejamento/tarefas/
+    acompanhamento (ex: "Management Fibers", "BFC Brick Fibers", "Smart
+    Hands"). Não confundir com Network: Network é a função lógica/técnica
+    da conexão (ex: MN_FIBER), Workstream é a frente operacional — uma
+    frente pode não ter nenhuma Network associada, ter uma só, ou várias
+    (ex: WS-CONSOLE pode envolver CONSOLE_FIBER e CONSOLE_COPPER). Essa
+    relação (e a prioridade/ordem de execução, que é específica de cada
+    projeto) fica para uma fase futura (project_workstreams); esta tabela
+    é só o catálogo, sem FK para Network e sem priority/sequence/
+    execution_order."""
+
+    # Sugestões (não é ENUM/choices — texto livre para não travar valores
+    # novos que apareçam na prática).
+    CATEGORY_SUGGESTIONS = ("CABLING", "HARDWARE", "WIRELESS", "SERVICE", "CLOSURE")
+    DEFAULT_MEDIUM_SUGGESTIONS = ("FIBER", "COPPER", "MIXED", "GENERAL")
+
+    code = models.CharField("código", max_length=50, unique=True)
+    name = models.CharField("nome", max_length=150)
+    category = models.CharField("categoria", max_length=50)
+    default_medium = models.CharField("meio padrão", max_length=50, blank=True)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Workstream"
+        verbose_name_plural = "Workstreams"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"

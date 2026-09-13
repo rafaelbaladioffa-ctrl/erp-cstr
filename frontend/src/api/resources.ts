@@ -39,6 +39,7 @@ import type {
   SiteMapData,
   TaskFull,
   TechnicianAbsence,
+  Workstream,
 } from "./types";
 
 function crud<T extends { id: number }>(basePath: string) {
@@ -81,6 +82,7 @@ export const masterDataApi = {
   certificationTypes: crud<CertificationType>("/master-data/certification-types"),
   activities: crud<Activity>("/master-data/activities"),
   networks: crud<Network>("/master-data/networks"),
+  workstreams: crud<Workstream>("/master-data/workstreams"),
 };
 
 export const auditLogApi = {

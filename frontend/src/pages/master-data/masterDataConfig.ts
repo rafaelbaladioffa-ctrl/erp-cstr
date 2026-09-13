@@ -1,5 +1,5 @@
 import { masterDataApi } from "../../api/resources";
-import type { Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network } from "../../api/types";
+import type { Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Workstream } from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
 
@@ -29,6 +29,12 @@ const ACTIVITY_EXECUTION_TYPE_SUGGESTIONS = ["MANUAL", "TEST", "DOCUMENTATION", 
  * sugestão no formulário. */
 const NETWORK_DOMAIN_SUGGESTIONS = ["CORPORATE", "CONSOLE", "MANAGEMENT", "WAP"];
 const NETWORK_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER"];
+
+/** Espelha master_data.models.Workstream.CATEGORY_SUGGESTIONS/
+ * DEFAULT_MEDIUM_SUGGESTIONS no backend — não é ENUM rígido, só as opções
+ * mostradas no filtro e como sugestão no formulário. */
+const WORKSTREAM_CATEGORY_SUGGESTIONS = ["CABLING", "HARDWARE", "WIRELESS", "SERVICE", "CLOSURE"];
+const WORKSTREAM_DEFAULT_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER", "MIXED", "GENERAL"];
 
 function cableFamilyOptions(refs: ReferenceData) {
   return refs.cableFamilies.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }));
@@ -428,6 +434,55 @@ const networkEntity: EntityConfig<Network> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const workstreamEntity: EntityConfig<Workstream> = {
+  key: "workstreams",
+  label: "Workstreams",
+  icon: "route",
+  singular: "Workstream",
+  description: "Frente operacional de execução — como o escopo é agrupado para planejamento, tarefas e acompanhamento.",
+  createLabel: "Novo Workstream",
+  perms: modelPerms("master_data", "workstream"),
+  api: masterDataApi.workstreams,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "name", label: "Nome" },
+    { key: "category", label: "Categoria" },
+    { key: "default_medium", label: "Meio Padrão", render: (row) => row.default_medium || "—" },
+  ],
+  filters: [
+    {
+      key: "category",
+      label: "Todas as Categorias",
+      options: () => WORKSTREAM_CATEGORY_SUGGESTIONS.map((c) => ({ value: c, label: c })),
+    },
+    {
+      key: "default_medium",
+      label: "Todos os Meios Padrão",
+      options: () => WORKSTREAM_DEFAULT_MEDIUM_SUGGESTIONS.map((m) => ({ value: m, label: m })),
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: () => [
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: WS-MGMT-FIBER" },
+    { name: "name", label: "Nome", type: "text", required: true, placeholder: "Ex: Management Fibers" },
+    { name: "category", label: "Categoria", type: "text", required: true, placeholder: "Ex: CABLING, HARDWARE, WIRELESS, SERVICE, CLOSURE" },
+    { name: "default_medium", label: "Meio Padrão", type: "text", placeholder: "Ex: FIBER, COPPER, MIXED, GENERAL" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+  ],
+  emptyValues: { code: "", name: "", category: "", default_medium: "", description: "", active: true },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -435,7 +490,7 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     icon: "cable",
     entities: [cableFamilyEntity, cableAliasEntity, cableSpecEntity, certificationTypeEntity],
   },
-  { key: "operacao", label: "Operação", icon: "engineering", entities: [activityEntity, networkEntity] },
+  { key: "operacao", label: "Operação", icon: "engineering", entities: [activityEntity, networkEntity, workstreamEntity] },
   { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [] },
   { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },
 ];

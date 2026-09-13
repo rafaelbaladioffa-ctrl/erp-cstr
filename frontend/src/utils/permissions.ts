@@ -77,6 +77,7 @@ export const PERMS = {
   viewCertificationType: "master_data.view_certificationtype",
   viewActivity: "master_data.view_activity",
   viewNetwork: "master_data.view_network",
+  viewWorkstream: "master_data.view_workstream",
 };
 
 export const MASTER_DATA_PERMS = [
@@ -86,6 +87,7 @@ export const MASTER_DATA_PERMS = [
   PERMS.viewCertificationType,
   PERMS.viewActivity,
   PERMS.viewNetwork,
+  PERMS.viewWorkstream,
 ];
 
 export const CADASTROS_PERMS = [

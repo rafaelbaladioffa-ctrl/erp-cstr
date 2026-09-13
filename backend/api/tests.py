@@ -17,7 +17,7 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Workstream
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -1845,3 +1845,181 @@ class NetworkApiTests(TestCase):
         module.seed_networks(django_apps, None)
         module.seed_networks(django_apps, None)
         self.assertEqual(Network.objects.count(), count_before)
+
+
+class WorkstreamApiTests(TestCase):
+    """Cadastros Mestres > Operação > Workstreams — CRUD, obrigatoriedade,
+    busca, filtros, CSV, ativação/inativação e seed idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="workstream_admin", email="workstream@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0016_seed_workstreams) roda também no banco
+        # de testes (9 registros: WS-MGMT-FIBER, WS-CONSOLE, WS-BFC-FIBER,
+        # WS-EUCLID-FIBER, WS-IDF-CABLING, WS-HARDWARE, WS-WAP,
+        # WS-SMART-HAND, WS-CLOSURE).
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/workstreams/",
+            {"code": "TST-WS-0001", "name": "Workstream de teste", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        workstream = Workstream.objects.get(pk=response.data["id"])
+        self.assertEqual(workstream.created_by, self.admin)
+        self.assertEqual(workstream.updated_by, self.admin)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/workstreams/",
+            {"name": "Sem código", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        Workstream.objects.create(code="TST-WS-DUP", name="Original", category="TEST_CATEGORY")
+        response = self.client_api.post(
+            "/api/master-data/workstreams/",
+            {"code": "TST-WS-DUP", "name": "Duplicado", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(Workstream.objects.filter(code="TST-WS-DUP").count(), 1)
+
+    def test_name_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/workstreams/",
+            {"code": "TST-WS-0002", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_category_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/workstreams/",
+            {"code": "TST-WS-0003", "name": "Sem categoria"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("category", response.data)
+
+    def test_default_medium_is_optional(self):
+        response = self.client_api.post(
+            "/api/master-data/workstreams/",
+            {"code": "TST-WS-0004", "name": "Sem meio padrão", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["default_medium"], "")
+
+    def test_update_edits_fields(self):
+        workstream = Workstream.objects.create(code="TST-WS-EDIT", name="Original", category="TEST_CATEGORY")
+
+        response = self.client_api.patch(
+            f"/api/master-data/workstreams/{workstream.pk}/",
+            {"name": "Editada", "default_medium": "MIXED"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        workstream.refresh_from_db()
+        self.assertEqual(workstream.name, "Editada")
+        self.assertEqual(workstream.default_medium, "MIXED")
+
+    def test_search_by_code_name_category_default_medium(self):
+        Workstream.objects.create(
+            code="TST-WS-SEARCH", name="Workstream pesquisável", category="TST_SEARCHABLE_CATEGORY", default_medium="FIBER"
+        )
+
+        response = self.client_api.get("/api/master-data/workstreams/", {"search": "TST_SEARCHABLE_CATEGORY"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-WS-SEARCH")
+
+    def test_filter_by_category(self):
+        Workstream.objects.create(code="TST-WS-CATA", name="A", category="TST_CAT_A")
+        Workstream.objects.create(code="TST-WS-CATB", name="B", category="TST_CAT_B")
+
+        response = self.client_api.get("/api/master-data/workstreams/", {"category": "TST_CAT_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-WS-CATA")
+
+    def test_filter_by_default_medium(self):
+        Workstream.objects.create(code="TST-WS-FIBER", name="A", category="TEST_CATEGORY", default_medium="TST_FIBER_MEDIUM")
+        Workstream.objects.create(code="TST-WS-COPPER", name="B", category="TEST_CATEGORY", default_medium="TST_COPPER_MEDIUM")
+
+        response = self.client_api.get("/api/master-data/workstreams/", {"default_medium": "TST_FIBER_MEDIUM"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-WS-FIBER")
+
+    def test_filter_by_active(self):
+        Workstream.objects.create(code="TST-WS-ACTIVE", name="Ativa", category="TEST_CATEGORY", active=True)
+        Workstream.objects.create(code="TST-WS-INACTIVE", name="Inativa", category="TEST_CATEGORY", active=False)
+
+        response = self.client_api.get("/api/master-data/workstreams/", {"is_active": "false"})
+
+        codes = [row["code"] for row in response.data["results"]]
+        self.assertIn("TST-WS-INACTIVE", codes)
+        self.assertNotIn("TST-WS-ACTIVE", codes)
+
+    def test_deactivate_does_not_hard_delete(self):
+        workstream = Workstream.objects.create(code="TST-WS-TOGGLE", name="Para inativar", category="TEST_CATEGORY", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/workstreams/{workstream.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(Workstream.objects.filter(pk=workstream.pk).exists())
+        workstream.refresh_from_db()
+        self.assertFalse(workstream.active)
+
+    def test_export_csv(self):
+        Workstream.objects.create(code="TST-WS-EXPORT", name="Exportação de teste", category="TEST_CATEGORY")
+        response = self.client_api.get("/api/master-data/workstreams/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-WS-EXPORT", content)
+        self.assertIn("código", content)
+
+    def test_import_csv_creates_rows(self):
+        csv_content = (
+            "código;nome;categoria;meio padrão\n"
+            "TST-WS-IMPORT1;Workstream Importada 1;TEST_CATEGORY;FIBER\n"
+            "TST-WS-IMPORT2;Workstream Importada 2;TEST_CATEGORY;\n"
+        )
+        upload = SimpleUploadedFile("workstreams.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post("/api/master-data/workstreams/import-csv/", {"csv_file": upload}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 2)
+        self.assertEqual(response.data["errors"], [])
+        imported = Workstream.objects.get(code="TST-WS-IMPORT1")
+        self.assertEqual(imported.default_medium, "FIBER")
+
+    def test_seed_matches_expected_nine_records(self):
+        expected_codes = {
+            "WS-MGMT-FIBER", "WS-CONSOLE", "WS-BFC-FIBER", "WS-EUCLID-FIBER", "WS-IDF-CABLING",
+            "WS-HARDWARE", "WS-WAP", "WS-SMART-HAND", "WS-CLOSURE",
+        }
+        codes = set(Workstream.objects.values_list("code", flat=True))
+        self.assertEqual(expected_codes & codes, expected_codes)
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0016_seed_workstreams")
+        count_before = Workstream.objects.count()
+        module.seed_workstreams(django_apps, None)
+        module.seed_workstreams(django_apps, None)
+        self.assertEqual(Workstream.objects.count(), count_before)

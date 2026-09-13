@@ -3,7 +3,7 @@ from unfold.admin import ModelAdmin
 
 from core.admin_mixins import CSVImportExportMixin, SelectablePageSizeAdminMixin
 
-from .models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network
+from .models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Workstream
 
 
 class CableAliasInline(admin.TabularInline):
@@ -97,6 +97,20 @@ class NetworkAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmi
     list_display = ("code", "name", "domain", "medium", "active", "updated_at")
     list_filter = ("domain", "medium", "active")
     search_fields = ("code", "name", "domain", "medium", "description")
+    readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(Workstream)
+class WorkstreamAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("code", "name", "category", "default_medium", "active", "updated_at")
+    list_filter = ("category", "default_medium", "active")
+    search_fields = ("code", "name", "category", "default_medium", "description")
     readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
 
     def save_model(self, request, obj, form, change):
