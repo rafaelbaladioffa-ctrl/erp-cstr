@@ -32,6 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
+from master_data.models import CableFamily
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -57,6 +58,7 @@ from .serializers import (
     CollaboratorCrudSerializer,
     CollaboratorSerializer,
     CompanyCrudSerializer,
+    CableFamilyCrudSerializer,
     CategoryCrudSerializer,
     DailyUpdateSerializer,
     JobTitleCrudSerializer,
@@ -699,6 +701,22 @@ class CategoryViewSet(RegistryViewSet):
     serializer_class = CategoryCrudSerializer
     search_fields = ("name",)
     client_scope_mode = "category"
+
+
+class CableFamilyViewSet(RegistryViewSet):
+    """Cadastros Mestres > Engenharia > Famílias de Cabo. Catálogo interno
+    (client_scope_mode="deny", herdado de RegistryViewSet) — sem relação
+    com Cliente, um usuário-cliente não deve enxergar este cadastro."""
+
+    queryset = CableFamily.objects.select_related("created_by", "updated_by").order_by("code")
+    serializer_class = CableFamilyCrudSerializer
+    search_fields = ("code", "name", "description")
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
 
 
 class ProjectTypeViewSet(RegistryViewSet):

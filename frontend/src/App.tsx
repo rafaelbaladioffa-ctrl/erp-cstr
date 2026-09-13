@@ -9,6 +9,7 @@ import CadastrosPage from "./pages/cadastros/CadastrosPage";
 import Dashboard from "./pages/Dashboard";
 import DailyUpdates from "./pages/DailyUpdates";
 import Login from "./pages/Login";
+import MasterDataPage from "./pages/master-data/MasterDataPage";
 import MyTasks from "./pages/MyTasks";
 import OperationsBoard from "./pages/OperationsBoard";
 import OperationsReportsPage from "./pages/OperationsReports";
@@ -17,7 +18,7 @@ import ProjectDetail from "./pages/ProjectDetail";
 import ProjectsList from "./pages/ProjectsList";
 import ProjectUpdates from "./pages/ProjectUpdates";
 import SitesMap from "./pages/SitesMap";
-import { CADASTROS_PERMS, PERMS, hasAnyPerm, hasPerm } from "./utils/permissions";
+import { CADASTROS_PERMS, MASTER_DATA_PERMS, PERMS, hasAnyPerm, hasPerm } from "./utils/permissions";
 
 function RequireSuperuser({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -135,6 +136,14 @@ export default function App() {
             element={
               <RequireAnyPermission permissions={CADASTROS_PERMS}>
                 <CadastrosPage />
+              </RequireAnyPermission>
+            }
+          />
+          <Route
+            path="/cadastros-mestres"
+            element={
+              <RequireAnyPermission permissions={MASTER_DATA_PERMS}>
+                <MasterDataPage />
               </RequireAnyPermission>
             }
           />

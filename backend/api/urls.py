@@ -31,6 +31,7 @@ router.register("registry/clients", views.ClientRegistryViewSet, basename="regis
 router.register("registry/responsibles", views.ResponsibleViewSet, basename="registry-responsible")
 router.register("registry/collaborators", views.CollaboratorRegistryViewSet, basename="registry-collaborator")
 router.register("registry/tasks", views.TaskViewSet, basename="registry-task")
+router.register("master-data/cable-families", views.CableFamilyViewSet, basename="master-data-cable-family")
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),

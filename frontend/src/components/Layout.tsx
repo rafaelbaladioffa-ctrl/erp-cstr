@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { notificationsApi, searchApi, type GlobalSearchResult } from "../api/resources";
 import type { Notification } from "../api/types";
 import { useAuth } from "../context/AuthContext";
-import { CADASTROS_PERMS, PERMS, hasAnyPerm, hasPerm } from "../utils/permissions";
+import { CADASTROS_PERMS, MASTER_DATA_PERMS, PERMS, hasAnyPerm, hasPerm } from "../utils/permissions";
 import AccountModal from "./AccountModal";
 import Icon from "./ui/Icon";
 
@@ -44,6 +44,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     items: [
       { to: "/dashboard", label: "Dashboard", icon: "dashboard", permissions: [PERMS.viewProject, PERMS.viewCollaborator] },
       { to: "/cadastros", label: "Cadastros Gerais", icon: "inventory_2", permissions: CADASTROS_PERMS },
+      { to: "/cadastros-mestres", label: "Cadastros Mestres", icon: "schema", permissions: MASTER_DATA_PERMS },
     ],
   },
   {
@@ -64,6 +65,7 @@ const AREA_LABELS: Record<string, { area: string; page: string }> = {
   "/atualizacoes-diarias": { area: "Atualizações", page: "Atualizações Diárias" },
   "/atualizacoes-projeto": { area: "Atualizações", page: "Atualizações de Projetos" },
   "/cadastros": { area: "Sistema", page: "Cadastros Gerais" },
+  "/cadastros-mestres": { area: "Sistema", page: "Cadastros Mestres" },
   "/minhas-tarefas": { area: "Técnico", page: "Minhas Tarefas" },
   "/auditoria": { area: "Segurança", page: "Log" },
 };

@@ -1,0 +1,374 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { sitesMapApi } from "../../api/resources";
+import { useAuth } from "../../context/AuthContext";
+import { PERMS, hasPerm } from "../../utils/permissions";
+import type { EntityConfig, ReferenceData } from "../../pages/cadastros/registryConfig";
+import BulkNamesModal from "../ui/BulkNamesModal";
+import CsvImportModal from "../ui/CsvImportModal";
+import DynamicForm, { type FormValues } from "../ui/DynamicForm";
+import Icon from "../ui/Icon";
+import Modal from "../ui/Modal";
+import Pagination from "../ui/Pagination";
+
+type ApiErrors = Record<string, string[]>;
+
+/** Painel de CRUD genérico e reutilizável — tabela/busca/paginação/
+ * modal de criação-edição/CSV/ativar-inativar — dirigido inteiramente por
+ * um `EntityConfig`. Usado tanto por Cadastros Gerais quanto por
+ * Cadastros Mestres, para não duplicar essa lógica entre os dois. */
+export default function EntityCrudPanel({
+  entity,
+  refs,
+  refsLoaded,
+  onBack,
+  autoOpenCreateNonce,
+}: {
+  entity: EntityConfig<any>;
+  refs: ReferenceData;
+  refsLoaded: boolean;
+  onBack?: () => void;
+  /** Muda de valor sempre que o catálogo pedir para abrir esta entidade já
+   * com o modal de criação aberto ("Novo cadastro" > escolher o tipo). */
+  autoOpenCreateNonce?: number;
+}) {
+  const { user } = useAuth();
+  const canAdd = hasPerm(user, entity.perms.add);
+  const canChange = hasPerm(user, entity.perms.change);
+  const canDelete = hasPerm(user, entity.perms.delete);
+  const canChangeSite = hasPerm(user, PERMS.changeSite);
+
+  const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formValues, setFormValues] = useState<FormValues>({});
+  const [formErrors, setFormErrors] = useState<ApiErrors>({});
+  const [saving, setSaving] = useState(false);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
+  const [regeocodingId, setRegeocodingId] = useState<number | null>(null);
+
+  function reload() {
+    setLoading(true);
+    entity.api
+      .list()
+      .then((data) => setRows(data.results))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    reload();
+    setSearch("");
+    setPage(1);
+    setCsvImportOpen(false);
+    setBulkCreateOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity.key]);
+
+  async function handleRegeocode(siteId: number) {
+    setRegeocodingId(siteId);
+    try {
+      await sitesMapApi.regeocode(siteId);
+      reload();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      alert(axiosErr.response?.data?.detail || "Não foi possível regeocodificar este site.");
+    } finally {
+      setRegeocodingId(null);
+    }
+  }
+
+  async function handleExportCsv() {
+    const blob = await entity.api.exportCsv();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${entity.key}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const filtered = useMemo(() => {
+    if (!search) return rows;
+    const lower = search.toLowerCase();
+    return rows.filter((row) => JSON.stringify(row).toLowerCase().includes(lower));
+  }, [rows, search]);
+
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  function openCreate() {
+    if (!canAdd) return;
+    setEditingId(null);
+    setFormValues(entity.emptyValues);
+    setFormErrors({});
+    setModalOpen(true);
+  }
+
+  useEffect(() => {
+    if (autoOpenCreateNonce != null) openCreate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenCreateNonce]);
+
+  function openEdit(row: Record<string, unknown>) {
+    if (!canChange) return;
+    setEditingId(row.id as number);
+    setFormValues({ ...row });
+    setFormErrors({});
+    setModalOpen(true);
+  }
+
+  async function handleSave() {
+    if (editingId && !canChange) return;
+    if (!editingId && !canAdd) return;
+    setSaving(true);
+    setFormErrors({});
+    try {
+      if (editingId) {
+        await entity.api.update(editingId, formValues);
+      } else {
+        await entity.api.create(formValues);
+      }
+      setModalOpen(false);
+      reload();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: ApiErrors } };
+      if (axiosErr.response?.data) {
+        setFormErrors(axiosErr.response.data);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(row: Record<string, unknown>) {
+    if (!canDelete) return;
+    const label = entity.rowLabel(row as never);
+    if (!window.confirm(`Excluir "${label}"? Esta ação não pode ser desfeita.`)) return;
+    await entity.api.remove(row.id as number);
+    reload();
+  }
+
+  const fields = refsLoaded ? entity.fields(refs) : [];
+
+  return (
+    <div>
+      {onBack && (
+        <button
+          onClick={onBack}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            color: "var(--text-muted)",
+            background: "none",
+            border: 0,
+            cursor: "pointer",
+            fontSize: 13,
+            marginBottom: 12,
+            padding: 0,
+          }}
+        >
+          <Icon name="arrow_back" style={{ fontSize: 16 }} />
+          Voltar
+        </button>
+      )}
+
+      <div className="card">
+        <div className="toolbar">
+          <div>
+            <div className="toolbar-title">{entity.label}</div>
+            <div className="toolbar-subtitle">{filtered.length} registro(s) encontrado(s)</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {entity.key === "sites" && (
+              <Link to="/sites/mapa" className="btn btn-outline">
+                <Icon name="map" style={{ fontSize: 16 }} />
+                Ver Mapa
+              </Link>
+            )}
+            <button className="btn btn-outline" onClick={handleExportCsv}>
+              <Icon name="download" style={{ fontSize: 16 }} />
+              Exportar CSV
+            </button>
+            {canAdd && (
+              <button className="btn btn-outline" onClick={() => setCsvImportOpen(true)}>
+                <Icon name="upload" style={{ fontSize: 16 }} />
+                Importar CSV
+              </button>
+            )}
+            {canAdd && entity.bulkCreate && (
+              <button className="btn btn-outline" onClick={() => setBulkCreateOpen(true)}>
+                <Icon name="playlist_add" style={{ fontSize: 16 }} />
+                {entity.bulkCreate.label}
+              </button>
+            )}
+            {canAdd && (
+              <button className="btn btn-primary" onClick={openCreate}>
+                <Icon name="add" style={{ fontSize: 18 }} />
+                {entity.createLabel}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="filter-row">
+          <div className="search-input-wrap" style={{ flex: 1 }}>
+            <Icon name="search" />
+            <input
+              className="input"
+              placeholder={`Buscar em ${entity.label.toLowerCase()}...`}
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+        </div>
+
+        {loading ? (
+          <p style={{ padding: 20, color: "var(--text-muted)" }}>Carregando...</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  {entity.columns.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
+                  <th>Situação</th>
+                  {(canChange || canDelete) && <th>Ações</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {paged.map((row) => (
+                  <tr key={row.id as number}>
+                    {entity.columns.map((col) => (
+                      <td key={col.key}>
+                        {col.render ? col.render(row as never) : String((row[col.key] as string | number) ?? "—") || "—"}
+                      </td>
+                    ))}
+                    <td>
+                      <span
+                        className="badge"
+                        style={{
+                          background: row.is_active ? "var(--green-soft)" : "#eef1f6",
+                          color: row.is_active ? "var(--green)" : "var(--text-muted)",
+                        }}
+                      >
+                        {row.is_active ? "Ativo" : "Inativo"}
+                      </span>
+                    </td>
+                    {(canChange || canDelete) && (
+                      <td>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          {canChange && (
+                            <button className="btn btn-outline btn-sm" onClick={() => openEdit(row)}>
+                              <Icon name="edit" style={{ fontSize: 14 }} />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => handleDelete(row)}
+                              style={{ color: "var(--red)" }}
+                            >
+                              <Icon name="delete" style={{ fontSize: 14 }} />
+                            </button>
+                          )}
+                          {entity.key === "sites" && canChangeSite && !row.manual_coordinates && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              onClick={() => handleRegeocode(row.id as number)}
+                              disabled={regeocodingId === row.id}
+                              title="Regeocodificar"
+                            >
+                              <Icon name="my_location" style={{ fontSize: 14 }} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {paged.length === 0 && (
+                  <tr>
+                    <td colSpan={entity.columns.length + 2}>
+                      <div className="table-empty">Nenhum registro encontrado.</div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+      </div>
+
+      {modalOpen && (editingId ? canChange : canAdd) && (
+        <Modal
+          title={editingId ? `Editar ${entity.singular}` : entity.createLabel}
+          onClose={() => setModalOpen(false)}
+          width={620}
+        >
+          <DynamicForm
+            fields={fields}
+            values={formValues}
+            errors={formErrors}
+            onChange={(name, value) => setFormValues((prev) => ({ ...prev, [name]: value }))}
+          />
+          {formErrors.non_field_errors && (
+            <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{formErrors.non_field_errors.join(" ")}</p>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+            <button className="btn btn-outline" onClick={() => setModalOpen(false)}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {csvImportOpen && canAdd && (
+        <CsvImportModal
+          title={`Importar ${entity.label} via CSV`}
+          onClose={() => setCsvImportOpen(false)}
+          onImport={entity.api.importCsv}
+          onImported={reload}
+        />
+      )}
+
+      {bulkCreateOpen && canAdd && entity.bulkCreate && refsLoaded && (
+        <BulkNamesModal
+          title={`${entity.bulkCreate.label} — ${entity.label}`}
+          helpText={entity.bulkCreate.helpText}
+          extraFields={entity.bulkCreate.extraFields(refs)}
+          extraValues={entity.bulkCreate.extraValues(refs)}
+          onSave={entity.bulkCreate.api}
+          onClose={() => setBulkCreateOpen(false)}
+          onSaved={() => {
+            setBulkCreateOpen(false);
+            reload();
+          }}
+        />
+      )}
+    </div>
+  );
+}

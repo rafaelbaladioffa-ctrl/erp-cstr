@@ -71,7 +71,10 @@ export const PERMS = {
   viewCollaborator: "core.view_collaborator",
   viewResponsible: "core.view_responsible",
   viewTask: "core.view_task",
+  viewCableFamily: "master_data.view_cablefamily",
 };
+
+export const MASTER_DATA_PERMS = [PERMS.viewCableFamily];
 
 export const CADASTROS_PERMS = [
   PERMS.viewCompany,

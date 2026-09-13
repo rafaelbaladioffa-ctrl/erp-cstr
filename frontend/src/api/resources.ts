@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import type {
   AuditLogEntry,
+  CableFamily,
   Category,
   ClientFull,
   Collaborator,
@@ -66,6 +67,10 @@ export const registryApi = {
   responsibles: crud<ResponsibleFull>("/registry/responsibles"),
   collaborators: crud<CollaboratorFull>("/registry/collaborators"),
   tasks: crud<TaskFull>("/registry/tasks"),
+};
+
+export const masterDataApi = {
+  cableFamilies: crud<CableFamily>("/master-data/cable-families"),
 };
 
 export const auditLogApi = {

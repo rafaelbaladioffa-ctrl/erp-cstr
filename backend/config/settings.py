@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "technical",
     "dispatch",
     "bot",
+    "master_data",
     "api",
 ]
 

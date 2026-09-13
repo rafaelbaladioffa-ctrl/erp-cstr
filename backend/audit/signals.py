@@ -8,7 +8,7 @@ from .context import current_audit_request
 from .models import AuditLog
 
 
-AUDITED_APPS = {"core", "projects", "updates", "users"}
+AUDITED_APPS = {"core", "projects", "updates", "users", "master_data"}
 IGNORED_FIELDS = {"created_at", "updated_at", "last_login"}
 SENSITIVE_FIELDS = {"password", "token", "secret", "api_key"}
 

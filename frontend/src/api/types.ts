@@ -128,6 +128,24 @@ export interface ProjectType {
   is_active: boolean;
 }
 
+export interface CableFamily {
+  id: number;
+  code: string;
+  name: string;
+  medium: "FIBER" | "COPPER";
+  fiber_count: number | null;
+  connector_a: string;
+  connector_b: string;
+  cable_category: string;
+  preterminated: boolean;
+  description: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;
