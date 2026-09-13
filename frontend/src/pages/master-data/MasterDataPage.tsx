@@ -16,6 +16,7 @@ const EMPTY_REFS: ReferenceData = {
   projectTypes: [],
   collaborators: [],
   cableFamilies: [],
+  masterDataSites: [],
 };
 
 export default function MasterDataPage() {
@@ -26,14 +27,19 @@ export default function MasterDataPage() {
 
   useEffect(() => {
     // Cadastros Mestres não tem tantos cadastros quanto Cadastros Gerais
-    // ainda — hoje só Aliases de Cabo precisa de uma referência (a lista de
-    // Famílias, para o seletor/filtro). Promise.allSettled deixa fácil
-    // acrescentar mais entradas conforme novos cadastros forem chegando.
-    Promise.allSettled([masterDataApi.cableFamilies.list({ page_size: "500" } as never)])
-      .then(([cableFamilies]) => {
+    // ainda — Aliases/Especificações de Cabo precisam da lista de Famílias
+    // (seletor/filtro), e Localizações precisa da lista de Sites.
+    // Promise.allSettled deixa fácil acrescentar mais entradas conforme
+    // novos cadastros forem chegando.
+    Promise.allSettled([
+      masterDataApi.cableFamilies.list({ page_size: "500" } as never),
+      masterDataApi.sites.list({ page_size: "500" } as never),
+    ])
+      .then(([cableFamilies, masterDataSites]) => {
         setRefs({
           ...EMPTY_REFS,
           cableFamilies: cableFamilies.status === "fulfilled" ? cableFamilies.value.results : [],
+          masterDataSites: masterDataSites.status === "fulfilled" ? masterDataSites.value.results : [],
         });
       })
       .finally(() => setRefsLoaded(true));

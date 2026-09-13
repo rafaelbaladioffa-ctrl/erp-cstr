@@ -5,6 +5,7 @@ import type {
   CableFamily,
   CableSpec,
   CertificationType,
+  Location,
   MasterDataSite,
   Network,
   Path,
@@ -57,8 +58,17 @@ const PATH_TYPE_SUGGESTIONS = ["A", "B", "INTER_RACK", "CROSS_CONNECT", "DIRECT"
  * formulário. */
 const SITE_TYPE_SUGGESTIONS = ["DATACENTER", "OPTDC", "OTHER"];
 
+/** Espelha master_data.models.Location.LOCATION_TYPE_SUGGESTIONS no
+ * backend — não é ENUM rígido, só as opções mostradas no filtro e como
+ * sugestão no formulário. */
+const LOCATION_TYPE_SUGGESTIONS = ["RACK_POSITION", "IDF", "MR", "ROW", "ROOM", "PATCH_POINT", "OTHER"];
+
 function cableFamilyOptions(refs: ReferenceData) {
   return refs.cableFamilies.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }));
+}
+
+function masterDataSiteOptions(refs: ReferenceData) {
+  return refs.masterDataSites.map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` }));
 }
 
 /** Cadastros Mestres: catálogo técnico/operacional normalizado (famílias
@@ -611,6 +621,90 @@ const masterDataSiteEntity: EntityConfig<MasterDataSite> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const locationEntity: EntityConfig<Location> = {
+  key: "locations",
+  label: "Localizações",
+  icon: "my_location",
+  singular: "Localização",
+  description: "Localização física dentro de um Site (ex: GRU65.01-01-010-55) — só ONDE algo está, não o quê.",
+  createLabel: "Nova Localização",
+  perms: modelPerms("master_data", "location"),
+  api: masterDataApi.locations,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "canonical_address", label: "Endereço" },
+    { key: "site_code", label: "Site" },
+    { key: "location_type", label: "Tipo", render: (row) => row.location_type || "—" },
+    { key: "area", label: "Área", render: (row) => row.area || "—" },
+    { key: "room", label: "Room", render: (row) => row.room || "—" },
+    { key: "row", label: "Row", render: (row) => row.row || "—" },
+    { key: "position", label: "Posição", render: (row) => row.position || "—" },
+  ],
+  filters: [
+    {
+      key: "site",
+      label: "Todos os Sites",
+      options: masterDataSiteOptions,
+    },
+    {
+      key: "location_type",
+      label: "Todos os Tipos",
+      options: () => LOCATION_TYPE_SUGGESTIONS.map((t) => ({ value: t, label: t })),
+    },
+    {
+      key: "room",
+      label: "Todos os Rooms",
+      options: (_refs, rows) => distinctOptions(rows, "room"),
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: (refs) => [
+    { name: "site", label: "Site", type: "select", required: true, span: 2, options: masterDataSiteOptions(refs) },
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: LOC-GRU65-000001" },
+    {
+      name: "canonical_address",
+      label: "Endereço Canônico",
+      type: "text",
+      required: true,
+      span: 2,
+      placeholder: "Ex: GRU65.01-01-010-55",
+    },
+    { name: "location_type", label: "Tipo de Localização", type: "text", placeholder: "Ex: RACK_POSITION, IDF, MR, ROW, ROOM, PATCH_POINT" },
+    { name: "area", label: "Área", type: "text", placeholder: "Ex: ROOM1, MR, IDF" },
+    { name: "room", label: "Room", type: "text", placeholder: "Ex: 01-01" },
+    { name: "row", label: "Row", type: "text", placeholder: "Ex: 010" },
+    { name: "rack", label: "Rack", type: "text" },
+    { name: "position", label: "Posição", type: "text", placeholder: "Ex: 55" },
+    { name: "ru", label: "RU", type: "text", placeholder: "Ex: RU45" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+  ],
+  emptyValues: {
+    site: null,
+    code: "",
+    canonical_address: "",
+    area: "",
+    room: "",
+    row: "",
+    rack: "",
+    position: "",
+    ru: "",
+    location_type: "",
+    description: "",
+    active: true,
+  },
+  rowLabel: (row) => `${row.code} — ${row.canonical_address}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -624,6 +718,6 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     icon: "engineering",
     entities: [activityEntity, networkEntity, workstreamEntity, pathEntity],
   },
-  { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [masterDataSiteEntity] },
+  { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [masterDataSiteEntity, locationEntity] },
   { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },
 ];

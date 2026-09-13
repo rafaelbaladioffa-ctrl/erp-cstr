@@ -14,6 +14,7 @@ import type {
   Company,
   DailyUpdate,
   JobTitle,
+  Location,
   Me,
   MasterDataSite,
   Network,
@@ -87,6 +88,7 @@ export const masterDataApi = {
   workstreams: crud<Workstream>("/master-data/workstreams"),
   paths: crud<Path>("/master-data/paths"),
   sites: crud<MasterDataSite>("/master-data/sites"),
+  locations: crud<Location>("/master-data/locations"),
 };
 
 export const auditLogApi = {

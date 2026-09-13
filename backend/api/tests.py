@@ -17,7 +17,7 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Path, Workstream
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Location, Network, Path, Workstream
 from master_data.models import Site as MasterDataSite
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
@@ -2377,3 +2377,267 @@ class MasterDataSiteApiTests(TestCase):
         module.seed_sites(django_apps, None)
         module.seed_sites(django_apps, None)
         self.assertEqual(MasterDataSite.objects.count(), count_before)
+
+
+class LocationApiTests(TestCase):
+    """Cadastros Mestres > Infraestrutura > Localizações — CRUD,
+    obrigatoriedade, consistência site x endereço, busca, filtros, CSV,
+    ativação/inativação e seed idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="location_admin", email="location@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0020_seed_sites/0022_seed_locations) roda
+        # também no banco de testes (sites GRU65/GRU60/VCP1 já existem, e 7
+        # locations).
+        self.site = MasterDataSite.objects.create(code="TST-SITE", name="Site de teste")
+        self.other_site = MasterDataSite.objects.create(code="TST-OTHER-SITE", name="Outro site de teste")
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/locations/",
+            {"site": self.site.pk, "code": "LOC-TST-0001", "canonical_address": "TST-SITE.01-01-001-01"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        location = Location.objects.get(pk=response.data["id"])
+        self.assertEqual(location.created_by, self.admin)
+        self.assertEqual(location.updated_by, self.admin)
+        self.assertEqual(response.data["site_code"], "TST-SITE")
+
+    def test_site_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/locations/",
+            {"code": "LOC-TST-0002", "canonical_address": "TST-SITE.01-01-001-02"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("site", response.data)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/locations/",
+            {"site": self.site.pk, "canonical_address": "TST-SITE.01-01-001-03"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        Location.objects.create(site=self.site, code="LOC-TST-DUP", canonical_address="TST-SITE.01-01-001-04")
+        response = self.client_api.post(
+            "/api/master-data/locations/",
+            {"site": self.site.pk, "code": "LOC-TST-DUP", "canonical_address": "TST-SITE.01-01-001-05"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(Location.objects.filter(code="LOC-TST-DUP").count(), 1)
+
+    def test_canonical_address_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/locations/",
+            {"site": self.site.pk, "code": "LOC-TST-0003"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("canonical_address", response.data)
+
+    def test_canonical_address_must_be_unique(self):
+        Location.objects.create(site=self.site, code="LOC-TST-0004", canonical_address="TST-SITE.01-01-001-06")
+        response = self.client_api.post(
+            "/api/master-data/locations/",
+            {"site": self.site.pk, "code": "LOC-TST-0005", "canonical_address": "TST-SITE.01-01-001-06"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("canonical_address", response.data)
+        self.assertEqual(Location.objects.filter(canonical_address="TST-SITE.01-01-001-06").count(), 1)
+
+    def test_site_foreign_key_is_protected(self):
+        location = Location.objects.create(site=self.site, code="LOC-TST-FK", canonical_address="TST-SITE.01-01-001-07")
+        with self.assertRaises(ProtectedError):
+            self.site.delete()
+        location.refresh_from_db()
+        self.assertEqual(location.site_id, self.site.pk)
+
+    def test_address_prefix_mismatched_site_rejected(self):
+        # Endereço começa explicitamente com o código de OUTRO site
+        # (self.other_site) diferente do site informado (self.site).
+        response = self.client_api.post(
+            "/api/master-data/locations/",
+            {
+                "site": self.site.pk,
+                "code": "LOC-TST-MISMATCH",
+                "canonical_address": "TST-OTHER-SITE.01-01-001-08",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("canonical_address", response.data)
+        self.assertFalse(Location.objects.filter(code="LOC-TST-MISMATCH").exists())
+
+    def test_address_prefix_matching_site_accepted(self):
+        response = self.client_api.post(
+            "/api/master-data/locations/",
+            {
+                "site": self.site.pk,
+                "code": "LOC-TST-MATCH",
+                "canonical_address": "TST-SITE.01-01-001-09",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_address_without_site_prefix_accepted(self):
+        # Endereço sem o código de nenhum site conhecido no início (ex:
+        # "MR01-01-018-99") — aceito sem checagem de consistência.
+        response = self.client_api.post(
+            "/api/master-data/locations/",
+            {
+                "site": self.site.pk,
+                "code": "LOC-TST-NOPREFIX",
+                "canonical_address": "MR01-01-018-99",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_update_edits_fields(self):
+        location = Location.objects.create(site=self.site, code="LOC-TST-EDIT", canonical_address="TST-SITE.01-01-001-10")
+
+        response = self.client_api.patch(
+            f"/api/master-data/locations/{location.pk}/",
+            {"location_type": "RACK_POSITION", "room": "01-01", "position": "10"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        location.refresh_from_db()
+        self.assertEqual(location.location_type, "RACK_POSITION")
+        self.assertEqual(location.room, "01-01")
+        self.assertEqual(location.position, "10")
+
+    def test_search_by_code_address_and_site(self):
+        Location.objects.create(
+            site=self.site, code="LOC-TST-SEARCH", canonical_address="TST-SITE.01-01-001-11", description="Achável"
+        )
+        Location.objects.create(
+            site=self.other_site, code="LOC-TST-SEARCH-OTHER", canonical_address="XYZ.01-01-001-99"
+        )
+
+        by_address = self.client_api.get("/api/master-data/locations/", {"search": "TST-SITE.01-01-001-11"})
+        self.assertEqual(by_address.data["count"], 1)
+        self.assertEqual(by_address.data["results"][0]["code"], "LOC-TST-SEARCH")
+
+        by_site_code = self.client_api.get("/api/master-data/locations/", {"search": "TST-OTHER-SITE"})
+        self.assertEqual(by_site_code.data["count"], 1)
+        self.assertEqual(by_site_code.data["results"][0]["code"], "LOC-TST-SEARCH-OTHER")
+
+    def test_filter_by_site(self):
+        Location.objects.create(site=self.site, code="LOC-TST-SITEA", canonical_address="TST-SITE.01-01-001-12")
+        Location.objects.create(site=self.other_site, code="LOC-TST-SITEB", canonical_address="TST-OTHER-SITE.01-01-001-13")
+
+        response = self.client_api.get("/api/master-data/locations/", {"site": self.site.pk})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "LOC-TST-SITEA")
+
+    def test_filter_by_location_type(self):
+        Location.objects.create(
+            site=self.site, code="LOC-TST-TYPEA", canonical_address="TST-SITE.01-01-001-14", location_type="TST_TYPE_A"
+        )
+        Location.objects.create(
+            site=self.site, code="LOC-TST-TYPEB", canonical_address="TST-SITE.01-01-001-15", location_type="TST_TYPE_B"
+        )
+
+        response = self.client_api.get("/api/master-data/locations/", {"location_type": "TST_TYPE_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "LOC-TST-TYPEA")
+
+    def test_filter_by_room(self):
+        Location.objects.create(site=self.site, code="LOC-TST-ROOMA", canonical_address="TST-SITE.01-01-001-16", room="TST-ROOM-A")
+        Location.objects.create(site=self.site, code="LOC-TST-ROOMB", canonical_address="TST-SITE.01-01-001-17", room="TST-ROOM-B")
+
+        response = self.client_api.get("/api/master-data/locations/", {"room": "TST-ROOM-A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "LOC-TST-ROOMA")
+
+    def test_filter_by_active(self):
+        Location.objects.create(site=self.site, code="LOC-TST-ACTIVE", canonical_address="TST-SITE.01-01-001-18", active=True)
+        Location.objects.create(site=self.site, code="LOC-TST-INACTIVE", canonical_address="TST-SITE.01-01-001-19", active=False)
+
+        response = self.client_api.get("/api/master-data/locations/", {"is_active": "false"})
+
+        codes = [row["code"] for row in response.data["results"]]
+        self.assertIn("LOC-TST-INACTIVE", codes)
+        self.assertNotIn("LOC-TST-ACTIVE", codes)
+
+    def test_deactivate_does_not_hard_delete(self):
+        location = Location.objects.create(
+            site=self.site, code="LOC-TST-TOGGLE", canonical_address="TST-SITE.01-01-001-20", active=True
+        )
+
+        response = self.client_api.patch(f"/api/master-data/locations/{location.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(Location.objects.filter(pk=location.pk).exists())
+        location.refresh_from_db()
+        self.assertFalse(location.active)
+
+    def test_export_csv(self):
+        Location.objects.create(site=self.site, code="LOC-TST-EXPORT", canonical_address="TST-SITE.01-01-001-21")
+        response = self.client_api.get("/api/master-data/locations/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("LOC-TST-EXPORT", content)
+        self.assertIn("TST-SITE", content)
+        self.assertIn("código", content)
+
+    def test_import_csv_identifies_site_by_code(self):
+        csv_content = (
+            "código;site;endereço canônico;tipo de localização\n"
+            "LOC-TST-IMPORT1;TST-SITE;TST-SITE.01-01-001-22;RACK_POSITION\n"
+        )
+        upload = SimpleUploadedFile("locations.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post("/api/master-data/locations/import-csv/", {"csv_file": upload}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 1)
+        self.assertEqual(response.data["errors"], [])
+        imported = Location.objects.get(code="LOC-TST-IMPORT1")
+        self.assertEqual(imported.site_id, self.site.pk)
+
+    def test_seed_matches_expected_seven_records(self):
+        expected_addresses = {
+            "GRU65.01-01-002-53",
+            "GRU65.01-01-002-44",
+            "GRU65.01-01-002-50",
+            "GRU65.01-01-001-19",
+            "GRU65.01-01-001-83",
+            "GRU65.01-01-010-55",
+            "GRU65.01-01-010-61",
+        }
+        addresses = set(Location.objects.values_list("canonical_address", flat=True))
+        self.assertEqual(expected_addresses & addresses, expected_addresses)
+
+    def test_seed_location_resolves_site_and_type_without_parsing(self):
+        location = Location.objects.get(canonical_address="GRU65.01-01-010-55")
+        self.assertEqual(location.site.code, "GRU65")
+        self.assertEqual(location.location_type, "RACK_POSITION")
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0022_seed_locations")
+        count_before = Location.objects.count()
+        module.seed_locations(django_apps, None)
+        module.seed_locations(django_apps, None)
+        self.assertEqual(Location.objects.count(), count_before)

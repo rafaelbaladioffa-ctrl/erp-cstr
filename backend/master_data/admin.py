@@ -3,7 +3,18 @@ from unfold.admin import ModelAdmin
 
 from core.admin_mixins import CSVImportExportMixin, SelectablePageSizeAdminMixin
 
-from .models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Path, Site, Workstream
+from .models import (
+    Activity,
+    CableAlias,
+    CableFamily,
+    CableSpec,
+    CertificationType,
+    Location,
+    Network,
+    Path,
+    Site,
+    Workstream,
+)
 
 
 class CableAliasInline(admin.TabularInline):
@@ -139,6 +150,33 @@ class MasterDataSiteAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, Mo
     list_display = ("code", "name", "city", "state", "country", "site_type", "active", "updated_at")
     list_filter = ("site_type", "country", "state", "active")
     search_fields = ("code", "name", "city", "state", "country", "site_type", "description")
+    readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(Location)
+class LocationAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("code", "canonical_address", "site", "location_type", "room", "row", "active", "updated_at")
+    list_filter = ("location_type", "room", "active")
+    search_fields = (
+        "code",
+        "canonical_address",
+        "site__code",
+        "site__name",
+        "area",
+        "room",
+        "row",
+        "rack",
+        "position",
+        "ru",
+        "description",
+    )
+    autocomplete_fields = ("site",)
     readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
 
     def save_model(self, request, obj, form, change):

@@ -14,7 +14,7 @@ export default function CadastrosPage() {
   const [activeKey, setActiveKey] = useState(visibleEntities[0]?.key ?? "");
   const [quickCreateSignal, setQuickCreateSignal] = useState<{ key: string; nonce: number } | null>(null);
   const [refs, setRefs] = useState<ReferenceData>({
-    companies: [], jobTitles: [], sites: [], clients: [], projectTypes: [], collaborators: [], cableFamilies: [],
+    companies: [], jobTitles: [], sites: [], clients: [], projectTypes: [], collaborators: [], cableFamilies: [], masterDataSites: [],
   });
   const [refsLoaded, setRefsLoaded] = useState(false);
 
@@ -48,6 +48,7 @@ export default function CadastrosPage() {
           projectTypes: projectTypes.status === "fulfilled" ? projectTypes.value.results : [],
           collaborators: collaborators.status === "fulfilled" ? collaborators.value.results : [],
           cableFamilies: [],
+          masterDataSites: [],
         });
       })
       .finally(() => setRefsLoaded(true));

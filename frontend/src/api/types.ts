@@ -281,6 +281,28 @@ export interface MasterDataSite {
   updated_by_name: string | null;
 }
 
+export interface Location {
+  id: number;
+  site: number | null;
+  site_code: string;
+  site_name: string;
+  code: string;
+  canonical_address: string;
+  area: string;
+  room: string;
+  row: string;
+  rack: string;
+  position: string;
+  ru: string;
+  location_type: string;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;

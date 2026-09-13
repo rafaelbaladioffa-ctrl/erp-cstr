@@ -24,6 +24,7 @@ from master_data.models import (
     CableFamily,
     CableSpec,
     CertificationType,
+    Location,
     Network,
     Path,
     Workstream,
@@ -416,6 +417,57 @@ class MasterDataSiteCrudSerializer(serializers.ModelSerializer):
 
     def get_updated_by_name(self, obj):
         return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+
+class LocationCrudSerializer(serializers.ModelSerializer):
+    site_code = serializers.CharField(source="site.code", read_only=True)
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Location
+        fields = (
+            "id",
+            "site",
+            "site_code",
+            "site_name",
+            "code",
+            "canonical_address",
+            "area",
+            "room",
+            "row",
+            "rack",
+            "position",
+            "ru",
+            "location_type",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+    def validate(self, attrs):
+        # Reaproveita Location.clean() (consistência entre o prefixo do
+        # endereço e o Site) em vez de duplicar a regra aqui — mesmo
+        # padrão de CableSpecCrudSerializer.
+        instance = self.instance or Location()
+        for field, value in attrs.items():
+            setattr(instance, field, value)
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
+        return attrs
 
 
 class ProjectTypeCrudSerializer(serializers.ModelSerializer):

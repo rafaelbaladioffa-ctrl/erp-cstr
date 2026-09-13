@@ -80,6 +80,7 @@ export const PERMS = {
   viewWorkstream: "master_data.view_workstream",
   viewPath: "master_data.view_path",
   viewMasterDataSite: "master_data.view_site",
+  viewLocation: "master_data.view_location",
 };
 
 export const MASTER_DATA_PERMS = [
@@ -92,6 +93,7 @@ export const MASTER_DATA_PERMS = [
   PERMS.viewWorkstream,
   PERMS.viewPath,
   PERMS.viewMasterDataSite,
+  PERMS.viewLocation,
 ];
 
 export const CADASTROS_PERMS = [

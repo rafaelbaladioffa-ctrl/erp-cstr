@@ -40,6 +40,7 @@ router.register("master-data/networks", views.NetworkViewSet, basename="master-d
 router.register("master-data/workstreams", views.WorkstreamViewSet, basename="master-data-workstream")
 router.register("master-data/paths", views.PathViewSet, basename="master-data-path")
 router.register("master-data/sites", views.MasterDataSiteViewSet, basename="master-data-site")
+router.register("master-data/locations", views.LocationViewSet, basename="master-data-location")
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),

@@ -6,6 +6,7 @@ import type {
   CollaboratorFull,
   Company,
   JobTitle,
+  MasterDataSite,
   Paginated,
   ProjectType,
   ResponsibleFull,
@@ -88,6 +89,10 @@ export interface ReferenceData {
   /** Só usado por Cadastros Mestres (ex: seletor de família em Aliases de
    * Cabo) — vazio para quem só usa Cadastros Gerais. */
   cableFamilies: CableFamily[];
+  /** Só usado por Cadastros Mestres (ex: seletor de site em Localizações)
+   * — vazio para quem só usa Cadastros Gerais. Não confundir com `sites`
+   * acima (aquele é o Site do Cliente, Cadastros Gerais). */
+  masterDataSites: MasterDataSite[];
 }
 
 function companyOptions(refs: ReferenceData) {

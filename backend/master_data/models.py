@@ -449,4 +449,82 @@ class Site(MasterDataModel):
         ordering = ("code",)
 
     def __str__(self):
-        return f"{self.code} — {self.name}"
+        # Só o código (diferente de CableFamily/CableSpec, que usam
+        # "código — nome") de propósito: core.csv_io resolve FK em CSV
+        # comparando por igualdade de texto contra str(candidato) — para
+        # que a importação de Location possa identificar o Site só pelo
+        # código ("GRU65"), sem exigir "GRU65 — GRU65" nem o ID interno.
+        return self.code
+
+
+def find_conflicting_site_for_address(canonical_address, site):
+    """Se `canonical_address` começar explicitamente com o código de um
+    site DIFERENTE de `site` (com um limite claro logo depois — fim da
+    string ou um caractere não alfanumérico como "." ou "-"), retorna esse
+    outro site (o conflito). Retorna None quando o endereço não começa com
+    nenhum código de site conhecido (ex: "MR01-01-018-99" — aceito sem
+    checagem) ou quando começa com o código do próprio `site` informado
+    (caso normal)."""
+    if not canonical_address or site is None:
+        return None
+    normalized = canonical_address.strip().upper()
+    for other in Site.objects.exclude(pk=site.pk):
+        prefix = (other.code or "").strip().upper()
+        if not prefix:
+            continue
+        if normalized == prefix or (
+            normalized.startswith(prefix) and not normalized[len(prefix) : len(prefix) + 1].isalnum()
+        ):
+            return other
+    return None
+
+
+class Location(MasterDataModel):
+    """Catálogo canônico de localizações físicas dentro de um Site — ONDE
+    algo está fisicamente (ex: GRU65.01-01-010-55), não O QUE está lá
+    (isso é Device, fase futura) nem uma conexão entre dois pontos (isso é
+    Connection, fase futura). Os formatos de endereço encontrados em SOWs/
+    cutsheets não são uniformes, por isso `canonical_address` é sempre a
+    fonte da verdade (preservada exatamente como encontrada) e os campos
+    estruturais (area/room/row/rack/position/ru) são só atributos opcionais
+    — nenhum parser automático tenta decompor o endereço nesta etapa."""
+
+    LOCATION_TYPE_SUGGESTIONS = ("RACK_POSITION", "IDF", "MR", "ROW", "ROOM", "PATCH_POINT", "OTHER")
+
+    site = models.ForeignKey(Site, verbose_name="site", on_delete=models.PROTECT, related_name="locations")
+    code = models.CharField("código", max_length=100, unique=True)
+    canonical_address = models.CharField("endereço canônico", max_length=255, unique=True)
+    area = models.CharField("área", max_length=50, blank=True)
+    room = models.CharField("room", max_length=50, blank=True)
+    row = models.CharField("row", max_length=50, blank=True)
+    rack = models.CharField("rack", max_length=50, blank=True)
+    position = models.CharField("posição", max_length=50, blank=True)
+    ru = models.CharField("RU", max_length=50, blank=True)
+    # Texto livre (não ENUM/choices) de propósito — sugestões: RACK_POSITION,
+    # IDF, MR, ROW, ROOM, PATCH_POINT, OTHER.
+    location_type = models.CharField("tipo de localização", max_length=50, blank=True)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Localização"
+        verbose_name_plural = "Localizações"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.canonical_address}"
+
+    def clean(self):
+        super().clean()
+        if not self.site_id:
+            return
+        conflicting_site = find_conflicting_site_for_address(self.canonical_address, self.site)
+        if conflicting_site is not None:
+            raise ValidationError(
+                {
+                    "canonical_address": (
+                        f'O endereço "{self.canonical_address}" começa com o código de outro site '
+                        f"({conflicting_site.code}), diferente do site selecionado ({self.site.code})."
+                    )
+                }
+            )

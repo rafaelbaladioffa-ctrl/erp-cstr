@@ -32,7 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Path, Workstream
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Location, Network, Path, Workstream
 from master_data.models import Site as MasterDataSite
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
@@ -64,6 +64,7 @@ from .serializers import (
     CableSpecCrudSerializer,
     ActivityCrudSerializer,
     NetworkCrudSerializer,
+    LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
     WorkstreamCrudSerializer,
@@ -940,6 +941,44 @@ class MasterDataSiteViewSet(RegistryViewSet):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{param: value})
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class LocationViewSet(RegistryViewSet):
+    """Cadastros Mestres > Infraestrutura > Localizações. Catálogo canônico
+    das localizações físicas dentro de um Site — mesmo padrão de
+    MasterDataSiteViewSet; filtros exatos por site/tipo/room além da
+    busca/is_active herdados de RegistryViewSet."""
+
+    queryset = Location.objects.select_related("site", "created_by", "updated_by").order_by("code")
+    serializer_class = LocationCrudSerializer
+    search_fields = (
+        "code",
+        "canonical_address",
+        "site__code",
+        "site__name",
+        "area",
+        "room",
+        "row",
+        "rack",
+        "position",
+        "ru",
+        "description",
+    )
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param, field in (("site", "site_id"), ("location_type", "location_type"), ("room", "room")):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{field: value})
         return queryset
 
     def perform_create(self, serializer):
