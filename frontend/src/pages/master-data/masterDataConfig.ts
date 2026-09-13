@@ -11,6 +11,7 @@ import type {
   Network,
   Path,
   TaskTemplate,
+  TaskTemplateStep,
   Workstream,
 } from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
@@ -77,12 +78,25 @@ const DEVICE_TYPE_DEFAULT_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER", "MIXED", "GEN
 const TASK_TEMPLATE_CATEGORY_SUGGESTIONS = ["CABLING", "HARDWARE", "WIRELESS", "SERVICE", "CLOSURE"];
 const TASK_TEMPLATE_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER", "MIXED", "GENERAL"];
 
+/** Espelha master_data.models.TaskTemplateStep.QUANTITY_SOURCE_SUGGESTIONS
+ * no backend — não é ENUM rígido (o seed real usa até um valor fora dessa
+ * lista, CONNECTION_COUNT, para CAB-CRIMP), só sugestões no formulário. */
+const QUANTITY_SOURCE_SUGGESTIONS = ["SCOPE_ITEM", "CABLE_COUNT", "LINK_COUNT", "METERAGE", "PROJECT", "MANUAL", "NONE"];
+
 function cableFamilyOptions(refs: ReferenceData) {
   return refs.cableFamilies.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }));
 }
 
 function masterDataSiteOptions(refs: ReferenceData) {
   return refs.masterDataSites.map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` }));
+}
+
+function taskTemplateOptions(refs: ReferenceData) {
+  return refs.taskTemplates.map((t) => ({ value: t.id, label: `${t.code} — ${t.name}` }));
+}
+
+function activityOptions(refs: ReferenceData) {
+  return refs.activities.map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }));
 }
 
 /** Cadastros Mestres: catálogo técnico/operacional normalizado (famílias
@@ -823,6 +837,79 @@ const taskTemplateEntity: EntityConfig<TaskTemplate> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const taskTemplateStepEntity: EntityConfig<TaskTemplateStep> = {
+  key: "task-template-steps",
+  label: "Etapas dos Templates",
+  icon: "list_alt",
+  singular: "Etapa de Template",
+  description: "Uma atividade, em uma ordem, dentro da receita de um Template de Tarefa.",
+  createLabel: "Nova Etapa de Template",
+  perms: modelPerms("master_data", "tasktemplatestep"),
+  api: masterDataApi.taskTemplateSteps,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "task_template_code", label: "Template" },
+    { key: "step_order", label: "Ordem" },
+    { key: "activity_code", label: "Atividade" },
+    { key: "effective_name", label: "Nome da Etapa" },
+    { key: "required", label: "Obrigatória", render: (row) => (row.required ? "Sim" : "Não") },
+    { key: "repeatable", label: "Repetível", render: (row) => (row.repeatable ? "Sim" : "Não") },
+    { key: "quantity_source", label: "Origem da Quantidade", render: (row) => row.quantity_source || "—" },
+    { key: "unit_override", label: "Unidade", render: (row) => row.unit_override || "—" },
+  ],
+  filters: [
+    {
+      key: "task_template",
+      label: "Todos os Templates",
+      options: taskTemplateOptions,
+    },
+    {
+      key: "activity",
+      label: "Todas as Atividades",
+      options: activityOptions,
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: (refs) => [
+    { name: "task_template", label: "Template", type: "select", required: true, span: 2, options: taskTemplateOptions(refs) },
+    { name: "activity", label: "Atividade", type: "select", required: true, span: 2, options: activityOptions(refs) },
+    { name: "step_order", label: "Ordem", type: "number", required: true, placeholder: "Ex: 10, 20, 30..." },
+    { name: "name_override", label: "Nome Personalizado", type: "text", placeholder: "Ex: Lançar fibra Route A/B" },
+    { name: "required", label: "Obrigatória", type: "checkbox", placeholder: "Sim" },
+    { name: "repeatable", label: "Repetível", type: "checkbox", placeholder: "Sim" },
+    {
+      name: "quantity_source",
+      label: "Origem da Quantidade",
+      type: "text",
+      placeholder: `Ex: ${QUANTITY_SOURCE_SUGGESTIONS.join(", ")}`,
+    },
+    { name: "unit_override", label: "Unidade Sobrescrita", type: "text", placeholder: "Ex: METER" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+  ],
+  emptyValues: {
+    task_template: null,
+    activity: null,
+    step_order: null,
+    name_override: "",
+    required: true,
+    repeatable: false,
+    quantity_source: "",
+    unit_override: "",
+    description: "",
+    active: true,
+  },
+  rowLabel: (row) => `${row.task_template_code} #${row.step_order} — ${row.effective_name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -834,7 +921,7 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     key: "operacao",
     label: "Operação",
     icon: "engineering",
-    entities: [activityEntity, networkEntity, workstreamEntity, pathEntity, taskTemplateEntity],
+    entities: [activityEntity, networkEntity, workstreamEntity, pathEntity, taskTemplateEntity, taskTemplateStepEntity],
   },
   {
     key: "infraestrutura",

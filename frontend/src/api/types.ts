@@ -331,6 +331,29 @@ export interface TaskTemplate {
   updated_by_name: string | null;
 }
 
+export interface TaskTemplateStep {
+  id: number;
+  task_template: number | null;
+  task_template_code: string;
+  task_template_name: string;
+  activity: number | null;
+  activity_code: string;
+  activity_name: string;
+  effective_name: string;
+  step_order: number | null;
+  name_override: string;
+  required: boolean;
+  repeatable: boolean;
+  quantity_source: string;
+  unit_override: string;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;

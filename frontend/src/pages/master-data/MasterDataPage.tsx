@@ -17,6 +17,8 @@ const EMPTY_REFS: ReferenceData = {
   collaborators: [],
   cableFamilies: [],
   masterDataSites: [],
+  activities: [],
+  taskTemplates: [],
 };
 
 export default function MasterDataPage() {
@@ -28,18 +30,23 @@ export default function MasterDataPage() {
   useEffect(() => {
     // Cadastros Mestres não tem tantos cadastros quanto Cadastros Gerais
     // ainda — Aliases/Especificações de Cabo precisam da lista de Famílias
-    // (seletor/filtro), e Localizações precisa da lista de Sites.
+    // (seletor/filtro), Localizações precisa da lista de Sites, e Etapas
+    // de Template precisa das listas de Templates e Atividades.
     // Promise.allSettled deixa fácil acrescentar mais entradas conforme
     // novos cadastros forem chegando.
     Promise.allSettled([
       masterDataApi.cableFamilies.list({ page_size: "500" } as never),
       masterDataApi.sites.list({ page_size: "500" } as never),
+      masterDataApi.activities.list({ page_size: "500" } as never),
+      masterDataApi.taskTemplates.list({ page_size: "500" } as never),
     ])
-      .then(([cableFamilies, masterDataSites]) => {
+      .then(([cableFamilies, masterDataSites, activities, taskTemplates]) => {
         setRefs({
           ...EMPTY_REFS,
           cableFamilies: cableFamilies.status === "fulfilled" ? cableFamilies.value.results : [],
           masterDataSites: masterDataSites.status === "fulfilled" ? masterDataSites.value.results : [],
+          activities: activities.status === "fulfilled" ? activities.value.results : [],
+          taskTemplates: taskTemplates.status === "fulfilled" ? taskTemplates.value.results : [],
         });
       })
       .finally(() => setRefsLoaded(true));

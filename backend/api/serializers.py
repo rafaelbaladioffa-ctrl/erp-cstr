@@ -29,6 +29,7 @@ from master_data.models import (
     Network,
     Path,
     TaskTemplate,
+    TaskTemplateStep,
     Workstream,
     normalize_alias_text,
 )
@@ -512,6 +513,48 @@ class TaskTemplateCrudSerializer(serializers.ModelSerializer):
             "name",
             "category",
             "medium",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+
+class TaskTemplateStepCrudSerializer(serializers.ModelSerializer):
+    task_template_code = serializers.CharField(source="task_template.code", read_only=True)
+    task_template_name = serializers.CharField(source="task_template.name", read_only=True)
+    activity_code = serializers.CharField(source="activity.code", read_only=True)
+    activity_name = serializers.CharField(source="activity.name", read_only=True)
+    effective_name = serializers.CharField(read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskTemplateStep
+        fields = (
+            "id",
+            "task_template",
+            "task_template_code",
+            "task_template_name",
+            "activity",
+            "activity_code",
+            "activity_name",
+            "effective_name",
+            "step_order",
+            "name_override",
+            "required",
+            "repeatable",
+            "quantity_source",
+            "unit_override",
             "description",
             "active",
             "created_at",

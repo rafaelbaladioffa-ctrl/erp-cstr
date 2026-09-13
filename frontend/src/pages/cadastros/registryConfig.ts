@@ -1,5 +1,6 @@
 import { bulkCreateApi, registryApi } from "../../api/resources";
 import type {
+  Activity,
   CableFamily,
   Category,
   ClientFull,
@@ -12,6 +13,7 @@ import type {
   ResponsibleFull,
   SiteFull,
   TaskFull,
+  TaskTemplate,
 } from "../../api/types";
 import type { FieldConfig, FieldOption, FormValues } from "../../components/ui/DynamicForm";
 import { modelPerms, type ModelPerms } from "../../utils/permissions";
@@ -93,6 +95,10 @@ export interface ReferenceData {
    * — vazio para quem só usa Cadastros Gerais. Não confundir com `sites`
    * acima (aquele é o Site do Cliente, Cadastros Gerais). */
   masterDataSites: MasterDataSite[];
+  /** Só usado por Cadastros Mestres (seletores de Etapas de Template) —
+   * vazio para quem só usa Cadastros Gerais. */
+  activities: Activity[];
+  taskTemplates: TaskTemplate[];
 }
 
 function companyOptions(refs: ReferenceData) {

@@ -15,6 +15,7 @@ from .models import (
     Path,
     Site,
     TaskTemplate,
+    TaskTemplateStep,
     Workstream,
 )
 
@@ -202,12 +203,49 @@ class DeviceTypeAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelA
         super().save_model(request, obj, form, change)
 
 
+class TaskTemplateStepInline(admin.TabularInline):
+    model = TaskTemplateStep
+    fk_name = "task_template"
+    extra = 0
+    fields = ("step_order", "activity", "name_override", "required", "repeatable", "quantity_source", "unit_override", "active")
+    autocomplete_fields = ("activity",)
+    ordering = ("step_order",)
+
+
 @admin.register(TaskTemplate)
 class TaskTemplateAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
     list_display = ("code", "name", "category", "medium", "active", "updated_at")
     list_filter = ("category", "medium", "active")
     search_fields = ("code", "name", "category", "medium", "description")
     readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
+    inlines = [TaskTemplateStepInline]
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(TaskTemplateStep)
+class TaskTemplateStepAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("task_template", "step_order", "activity", "effective_name_display", "required", "repeatable", "active", "updated_at")
+    list_filter = ("required", "repeatable", "active")
+    search_fields = (
+        "activity__code",
+        "activity__name",
+        "task_template__code",
+        "task_template__name",
+        "name_override",
+        "description",
+    )
+    autocomplete_fields = ("task_template", "activity")
+    readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
+
+    def effective_name_display(self, obj):
+        return obj.effective_name
+
+    effective_name_display.short_description = "nome efetivo"
 
     def save_model(self, request, obj, form, change):
         if not change:

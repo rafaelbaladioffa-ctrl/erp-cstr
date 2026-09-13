@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { masterDataApi, sitesMapApi } from "../../api/resources";
-import type { CableAlias, CableSpec } from "../../api/types";
+import type { CableAlias, CableSpec, TaskTemplateStep } from "../../api/types";
 import { useAuth } from "../../context/AuthContext";
 import { PERMS, hasPerm } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../../pages/cadastros/registryConfig";
@@ -57,6 +57,12 @@ export default function EntityCrudPanel({
   const [familyAliasesLoading, setFamilyAliasesLoading] = useState(false);
   const [familySpecs, setFamilySpecs] = useState<CableSpec[]>([]);
   const [familySpecsLoading, setFamilySpecsLoading] = useState(false);
+  // Idem para Template de Tarefa: suas etapas, mostradas como tabela
+  // somente-leitura no modal — a edição de verdade (adicionar/editar/
+  // reordenar etapa) acontece em Cadastros Mestres > Operação > Etapas
+  // dos Templates (filtrando por este template).
+  const [templateSteps, setTemplateSteps] = useState<TaskTemplateStep[]>([]);
+  const [templateStepsLoading, setTemplateStepsLoading] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -145,6 +151,7 @@ export default function EntityCrudPanel({
     setFormErrors({});
     setFamilyAliases([]);
     setFamilySpecs([]);
+    setTemplateSteps([]);
     setModalOpen(true);
   }
 
@@ -173,6 +180,15 @@ export default function EntityCrudPanel({
     } else {
       setFamilyAliases([]);
       setFamilySpecs([]);
+    }
+    if (entity.key === "task-templates") {
+      setTemplateStepsLoading(true);
+      masterDataApi.taskTemplateSteps
+        .list({ task_template: String(row.id) })
+        .then((data) => setTemplateSteps([...data.results].sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0))))
+        .finally(() => setTemplateStepsLoading(false));
+    } else {
+      setTemplateSteps([]);
     }
   }
 
@@ -492,6 +508,62 @@ export default function EntityCrudPanel({
                   ))}
                 </ul>
               )}
+            </div>
+          )}
+          {editingId && entity.key === "task-templates" && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--text-faint)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: 8,
+                }}
+              >
+                Etapas do Template ({templateSteps.length})
+              </div>
+              {templateStepsLoading ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+              ) : templateSteps.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhuma etapa cadastrada para este template ainda.</p>
+              ) : (
+                <div className="table-wrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Ordem</th>
+                        <th>Atividade</th>
+                        <th>Nome da Etapa</th>
+                        <th>Obrigatória</th>
+                        <th>Repetível</th>
+                        <th>Origem da Quantidade</th>
+                        <th>Unidade</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {templateSteps.map((s) => (
+                        <tr key={s.id}>
+                          <td>{s.step_order}</td>
+                          <td>{s.activity_code}</td>
+                          <td>{s.effective_name}</td>
+                          <td>{s.required ? "Sim" : "Não"}</td>
+                          <td>{s.repeatable ? "Sim" : "Não"}</td>
+                          <td>{s.quantity_source || "—"}</td>
+                          <td>{s.unit_override || "—"}</td>
+                          <td>{s.active ? "Ativo" : "Inativo"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 8 }}>
+                Para adicionar, editar ou reordenar etapas, use Cadastros Mestres &gt; Operação &gt; Etapas dos Templates
+                (filtrando por este template).
+              </p>
             </div>
           )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>

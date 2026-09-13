@@ -43,6 +43,7 @@ from master_data.models import (
     Network,
     Path,
     TaskTemplate,
+    TaskTemplateStep,
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
@@ -78,6 +79,7 @@ from .serializers import (
     NetworkCrudSerializer,
     DeviceTypeCrudSerializer,
     TaskTemplateCrudSerializer,
+    TaskTemplateStepCrudSerializer,
     LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
@@ -1035,8 +1037,8 @@ class TaskTemplateViewSet(RegistryViewSet):
     WorkstreamViewSet; filtros exatos por categoria e meio além da busca/
     is_active herdados de RegistryViewSet. Sem relação com CableFamily/
     Network/Workstream/Path/Activity nesta etapa (deliberadamente fora de
-    escopo — ver docstring do model; task_template_steps fica para uma
-    fase futura)."""
+    escopo — ver docstring do model). As etapas de cada template são
+    TaskTemplateStep (ver TaskTemplateStepViewSet logo abaixo)."""
 
     queryset = TaskTemplate.objects.select_related("created_by", "updated_by").order_by("code")
     serializer_class = TaskTemplateCrudSerializer
@@ -1049,6 +1051,46 @@ class TaskTemplateViewSet(RegistryViewSet):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{param: value})
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class TaskTemplateStepViewSet(RegistryViewSet):
+    """Cadastros Mestres > Operação > Etapas dos Templates. Uma etapa
+    (Activity + ordem) dentro da receita de um TaskTemplate — sem `code`
+    próprio (não é catálogo, é linha de composição); busca/is_active
+    herdados de RegistryViewSet, mais filtros exatos por template/
+    atividade/obrigatória/repetível."""
+
+    queryset = TaskTemplateStep.objects.select_related(
+        "task_template", "activity", "created_by", "updated_by"
+    ).order_by("task_template__code", "step_order")
+    serializer_class = TaskTemplateStepCrudSerializer
+    search_fields = (
+        "activity__code",
+        "activity__name",
+        "task_template__code",
+        "task_template__name",
+        "name_override",
+        "description",
+    )
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param, field in (("task_template", "task_template_id"), ("activity", "activity_id")):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{field: value})
+        for param in ("required", "repeatable"):
+            value = self.request.query_params.get(param)
+            if value is not None:
+                queryset = queryset.filter(**{param: value.lower() in ("1", "true", "yes")})
         return queryset
 
     def perform_create(self, serializer):

@@ -28,6 +28,7 @@ from master_data.models import (
     Network,
     Path,
     TaskTemplate,
+    TaskTemplateStep,
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
@@ -3009,3 +3010,303 @@ class TaskTemplateApiTests(TestCase):
         module.seed_task_templates(django_apps, None)
         module.seed_task_templates(django_apps, None)
         self.assertEqual(TaskTemplate.objects.count(), count_before)
+
+
+class TaskTemplateStepApiTests(TestCase):
+    """Cadastros Mestres > Operação > Etapas dos Templates — CRUD,
+    obrigatoriedade, unicidade de ordem, FK protegida, effective_name,
+    busca, filtros, CSV, ativação/inativação e seed idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="task_template_step_admin", email="task_template_step@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0028_seed_task_template_steps) roda também
+        # no banco de testes (63 registros, distribuídos pelos 8
+        # templates).
+        self.template = TaskTemplate.objects.create(code="TST-TPL", name="Template de teste", category="TEST_CATEGORY")
+        self.other_template = TaskTemplate.objects.create(code="TST-TPL-OTHER", name="Outro template", category="TEST_CATEGORY")
+        self.activity = Activity.objects.create(code="TST-ACT", name="Atividade de teste", category="TEST_CATEGORY")
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-steps/",
+            {"task_template": self.template.pk, "activity": self.activity.pk, "step_order": 10},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        step = TaskTemplateStep.objects.get(pk=response.data["id"])
+        self.assertEqual(step.created_by, self.admin)
+        self.assertEqual(step.updated_by, self.admin)
+        self.assertEqual(response.data["task_template_code"], "TST-TPL")
+        self.assertEqual(response.data["activity_code"], "TST-ACT")
+
+    def test_task_template_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-steps/",
+            {"activity": self.activity.pk, "step_order": 10},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("task_template", response.data)
+
+    def test_activity_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-steps/",
+            {"task_template": self.template.pk, "step_order": 10},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("activity", response.data)
+
+    def test_step_order_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-steps/",
+            {"task_template": self.template.pk, "activity": self.activity.pk},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("step_order", response.data)
+
+    def test_step_order_must_be_positive(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-steps/",
+            {"task_template": self.template.pk, "activity": self.activity.pk, "step_order": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("step_order", response.data)
+
+    def test_unique_step_order_per_template(self):
+        TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        response = self.client_api.post(
+            "/api/master-data/task-template-steps/",
+            {"task_template": self.template.pk, "activity": self.activity.pk, "step_order": 10},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(TaskTemplateStep.objects.filter(task_template=self.template, step_order=10).count(), 1)
+
+    def test_same_step_order_allowed_in_different_template(self):
+        TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        response = self.client_api.post(
+            "/api/master-data/task-template-steps/",
+            {"task_template": self.other_template.pk, "activity": self.activity.pk, "step_order": 10},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_required_defaults_true(self):
+        step = TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        self.assertTrue(step.required)
+
+    def test_repeatable_defaults_false(self):
+        step = TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        self.assertFalse(step.repeatable)
+
+    def test_task_template_foreign_key_is_protected(self):
+        TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        with self.assertRaises(ProtectedError):
+            self.template.delete()
+
+    def test_activity_foreign_key_is_protected(self):
+        TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        with self.assertRaises(ProtectedError):
+            self.activity.delete()
+
+    def test_update_edits_fields(self):
+        step = TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+
+        response = self.client_api.patch(
+            f"/api/master-data/task-template-steps/{step.pk}/",
+            {"step_order": 20, "required": False, "repeatable": True, "quantity_source": "CABLE_COUNT"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        step.refresh_from_db()
+        self.assertEqual(step.step_order, 20)
+        self.assertFalse(step.required)
+        self.assertTrue(step.repeatable)
+        self.assertEqual(step.quantity_source, "CABLE_COUNT")
+
+    def test_effective_name_without_override(self):
+        step = TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        self.assertEqual(step.effective_name, self.activity.name)
+
+        response = self.client_api.get(f"/api/master-data/task-template-steps/{step.pk}/")
+        self.assertEqual(response.data["effective_name"], self.activity.name)
+
+    def test_effective_name_with_override(self):
+        step = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.activity, step_order=10, name_override="Nome customizado"
+        )
+        self.assertEqual(step.effective_name, "Nome customizado")
+
+        response = self.client_api.get(f"/api/master-data/task-template-steps/{step.pk}/")
+        self.assertEqual(response.data["effective_name"], "Nome customizado")
+
+    def test_search_by_activity_and_template(self):
+        TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+
+        by_activity = self.client_api.get("/api/master-data/task-template-steps/", {"search": "TST-ACT"})
+        self.assertEqual(by_activity.data["count"], 1)
+
+        by_template = self.client_api.get("/api/master-data/task-template-steps/", {"search": "TST-TPL-OTHER"})
+        self.assertEqual(by_template.data["count"], 0)
+
+    def test_filter_by_task_template(self):
+        TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        TaskTemplateStep.objects.create(task_template=self.other_template, activity=self.activity, step_order=10)
+
+        response = self.client_api.get("/api/master-data/task-template-steps/", {"task_template": self.template.pk})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["task_template_code"], "TST-TPL")
+
+    def test_filter_by_activity(self):
+        other_activity = Activity.objects.create(code="TST-ACT-OTHER", name="Outra atividade", category="TEST_CATEGORY")
+        TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        TaskTemplateStep.objects.create(task_template=self.template, activity=other_activity, step_order=20)
+
+        response = self.client_api.get("/api/master-data/task-template-steps/", {"activity": self.activity.pk})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["activity_code"], "TST-ACT")
+
+    def test_filter_by_required_and_repeatable(self):
+        # Combinado com o filtro por template para não depender da posição
+        # na paginação — o seed real já tem muitas etapas repeatable=True/
+        # required=True espalhadas por 8 templates.
+        TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.activity, step_order=10, required=True, repeatable=True
+        )
+        TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.activity, step_order=20, required=False, repeatable=False
+        )
+
+        by_required = self.client_api.get(
+            "/api/master-data/task-template-steps/", {"task_template": self.template.pk, "required": "false"}
+        )
+        self.assertEqual(by_required.data["count"], 1)
+        self.assertEqual(by_required.data["results"][0]["step_order"], 20)
+
+        by_repeatable = self.client_api.get(
+            "/api/master-data/task-template-steps/", {"task_template": self.template.pk, "repeatable": "true"}
+        )
+        self.assertEqual(by_repeatable.data["count"], 1)
+        self.assertEqual(by_repeatable.data["results"][0]["step_order"], 10)
+
+    def test_deactivate_does_not_hard_delete(self):
+        step = TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10, active=True)
+
+        response = self.client_api.patch(f"/api/master-data/task-template-steps/{step.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(TaskTemplateStep.objects.filter(pk=step.pk).exists())
+        step.refresh_from_db()
+        self.assertFalse(step.active)
+
+    def test_export_csv(self):
+        TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+        response = self.client_api.get("/api/master-data/task-template-steps/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-TPL", content)
+        self.assertIn("TST-ACT", content)
+
+    def test_import_csv_resolves_template_and_activity_by_code(self):
+        # Inclui todas as colunas booleanas explicitamente — o importador
+        # genérico (core.csv_io) monta o objeto a partir de TODAS as
+        # colunas de get_csv_fields(), então uma coluna booleana ausente
+        # do CSV é interpretada como "não" (não herda o default do
+        # model); por isso "obrigatória"/"repetível" vão explícitas aqui.
+        csv_content = "template;atividade;ordem;obrigatória;repetível\nTST-TPL;TST-ACT;30;Sim;Não\n"
+        upload = SimpleUploadedFile("task_template_steps.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post(
+            "/api/master-data/task-template-steps/import-csv/", {"csv_file": upload}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 1)
+        self.assertEqual(response.data["errors"], [])
+        imported = TaskTemplateStep.objects.get(task_template=self.template, step_order=30)
+        self.assertEqual(imported.activity_id, self.activity.pk)
+        self.assertTrue(imported.required)
+        self.assertFalse(imported.repeatable)
+
+    def test_seed_counts_per_template(self):
+        counts = {
+            "TPL-FIBER-PRETERMINATED": 9,
+            "TPL-FIBER-ROBUST": 9,
+            "TPL-FIBER-MPO": 9,
+            "TPL-COPPER-FIELD-TERMINATED": 12,
+            "TPL-COPPER-PRETERMINATED": 9,
+            "TPL-WAP-COPPER": 12,
+            "TPL-HARDWARE-INSTALL": 0,
+            "TPL-PROJECT-CLOSURE": 3,
+        }
+        for template_code, expected_count in counts.items():
+            actual = TaskTemplateStep.objects.filter(task_template__code=template_code).count()
+            self.assertEqual(actual, expected_count, f"{template_code}: esperado {expected_count}, obtido {actual}")
+
+    def test_seed_total_matches_sixty_three(self):
+        self.assertEqual(TaskTemplateStep.objects.count(), 63)
+
+    def test_seed_acceptance_criteria_copper_field_terminated(self):
+        template = TaskTemplate.objects.get(code="TPL-COPPER-FIELD-TERMINATED")
+        steps = list(
+            TaskTemplateStep.objects.filter(task_template=template).select_related("activity").order_by("step_order")
+        )
+        names = [(s.step_order, s.effective_name) for s in steps]
+        self.assertEqual(
+            names,
+            [
+                (10, "Separar materiais"),
+                (20, "Conferir materiais"),
+                (30, "Medir cabeamento"),
+                (40, "Cortar cabeamento"),
+                (50, "Aplicar labels"),
+                (60, "Lançar cabeamento"),
+                (70, "Organizar cabeamento"),
+                (80, "Crimpar RJ45"),
+                (90, "Certificar cabeamento"),
+                (100, "Realizar patching"),
+                (110, "Realizar QA/QC"),
+                (120, "Registrar evidências"),
+            ],
+        )
+
+    def test_seed_acceptance_criteria_fiber_mpo(self):
+        template = TaskTemplate.objects.get(code="TPL-FIBER-MPO")
+        steps = list(
+            TaskTemplateStep.objects.filter(task_template=template).select_related("activity").order_by("step_order")
+        )
+        names = [(s.step_order, s.effective_name) for s in steps]
+        self.assertEqual(
+            names,
+            [
+                (10, "Separar materiais"),
+                (20, "Conferir materiais"),
+                (30, "Aplicar labels"),
+                (40, "Lançar cabeamento"),
+                (50, "Organizar cabeamento"),
+                (60, "Realizar patching"),
+                (70, "Certificar cabeamento"),
+                (80, "Realizar QA/QC"),
+                (90, "Registrar evidências"),
+            ],
+        )
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0028_seed_task_template_steps")
+        count_before = TaskTemplateStep.objects.count()
+        module.seed_task_template_steps(django_apps, None)
+        module.seed_task_template_steps(django_apps, None)
+        self.assertEqual(TaskTemplateStep.objects.count(), count_before)

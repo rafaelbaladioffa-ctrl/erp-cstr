@@ -2,6 +2,7 @@ import re
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 
 from core.models import TimestampedModel
@@ -314,7 +315,11 @@ class Activity(MasterDataModel):
         ordering = ("code",)
 
     def __str__(self):
-        return f"{self.code} — {self.name}"
+        # Só o código (não "código — nome") pelo mesmo motivo de Site: a
+        # importação de CSV de TaskTemplateStep resolve a FK `activity`
+        # comparando por igualdade de texto contra str(candidato) — para
+        # aceitar só o código ("CAB-RUN"), sem exigir ID interno.
+        return self.code
 
 
 class Network(MasterDataModel):
@@ -580,4 +585,68 @@ class TaskTemplate(MasterDataModel):
         ordering = ("code",)
 
     def __str__(self):
-        return f"{self.code} — {self.name}"
+        # Só o código — mesmo motivo de Activity/Site: permite que a
+        # importação de CSV de TaskTemplateStep resolva `task_template`
+        # pelo código, via o mecanismo genérico de core.csv_io.
+        return self.code
+
+
+class TaskTemplateStep(MasterDataModel):
+    """Uma etapa (uma Activity, em uma ordem) dentro da 'receita' de um
+    TaskTemplate — ex: TPL-FIBER-PRETERMINATED tem as etapas MAT-SEP(10),
+    MAT-CHECK(20), CAB-LABEL(30) etc. Sem `code` próprio (não é um
+    catálogo, é uma linha de composição de outro catálogo). Não implementa
+    ainda geração automática de tarefas nem cálculo de quantidade — isso
+    fica para quando o motor de regras/produtividade existir."""
+
+    QUANTITY_SOURCE_SUGGESTIONS = (
+        "SCOPE_ITEM",
+        "CABLE_COUNT",
+        "LINK_COUNT",
+        "METERAGE",
+        "PROJECT",
+        "MANUAL",
+        "NONE",
+    )
+
+    task_template = models.ForeignKey(
+        TaskTemplate, verbose_name="template", on_delete=models.PROTECT, related_name="steps"
+    )
+    activity = models.ForeignKey(
+        Activity, verbose_name="atividade", on_delete=models.PROTECT, related_name="template_steps"
+    )
+    step_order = models.PositiveIntegerField("ordem", validators=[MinValueValidator(1)])
+    # Se vazio, o nome efetivo da etapa é activity.name (ver
+    # `effective_name`) — permite um rótulo mais específico só dentro
+    # deste template, sem alterar o catálogo canônico da Activity.
+    name_override = models.CharField("nome personalizado", max_length=150, blank=True)
+    required = models.BooleanField("obrigatória", default=True)
+    repeatable = models.BooleanField("repetível", default=False)
+    # Texto livre (não ENUM/choices) de propósito — sugestões: SCOPE_ITEM,
+    # CABLE_COUNT, LINK_COUNT, METERAGE, PROJECT, MANUAL, NONE.
+    quantity_source = models.CharField("origem da quantidade", max_length=50, blank=True)
+    unit_override = models.CharField("unidade sobrescrita", max_length=50, blank=True)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Etapa de Template de Tarefa"
+        verbose_name_plural = "Etapas de Template de Tarefa"
+        ordering = ("task_template", "step_order")
+        constraints = [
+            # Também cobre, por consequência estrutural, a unicidade mais
+            # ampla pedida (task_template + activity + step_order): se
+            # (task_template, step_order) já é único, não há como duas
+            # linhas colidirem nos três campos ao mesmo tempo.
+            models.UniqueConstraint(
+                fields=("task_template", "step_order"),
+                name="unique_step_order_per_template",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.task_template.code} #{self.step_order} — {self.effective_name}"
+
+    @property
+    def effective_name(self):
+        return self.name_override or self.activity.name
