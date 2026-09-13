@@ -1090,25 +1090,28 @@ class CableAliasApiTests(TestCase):
         self.assertIn("cable_family", response.data)
 
     def test_normalization(self):
+        # "Test" no texto para não colidir com o alias real "8F LC<>LC" do
+        # seed (0006_seed_cable_aliases roda também no banco de testes, e a
+        # unicidade de normalized_alias é GLOBAL, não por família).
         response = self.client_api.post(
             "/api/master-data/cable-aliases/",
-            {"cable_family": self.family.pk, "alias": "  8f   lc<>lc  "},
+            {"cable_family": self.family.pk, "alias": "  8f   lc<>lc test  "},
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data["normalized_alias"], "8F LC<>LC")
+        self.assertEqual(response.data["normalized_alias"], "8F LC<>LC TEST")
 
     def test_duplicate_normalized_alias_rejected(self):
-        CableAlias.objects.create(cable_family=self.family, alias="8F LC-LC")
+        CableAlias.objects.create(cable_family=self.family, alias="8F LC-LC TEST")
         response = self.client_api.post(
             "/api/master-data/cable-aliases/",
             # Mesmo alias com espaçamento/caixa diferentes -> mesmo normalized_alias.
-            {"cable_family": self.family.pk, "alias": "  8f lc-lc "},
+            {"cable_family": self.family.pk, "alias": "  8f lc-lc test "},
             format="json",
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("alias", response.data)
-        self.assertEqual(CableAlias.objects.filter(normalized_alias="8F LC-LC").count(), 1)
+        self.assertEqual(CableAlias.objects.filter(normalized_alias="8F LC-LC TEST").count(), 1)
 
     def test_search_by_alias_and_family(self):
         other_family = CableFamily.objects.create(code="TST-CAT6", name="CAT6 de teste", medium="COPPER")
@@ -1134,13 +1137,18 @@ class CableAliasApiTests(TestCase):
         self.assertEqual(response.data["results"][0]["alias"], "ALIAS A TEST")
 
     def test_filter_by_alias_type(self):
+        # O seed real já tem outros aliases PART_NUMBER (part numbers das
+        # famílias reais) — não assumir contagem absoluta, só que o filtro
+        # inclui o registro criado aqui e exclui o NAME_VARIATION criado
+        # junto (prova que o filtro de fato restringe, não é um no-op).
         CableAlias.objects.create(cable_family=self.family, alias="PN-TEST-0001", alias_type="PART_NUMBER")
         CableAlias.objects.create(cable_family=self.family, alias="NOME ALTERNATIVO TEST", alias_type="NAME_VARIATION")
 
         response = self.client_api.get("/api/master-data/cable-aliases/", {"alias_type": "PART_NUMBER"})
 
-        self.assertEqual(response.data["count"], 1)
-        self.assertEqual(response.data["results"][0]["alias"], "PN-TEST-0001")
+        returned_aliases = [row["alias"] for row in response.data["results"]]
+        self.assertIn("PN-TEST-0001", returned_aliases)
+        self.assertNotIn("NOME ALTERNATIVO TEST", returned_aliases)
 
     def test_deactivate_does_not_hard_delete(self):
         alias = CableAlias.objects.create(cable_family=self.family, alias="ALIAS PARA INATIVAR TEST", active=True)
