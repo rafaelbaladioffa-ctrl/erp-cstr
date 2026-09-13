@@ -315,3 +315,34 @@ class Activity(MasterDataModel):
 
     def __str__(self):
         return f"{self.code} — {self.name}"
+
+
+class Network(MasterDataModel):
+    """Catálogo canônico das redes/tipos de serviço de cabeamento — a
+    FUNÇÃO lógica/operacional da conexão (ex: MN_FIBER = "Management
+    Network Fiber"), não o tipo físico do cabo (isso é CableFamily) nem a
+    frente de execução do projeto (isso será Workstream, numa fase
+    futura). Uma mesma rede pode usar famílias físicas de cabo diferentes
+    ao longo do tempo — por isso não guarda metragem, origem, destino ou
+    quantidade, e não tem relação com CableFamily nesta etapa."""
+
+    # Sugestões (não é ENUM/choices — texto livre para não travar valores
+    # novos que apareçam na prática; domain em especial deve poder crescer
+    # sem exigir migration).
+    DOMAIN_SUGGESTIONS = ("CORPORATE", "CONSOLE", "MANAGEMENT", "WAP")
+    MEDIUM_SUGGESTIONS = ("FIBER", "COPPER")
+
+    code = models.CharField("código", max_length=50, unique=True)
+    name = models.CharField("nome", max_length=150)
+    domain = models.CharField("domínio", max_length=50)
+    medium = models.CharField("meio", max_length=50)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Rede"
+        verbose_name_plural = "Redes"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"

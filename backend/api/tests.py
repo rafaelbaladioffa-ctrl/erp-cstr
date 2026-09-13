@@ -17,7 +17,7 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -1672,3 +1672,176 @@ class ActivityApiTests(TestCase):
         module.seed_activities(django_apps, None)
         module.seed_activities(django_apps, None)
         self.assertEqual(Activity.objects.count(), count_before)
+
+
+class NetworkApiTests(TestCase):
+    """Cadastros Mestres > Operação > Redes — CRUD, obrigatoriedade, busca,
+    filtros, CSV, ativação/inativação e seed idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="network_admin", email="network@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0014_seed_networks) roda também no banco de
+        # testes (6 registros: CORP_FIBER, CONSOLE_FIBER, MN_FIBER,
+        # CONSOLE_COPPER, MN_COPPER, WAP_COPPER).
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/networks/",
+            {"code": "TST-NET-0001", "name": "Rede de teste", "domain": "TEST_DOMAIN", "medium": "FIBER"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        network = Network.objects.get(pk=response.data["id"])
+        self.assertEqual(network.created_by, self.admin)
+        self.assertEqual(network.updated_by, self.admin)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/networks/",
+            {"name": "Sem código", "domain": "TEST_DOMAIN", "medium": "FIBER"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        Network.objects.create(code="TST-NET-DUP", name="Original", domain="TEST_DOMAIN", medium="FIBER")
+        response = self.client_api.post(
+            "/api/master-data/networks/",
+            {"code": "TST-NET-DUP", "name": "Duplicado", "domain": "TEST_DOMAIN", "medium": "FIBER"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(Network.objects.filter(code="TST-NET-DUP").count(), 1)
+
+    def test_name_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/networks/",
+            {"code": "TST-NET-0002", "domain": "TEST_DOMAIN", "medium": "FIBER"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_domain_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/networks/",
+            {"code": "TST-NET-0003", "name": "Sem domínio", "medium": "FIBER"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("domain", response.data)
+
+    def test_medium_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/networks/",
+            {"code": "TST-NET-0004", "name": "Sem meio", "domain": "TEST_DOMAIN"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("medium", response.data)
+
+    def test_update_edits_fields(self):
+        network = Network.objects.create(code="TST-NET-EDIT", name="Original", domain="TEST_DOMAIN", medium="FIBER")
+
+        response = self.client_api.patch(
+            f"/api/master-data/networks/{network.pk}/",
+            {"name": "Editada", "domain": "OTHER_DOMAIN"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        network.refresh_from_db()
+        self.assertEqual(network.name, "Editada")
+        self.assertEqual(network.domain, "OTHER_DOMAIN")
+
+    def test_search_by_code_name_domain_medium(self):
+        Network.objects.create(code="TST-NET-SEARCH", name="Rede pesquisável", domain="TST_SEARCHABLE_DOMAIN", medium="FIBER")
+
+        response = self.client_api.get("/api/master-data/networks/", {"search": "TST_SEARCHABLE_DOMAIN"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-NET-SEARCH")
+
+    def test_filter_by_domain(self):
+        Network.objects.create(code="TST-NET-DOMA", name="A", domain="TST_DOMAIN_A", medium="FIBER")
+        Network.objects.create(code="TST-NET-DOMB", name="B", domain="TST_DOMAIN_B", medium="FIBER")
+
+        response = self.client_api.get("/api/master-data/networks/", {"domain": "TST_DOMAIN_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-NET-DOMA")
+
+    def test_filter_by_medium(self):
+        Network.objects.create(code="TST-NET-FIBER", name="A", domain="TEST_DOMAIN", medium="TST_FIBER_MEDIUM")
+        Network.objects.create(code="TST-NET-COPPER", name="B", domain="TEST_DOMAIN", medium="TST_COPPER_MEDIUM")
+
+        response = self.client_api.get("/api/master-data/networks/", {"medium": "TST_FIBER_MEDIUM"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-NET-FIBER")
+
+    def test_filter_by_active(self):
+        Network.objects.create(code="TST-NET-ACTIVE", name="Ativa", domain="TEST_DOMAIN", medium="FIBER", active=True)
+        Network.objects.create(code="TST-NET-INACTIVE", name="Inativa", domain="TEST_DOMAIN", medium="FIBER", active=False)
+
+        response = self.client_api.get("/api/master-data/networks/", {"is_active": "false"})
+
+        codes = [row["code"] for row in response.data["results"]]
+        self.assertIn("TST-NET-INACTIVE", codes)
+        self.assertNotIn("TST-NET-ACTIVE", codes)
+
+    def test_deactivate_does_not_hard_delete(self):
+        network = Network.objects.create(code="TST-NET-TOGGLE", name="Para inativar", domain="TEST_DOMAIN", medium="FIBER", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/networks/{network.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(Network.objects.filter(pk=network.pk).exists())
+        network.refresh_from_db()
+        self.assertFalse(network.active)
+
+    def test_export_csv(self):
+        Network.objects.create(code="TST-NET-EXPORT", name="Exportação de teste", domain="TEST_DOMAIN", medium="FIBER")
+        response = self.client_api.get("/api/master-data/networks/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-NET-EXPORT", content)
+        self.assertIn("código", content)
+
+    def test_import_csv_creates_rows(self):
+        csv_content = (
+            "código;nome;domínio;meio\n"
+            "TST-NET-IMPORT1;Rede Importada 1;TEST_DOMAIN;FIBER\n"
+            "TST-NET-IMPORT2;Rede Importada 2;TEST_DOMAIN;COPPER\n"
+        )
+        upload = SimpleUploadedFile("networks.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post("/api/master-data/networks/import-csv/", {"csv_file": upload}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 2)
+        self.assertEqual(response.data["errors"], [])
+        imported = Network.objects.get(code="TST-NET-IMPORT1")
+        self.assertEqual(imported.domain, "TEST_DOMAIN")
+        self.assertEqual(imported.medium, "FIBER")
+
+    def test_seed_matches_expected_six_records(self):
+        expected_codes = {"CORP_FIBER", "CONSOLE_FIBER", "MN_FIBER", "CONSOLE_COPPER", "MN_COPPER", "WAP_COPPER"}
+        codes = set(Network.objects.values_list("code", flat=True))
+        self.assertEqual(expected_codes & codes, expected_codes)
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0014_seed_networks")
+        count_before = Network.objects.count()
+        module.seed_networks(django_apps, None)
+        module.seed_networks(django_apps, None)
+        self.assertEqual(Network.objects.count(), count_before)

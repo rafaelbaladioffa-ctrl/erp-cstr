@@ -32,7 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -62,6 +62,7 @@ from .serializers import (
     CableFamilyCrudSerializer,
     CableSpecCrudSerializer,
     ActivityCrudSerializer,
+    NetworkCrudSerializer,
     CertificationTypeCrudSerializer,
     CategoryCrudSerializer,
     DailyUpdateSerializer,
@@ -826,6 +827,33 @@ class ActivityViewSet(RegistryViewSet):
         measurable = self.request.query_params.get("measurable")
         if measurable is not None:
             queryset = queryset.filter(measurable=measurable.lower() in ("1", "true", "yes"))
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class NetworkViewSet(RegistryViewSet):
+    """Cadastros Mestres > Operação > Redes. Catálogo canônico da função
+    lógica/operacional da conexão (não o tipo físico do cabo, não a frente
+    de execução do projeto) — mesmo padrão de ActivityViewSet; filtros
+    exatos por domínio e meio além da busca/is_active herdados de
+    RegistryViewSet."""
+
+    queryset = Network.objects.select_related("created_by", "updated_by").order_by("code")
+    serializer_class = NetworkCrudSerializer
+    search_fields = ("code", "name", "domain", "medium", "description")
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param in ("domain", "medium"):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{param: value})
         return queryset
 
     def perform_create(self, serializer):

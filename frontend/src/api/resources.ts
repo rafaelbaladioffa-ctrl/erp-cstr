@@ -15,6 +15,7 @@ import type {
   DailyUpdate,
   JobTitle,
   Me,
+  Network,
   Notification,
   OperationsBoard,
   OperationsReports,
@@ -79,6 +80,7 @@ export const masterDataApi = {
   cableSpecs: crud<CableSpec>("/master-data/cable-specs"),
   certificationTypes: crud<CertificationType>("/master-data/certification-types"),
   activities: crud<Activity>("/master-data/activities"),
+  networks: crud<Network>("/master-data/networks"),
 };
 
 export const auditLogApi = {

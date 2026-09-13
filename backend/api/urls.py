@@ -36,6 +36,7 @@ router.register("master-data/cable-aliases", views.CableAliasViewSet, basename="
 router.register("master-data/cable-specs", views.CableSpecViewSet, basename="master-data-cable-spec")
 router.register("master-data/certification-types", views.CertificationTypeViewSet, basename="master-data-certification-type")
 router.register("master-data/activities", views.ActivityViewSet, basename="master-data-activity")
+router.register("master-data/networks", views.NetworkViewSet, basename="master-data-network")
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),

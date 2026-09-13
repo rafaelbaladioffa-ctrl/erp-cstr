@@ -1,5 +1,5 @@
 import { masterDataApi } from "../../api/resources";
-import type { Activity, CableAlias, CableFamily, CableSpec, CertificationType } from "../../api/types";
+import type { Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network } from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
 
@@ -23,6 +23,12 @@ const ACTIVITY_CATEGORY_SUGGESTIONS = [
   "CLOSURE",
 ];
 const ACTIVITY_EXECUTION_TYPE_SUGGESTIONS = ["MANUAL", "TEST", "DOCUMENTATION", "INSPECTION", "SERVICE"];
+
+/** Espelha master_data.models.Network.DOMAIN_SUGGESTIONS/MEDIUM_SUGGESTIONS
+ * no backend — não é ENUM rígido, só as opções mostradas no filtro e como
+ * sugestão no formulário. */
+const NETWORK_DOMAIN_SUGGESTIONS = ["CORPORATE", "CONSOLE", "MANAGEMENT", "WAP"];
+const NETWORK_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER"];
 
 function cableFamilyOptions(refs: ReferenceData) {
   return refs.cableFamilies.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }));
@@ -373,6 +379,55 @@ const activityEntity: EntityConfig<Activity> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const networkEntity: EntityConfig<Network> = {
+  key: "networks",
+  label: "Redes",
+  icon: "hub",
+  singular: "Rede",
+  description: "Função lógica/operacional da conexão (não o tipo físico do cabo, não a frente de execução do projeto).",
+  createLabel: "Nova Rede",
+  perms: modelPerms("master_data", "network"),
+  api: masterDataApi.networks,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "name", label: "Nome" },
+    { key: "domain", label: "Domínio" },
+    { key: "medium", label: "Meio" },
+  ],
+  filters: [
+    {
+      key: "domain",
+      label: "Todos os Domínios",
+      options: () => NETWORK_DOMAIN_SUGGESTIONS.map((d) => ({ value: d, label: d })),
+    },
+    {
+      key: "medium",
+      label: "Todos os Meios",
+      options: () => NETWORK_MEDIUM_SUGGESTIONS.map((m) => ({ value: m, label: m })),
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: () => [
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: MN_FIBER" },
+    { name: "name", label: "Nome", type: "text", required: true, placeholder: "Ex: Management Network Fiber" },
+    { name: "domain", label: "Domínio", type: "text", required: true, placeholder: "Ex: CORPORATE, CONSOLE, MANAGEMENT, WAP" },
+    { name: "medium", label: "Meio", type: "text", required: true, placeholder: "Ex: FIBER, COPPER" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+  ],
+  emptyValues: { code: "", name: "", domain: "", medium: "", description: "", active: true },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -380,7 +435,7 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     icon: "cable",
     entities: [cableFamilyEntity, cableAliasEntity, cableSpecEntity, certificationTypeEntity],
   },
-  { key: "operacao", label: "Operação", icon: "engineering", entities: [activityEntity] },
+  { key: "operacao", label: "Operação", icon: "engineering", entities: [activityEntity, networkEntity] },
   { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [] },
   { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },
 ];
