@@ -955,10 +955,15 @@ class CableFamilyApiTests(TestCase):
         self.admin = User.objects.create_superuser(username="master_data_admin", email="master_data@example.com", password="test-password")
         self.client_api.force_authenticate(user=self.admin)
 
+    # Códigos prefixados com "TST-" de propósito: a migration de seed
+    # (master_data/0002_seed_cable_families) roda também na criação do
+    # banco de testes, então os 15 códigos reais (FIB-8F-LCLC etc.) já
+    # existem — usar um deles aqui causaria colisão de "code" único.
+
     def test_create_sets_created_by_and_updated_by(self):
         response = self.client_api.post(
             "/api/master-data/cable-families/",
-            {"code": "FIB-8F-LCLC", "name": "8F LC-LC", "medium": "FIBER"},
+            {"code": "TST-0001", "name": "Cabo de teste", "medium": "FIBER"},
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.data)
@@ -968,31 +973,31 @@ class CableFamilyApiTests(TestCase):
         self.assertEqual(response.data["created_by_name"], self.admin.get_full_name() or self.admin.get_username())
 
     def test_duplicate_code_rejected(self):
-        CableFamily.objects.create(code="FIB-8F-LCLC", name="8F LC-LC")
+        CableFamily.objects.create(code="TST-DUP", name="Cabo de teste")
         response = self.client_api.post(
             "/api/master-data/cable-families/",
-            {"code": "FIB-8F-LCLC", "name": "Outro nome"},
+            {"code": "TST-DUP", "name": "Outro nome"},
             format="json",
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("code", response.data)
-        self.assertEqual(CableFamily.objects.count(), 1)
+        self.assertEqual(CableFamily.objects.filter(code="TST-DUP").count(), 1)
 
     def test_search_by_code_name_description(self):
-        CableFamily.objects.create(code="FIB-8F-LCLC", name="8F LC-LC", description="Trunk fiber padrão")
-        CableFamily.objects.create(code="COP-CAT6", name="CAT6 UTP", description="Par trançado")
+        CableFamily.objects.create(code="TST-TRUNK", name="Cabo de teste", description="Trunk fiber padrão")
+        CableFamily.objects.create(code="TST-PATCH", name="Cabo patch", description="Par trançado")
 
         response = self.client_api.get("/api/master-data/cable-families/", {"search": "trunk"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 1)
-        self.assertEqual(response.data["results"][0]["code"], "FIB-8F-LCLC")
+        self.assertEqual(response.data["results"][0]["code"], "TST-TRUNK")
 
     def test_update_sets_updated_by_without_changing_created_by(self):
         other_user = User.objects.create_superuser(username="other_admin", email="other@example.com", password="test-password")
-        family = CableFamily.objects.create(code="FIB-8F-LCLC", name="8F LC-LC", created_by=other_user, updated_by=other_user)
+        family = CableFamily.objects.create(code="TST-0002", name="Cabo de teste", created_by=other_user, updated_by=other_user)
 
-        response = self.client_api.patch(f"/api/master-data/cable-families/{family.pk}/", {"name": "8F LC-LC Trunk"}, format="json")
+        response = self.client_api.patch(f"/api/master-data/cable-families/{family.pk}/", {"name": "Cabo de teste editado"}, format="json")
 
         self.assertEqual(response.status_code, 200, response.data)
         family.refresh_from_db()
@@ -1000,11 +1005,11 @@ class CableFamilyApiTests(TestCase):
         self.assertEqual(family.updated_by, self.admin)
 
     def test_is_active_filter(self):
-        CableFamily.objects.create(code="FIB-8F-LCLC", name="8F LC-LC", is_active=True)
-        CableFamily.objects.create(code="FIB-OLD", name="Descontinuado", is_active=False)
+        CableFamily.objects.create(code="TST-ACTIVE", name="Cabo ativo", is_active=True)
+        CableFamily.objects.create(code="TST-OLD", name="Descontinuado", is_active=False)
 
         response = self.client_api.get("/api/master-data/cable-families/", {"is_active": "false"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 1)
-        self.assertEqual(response.data["results"][0]["code"], "FIB-OLD")
+        self.assertEqual(response.data["results"][0]["code"], "TST-OLD")
