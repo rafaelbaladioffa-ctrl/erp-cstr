@@ -522,7 +522,6 @@ export interface SowImport {
   total_items_rejected: number;
   total_warnings: number;
   error_message: string;
-  active: boolean;
   created_at: string;
   updated_at: string;
   created_by_name: string | null;

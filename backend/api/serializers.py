@@ -1048,7 +1048,6 @@ class SowImportSerializer(serializers.ModelSerializer):
             "total_items_rejected",
             "total_warnings",
             "error_message",
-            "active",
             "created_at",
             "updated_at",
             "created_by_name",
