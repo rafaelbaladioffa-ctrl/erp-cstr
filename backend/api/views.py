@@ -32,7 +32,18 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Location, Network, Path, Workstream
+from master_data.models import (
+    Activity,
+    CableAlias,
+    CableFamily,
+    CableSpec,
+    CertificationType,
+    DeviceType,
+    Location,
+    Network,
+    Path,
+    Workstream,
+)
 from master_data.models import Site as MasterDataSite
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
@@ -64,6 +75,7 @@ from .serializers import (
     CableSpecCrudSerializer,
     ActivityCrudSerializer,
     NetworkCrudSerializer,
+    DeviceTypeCrudSerializer,
     LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
@@ -979,6 +991,33 @@ class LocationViewSet(RegistryViewSet):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{field: value})
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class DeviceTypeViewSet(RegistryViewSet):
+    """Cadastros Mestres > Infraestrutura > Tipos de Dispositivo. Catálogo
+    canônico dos TIPOS de dispositivo/equipamento — mesmo padrão de
+    WorkstreamViewSet; filtros exatos por categoria e meio padrão além da
+    busca/is_active herdados de RegistryViewSet. Sem relação com Location
+    nesta etapa (deliberadamente fora de escopo — ver docstring do model)."""
+
+    queryset = DeviceType.objects.select_related("created_by", "updated_by").order_by("code")
+    serializer_class = DeviceTypeCrudSerializer
+    search_fields = ("code", "name", "category", "default_medium", "description")
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param in ("category", "default_medium"):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{param: value})
         return queryset
 
     def perform_create(self, serializer):

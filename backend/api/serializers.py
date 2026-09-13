@@ -24,6 +24,7 @@ from master_data.models import (
     CableFamily,
     CableSpec,
     CertificationType,
+    DeviceType,
     Location,
     Network,
     Path,
@@ -468,6 +469,34 @@ class LocationCrudSerializer(serializers.ModelSerializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
         return attrs
+
+
+class DeviceTypeCrudSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeviceType
+        fields = (
+            "id",
+            "code",
+            "name",
+            "category",
+            "default_medium",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
 
 
 class ProjectTypeCrudSerializer(serializers.ModelSerializer):

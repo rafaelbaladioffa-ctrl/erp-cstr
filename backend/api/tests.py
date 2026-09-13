@@ -17,7 +17,18 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Location, Network, Path, Workstream
+from master_data.models import (
+    Activity,
+    CableAlias,
+    CableFamily,
+    CableSpec,
+    CertificationType,
+    DeviceType,
+    Location,
+    Network,
+    Path,
+    Workstream,
+)
 from master_data.models import Site as MasterDataSite
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
@@ -2641,3 +2652,180 @@ class LocationApiTests(TestCase):
         module.seed_locations(django_apps, None)
         module.seed_locations(django_apps, None)
         self.assertEqual(Location.objects.count(), count_before)
+
+
+class DeviceTypeApiTests(TestCase):
+    """Cadastros Mestres > Infraestrutura > Tipos de Dispositivo — CRUD,
+    obrigatoriedade, busca, filtros, CSV, ativação/inativação e seed
+    idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="device_type_admin", email="device_type@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0024_seed_device_types) roda também no
+        # banco de testes (15 registros).
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/device-types/",
+            {"code": "TST-DEV-0001", "name": "Tipo de teste", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        device_type = DeviceType.objects.get(pk=response.data["id"])
+        self.assertEqual(device_type.created_by, self.admin)
+        self.assertEqual(device_type.updated_by, self.admin)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/device-types/",
+            {"name": "Sem código", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        DeviceType.objects.create(code="TST-DEV-DUP", name="Original", category="TEST_CATEGORY")
+        response = self.client_api.post(
+            "/api/master-data/device-types/",
+            {"code": "TST-DEV-DUP", "name": "Duplicado", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(DeviceType.objects.filter(code="TST-DEV-DUP").count(), 1)
+
+    def test_name_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/device-types/",
+            {"code": "TST-DEV-0002", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_category_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/device-types/",
+            {"code": "TST-DEV-0003", "name": "Sem categoria"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("category", response.data)
+
+    def test_default_medium_is_optional(self):
+        response = self.client_api.post(
+            "/api/master-data/device-types/",
+            {"code": "TST-DEV-0004", "name": "Sem meio padrão", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["default_medium"], "")
+
+    def test_update_edits_fields(self):
+        device_type = DeviceType.objects.create(code="TST-DEV-EDIT", name="Original", category="TEST_CATEGORY")
+
+        response = self.client_api.patch(
+            f"/api/master-data/device-types/{device_type.pk}/",
+            {"name": "Editado", "default_medium": "MIXED"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        device_type.refresh_from_db()
+        self.assertEqual(device_type.name, "Editado")
+        self.assertEqual(device_type.default_medium, "MIXED")
+
+    def test_search_by_code_name_category_default_medium(self):
+        DeviceType.objects.create(
+            code="TST-DEV-SEARCH", name="Tipo pesquisável", category="TST_SEARCHABLE_CATEGORY", default_medium="FIBER"
+        )
+
+        response = self.client_api.get("/api/master-data/device-types/", {"search": "TST_SEARCHABLE_CATEGORY"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-DEV-SEARCH")
+
+    def test_filter_by_category(self):
+        DeviceType.objects.create(code="TST-DEV-CATA", name="A", category="TST_CAT_A")
+        DeviceType.objects.create(code="TST-DEV-CATB", name="B", category="TST_CAT_B")
+
+        response = self.client_api.get("/api/master-data/device-types/", {"category": "TST_CAT_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-DEV-CATA")
+
+    def test_filter_by_default_medium(self):
+        DeviceType.objects.create(code="TST-DEV-FIBER", name="A", category="TEST_CATEGORY", default_medium="TST_FIBER_MEDIUM")
+        DeviceType.objects.create(code="TST-DEV-COPPER", name="B", category="TEST_CATEGORY", default_medium="TST_COPPER_MEDIUM")
+
+        response = self.client_api.get("/api/master-data/device-types/", {"default_medium": "TST_FIBER_MEDIUM"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-DEV-FIBER")
+
+    def test_filter_by_active(self):
+        DeviceType.objects.create(code="TST-DEV-ACTIVE", name="Ativo", category="TEST_CATEGORY", active=True)
+        DeviceType.objects.create(code="TST-DEV-INACTIVE", name="Inativo", category="TEST_CATEGORY", active=False)
+
+        response = self.client_api.get("/api/master-data/device-types/", {"is_active": "false"})
+
+        codes = [row["code"] for row in response.data["results"]]
+        self.assertIn("TST-DEV-INACTIVE", codes)
+        self.assertNotIn("TST-DEV-ACTIVE", codes)
+
+    def test_deactivate_does_not_hard_delete(self):
+        device_type = DeviceType.objects.create(code="TST-DEV-TOGGLE", name="Para inativar", category="TEST_CATEGORY", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/device-types/{device_type.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(DeviceType.objects.filter(pk=device_type.pk).exists())
+        device_type.refresh_from_db()
+        self.assertFalse(device_type.active)
+
+    def test_export_csv(self):
+        DeviceType.objects.create(code="TST-DEV-EXPORT", name="Exportação de teste", category="TEST_CATEGORY")
+        response = self.client_api.get("/api/master-data/device-types/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-DEV-EXPORT", content)
+        self.assertIn("código", content)
+
+    def test_import_csv_creates_rows(self):
+        csv_content = (
+            "código;nome;categoria;meio padrão\n"
+            "TST-DEV-IMPORT1;Tipo Importado 1;TEST_CATEGORY;FIBER\n"
+            "TST-DEV-IMPORT2;Tipo Importado 2;TEST_CATEGORY;\n"
+        )
+        upload = SimpleUploadedFile("device_types.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post("/api/master-data/device-types/import-csv/", {"csv_file": upload}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 2)
+        self.assertEqual(response.data["errors"], [])
+        imported = DeviceType.objects.get(code="TST-DEV-IMPORT1")
+        self.assertEqual(imported.default_medium, "FIBER")
+
+    def test_seed_matches_expected_fifteen_records(self):
+        expected_codes = {
+            "EUCLID_SPINE", "BFC_BRICK", "EUCLID_BRICK", "MGMT_RACK", "MGMT_SWITCH", "CONSOLE_SWITCH", "TOR",
+            "PSC", "EBR", "IDF", "MR", "WAP", "PATCH_PANEL", "WDM", "OTHER",
+        }
+        codes = set(DeviceType.objects.values_list("code", flat=True))
+        self.assertEqual(expected_codes & codes, expected_codes)
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0024_seed_device_types")
+        count_before = DeviceType.objects.count()
+        module.seed_device_types(django_apps, None)
+        module.seed_device_types(django_apps, None)
+        self.assertEqual(DeviceType.objects.count(), count_before)

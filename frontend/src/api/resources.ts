@@ -13,6 +13,7 @@ import type {
   CollaboratorHours,
   Company,
   DailyUpdate,
+  DeviceType,
   JobTitle,
   Location,
   Me,
@@ -89,6 +90,7 @@ export const masterDataApi = {
   paths: crud<Path>("/master-data/paths"),
   sites: crud<MasterDataSite>("/master-data/sites"),
   locations: crud<Location>("/master-data/locations"),
+  deviceTypes: crud<DeviceType>("/master-data/device-types"),
 };
 
 export const auditLogApi = {

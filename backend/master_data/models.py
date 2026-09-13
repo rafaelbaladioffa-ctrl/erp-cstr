@@ -528,3 +528,29 @@ class Location(MasterDataModel):
                     )
                 }
             )
+
+
+class DeviceType(MasterDataModel):
+    """Catálogo canônico dos TIPOS de dispositivo/equipamento encontrados em
+    SOWs e cutsheets — representa o tipo (ex: EUCLID_SPINE, MGMT_SWITCH),
+    não a instância física real (ex: "gru4-65-es-e1-s9-r[1-16]"); a
+    instância concreta será `Device`, numa fase futura, com FK para este
+    catálogo e para `Location`. Sem relação com Location nesta etapa."""
+
+    CATEGORY_SUGGESTIONS = ("RACK", "SWITCH", "NETWORK_DEVICE", "PATCHING", "WIRELESS", "INFRASTRUCTURE", "OTHER")
+    DEFAULT_MEDIUM_SUGGESTIONS = ("FIBER", "COPPER", "MIXED", "GENERAL")
+
+    code = models.CharField("código", max_length=50, unique=True)
+    name = models.CharField("nome", max_length=150)
+    category = models.CharField("categoria", max_length=50)
+    default_medium = models.CharField("meio padrão", max_length=50, blank=True)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Tipo de Dispositivo"
+        verbose_name_plural = "Tipos de Dispositivo"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"

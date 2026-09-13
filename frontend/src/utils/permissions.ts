@@ -81,6 +81,7 @@ export const PERMS = {
   viewPath: "master_data.view_path",
   viewMasterDataSite: "master_data.view_site",
   viewLocation: "master_data.view_location",
+  viewDeviceType: "master_data.view_devicetype",
 };
 
 export const MASTER_DATA_PERMS = [
@@ -94,6 +95,7 @@ export const MASTER_DATA_PERMS = [
   PERMS.viewPath,
   PERMS.viewMasterDataSite,
   PERMS.viewLocation,
+  PERMS.viewDeviceType,
 ];
 
 export const CADASTROS_PERMS = [
