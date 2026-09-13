@@ -28,6 +28,7 @@ from master_data.models import (
     Location,
     Network,
     Path,
+    TaskTemplate,
     Workstream,
     normalize_alias_text,
 )
@@ -483,6 +484,34 @@ class DeviceTypeCrudSerializer(serializers.ModelSerializer):
             "name",
             "category",
             "default_medium",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+
+class TaskTemplateCrudSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskTemplate
+        fields = (
+            "id",
+            "code",
+            "name",
+            "category",
+            "medium",
             "description",
             "active",
             "created_at",

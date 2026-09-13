@@ -14,6 +14,7 @@ from .models import (
     Network,
     Path,
     Site,
+    TaskTemplate,
     Workstream,
 )
 
@@ -192,6 +193,20 @@ class DeviceTypeAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelA
     list_display = ("code", "name", "category", "default_medium", "active", "updated_at")
     list_filter = ("category", "default_medium", "active")
     search_fields = ("code", "name", "category", "default_medium", "description")
+    readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(TaskTemplate)
+class TaskTemplateAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("code", "name", "category", "medium", "active", "updated_at")
+    list_filter = ("category", "medium", "active")
+    search_fields = ("code", "name", "category", "medium", "description")
     readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
 
     def save_model(self, request, obj, form, change):

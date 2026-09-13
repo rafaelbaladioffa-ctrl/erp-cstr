@@ -82,6 +82,7 @@ export const PERMS = {
   viewMasterDataSite: "master_data.view_site",
   viewLocation: "master_data.view_location",
   viewDeviceType: "master_data.view_devicetype",
+  viewTaskTemplate: "master_data.view_tasktemplate",
 };
 
 export const MASTER_DATA_PERMS = [
@@ -96,6 +97,7 @@ export const MASTER_DATA_PERMS = [
   PERMS.viewMasterDataSite,
   PERMS.viewLocation,
   PERMS.viewDeviceType,
+  PERMS.viewTaskTemplate,
 ];
 
 export const CADASTROS_PERMS = [

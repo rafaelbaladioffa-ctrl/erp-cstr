@@ -317,6 +317,20 @@ export interface DeviceType {
   updated_by_name: string | null;
 }
 
+export interface TaskTemplate {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  medium: string;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;

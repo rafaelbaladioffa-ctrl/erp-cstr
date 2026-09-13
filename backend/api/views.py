@@ -42,6 +42,7 @@ from master_data.models import (
     Location,
     Network,
     Path,
+    TaskTemplate,
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
@@ -76,6 +77,7 @@ from .serializers import (
     ActivityCrudSerializer,
     NetworkCrudSerializer,
     DeviceTypeCrudSerializer,
+    TaskTemplateCrudSerializer,
     LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
@@ -1015,6 +1017,35 @@ class DeviceTypeViewSet(RegistryViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         for param in ("category", "default_medium"):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{param: value})
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class TaskTemplateViewSet(RegistryViewSet):
+    """Cadastros Mestres > Operação > Templates de Tarefas. Cabeçalho/
+    classificação de receitas de execução padronizadas — mesmo padrão de
+    WorkstreamViewSet; filtros exatos por categoria e meio além da busca/
+    is_active herdados de RegistryViewSet. Sem relação com CableFamily/
+    Network/Workstream/Path/Activity nesta etapa (deliberadamente fora de
+    escopo — ver docstring do model; task_template_steps fica para uma
+    fase futura)."""
+
+    queryset = TaskTemplate.objects.select_related("created_by", "updated_by").order_by("code")
+    serializer_class = TaskTemplateCrudSerializer
+    search_fields = ("code", "name", "category", "medium", "description")
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param in ("category", "medium"):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{param: value})

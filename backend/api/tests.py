@@ -27,6 +27,7 @@ from master_data.models import (
     Location,
     Network,
     Path,
+    TaskTemplate,
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
@@ -2829,3 +2830,182 @@ class DeviceTypeApiTests(TestCase):
         module.seed_device_types(django_apps, None)
         module.seed_device_types(django_apps, None)
         self.assertEqual(DeviceType.objects.count(), count_before)
+
+
+class TaskTemplateApiTests(TestCase):
+    """Cadastros Mestres > Operação > Templates de Tarefas — CRUD,
+    obrigatoriedade, busca, filtros, CSV, ativação/inativação e seed
+    idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="task_template_admin", email="task_template@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0026_seed_task_templates) roda também no
+        # banco de testes (8 registros).
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/task-templates/",
+            {"code": "TST-TPL-0001", "name": "Template de teste", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        task_template = TaskTemplate.objects.get(pk=response.data["id"])
+        self.assertEqual(task_template.created_by, self.admin)
+        self.assertEqual(task_template.updated_by, self.admin)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/task-templates/",
+            {"name": "Sem código", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        TaskTemplate.objects.create(code="TST-TPL-DUP", name="Original", category="TEST_CATEGORY")
+        response = self.client_api.post(
+            "/api/master-data/task-templates/",
+            {"code": "TST-TPL-DUP", "name": "Duplicado", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(TaskTemplate.objects.filter(code="TST-TPL-DUP").count(), 1)
+
+    def test_name_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/task-templates/",
+            {"code": "TST-TPL-0002", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_category_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/task-templates/",
+            {"code": "TST-TPL-0003", "name": "Sem categoria"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("category", response.data)
+
+    def test_medium_is_optional(self):
+        response = self.client_api.post(
+            "/api/master-data/task-templates/",
+            {"code": "TST-TPL-0004", "name": "Sem meio", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["medium"], "")
+
+    def test_update_edits_fields(self):
+        task_template = TaskTemplate.objects.create(code="TST-TPL-EDIT", name="Original", category="TEST_CATEGORY")
+
+        response = self.client_api.patch(
+            f"/api/master-data/task-templates/{task_template.pk}/",
+            {"name": "Editado", "medium": "MIXED"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        task_template.refresh_from_db()
+        self.assertEqual(task_template.name, "Editado")
+        self.assertEqual(task_template.medium, "MIXED")
+
+    def test_search_by_code_name_category_medium(self):
+        TaskTemplate.objects.create(
+            code="TST-TPL-SEARCH", name="Template pesquisável", category="TST_SEARCHABLE_CATEGORY", medium="FIBER"
+        )
+
+        response = self.client_api.get("/api/master-data/task-templates/", {"search": "TST_SEARCHABLE_CATEGORY"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-TPL-SEARCH")
+
+    def test_filter_by_category(self):
+        TaskTemplate.objects.create(code="TST-TPL-CATA", name="A", category="TST_CAT_A")
+        TaskTemplate.objects.create(code="TST-TPL-CATB", name="B", category="TST_CAT_B")
+
+        response = self.client_api.get("/api/master-data/task-templates/", {"category": "TST_CAT_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-TPL-CATA")
+
+    def test_filter_by_medium(self):
+        TaskTemplate.objects.create(code="TST-TPL-FIBER", name="A", category="TEST_CATEGORY", medium="TST_FIBER_MEDIUM")
+        TaskTemplate.objects.create(code="TST-TPL-COPPER", name="B", category="TEST_CATEGORY", medium="TST_COPPER_MEDIUM")
+
+        response = self.client_api.get("/api/master-data/task-templates/", {"medium": "TST_FIBER_MEDIUM"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-TPL-FIBER")
+
+    def test_filter_by_active(self):
+        TaskTemplate.objects.create(code="TST-TPL-ACTIVE", name="Ativo", category="TEST_CATEGORY", active=True)
+        TaskTemplate.objects.create(code="TST-TPL-INACTIVE", name="Inativo", category="TEST_CATEGORY", active=False)
+
+        response = self.client_api.get("/api/master-data/task-templates/", {"is_active": "false"})
+
+        codes = [row["code"] for row in response.data["results"]]
+        self.assertIn("TST-TPL-INACTIVE", codes)
+        self.assertNotIn("TST-TPL-ACTIVE", codes)
+
+    def test_deactivate_does_not_hard_delete(self):
+        task_template = TaskTemplate.objects.create(code="TST-TPL-TOGGLE", name="Para inativar", category="TEST_CATEGORY", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/task-templates/{task_template.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(TaskTemplate.objects.filter(pk=task_template.pk).exists())
+        task_template.refresh_from_db()
+        self.assertFalse(task_template.active)
+
+    def test_export_csv(self):
+        TaskTemplate.objects.create(code="TST-TPL-EXPORT", name="Exportação de teste", category="TEST_CATEGORY")
+        response = self.client_api.get("/api/master-data/task-templates/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-TPL-EXPORT", content)
+        self.assertIn("código", content)
+
+    def test_import_csv_creates_rows(self):
+        csv_content = (
+            "código;nome;categoria;meio\n"
+            "TST-TPL-IMPORT1;Template Importado 1;TEST_CATEGORY;FIBER\n"
+            "TST-TPL-IMPORT2;Template Importado 2;TEST_CATEGORY;\n"
+        )
+        upload = SimpleUploadedFile("task_templates.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post(
+            "/api/master-data/task-templates/import-csv/", {"csv_file": upload}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 2)
+        self.assertEqual(response.data["errors"], [])
+        imported = TaskTemplate.objects.get(code="TST-TPL-IMPORT1")
+        self.assertEqual(imported.medium, "FIBER")
+
+    def test_seed_matches_expected_eight_records(self):
+        expected_codes = {
+            "TPL-FIBER-PRETERMINATED", "TPL-FIBER-ROBUST", "TPL-FIBER-MPO", "TPL-COPPER-FIELD-TERMINATED",
+            "TPL-COPPER-PRETERMINATED", "TPL-WAP-COPPER", "TPL-HARDWARE-INSTALL", "TPL-PROJECT-CLOSURE",
+        }
+        codes = set(TaskTemplate.objects.values_list("code", flat=True))
+        self.assertEqual(expected_codes & codes, expected_codes)
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0026_seed_task_templates")
+        count_before = TaskTemplate.objects.count()
+        module.seed_task_templates(django_apps, None)
+        module.seed_task_templates(django_apps, None)
+        self.assertEqual(TaskTemplate.objects.count(), count_before)

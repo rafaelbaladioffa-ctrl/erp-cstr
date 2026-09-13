@@ -10,6 +10,7 @@ import type {
   MasterDataSite,
   Network,
   Path,
+  TaskTemplate,
   Workstream,
 } from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
@@ -69,6 +70,12 @@ const LOCATION_TYPE_SUGGESTIONS = ["RACK_POSITION", "IDF", "MR", "ROW", "ROOM", 
  * mostradas no filtro e como sugestão no formulário. */
 const DEVICE_TYPE_CATEGORY_SUGGESTIONS = ["RACK", "SWITCH", "NETWORK_DEVICE", "PATCHING", "WIRELESS", "INFRASTRUCTURE", "OTHER"];
 const DEVICE_TYPE_DEFAULT_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER", "MIXED", "GENERAL"];
+
+/** Espelha master_data.models.TaskTemplate.CATEGORY_SUGGESTIONS/
+ * MEDIUM_SUGGESTIONS no backend — não é ENUM rígido, só as opções
+ * mostradas no filtro e como sugestão no formulário. */
+const TASK_TEMPLATE_CATEGORY_SUGGESTIONS = ["CABLING", "HARDWARE", "WIRELESS", "SERVICE", "CLOSURE"];
+const TASK_TEMPLATE_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER", "MIXED", "GENERAL"];
 
 function cableFamilyOptions(refs: ReferenceData) {
   return refs.cableFamilies.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }));
@@ -767,6 +774,55 @@ const deviceTypeEntity: EntityConfig<DeviceType> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const taskTemplateEntity: EntityConfig<TaskTemplate> = {
+  key: "task-templates",
+  label: "Templates de Tarefas",
+  icon: "assignment",
+  singular: "Template de Tarefa",
+  description: "Cabeçalho/classificação de uma receita de execução padronizada para um tipo de escopo (ex: Fibra Robust).",
+  createLabel: "Novo Template de Tarefa",
+  perms: modelPerms("master_data", "tasktemplate"),
+  api: masterDataApi.taskTemplates,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "name", label: "Nome" },
+    { key: "category", label: "Categoria" },
+    { key: "medium", label: "Meio", render: (row) => row.medium || "—" },
+  ],
+  filters: [
+    {
+      key: "category",
+      label: "Todas as Categorias",
+      options: () => TASK_TEMPLATE_CATEGORY_SUGGESTIONS.map((c) => ({ value: c, label: c })),
+    },
+    {
+      key: "medium",
+      label: "Todos os Meios",
+      options: () => TASK_TEMPLATE_MEDIUM_SUGGESTIONS.map((m) => ({ value: m, label: m })),
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: () => [
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: TPL-FIBER-ROBUST" },
+    { name: "name", label: "Nome", type: "text", required: true, placeholder: "Ex: Fibra Robust" },
+    { name: "category", label: "Categoria", type: "text", required: true, placeholder: "Ex: CABLING, HARDWARE, WIRELESS, SERVICE, CLOSURE" },
+    { name: "medium", label: "Meio", type: "text", placeholder: "Ex: FIBER, COPPER, MIXED, GENERAL" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativo", span: 2 },
+  ],
+  emptyValues: { code: "", name: "", category: "", medium: "", description: "", active: true },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -778,7 +834,7 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     key: "operacao",
     label: "Operação",
     icon: "engineering",
-    entities: [activityEntity, networkEntity, workstreamEntity, pathEntity],
+    entities: [activityEntity, networkEntity, workstreamEntity, pathEntity, taskTemplateEntity],
   },
   {
     key: "infraestrutura",

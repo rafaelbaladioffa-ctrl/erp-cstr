@@ -554,3 +554,30 @@ class DeviceType(MasterDataModel):
 
     def __str__(self):
         return f"{self.code} — {self.name}"
+
+
+class TaskTemplate(MasterDataModel):
+    """Cabeçalho/classificação de uma 'receita' de execução padronizada
+    para um tipo de escopo (ex: TPL-FIBER-ROBUST). Ainda NÃO contém as
+    etapas detalhadas da receita — isso será `task_template_steps`, numa
+    fase futura, junto com as regras de aplicabilidade e as relações com
+    CableFamily/Network/Workstream/Path/Activity (nenhuma dessas relações
+    existe aqui de propósito)."""
+
+    CATEGORY_SUGGESTIONS = ("CABLING", "HARDWARE", "WIRELESS", "SERVICE", "CLOSURE")
+    MEDIUM_SUGGESTIONS = ("FIBER", "COPPER", "MIXED", "GENERAL")
+
+    code = models.CharField("código", max_length=50, unique=True)
+    name = models.CharField("nome", max_length=150)
+    category = models.CharField("categoria", max_length=50)
+    medium = models.CharField("meio", max_length=50, blank=True)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Template de Tarefa"
+        verbose_name_plural = "Templates de Tarefa"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
