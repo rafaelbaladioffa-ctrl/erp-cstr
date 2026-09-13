@@ -29,6 +29,36 @@
   font-display: swap;
 }
 @font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/plusjakartasans-400.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/plusjakartasans-500.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/plusjakartasans-600.ttf") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/plusjakartasans-700.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/plusjakartasans-800.ttf") format("truetype");
+  font-weight: 800;
+  font-display: swap;
+}
+@font-face {
   font-family: "Material Symbols Outlined";
   src: url("/material-symbols-outlined.woff2") format("woff2");
   font-display: block;
@@ -45,11 +75,11 @@
   --orange-soft: #fff1e9;
   --teal: #0f766e;
   --teal-soft: #e2f4f1;
-  --border: #d7dde2;
-  --bg: #eef1f4;
-  --text: #172033;
-  --text-muted: #5b6b78;
-  --text-faint: #8993a0;
+  --border: #e2e8f0;
+  --bg: #f8fafc;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
   --white: #ffffff;
   --blue: #2563eb;
   --blue-soft: #eff4ff;
@@ -63,7 +93,7 @@
   --red-soft: #fdeaea;
   --radius: 6px;
   --radius-sm: 4px;
-  --shadow-card: none;
+  --shadow-card: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
   --shadow-lift: 0 2px 8px rgba(15, 39, 64, 0.08);
 }
 
@@ -126,7 +156,7 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Manrope", Arial, sans-serif;
+  font-family: "Plus Jakarta Sans", "Manrope", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -620,7 +650,7 @@ textarea {
 
 .app-content {
   flex: 1;
-  padding: 22px 28px 40px;
+  padding: 24px 32px 48px;
   overflow-y: auto;
 }
 
