@@ -18,6 +18,7 @@ def make_collaborator(company, name, **kwargs):
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
 from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Path, Workstream
+from master_data.models import Site as MasterDataSite
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -2198,3 +2199,181 @@ class PathApiTests(TestCase):
         module.seed_paths(django_apps, None)
         module.seed_paths(django_apps, None)
         self.assertEqual(Path.objects.count(), count_before)
+
+
+class MasterDataSiteApiTests(TestCase):
+    """Cadastros Mestres > Infraestrutura > Sites — CRUD, obrigatoriedade,
+    busca, filtros, CSV, ativação/inativação e seed idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="master_data_site_admin", email="master_data_site@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0020_seed_sites) roda também no banco de
+        # testes (3 registros: GRU65, GRU60, VCP1).
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/sites/",
+            {"code": "TST-SITE-0001", "name": "Site de teste"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        site = MasterDataSite.objects.get(pk=response.data["id"])
+        self.assertEqual(site.created_by, self.admin)
+        self.assertEqual(site.updated_by, self.admin)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/sites/",
+            {"name": "Sem código"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        MasterDataSite.objects.create(code="TST-SITE-DUP", name="Original")
+        response = self.client_api.post(
+            "/api/master-data/sites/",
+            {"code": "TST-SITE-DUP", "name": "Duplicado"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(MasterDataSite.objects.filter(code="TST-SITE-DUP").count(), 1)
+
+    def test_name_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/sites/",
+            {"code": "TST-SITE-0002"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_city_state_country_site_type_are_optional(self):
+        response = self.client_api.post(
+            "/api/master-data/sites/",
+            {"code": "TST-SITE-0003", "name": "Sem detalhes"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["city"], "")
+        self.assertEqual(response.data["state"], "")
+        self.assertEqual(response.data["country"], "")
+        self.assertEqual(response.data["site_type"], "")
+
+    def test_update_edits_fields(self):
+        site = MasterDataSite.objects.create(code="TST-SITE-EDIT", name="Original")
+
+        response = self.client_api.patch(
+            f"/api/master-data/sites/{site.pk}/",
+            {"name": "Editado", "city": "São Paulo", "state": "SP", "country": "BRAZIL", "site_type": "DATACENTER"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        site.refresh_from_db()
+        self.assertEqual(site.name, "Editado")
+        self.assertEqual(site.city, "São Paulo")
+        self.assertEqual(site.site_type, "DATACENTER")
+
+    def test_search_by_code_name_city_state_country_site_type(self):
+        MasterDataSite.objects.create(
+            code="TST-SITE-SEARCH", name="Site pesquisável", city="Campinas", state="TST_SEARCHABLE_STATE", country="BRAZIL"
+        )
+
+        response = self.client_api.get("/api/master-data/sites/", {"search": "TST_SEARCHABLE_STATE"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-SITE-SEARCH")
+
+    def test_filter_by_country(self):
+        MasterDataSite.objects.create(code="TST-SITE-BR", name="A", country="TST_COUNTRY_A")
+        MasterDataSite.objects.create(code="TST-SITE-US", name="B", country="TST_COUNTRY_B")
+
+        response = self.client_api.get("/api/master-data/sites/", {"country": "TST_COUNTRY_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-SITE-BR")
+
+    def test_filter_by_state(self):
+        MasterDataSite.objects.create(code="TST-SITE-SPA", name="A", state="TST_STATE_A")
+        MasterDataSite.objects.create(code="TST-SITE-SPB", name="B", state="TST_STATE_B")
+
+        response = self.client_api.get("/api/master-data/sites/", {"state": "TST_STATE_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-SITE-SPA")
+
+    def test_filter_by_site_type(self):
+        MasterDataSite.objects.create(code="TST-SITE-DC", name="A", site_type="TST_TYPE_A")
+        MasterDataSite.objects.create(code="TST-SITE-OTHER", name="B", site_type="TST_TYPE_B")
+
+        response = self.client_api.get("/api/master-data/sites/", {"site_type": "TST_TYPE_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-SITE-DC")
+
+    def test_filter_by_active(self):
+        MasterDataSite.objects.create(code="TST-SITE-ACTIVE", name="Ativo", active=True)
+        MasterDataSite.objects.create(code="TST-SITE-INACTIVE", name="Inativo", active=False)
+
+        response = self.client_api.get("/api/master-data/sites/", {"is_active": "false"})
+
+        codes = [row["code"] for row in response.data["results"]]
+        self.assertIn("TST-SITE-INACTIVE", codes)
+        self.assertNotIn("TST-SITE-ACTIVE", codes)
+
+    def test_deactivate_does_not_hard_delete(self):
+        site = MasterDataSite.objects.create(code="TST-SITE-TOGGLE", name="Para inativar", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/sites/{site.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(MasterDataSite.objects.filter(pk=site.pk).exists())
+        site.refresh_from_db()
+        self.assertFalse(site.active)
+
+    def test_export_csv(self):
+        MasterDataSite.objects.create(code="TST-SITE-EXPORT", name="Exportação de teste")
+        response = self.client_api.get("/api/master-data/sites/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-SITE-EXPORT", content)
+        self.assertIn("código", content)
+
+    def test_import_csv_creates_rows(self):
+        csv_content = (
+            "código;nome;cidade;estado;país;tipo de site\n"
+            "TST-SITE-IMPORT1;Site Importado 1;São Paulo;SP;BRAZIL;DATACENTER\n"
+            "TST-SITE-IMPORT2;Site Importado 2;;;;\n"
+        )
+        upload = SimpleUploadedFile("sites.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post("/api/master-data/sites/import-csv/", {"csv_file": upload}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 2)
+        self.assertEqual(response.data["errors"], [])
+        imported = MasterDataSite.objects.get(code="TST-SITE-IMPORT1")
+        self.assertEqual(imported.city, "São Paulo")
+        self.assertEqual(imported.site_type, "DATACENTER")
+
+    def test_seed_matches_expected_three_records(self):
+        expected_codes = {"GRU65", "GRU60", "VCP1"}
+        codes = set(MasterDataSite.objects.values_list("code", flat=True))
+        self.assertEqual(expected_codes & codes, expected_codes)
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0020_seed_sites")
+        count_before = MasterDataSite.objects.count()
+        module.seed_sites(django_apps, None)
+        module.seed_sites(django_apps, None)
+        self.assertEqual(MasterDataSite.objects.count(), count_before)

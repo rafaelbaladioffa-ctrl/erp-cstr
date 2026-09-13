@@ -29,6 +29,7 @@ from master_data.models import (
     Workstream,
     normalize_alias_text,
 )
+from master_data.models import Site as MasterDataSite
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
@@ -371,6 +372,36 @@ class PathCrudSerializer(serializers.ModelSerializer):
             "name",
             "path_group",
             "path_type",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+
+class MasterDataSiteCrudSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MasterDataSite
+        fields = (
+            "id",
+            "code",
+            "name",
+            "city",
+            "state",
+            "country",
+            "site_type",
             "description",
             "active",
             "created_at",

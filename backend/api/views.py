@@ -33,6 +33,7 @@ from core.models import (
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
 from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Path, Workstream
+from master_data.models import Site as MasterDataSite
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -63,6 +64,7 @@ from .serializers import (
     CableSpecCrudSerializer,
     ActivityCrudSerializer,
     NetworkCrudSerializer,
+    MasterDataSiteCrudSerializer,
     PathCrudSerializer,
     WorkstreamCrudSerializer,
     CertificationTypeCrudSerializer,
@@ -907,6 +909,34 @@ class PathViewSet(RegistryViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         for param in ("path_group", "path_type"):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{param: value})
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class MasterDataSiteViewSet(RegistryViewSet):
+    """Cadastros Mestres > Infraestrutura > Sites. Catálogo canônico de
+    sites/datacenters (nível mais alto da topologia física) — mesmo padrão
+    de PathViewSet; filtros exatos por país/estado/tipo além da busca/
+    is_active herdados de RegistryViewSet. Não confundir com
+    core.Site (site do Cliente, usado em Cadastros Gerais) — conceitos
+    diferentes, convivem sem colidir (tabelas separadas)."""
+
+    queryset = MasterDataSite.objects.select_related("created_by", "updated_by").order_by("code")
+    serializer_class = MasterDataSiteCrudSerializer
+    search_fields = ("code", "name", "city", "state", "country", "site_type", "description")
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param in ("country", "state", "site_type"):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{param: value})

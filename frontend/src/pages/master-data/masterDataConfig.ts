@@ -1,5 +1,15 @@
 import { masterDataApi } from "../../api/resources";
-import type { Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Path, Workstream } from "../../api/types";
+import type {
+  Activity,
+  CableAlias,
+  CableFamily,
+  CableSpec,
+  CertificationType,
+  MasterDataSite,
+  Network,
+  Path,
+  Workstream,
+} from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
 
@@ -41,6 +51,11 @@ const WORKSTREAM_DEFAULT_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER", "MIXED", "GENE
  * mostradas no filtro e como sugestão no formulário. */
 const PATH_GROUP_SUGGESTIONS = ["REDUNDANT_PATH", "INTERNAL", "CROSS_CONNECTION", "DUCT", "UNSPECIFIED"];
 const PATH_TYPE_SUGGESTIONS = ["A", "B", "INTER_RACK", "CROSS_CONNECT", "DIRECT", "UNSPECIFIED"];
+
+/** Espelha master_data.models.Site.SITE_TYPE_SUGGESTIONS no backend — não
+ * é ENUM rígido, só as opções mostradas no filtro e como sugestão no
+ * formulário. */
+const SITE_TYPE_SUGGESTIONS = ["DATACENTER", "OPTDC", "OTHER"];
 
 function cableFamilyOptions(refs: ReferenceData) {
   return refs.cableFamilies.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }));
@@ -538,6 +553,64 @@ const pathEntity: EntityConfig<Path> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const masterDataSiteEntity: EntityConfig<MasterDataSite> = {
+  key: "master-data-sites",
+  label: "Sites",
+  icon: "domain",
+  singular: "Site",
+  description: "Catálogo canônico de sites/datacenters — o nível mais alto da topologia física (ex: GRU65).",
+  createLabel: "Novo Site",
+  perms: modelPerms("master_data", "site"),
+  api: masterDataApi.sites,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "name", label: "Nome" },
+    { key: "city", label: "Cidade", render: (row) => row.city || "—" },
+    { key: "state", label: "Estado", render: (row) => row.state || "—" },
+    { key: "country", label: "País", render: (row) => row.country || "—" },
+    { key: "site_type", label: "Tipo", render: (row) => row.site_type || "—" },
+  ],
+  filters: [
+    {
+      key: "country",
+      label: "Todos os Países",
+      options: (_refs, rows) => distinctOptions(rows, "country"),
+    },
+    {
+      key: "state",
+      label: "Todos os Estados",
+      options: (_refs, rows) => distinctOptions(rows, "state"),
+    },
+    {
+      key: "site_type",
+      label: "Todos os Tipos",
+      options: () => SITE_TYPE_SUGGESTIONS.map((t) => ({ value: t, label: t })),
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: () => [
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: GRU65" },
+    { name: "name", label: "Nome", type: "text", required: true, placeholder: "Ex: GRU65" },
+    { name: "city", label: "Cidade", type: "text" },
+    { name: "state", label: "Estado", type: "text" },
+    { name: "country", label: "País", type: "text", placeholder: "Ex: BRAZIL" },
+    { name: "site_type", label: "Tipo de Site", type: "text", placeholder: "Ex: DATACENTER, OPTDC, OTHER" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativo", span: 2 },
+  ],
+  emptyValues: { code: "", name: "", city: "", state: "", country: "", site_type: "", description: "", active: true },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -551,6 +624,6 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     icon: "engineering",
     entities: [activityEntity, networkEntity, workstreamEntity, pathEntity],
   },
-  { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [] },
+  { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [masterDataSiteEntity] },
   { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },
 ];

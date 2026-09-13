@@ -15,6 +15,7 @@ import type {
   DailyUpdate,
   JobTitle,
   Me,
+  MasterDataSite,
   Network,
   Notification,
   OperationsBoard,
@@ -85,6 +86,7 @@ export const masterDataApi = {
   networks: crud<Network>("/master-data/networks"),
   workstreams: crud<Workstream>("/master-data/workstreams"),
   paths: crud<Path>("/master-data/paths"),
+  sites: crud<MasterDataSite>("/master-data/sites"),
 };
 
 export const auditLogApi = {

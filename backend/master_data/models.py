@@ -411,3 +411,42 @@ class Path(MasterDataModel):
 
     def __str__(self):
         return f"{self.code} — {self.name}"
+
+
+class Site(MasterDataModel):
+    """Catálogo canônico de sites/datacenters — o nível mais alto da
+    topologia física (ex: GRU65, GRU60, VCP1). `locations` (fase futura)
+    terá uma FK para este model (ex: Location "GRU65.01-01-010-55" ->
+    Site "GRU65"); esta tabela NÃO guarda room/row/rack/position/RU/device
+    nem a string completa de location — isso é responsabilidade de
+    `locations`/`devices`.
+
+    Nome propositalmente igual ao de `core.models.Site` (o site do
+    Cliente, usado em Cadastros Gerais) — são conceitos DIFERENTES
+    (aquele é "onde o cliente está", este é "datacenter/site físico da
+    topologia de cabeamento"); convivem em apps diferentes sem colidir no
+    banco (tabelas `core_site` x `master_data_site`), só exigindo import
+    com alias (`Site as MasterDataSite`) nos arquivos que já importam
+    `core.models.Site`."""
+
+    SITE_TYPE_SUGGESTIONS = ("DATACENTER", "OPTDC", "OTHER")
+
+    code = models.CharField("código", max_length=50, unique=True)
+    name = models.CharField("nome", max_length=150)
+    city = models.CharField("cidade", max_length=100, blank=True)
+    state = models.CharField("estado", max_length=100, blank=True)
+    country = models.CharField("país", max_length=100, blank=True)
+    # Texto livre (não ENUM/choices) de propósito — sugestões: DATACENTER,
+    # OPTDC, OTHER. Não inferir OPTDC automaticamente pelo código; só
+    # preencher com informação explícita/cadastro manual.
+    site_type = models.CharField("tipo de site", max_length=50, blank=True)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Site"
+        verbose_name_plural = "Sites"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"

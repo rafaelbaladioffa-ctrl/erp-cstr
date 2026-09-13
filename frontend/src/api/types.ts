@@ -262,6 +262,25 @@ export interface Path {
   updated_by_name: string | null;
 }
 
+/** Site de Cadastros Mestres (Infraestrutura) — nível mais alto da
+ * topologia física de cabeamento (ex: GRU65). Não confundir com `SiteFull`
+ * (site do Cliente, usado em Cadastros Gerais) — conceitos diferentes. */
+export interface MasterDataSite {
+  id: number;
+  code: string;
+  name: string;
+  city: string;
+  state: string;
+  country: string;
+  site_type: string;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;
