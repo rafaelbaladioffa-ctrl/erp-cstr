@@ -1,5 +1,6 @@
 import django.core.validators
 import django.db.models.deletion
+import master_data.models
 from django.conf import settings
 from django.db import migrations, models
 
@@ -40,7 +41,7 @@ class Migration(migrations.Migration):
                     models.FileField(
                         blank=True,
                         null=True,
-                        upload_to="master_data.models.sow_import_upload_to",
+                        upload_to=master_data.models.sow_import_upload_to,
                         verbose_name="arquivo de origem",
                     ),
                 ),
