@@ -9,7 +9,15 @@ rule_resolution_status=RESOLVED com um resolved_template — a ordem correta
 é sempre "Resolver Template" primeiro, "Gerar Tarefas" depois (processo
 auditável, sem resolução implícita escondida dentro da geração). Este
 módulo NUNCA cria/atualiza ScopeItem, TaskTemplate ou TaskTemplateStep —
-só lê e cria GeneratedTask."""
+só lê e cria GeneratedTask.
+
+EXPANSÃO POR PATH: um TaskTemplateStep com repeatable=true gera UMA única
+GeneratedTask (expansion_key="DEFAULT", path=None) a menos que o ScopeItem
+tenha expansion_mode="PATH" E possua ao menos um ScopeItemPath ativo —
+nesse caso, gera uma GeneratedTask POR Path ativo (expansion_key=
+path.code, path=<Path>), com a MESMA quantidade em cada uma (não divide
+automaticamente — ver spec). Um step não repeatable NUNCA expande,
+independente de expansion_mode."""
 
 from decimal import Decimal
 
@@ -48,12 +56,31 @@ def _resolve_unit(step, scope_item):
     return step.unit_override or step.activity.default_unit or scope_item.unit or ""
 
 
+def _resolve_expansions(step, scope_item, active_paths, warnings):
+    """Retorna a lista de (path_or_none, expansion_key) para este step —
+    uma entrada só (None, "DEFAULT") quando o step não expande; uma
+    entrada por Path ativo quando expande."""
+    if not step.repeatable or scope_item.expansion_mode != "PATH":
+        return [(None, "DEFAULT")]
+    if not active_paths:
+        warnings.append(
+            f'Etapa "{step.effective_name}" é repetível e o item está com expansion_mode=PATH, mas não tem '
+            "nenhuma Rota/Path ativa associada — gerando uma única tarefa (DEFAULT)."
+        )
+        return [(None, "DEFAULT")]
+    return [(scope_item_path.path, scope_item_path.path.code) for scope_item_path in active_paths]
+
+
 def generate_tasks_for_scope_item(scope_item, user=None):
-    """Gera (ou reaproveita, se já existir) uma GeneratedTask por
-    TaskTemplateStep ATIVO do template resolvido do ScopeItem, em ordem de
-    step_order. Idempotente: chamar de novo não duplica — reforçado tanto
-    pela UniqueConstraint (scope_item, task_template_step) quanto por
-    get_or_create() aqui.
+    """Gera (ou reaproveita, se já existir) GeneratedTasks a partir dos
+    TaskTemplateSteps ATIVOS do template resolvido do ScopeItem, em ordem
+    de step_order. Um step repeatable=true com
+    scope_item.expansion_mode="PATH" e ao menos um ScopeItemPath ativo
+    gera UMA tarefa POR Path (mesma quantidade em cada, não dividida);
+    qualquer outro caso gera uma única tarefa (expansion_key="DEFAULT").
+    Idempotente: chamar de novo não duplica — reforçado tanto pela
+    UniqueConstraint (scope_item, task_template_step, expansion_key)
+    quanto por get_or_create() aqui.
 
     Levanta TaskGenerationError se o ScopeItem não estiver
     rule_resolution_status=RESOLVED ou não tiver resolved_template.
@@ -72,13 +99,21 @@ def generate_tasks_for_scope_item(scope_item, user=None):
             'template resolvido) antes de gerar tarefas — use "Resolver Template" primeiro.'
         )
 
-    from master_data.models import GeneratedTask, TaskTemplateStep
+    from master_data.models import GeneratedTask, ScopeItemPath, TaskTemplateStep
 
     steps = (
         TaskTemplateStep.objects.filter(task_template_id=scope_item.resolved_template_id, active=True)
         .select_related("activity")
         .order_by("step_order")
     )
+
+    active_paths = []
+    if scope_item.expansion_mode == "PATH":
+        active_paths = list(
+            ScopeItemPath.objects.filter(scope_item=scope_item, active=True)
+            .select_related("path")
+            .order_by("sequence", "path__code")
+        )
 
     created_tasks = []
     existing_tasks = []
@@ -88,28 +123,32 @@ def generate_tasks_for_scope_item(scope_item, user=None):
         for step in steps:
             quantity = _resolve_quantity(scope_item, step.quantity_source or "", warnings)
             unit = _resolve_unit(step, scope_item)
-            task, was_created = GeneratedTask.objects.get_or_create(
-                scope_item=scope_item,
-                task_template_step=step,
-                defaults={
-                    "task_template": scope_item.resolved_template,
-                    "activity": step.activity,
-                    "step_order": step.step_order,
-                    "name": step.effective_name,
-                    "quantity": quantity,
-                    "unit": unit,
-                    "required": step.required,
-                    "repeatable": step.repeatable,
-                    "generation_source": "TEMPLATE",
-                    "status": "PENDING",
-                    "created_by": user,
-                    "updated_by": user,
-                },
-            )
-            if was_created:
-                created_tasks.append(task)
-            else:
-                existing_tasks.append(task)
+            for path, expansion_key in _resolve_expansions(step, scope_item, active_paths, warnings):
+                name = f"{step.effective_name} — {path.name}" if path is not None else step.effective_name
+                task, was_created = GeneratedTask.objects.get_or_create(
+                    scope_item=scope_item,
+                    task_template_step=step,
+                    expansion_key=expansion_key,
+                    defaults={
+                        "task_template": scope_item.resolved_template,
+                        "activity": step.activity,
+                        "path": path,
+                        "step_order": step.step_order,
+                        "name": name,
+                        "quantity": quantity,
+                        "unit": unit,
+                        "required": step.required,
+                        "repeatable": step.repeatable,
+                        "generation_source": "TEMPLATE",
+                        "status": "PENDING",
+                        "created_by": user,
+                        "updated_by": user,
+                    },
+                )
+                if was_created:
+                    created_tasks.append(task)
+                else:
+                    existing_tasks.append(task)
 
     return {
         "scope_item": scope_item,

@@ -42,6 +42,7 @@ import type {
   SiteFull,
   SiteMapData,
   GeneratedTask,
+  GeneratedTaskDependency,
   ScopeItem,
   ScopeItemGenerateTasksResult,
   ScopeItemResolutionResult,
@@ -121,6 +122,15 @@ export const masterDataApi = {
         .then((r) => r.data),
   },
   generatedTasks: crud<GeneratedTask>("/master-data/generated-tasks"),
+  // Só leitura no backend (GeneratedTaskDependencyViewSet é
+  // ReadOnlyModelViewSet) — usado para as seções Predecessoras/
+  // Sucessoras de uma Tarefa Gerada.
+  generatedTaskDependencies: {
+    list: (params?: Record<string, string>) =>
+      apiClient
+        .get<Paginated<GeneratedTaskDependency>>("/master-data/generated-task-dependencies/", { params })
+        .then((r) => r.data),
+  },
 };
 
 export const taskRuleSimulatorApi = {

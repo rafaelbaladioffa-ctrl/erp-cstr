@@ -422,6 +422,12 @@ export interface ScopeItem {
   resolved_template_code: string | null;
   resolved_template_name: string | null;
   rule_resolution_status: string;
+  expansion_mode: string;
+  tasks_outdated: boolean;
+  /** Rotas adicionais (ScopeItemPath ativos) — lista de ids de Path, não
+   * confundir com o campo `path` singular acima (mantido por
+   * compatibilidade). */
+  paths: number[];
   created_at: string;
   updated_at: string;
   created_by_name: string | null;
@@ -437,6 +443,9 @@ export interface GeneratedTask {
   task_template_name: string;
   activity_code: string;
   activity_name: string;
+  path_code: string | null;
+  path_name: string | null;
+  expansion_key: string;
   step_order: number;
   name: string;
   quantity: string | null;
@@ -453,6 +462,23 @@ export interface GeneratedTask {
   updated_by_name: string | null;
 }
 
+export interface GeneratedTaskDependency {
+  id: number;
+  predecessor_task: number;
+  predecessor_task_code: string;
+  predecessor_task_name: string;
+  successor_task: number;
+  successor_task_code: string;
+  successor_task_name: string;
+  dependency_type: string;
+  lag_value: string;
+  lag_unit: string;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ScopeItemGenerateTasksResult {
   scope_item_id: number;
   scope_item_code: string;
@@ -463,6 +489,8 @@ export interface ScopeItemGenerateTasksResult {
   created_tasks: GeneratedTask[];
   existing_tasks: GeneratedTask[];
   tasks: GeneratedTask[];
+  created_dependencies: GeneratedTaskDependency[];
+  existing_dependencies: GeneratedTaskDependency[];
   warnings: string[];
 }
 

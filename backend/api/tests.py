@@ -3,6 +3,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import Permission
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
@@ -27,10 +28,12 @@ from master_data.models import (
     CertificationType,
     DeviceType,
     GeneratedTask,
+    GeneratedTaskDependency,
     Location,
     Network,
     Path,
     ScopeItem,
+    ScopeItemPath,
     TaskTemplate,
     TaskTemplateRule,
     TaskTemplateStep,
@@ -4488,3 +4491,369 @@ class GeneratedTaskApiTests(TestCase):
         second = self.generate(item.pk)
         self.assertEqual(second.data["created_count"], 0)
         self.assertEqual(second.data["existing_count"], 9)
+
+
+class PathExpansionAndDependencyTests(TestCase):
+    """Expansão de GeneratedTask por Path (ScopeItem.expansion_mode=PATH +
+    ScopeItemPath) e geração automática de GeneratedTaskDependency
+    (master_data.services.task_dependency_generator) a partir da ordem dos
+    TaskTemplateSteps. Fixture dedicado: A (não repetível) -> B (repetível)
+    -> D (repetível) -> C (não repetível) cobre, num só template, os 4
+    casos de conexão entre steps adjacentes (não-expandido -> não-
+    expandido; não-expandido -> expandido; expandido -> expandido — só
+    pela mesma expansion_key; expandido -> não-expandido)."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="path_expansion_admin", email="path_expansion@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+
+        self.family = CableFamily.objects.create(code="TST-PE-FAM", name="Família de teste", medium="FIBER")
+        self.template = TaskTemplate.objects.create(code="TST-PE-TPL", name="Template de teste", category="TEST_CATEGORY")
+        self.rule = TaskTemplateRule.objects.create(
+            code="TST-PE-RULE", name="Regra de teste", task_template=self.template, cable_family=self.family, priority=10
+        )
+
+        self.act_a = Activity.objects.create(code="TST-PE-ACT-A", name="Atividade A", category="TEST_CATEGORY")
+        self.act_b = Activity.objects.create(code="TST-PE-ACT-B", name="Atividade B", category="TEST_CATEGORY")
+        self.act_d = Activity.objects.create(code="TST-PE-ACT-D", name="Atividade D", category="TEST_CATEGORY")
+        self.act_c = Activity.objects.create(code="TST-PE-ACT-C", name="Atividade C", category="TEST_CATEGORY")
+
+        self.step_a = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_a, step_order=10, quantity_source="SCOPE_ITEM", repeatable=False
+        )
+        self.step_b = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_b, step_order=20, quantity_source="SCOPE_ITEM", repeatable=True
+        )
+        self.step_d = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_d, step_order=30, quantity_source="SCOPE_ITEM", repeatable=True
+        )
+        self.step_c = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_c, step_order=40, quantity_source="SCOPE_ITEM", repeatable=False
+        )
+
+        self.path_a = Path.objects.create(code="TST-PE-PATH-A", name="Path A de teste", path_group="TEST", path_type="TEST")
+        self.path_b = Path.objects.create(code="TST-PE-PATH-B", name="Path B de teste", path_group="TEST", path_type="TEST")
+        self.path_c = Path.objects.create(code="TST-PE-PATH-C", name="Path C de teste", path_group="TEST", path_type="TEST")
+
+        self.scope_item = ScopeItem.objects.create(
+            raw_text="texto de teste", item_type="CABLE", cable_family=self.family, quantity=16
+        )
+        self.scope_item.resolved_rule = self.rule
+        self.scope_item.resolved_template = self.template
+        self.scope_item.rule_resolution_status = "RESOLVED"
+        self.scope_item.save()
+
+    def generate(self, item_pk=None):
+        return self.client_api.post(f"/api/master-data/scope-items/{item_pk or self.scope_item.pk}/generate-tasks/")
+
+    def add_paths(self, *paths):
+        for i, path in enumerate(paths):
+            ScopeItemPath.objects.create(scope_item=self.scope_item, path=path, sequence=i)
+
+    # --- expansion_mode / quantidade de paths ---
+
+    def test_expansion_mode_none_generates_single_task_per_step(self):
+        response = self.generate()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created_count"], 4)
+        for t in response.data["tasks"]:
+            self.assertEqual(t["expansion_key"], "DEFAULT")
+            self.assertIsNone(t["path_code"])
+
+    def test_expansion_mode_path_without_active_paths_falls_back_to_default(self):
+        self.scope_item.expansion_mode = "PATH"
+        self.scope_item.save()
+        response = self.generate()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created_count"], 4)
+        self.assertTrue(any("Rota/Path ativa" in w for w in response.data["warnings"]))
+
+    def test_expansion_mode_path_two_paths(self):
+        self.scope_item.expansion_mode = "PATH"
+        self.scope_item.save()
+        self.add_paths(self.path_a, self.path_b)
+        response = self.generate()
+        self.assertEqual(response.status_code, 200, response.data)
+        # A(1) + B(2) + D(2) + C(1) = 6
+        self.assertEqual(response.data["created_count"], 6)
+
+        b_tasks = GeneratedTask.objects.filter(scope_item=self.scope_item, task_template_step=self.step_b).order_by("expansion_key")
+        self.assertEqual(b_tasks.count(), 2)
+        self.assertEqual([t.expansion_key for t in b_tasks], ["TST-PE-PATH-A", "TST-PE-PATH-B"])
+        self.assertEqual(b_tasks[0].path_id, self.path_a.pk)
+        self.assertEqual(b_tasks[0].name, f"{self.step_b.effective_name} — {self.path_a.name}")
+
+        a_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_a)
+        self.assertEqual(a_task.expansion_key, "DEFAULT")
+        self.assertIsNone(a_task.path_id)
+
+    def test_expansion_mode_path_three_paths(self):
+        self.scope_item.expansion_mode = "PATH"
+        self.scope_item.save()
+        self.add_paths(self.path_a, self.path_b, self.path_c)
+        response = self.generate()
+        self.assertEqual(response.status_code, 200, response.data)
+        # A(1) + B(3) + D(3) + C(1) = 8
+        self.assertEqual(response.data["created_count"], 8)
+        self.assertEqual(
+            GeneratedTask.objects.filter(scope_item=self.scope_item, task_template_step=self.step_b).count(), 3
+        )
+
+    def test_non_repeatable_step_never_expands(self):
+        self.scope_item.expansion_mode = "PATH"
+        self.scope_item.save()
+        self.add_paths(self.path_a, self.path_b)
+        self.generate()
+        self.assertEqual(
+            GeneratedTask.objects.filter(scope_item=self.scope_item, task_template_step=self.step_a).count(), 1
+        )
+        self.assertEqual(
+            GeneratedTask.objects.filter(scope_item=self.scope_item, task_template_step=self.step_c).count(), 1
+        )
+
+    def test_new_unique_constraint_allows_same_step_different_expansion_key(self):
+        GeneratedTask.objects.create(
+            scope_item=self.scope_item,
+            task_template=self.template,
+            task_template_step=self.step_b,
+            activity=self.act_b,
+            path=self.path_a,
+            expansion_key=self.path_a.code,
+            step_order=20,
+            name="B - Path A",
+        )
+        GeneratedTask.objects.create(
+            scope_item=self.scope_item,
+            task_template=self.template,
+            task_template_step=self.step_b,
+            activity=self.act_b,
+            path=self.path_b,
+            expansion_key=self.path_b.code,
+            step_order=20,
+            name="B - Path B",
+        )
+        self.assertEqual(
+            GeneratedTask.objects.filter(scope_item=self.scope_item, task_template_step=self.step_b).count(), 2
+        )
+
+    def test_new_unique_constraint_rejects_same_expansion_key_twice(self):
+        GeneratedTask.objects.create(
+            scope_item=self.scope_item,
+            task_template=self.template,
+            task_template_step=self.step_b,
+            activity=self.act_b,
+            expansion_key="DEFAULT",
+            step_order=20,
+            name="B",
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                GeneratedTask.objects.create(
+                    scope_item=self.scope_item,
+                    task_template=self.template,
+                    task_template_step=self.step_b,
+                    activity=self.act_b,
+                    expansion_key="DEFAULT",
+                    step_order=20,
+                    name="B duplicada",
+                )
+
+    def test_idempotent_generation_with_paths(self):
+        self.scope_item.expansion_mode = "PATH"
+        self.scope_item.save()
+        self.add_paths(self.path_a, self.path_b)
+        first = self.generate()
+        self.assertEqual(first.data["created_count"], 6)
+        second = self.generate()
+        self.assertEqual(second.data["created_count"], 0)
+        self.assertEqual(second.data["existing_count"], 6)
+        self.assertEqual(GeneratedTask.objects.filter(scope_item=self.scope_item).count(), 6)
+
+    # --- dependências ---
+
+    def test_dependency_generation_all_four_cases(self):
+        self.scope_item.expansion_mode = "PATH"
+        self.scope_item.save()
+        self.add_paths(self.path_a, self.path_b)
+        response = self.generate()
+        self.assertEqual(response.status_code, 200, response.data)
+
+        a_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_a)
+        b_tasks = {t.expansion_key: t for t in GeneratedTask.objects.filter(scope_item=self.scope_item, task_template_step=self.step_b)}
+        d_tasks = {t.expansion_key: t for t in GeneratedTask.objects.filter(scope_item=self.scope_item, task_template_step=self.step_d)}
+        c_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_c)
+
+        deps = set(
+            GeneratedTaskDependency.objects.filter(predecessor_task__scope_item=self.scope_item).values_list(
+                "predecessor_task_id", "successor_task_id"
+            )
+        )
+
+        # Caso 2: não-expandido -> expandido (A conecta com AMBOS os B).
+        self.assertIn((a_task.pk, b_tasks["TST-PE-PATH-A"].pk), deps)
+        self.assertIn((a_task.pk, b_tasks["TST-PE-PATH-B"].pk), deps)
+
+        # Caso 3: expandido -> expandido, só pela MESMA expansion_key.
+        self.assertIn((b_tasks["TST-PE-PATH-A"].pk, d_tasks["TST-PE-PATH-A"].pk), deps)
+        self.assertIn((b_tasks["TST-PE-PATH-B"].pk, d_tasks["TST-PE-PATH-B"].pk), deps)
+        self.assertNotIn((b_tasks["TST-PE-PATH-A"].pk, d_tasks["TST-PE-PATH-B"].pk), deps)
+        self.assertNotIn((b_tasks["TST-PE-PATH-B"].pk, d_tasks["TST-PE-PATH-A"].pk), deps)
+
+        # Caso 4: expandido -> não-expandido (AMBOS os D conectam com C).
+        self.assertIn((d_tasks["TST-PE-PATH-A"].pk, c_task.pk), deps)
+        self.assertIn((d_tasks["TST-PE-PATH-B"].pk, c_task.pk), deps)
+
+        # Total: A->B(2) + B->D(2) + D->C(2) = 6.
+        self.assertEqual(len(deps), 6)
+
+    def test_dependency_generation_unexpanded_to_unexpanded(self):
+        # Caso 1, isolado: expansion_mode=NONE -> tudo 1x1.
+        response = self.generate()
+        self.assertEqual(response.status_code, 200, response.data)
+        a_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_a)
+        b_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_b)
+        self.assertTrue(
+            GeneratedTaskDependency.objects.filter(predecessor_task=a_task, successor_task=b_task).exists()
+        )
+
+    def test_dependency_idempotent_second_generation(self):
+        self.scope_item.expansion_mode = "PATH"
+        self.scope_item.save()
+        self.add_paths(self.path_a, self.path_b)
+        first = self.generate()
+        self.assertEqual(len(first.data["created_dependencies"]), 6)
+        self.assertEqual(len(first.data["existing_dependencies"]), 0)
+        second = self.generate()
+        self.assertEqual(len(second.data["created_dependencies"]), 0)
+        self.assertEqual(len(second.data["existing_dependencies"]), 6)
+        self.assertEqual(GeneratedTaskDependency.objects.filter(predecessor_task__scope_item=self.scope_item).count(), 6)
+
+    def test_self_dependency_blocked(self):
+        self.generate()
+        task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_a)
+        dependency = GeneratedTaskDependency(predecessor_task=task, successor_task=task, dependency_type="FS")
+        with self.assertRaises(DjangoValidationError):
+            dependency.clean()
+
+    def test_duplicate_dependency_blocked(self):
+        self.generate()
+        a_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_a)
+        b_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_b)
+        GeneratedTaskDependency.objects.filter(predecessor_task=a_task, successor_task=b_task).delete()
+        GeneratedTaskDependency.objects.create(predecessor_task=a_task, successor_task=b_task, dependency_type="FS")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                GeneratedTaskDependency.objects.create(
+                    predecessor_task=a_task, successor_task=b_task, dependency_type="FS"
+                )
+
+    def test_cycle_detection_blocks_reverse_dependency(self):
+        self.generate()
+        a_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_a)
+        b_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_b)
+        # A -> B já existe (gerada automaticamente); B -> A fecharia um ciclo.
+        self.assertTrue(
+            GeneratedTaskDependency.objects.filter(predecessor_task=a_task, successor_task=b_task).exists()
+        )
+        reverse_dependency = GeneratedTaskDependency(predecessor_task=b_task, successor_task=a_task, dependency_type="FS")
+        with self.assertRaises(DjangoValidationError):
+            reverse_dependency.clean()
+
+    def test_cycle_detection_blocks_transitive_cycle(self):
+        self.generate()
+        a_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_a)
+        d_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_d)
+        # A -> ... -> D já existe transitivamente (A->B->D); D -> A fecharia
+        # um ciclo maior.
+        cyclic_dependency = GeneratedTaskDependency(predecessor_task=d_task, successor_task=a_task, dependency_type="FS")
+        with self.assertRaises(DjangoValidationError):
+            cyclic_dependency.clean()
+
+    # --- tasks_outdated ---
+
+    def test_tasks_outdated_when_expansion_mode_changes_after_generation(self):
+        self.generate()
+        self.assertFalse(ScopeItem.objects.get(pk=self.scope_item.pk).tasks_outdated)
+        response = self.client_api.patch(
+            f"/api/master-data/scope-items/{self.scope_item.pk}/", {"expansion_mode": "PATH"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(ScopeItem.objects.get(pk=self.scope_item.pk).tasks_outdated)
+
+    def test_tasks_outdated_not_set_before_generation(self):
+        response = self.client_api.patch(
+            f"/api/master-data/scope-items/{self.scope_item.pk}/", {"expansion_mode": "PATH"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(ScopeItem.objects.get(pk=self.scope_item.pk).tasks_outdated)
+
+    def test_tasks_outdated_when_paths_change_after_generation(self):
+        self.generate()
+        self.assertFalse(ScopeItem.objects.get(pk=self.scope_item.pk).tasks_outdated)
+        response = self.client_api.patch(
+            f"/api/master-data/scope-items/{self.scope_item.pk}/",
+            {"paths": [self.path_a.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(ScopeItem.objects.get(pk=self.scope_item.pk).tasks_outdated)
+        self.assertEqual(
+            ScopeItemPath.objects.filter(scope_item=self.scope_item, path=self.path_a, active=True).count(), 1
+        )
+
+    def test_tasks_outdated_when_resolved_template_changes_via_resolve_again(self):
+        self.generate()
+        other_template = TaskTemplate.objects.create(
+            code="TST-PE-TPL-2", name="Outro template", category="TEST_CATEGORY"
+        )
+        TaskTemplateRule.objects.create(
+            code="TST-PE-RULE-2",
+            name="Regra mais específica",
+            task_template=other_template,
+            cable_family=self.family,
+            priority=1,
+        )
+        response = self.client_api.post(f"/api/master-data/scope-items/{self.scope_item.pk}/resolve-template/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.scope_item.refresh_from_db()
+        self.assertEqual(self.scope_item.resolved_template_id, other_template.pk)
+        self.assertTrue(self.scope_item.tasks_outdated)
+
+    def test_paths_field_reflects_active_scope_item_paths(self):
+        self.add_paths(self.path_a, self.path_b)
+        response = self.client_api.get(f"/api/master-data/scope-items/{self.scope_item.pk}/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(set(response.data["paths"]), {self.path_a.pk, self.path_b.pk})
+
+    # --- critério de aceite (dados reais) ---
+
+    def test_acceptance_criteria_fiber_preterminated_two_paths_generates_fourteen_tasks(self):
+        family = CableFamily.objects.get(code="FIB-8F-LCLC")
+        path_a = Path.objects.get(code="PATH-A")
+        path_b = Path.objects.get(code="PATH-B")
+
+        scope_item = ScopeItem.objects.create(
+            raw_text="16x 8F LC-LC", item_type="CABLE", cable_family=family, quantity=16, expansion_mode="PATH"
+        )
+        ScopeItemPath.objects.create(scope_item=scope_item, path=path_a, sequence=0)
+        ScopeItemPath.objects.create(scope_item=scope_item, path=path_b, sequence=1)
+
+        resolve_response = self.client_api.post(f"/api/master-data/scope-items/{scope_item.pk}/resolve-template/")
+        self.assertEqual(resolve_response.status_code, 200, resolve_response.data)
+        self.assertEqual(resolve_response.data["selected_template"]["code"], "TPL-FIBER-PRETERMINATED")
+
+        first = self.generate(scope_item.pk)
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.data["created_count"], 14)
+        self.assertEqual(first.data["existing_count"], 0)
+
+        second = self.generate(scope_item.pk)
+        self.assertEqual(second.data["created_count"], 0)
+        self.assertEqual(second.data["existing_count"], 14)
+        self.assertEqual(len(second.data["created_dependencies"]), 0)
+        self.assertEqual(len(second.data["existing_dependencies"]), 14)
+
+        self.assertEqual(GeneratedTask.objects.filter(scope_item=scope_item).count(), 14)

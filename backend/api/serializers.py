@@ -26,10 +26,12 @@ from master_data.models import (
     CertificationType,
     DeviceType,
     GeneratedTask,
+    GeneratedTaskDependency,
     Location,
     Network,
     Path,
     ScopeItem,
+    ScopeItemPath,
     TaskTemplate,
     TaskTemplateRule,
     TaskTemplateStep,
@@ -723,6 +725,16 @@ class ScopeItemCrudSerializer(serializers.ModelSerializer):
     resolved_template_name = serializers.SerializerMethodField()
     rule_resolution_status = serializers.CharField(read_only=True)
     normalization_metadata = serializers.JSONField(read_only=True)
+    # tasks_outdated é só leitura de propósito — sinalizado pelo backend
+    # (ScopeItem.save()/ScopeItemPath.save()/delete()) quando
+    # expansion_mode/paths/resolved_template mudam depois que o item já
+    # tem GeneratedTasks; nunca setado diretamente pelo formulário.
+    tasks_outdated = serializers.BooleanField(read_only=True)
+    # Rotas adicionais (ScopeItemPath) — lido E escrito como uma lista de
+    # ids de Path (mesmo formato de um campo multiselect comum no
+    # frontend); a sincronização de fato (criar/reativar/desativar
+    # ScopeItemPath) acontece em create()/update() via _sync_paths().
+    paths = serializers.PrimaryKeyRelatedField(queryset=Path.objects.all(), many=True, required=False)
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
 
@@ -769,6 +781,9 @@ class ScopeItemCrudSerializer(serializers.ModelSerializer):
             "resolved_template_code",
             "resolved_template_name",
             "rule_resolution_status",
+            "expansion_mode",
+            "tasks_outdated",
+            "paths",
             "created_at",
             "updated_at",
             "created_by_name",
@@ -825,6 +840,12 @@ class ScopeItemCrudSerializer(serializers.ModelSerializer):
         return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
 
     def validate(self, attrs):
+        # "paths" não é um campo real do model (é uma @property só
+        # leitura) — tira do dict antes do setattr genérico abaixo (que
+        # quebraria tentando atribuir a uma property sem setter) e devolve
+        # depois, para create()/update() sincronizarem via _sync_paths().
+        paths = attrs.pop("paths", None)
+
         # Reaproveita ScopeItem.clean() (que chama
         # master_data.services.scope_item_normalizer.normalize_scope_item)
         # em vez de duplicar a regra aqui — mesmo padrão de
@@ -843,7 +864,47 @@ class ScopeItemCrudSerializer(serializers.ModelSerializer):
         attrs["cable_family"] = instance.cable_family
         attrs["medium"] = instance.medium
         attrs["normalization_metadata"] = instance.normalization_metadata
+        if paths is not None:
+            attrs["paths"] = paths
         return attrs
+
+    def create(self, validated_data):
+        paths = validated_data.pop("paths", None)
+        instance = super().create(validated_data)
+        if paths is not None:
+            self._sync_paths(instance, paths)
+        return instance
+
+    def update(self, instance, validated_data):
+        paths = validated_data.pop("paths", None)
+        instance = super().update(instance, validated_data)
+        if paths is not None:
+            self._sync_paths(instance, paths)
+        return instance
+
+    def _sync_paths(self, instance, paths):
+        """Cria/reativa/desativa ScopeItemPath conforme a lista de Path
+        submetida — nunca deleta fisicamente (mesmo padrão "sem hard
+        delete" do resto do módulo). Desativar/reativar aqui já dispara
+        ScopeItemPath.save()/delete(), que marcam tasks_outdated quando o
+        item já tem GeneratedTasks."""
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        existing = {sip.path_id: sip for sip in instance.scope_item_paths.all()}
+        desired_ids = {path.pk for path in paths}
+        for path in paths:
+            sip = existing.get(path.pk)
+            if sip is None:
+                ScopeItemPath.objects.create(scope_item=instance, path=path, created_by=user, updated_by=user)
+            elif not sip.active:
+                sip.active = True
+                sip.updated_by = user
+                sip.save(update_fields=("active", "updated_by", "updated_at"))
+        for path_id, sip in existing.items():
+            if path_id not in desired_ids and sip.active:
+                sip.active = False
+                sip.updated_by = user
+                sip.save(update_fields=("active", "updated_by", "updated_at"))
 
 
 class GeneratedTaskCrudSerializer(serializers.ModelSerializer):
@@ -861,6 +922,9 @@ class GeneratedTaskCrudSerializer(serializers.ModelSerializer):
     task_template_name = serializers.CharField(source="task_template.name", read_only=True)
     activity_code = serializers.CharField(source="activity.code", read_only=True)
     activity_name = serializers.CharField(source="activity.name", read_only=True)
+    path_code = serializers.SerializerMethodField()
+    path_name = serializers.SerializerMethodField()
+    expansion_key = serializers.CharField(read_only=True)
     step_order = serializers.IntegerField(read_only=True)
     required = serializers.BooleanField(read_only=True)
     repeatable = serializers.BooleanField(read_only=True)
@@ -879,6 +943,9 @@ class GeneratedTaskCrudSerializer(serializers.ModelSerializer):
             "task_template_name",
             "activity_code",
             "activity_name",
+            "path_code",
+            "path_name",
+            "expansion_key",
             "step_order",
             "name",
             "quantity",
@@ -896,11 +963,51 @@ class GeneratedTaskCrudSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("code", "created_at", "updated_at")
 
+    def get_path_code(self, obj):
+        return obj.path.code if obj.path_id else None
+
+    def get_path_name(self, obj):
+        return obj.path.name if obj.path_id else None
+
     def get_created_by_name(self, obj):
         return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
 
     def get_updated_by_name(self, obj):
         return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+
+class GeneratedTaskDependencyCrudSerializer(serializers.ModelSerializer):
+    """Dependências entre GeneratedTasks — gerada automaticamente por
+    master_data.services.task_dependency_generator (nunca manualmente
+    nesta primeira versão, ver GeneratedTaskDependencyViewSet, que é
+    somente leitura). Usado tanto para listar todas as dependências de um
+    ScopeItem quanto para as seções "Predecessoras"/"Sucessoras" de uma
+    GeneratedTask específica."""
+
+    predecessor_task_code = serializers.CharField(source="predecessor_task.code", read_only=True)
+    predecessor_task_name = serializers.CharField(source="predecessor_task.name", read_only=True)
+    successor_task_code = serializers.CharField(source="successor_task.code", read_only=True)
+    successor_task_name = serializers.CharField(source="successor_task.name", read_only=True)
+
+    class Meta:
+        model = GeneratedTaskDependency
+        fields = (
+            "id",
+            "predecessor_task",
+            "predecessor_task_code",
+            "predecessor_task_name",
+            "successor_task",
+            "successor_task_code",
+            "successor_task_name",
+            "dependency_type",
+            "lag_value",
+            "lag_unit",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
 
 
 class ProjectTypeCrudSerializer(serializers.ModelSerializer):

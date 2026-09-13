@@ -40,6 +40,7 @@ from master_data.models import (
     CertificationType,
     DeviceType,
     GeneratedTask,
+    GeneratedTaskDependency,
     Location,
     Network,
     Path,
@@ -50,6 +51,7 @@ from master_data.models import (
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
+from master_data.services.task_dependency_generator import generate_dependencies_for_scope_item
 from master_data.services.task_generator import TaskGenerationError, generate_tasks_for_scope_item
 from master_data.services.task_rule_resolver import (
     TaskRuleResolutionError,
@@ -98,6 +100,7 @@ from .serializers import (
     TaskTemplateRuleSimulateSerializer,
     ScopeItemCrudSerializer,
     GeneratedTaskCrudSerializer,
+    GeneratedTaskDependencyCrudSerializer,
     LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
@@ -1309,9 +1312,23 @@ class ScopeItemViewSet(RequireChangePermissionForActions, RegistryViewSet):
         except TaskGenerationError as exc:
             return Response({"detail": str(exc)}, status=400)
 
+        # Gera as dependências SÓ depois de garantir que as tarefas já
+        # existem (o dependency_generator lê GeneratedTask do banco, não
+        # os objetos recém-criados em memória) — nunca duplica, mesmo
+        # motivo de generate_tasks_for_scope_item.
+        dependency_result = generate_dependencies_for_scope_item(scope_item)
+
         created_data = GeneratedTaskCrudSerializer(result["created_tasks"], many=True).data
         existing_data = GeneratedTaskCrudSerializer(result["existing_tasks"], many=True).data
-        all_tasks = sorted(list(created_data) + list(existing_data), key=lambda t: t["step_order"])
+        all_tasks = sorted(
+            list(created_data) + list(existing_data), key=lambda t: (t["step_order"], t["expansion_key"])
+        )
+        created_dependencies_data = GeneratedTaskDependencyCrudSerializer(
+            dependency_result["created"], many=True
+        ).data
+        existing_dependencies_data = GeneratedTaskDependencyCrudSerializer(
+            dependency_result["existing"], many=True
+        ).data
         return Response(
             {
                 "scope_item_id": scope_item.pk,
@@ -1325,6 +1342,8 @@ class ScopeItemViewSet(RequireChangePermissionForActions, RegistryViewSet):
                 "created_tasks": created_data,
                 "existing_tasks": existing_data,
                 "tasks": all_tasks,
+                "created_dependencies": created_dependencies_data,
+                "existing_dependencies": existing_dependencies_data,
                 "warnings": result["warnings"],
             }
         )
@@ -1343,8 +1362,8 @@ class GeneratedTaskViewSet(RegistryViewSet):
     geração são somente leitura, ver GeneratedTaskCrudSerializer)."""
 
     queryset = GeneratedTask.objects.select_related(
-        "scope_item", "task_template", "task_template_step", "activity", "created_by", "updated_by"
-    ).order_by("scope_item__code", "step_order")
+        "scope_item", "task_template", "task_template_step", "activity", "path", "created_by", "updated_by"
+    ).order_by("scope_item__code", "step_order", "expansion_key")
     serializer_class = GeneratedTaskCrudSerializer
     search_fields = (
         "code",
@@ -1363,11 +1382,12 @@ class GeneratedTaskViewSet(RegistryViewSet):
             ("scope_item", "scope_item_id"),
             ("task_template", "task_template_id"),
             ("activity", "activity_id"),
+            ("path", "path_id"),
         ):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{field: value})
-        for param in ("status", "generation_source"):
+        for param in ("status", "generation_source", "expansion_key"):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{param: value})
@@ -1399,6 +1419,36 @@ class GeneratedTaskViewSet(RegistryViewSet):
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
+
+
+class GeneratedTaskDependencyViewSet(viewsets.ReadOnlyModelViewSet):
+    """Dependências entre GeneratedTasks — geradas automaticamente por
+    master_data.services.task_dependency_generator (chamado a partir de
+    ScopeItemViewSet.generate_tasks), nunca criadas/editadas manualmente
+    nesta primeira versão: só GET/list/detail, para não arriscar quebrar o
+    DAG com um POST irrestrito (ver GeneratedTaskDependency.clean(), que
+    já valida auto-dependência e ciclo para quando uma edição
+    administrativa for permitida numa fase futura). Usado pela tela de
+    Tarefas Geradas para mostrar Predecessoras/Sucessoras de uma tarefa, e
+    também para listar todas as dependências de um Item de Escopo."""
+
+    permission_classes = [ViewAwareModelPermissions]
+    queryset = GeneratedTaskDependency.objects.select_related("predecessor_task", "successor_task").order_by(
+        "predecessor_task__step_order", "successor_task__step_order"
+    )
+    serializer_class = GeneratedTaskDependencyCrudSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param, field in (
+            ("predecessor_task", "predecessor_task_id"),
+            ("successor_task", "successor_task_id"),
+            ("scope_item", "predecessor_task__scope_item_id"),
+        ):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{field: value})
+        return queryset
 
 
 class ProjectTypeViewSet(RegistryViewSet):

@@ -47,6 +47,11 @@ router.register("master-data/task-template-steps", views.TaskTemplateStepViewSet
 router.register("master-data/task-template-rules", views.TaskTemplateRuleViewSet, basename="master-data-task-template-rule")
 router.register("master-data/scope-items", views.ScopeItemViewSet, basename="master-data-scope-item")
 router.register("master-data/generated-tasks", views.GeneratedTaskViewSet, basename="master-data-generated-task")
+router.register(
+    "master-data/generated-task-dependencies",
+    views.GeneratedTaskDependencyViewSet,
+    basename="master-data-generated-task-dependency",
+)
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),

@@ -828,6 +828,7 @@ class ScopeItem(MasterDataModel):
     LENGTH_TYPE_SUGGESTIONS = ("EXACT", "MAXIMUM", "MINIMUM", "RANGE", "UNKNOWN")
     SOURCE_TYPE_SUGGESTIONS = ("SOW", "CUTSHEET", "MANUAL", "AI", "IMPORT")
     RULE_RESOLUTION_STATUS_SUGGESTIONS = ("NOT_RESOLVED", "RESOLVED", "NO_MATCH", "CONFLICT", "REVIEW_REQUIRED")
+    EXPANSION_MODE_SUGGESTIONS = ("NONE", "PATH", "MANUAL")
 
     # Gerado automaticamente em save() (ver abaixo) — não editável
     # diretamente, mesmo padrão de core.models.Task.code. blank=True (ao
@@ -966,6 +967,18 @@ class ScopeItem(MasterDataModel):
         "status da resolução", max_length=30, default="NOT_RESOLVED", editable=False
     )
 
+    # Texto livre (não ENUM/choices) de propósito — sugestões: NONE, PATH,
+    # MANUAL. Controla se um TaskTemplateStep repeatable=true gera uma
+    # única GeneratedTask (NONE/MANUAL, nesta etapa) ou uma por
+    # ScopeItemPath ativo (PATH) — ver master_data.services.task_generator.
+    expansion_mode = models.CharField("modo de expansão", max_length=20, default="NONE", blank=True)
+    # True quando expansion_mode, ScopeItemPaths ou resolved_template
+    # mudam DEPOIS que este item já tem GeneratedTasks — sinaliza que as
+    # tarefas existentes podem não refletir mais a configuração atual,
+    # sem apagá-las/regenerá-las automaticamente (ver save() abaixo e
+    # ScopeItemPath.save()/delete()).
+    tasks_outdated = models.BooleanField("tarefas desatualizadas", default=False)
+
     class Meta:
         verbose_name = "Item de Escopo"
         verbose_name_plural = "Itens de Escopo"
@@ -974,6 +987,14 @@ class ScopeItem(MasterDataModel):
     def __str__(self):
         return f"{self.code} — {self.name}" if self.name else self.code
 
+    @property
+    def paths(self):
+        """Paths ativos associados via ScopeItemPath (não confundir com o
+        campo `path` singular, mantido por compatibilidade)."""
+        return Path.objects.filter(
+            scope_item_path_entries__scope_item_id=self.pk, scope_item_path_entries__active=True
+        ).distinct()
+
     def clean(self):
         super().clean()
         try:
@@ -981,7 +1002,26 @@ class ScopeItem(MasterDataModel):
         except ScopeItemNormalizationError as exc:
             raise ValidationError({"cable_spec": str(exc)})
 
+    def _mark_tasks_outdated_if_needed(self, save_kwargs):
+        if not self.pk:
+            return
+        previous = ScopeItem.objects.filter(pk=self.pk).only("expansion_mode", "resolved_template_id").first()
+        if previous is None:
+            return
+        changed = (
+            previous.expansion_mode != self.expansion_mode
+            or previous.resolved_template_id != self.resolved_template_id
+        )
+        if not changed or self.tasks_outdated or not self.generated_tasks.exists():
+            return
+        self.tasks_outdated = True
+        update_fields = save_kwargs.get("update_fields")
+        if update_fields is not None:
+            save_kwargs["update_fields"] = list(set(update_fields) | {"tasks_outdated"})
+
     def save(self, *args, **kwargs):
+        self._mark_tasks_outdated_if_needed(kwargs)
+
         if self.code:
             return super().save(*args, **kwargs)
 
@@ -999,6 +1039,51 @@ class ScopeItem(MasterDataModel):
             sequence.save(update_fields=("last_number",))
             self.code = f"SCOPE-ITEM-{sequence.last_number:06d}"
             return super().save(*args, **kwargs)
+
+
+class ScopeItemPath(MasterDataModel):
+    """Uma Rota/Path adicional associada a um ScopeItem — permite que um
+    item tenha VÁRIOS paths (ex: PATH-A e PATH-B, para redundância),
+    complementando (não substituindo) o campo `ScopeItem.path` singular
+    mantido por compatibilidade. Usado por master_data.services.
+    task_generator quando ScopeItem.expansion_mode=PATH para expandir
+    TaskTemplateSteps repeatable=true em uma GeneratedTask por Path ativo."""
+
+    scope_item = models.ForeignKey(
+        ScopeItem, verbose_name="item de escopo", on_delete=models.PROTECT, related_name="scope_item_paths"
+    )
+    path = models.ForeignKey(
+        Path, verbose_name="rota/caminho", on_delete=models.PROTECT, related_name="scope_item_path_entries"
+    )
+    sequence = models.PositiveIntegerField("sequência", default=0)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Rota do Item de Escopo"
+        verbose_name_plural = "Rotas do Item de Escopo"
+        ordering = ("scope_item", "sequence", "path")
+        constraints = [
+            models.UniqueConstraint(fields=("scope_item", "path"), name="unique_scope_item_path"),
+        ]
+
+    def __str__(self):
+        return f"{self.scope_item.code} — {self.path.code}"
+
+    def _mark_scope_item_outdated(self):
+        if not self.scope_item.tasks_outdated and self.scope_item.generated_tasks.exists():
+            ScopeItem.objects.filter(pk=self.scope_item_id).update(tasks_outdated=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._mark_scope_item_outdated()
+
+    def delete(self, *args, **kwargs):
+        scope_item_id = self.scope_item_id
+        scope_item = self.scope_item
+        result = super().delete(*args, **kwargs)
+        if not scope_item.tasks_outdated and GeneratedTask.objects.filter(scope_item_id=scope_item_id).exists():
+            ScopeItem.objects.filter(pk=scope_item_id).update(tasks_outdated=True)
+        return result
 
 
 class GeneratedTaskSequence(models.Model):
@@ -1059,6 +1144,17 @@ class GeneratedTask(MasterDataModel):
     activity = models.ForeignKey(
         Activity, verbose_name="atividade", on_delete=models.PROTECT, related_name="generated_tasks"
     )
+    # Preenchido só quando esta tarefa é o resultado de uma expansão por
+    # Path (ver master_data.services.task_generator) — null/blank quando
+    # o step não foi expandido (expansion_key="DEFAULT").
+    path = models.ForeignKey(
+        Path,
+        verbose_name="rota/caminho",
+        on_delete=models.PROTECT,
+        related_name="generated_tasks",
+        null=True,
+        blank=True,
+    )
 
     # Snapshot no momento da geração — ver docstring da classe.
     step_order = models.PositiveIntegerField("ordem")
@@ -1067,6 +1163,11 @@ class GeneratedTask(MasterDataModel):
     unit = models.CharField("unidade", max_length=50, blank=True)
     required = models.BooleanField("obrigatória", default=True)
     repeatable = models.BooleanField("repetível", default=False)
+    # "DEFAULT" quando o step não foi expandido; código do Path (ex:
+    # "PATH-A") quando foi. Junto com (scope_item, task_template_step),
+    # forma a chave de idempotência da geração — permite mais de uma
+    # GeneratedTask por step quando ele é expandido.
+    expansion_key = models.CharField("chave de expansão", max_length=50, default="DEFAULT")
 
     # Texto livre (não ENUM/choices) de propósito — sugestões: TEMPLATE,
     # MANUAL, AI, IMPORT. A geração automática (única implementada nesta
@@ -1086,9 +1187,13 @@ class GeneratedTask(MasterDataModel):
         constraints = [
             # Idempotência da geração: clicar "Gerar Tarefas" de novo não
             # duplica — ver master_data.services.task_generator.
+            # expansion_key (não path, que aceita NULL) participa da
+            # chave: permite mais de uma GeneratedTask por
+            # (scope_item, task_template_step) quando o step é expandido
+            # por Path (uma por Path ativo).
             models.UniqueConstraint(
-                fields=("scope_item", "task_template_step"),
-                name="unique_generated_task_per_scope_item_step",
+                fields=("scope_item", "task_template_step", "expansion_key"),
+                name="unique_generated_task_per_scope_item_step_expansion",
             ),
         ]
 
@@ -1113,3 +1218,71 @@ class GeneratedTask(MasterDataModel):
             sequence.save(update_fields=("last_number",))
             self.code = f"TASK-GEN-{sequence.last_number:06d}"
             return super().save(*args, **kwargs)
+
+
+class GeneratedTaskDependency(MasterDataModel):
+    """Dependência entre duas GeneratedTasks do mesmo ScopeItem, gerada
+    automaticamente por master_data.services.task_dependency_generator a
+    partir da ordem dos TaskTemplateSteps (nunca criada manualmente nesta
+    primeira versão — a API é somente leitura, ver
+    GeneratedTaskDependencyViewSet). Quando um dos lados foi expandido por
+    Path, a conexão respeita a mesma expansion_key dos dois lados (nunca
+    Path A -> Path B)."""
+
+    DEPENDENCY_TYPE_SUGGESTIONS = ("FS", "SS", "FF", "SF")
+    LAG_UNIT_SUGGESTIONS = ("MINUTE", "HOUR", "DAY")
+
+    predecessor_task = models.ForeignKey(
+        GeneratedTask,
+        verbose_name="tarefa predecessora",
+        on_delete=models.PROTECT,
+        related_name="successor_dependencies",
+    )
+    successor_task = models.ForeignKey(
+        GeneratedTask,
+        verbose_name="tarefa sucessora",
+        on_delete=models.PROTECT,
+        related_name="predecessor_dependencies",
+    )
+    # Texto livre (não ENUM/choices) de propósito — sugestões: FS
+    # (finish-to-start), SS (start-to-start), FF (finish-to-finish), SF
+    # (start-to-finish). FS é a única gerada automaticamente nesta etapa.
+    dependency_type = models.CharField("tipo de dependência", max_length=10, default="FS")
+    lag_value = models.DecimalField("lag", max_digits=9, decimal_places=2, default=0)
+    # Texto livre (não ENUM/choices) de propósito — sugestões: MINUTE,
+    # HOUR, DAY.
+    lag_unit = models.CharField("unidade do lag", max_length=20, blank=True)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Dependência entre Tarefas Geradas"
+        verbose_name_plural = "Dependências entre Tarefas Geradas"
+        ordering = ("predecessor_task", "successor_task")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("predecessor_task", "successor_task", "dependency_type"),
+                name="unique_generated_task_dependency",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.predecessor_task.code} → {self.successor_task.code} ({self.dependency_type})"
+
+    def clean(self):
+        super().clean()
+        if not self.predecessor_task_id or not self.successor_task_id:
+            return
+        errors = {}
+        if self.predecessor_task_id == self.successor_task_id:
+            errors["successor_task"] = "Uma tarefa não pode depender de si mesma."
+        else:
+            from master_data.services.task_dependency_generator import would_create_cycle
+
+            if would_create_cycle(self.predecessor_task_id, self.successor_task_id, exclude_pk=self.pk):
+                errors["successor_task"] = (
+                    "Essa dependência criaria um ciclo — a tarefa sucessora já leva, direta ou "
+                    "indiretamente, de volta à predecessora."
+                )
+        if errors:
+            raise ValidationError(errors)

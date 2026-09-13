@@ -4,6 +4,7 @@ import { masterDataApi, sitesMapApi } from "../../api/resources";
 import type {
   CableAlias,
   CableSpec,
+  GeneratedTaskDependency,
   ScopeItemGenerateTasksResult,
   ScopeItemResolutionResult,
   TaskTemplateStep,
@@ -80,6 +81,11 @@ export default function EntityCrudPanel({
   const [generateTasksResult, setGenerateTasksResult] = useState<ScopeItemGenerateTasksResult | null>(null);
   const [generatingTasks, setGeneratingTasks] = useState(false);
   const [generateTasksError, setGenerateTasksError] = useState<string | null>(null);
+  // Só usado por Tarefas Geradas: dependências que apontam PARA (predecessoras)
+  // e que partem DE (sucessoras) a tarefa em edição.
+  const [taskPredecessors, setTaskPredecessors] = useState<GeneratedTaskDependency[]>([]);
+  const [taskSuccessors, setTaskSuccessors] = useState<GeneratedTaskDependency[]>([]);
+  const [taskDependenciesLoading, setTaskDependenciesLoading] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -173,6 +179,8 @@ export default function EntityCrudPanel({
     setScopeResolutionError(null);
     setGenerateTasksResult(null);
     setGenerateTasksError(null);
+    setTaskPredecessors([]);
+    setTaskSuccessors([]);
     setModalOpen(true);
   }
 
@@ -214,6 +222,21 @@ export default function EntityCrudPanel({
         .finally(() => setTemplateStepsLoading(false));
     } else {
       setTemplateSteps([]);
+    }
+    if (entity.key === "generated-tasks") {
+      setTaskDependenciesLoading(true);
+      Promise.all([
+        masterDataApi.generatedTaskDependencies.list({ successor_task: String(row.id) }),
+        masterDataApi.generatedTaskDependencies.list({ predecessor_task: String(row.id) }),
+      ])
+        .then(([predecessors, successors]) => {
+          setTaskPredecessors(predecessors.results);
+          setTaskSuccessors(successors.results);
+        })
+        .finally(() => setTaskDependenciesLoading(false));
+    } else {
+      setTaskPredecessors([]);
+      setTaskSuccessors([]);
     }
   }
 
@@ -516,6 +539,11 @@ export default function EntityCrudPanel({
           {formErrors.non_field_errors && (
             <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{formErrors.non_field_errors.join(" ")}</p>
           )}
+          {editingId && entity.key === "scope-items" && Boolean(formValues.tasks_outdated) && (
+            <p style={{ color: "var(--amber)", fontSize: 13, marginTop: 8 }}>
+              ⚠ As tarefas deste item de escopo podem estar desatualizadas.
+            </p>
+          )}
           {editingId && entity.key === "scope-items" && (
             <div style={{ marginTop: 8, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -633,9 +661,13 @@ export default function EntityCrudPanel({
               )}
               {generateTasksResult && (
                 <div>
-                  <p style={{ fontSize: 13, marginBottom: 8 }}>
-                    Criadas: <strong>{generateTasksResult.created_count}</strong> · Já existentes:{" "}
+                  <p style={{ fontSize: 13, marginBottom: 4 }}>
+                    Tarefas — Criadas: <strong>{generateTasksResult.created_count}</strong> · Já existentes:{" "}
                     <strong>{generateTasksResult.existing_count}</strong>
+                  </p>
+                  <p style={{ fontSize: 13, marginBottom: 8 }}>
+                    Dependências — Criadas: <strong>{generateTasksResult.created_dependencies.length}</strong> · Já
+                    existentes: <strong>{generateTasksResult.existing_dependencies.length}</strong>
                   </p>
                   {generateTasksResult.warnings.length > 0 &&
                     generateTasksResult.warnings.map((w, i) => (
@@ -650,6 +682,7 @@ export default function EntityCrudPanel({
                           <th>Ordem</th>
                           <th>Atividade</th>
                           <th>Tarefa</th>
+                          <th>Path</th>
                           <th>Quantidade</th>
                           <th>Unidade</th>
                           <th>Status</th>
@@ -661,6 +694,7 @@ export default function EntityCrudPanel({
                             <td>{t.step_order}</td>
                             <td>{t.activity_code}</td>
                             <td>{t.name}</td>
+                            <td>{t.path_code || "—"}</td>
                             <td>{t.quantity ?? "—"}</td>
                             <td>{t.unit || "—"}</td>
                             <td>{t.status}</td>
@@ -675,6 +709,61 @@ export default function EntityCrudPanel({
                 Gera uma Tarefa Gerada por etapa ativa do template resolvido — clicar de novo não duplica. Consulte
                 Planejamento &gt; Tarefas Geradas para o histórico completo.
               </p>
+            </div>
+          )}
+          {editingId && entity.key === "generated-tasks" && (
+            <div style={{ marginTop: 8, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--text-faint)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: 8,
+                }}
+              >
+                Predecessoras ({taskPredecessors.length})
+              </div>
+              {taskDependenciesLoading ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+              ) : taskPredecessors.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhuma dependência predecessora.</p>
+              ) : (
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text)" }}>
+                  {taskPredecessors.map((d) => (
+                    <li key={d.id}>
+                      {d.predecessor_task_code} — {d.predecessor_task_name} ({d.dependency_type})
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--text-faint)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginTop: 14,
+                  marginBottom: 8,
+                }}
+              >
+                Sucessoras ({taskSuccessors.length})
+              </div>
+              {taskDependenciesLoading ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+              ) : taskSuccessors.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhuma dependência sucessora.</p>
+              ) : (
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text)" }}>
+                  {taskSuccessors.map((d) => (
+                    <li key={d.id}>
+                      {d.successor_task_code} — {d.successor_task_name} ({d.dependency_type})
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
           {editingId && entity.key === "cable-families" && (

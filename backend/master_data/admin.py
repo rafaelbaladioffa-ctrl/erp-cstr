@@ -10,11 +10,13 @@ from .models import (
     CableSpec,
     CertificationType,
     DeviceType,
+    GeneratedTask,
+    GeneratedTaskDependency,
     Location,
     Network,
-    GeneratedTask,
     Path,
     ScopeItem,
+    ScopeItemPath,
     Site,
     TaskTemplate,
     TaskTemplateRule,
@@ -265,6 +267,8 @@ class GeneratedTaskAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, Mod
         "step_order",
         "activity",
         "name",
+        "path",
+        "expansion_key",
         "quantity",
         "unit",
         "status",
@@ -272,7 +276,7 @@ class GeneratedTaskAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, Mod
         "active",
         "updated_at",
     )
-    list_filter = ("status", "generation_source", "active")
+    list_filter = ("status", "generation_source", "expansion_key", "active")
     search_fields = (
         "code",
         "name",
@@ -282,7 +286,7 @@ class GeneratedTaskAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, Mod
         "activity__name",
         "task_template__code",
     )
-    autocomplete_fields = ("scope_item", "task_template", "task_template_step", "activity")
+    autocomplete_fields = ("scope_item", "task_template", "task_template_step", "activity", "path")
     readonly_fields = (
         "created_at",
         "updated_at",
@@ -292,10 +296,12 @@ class GeneratedTaskAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, Mod
         "task_template",
         "task_template_step",
         "activity",
+        "path",
         "step_order",
         "required",
         "repeatable",
         "generation_source",
+        "expansion_key",
     )
 
     def has_add_permission(self, request):
@@ -305,6 +311,49 @@ class GeneratedTaskAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, Mod
         return False
 
     def save_model(self, request, obj, form, change):
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(ScopeItemPath)
+class ScopeItemPathAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("scope_item", "path", "sequence", "active", "updated_at")
+    list_filter = ("active",)
+    search_fields = ("scope_item__code", "path__code", "path__name")
+    autocomplete_fields = ("scope_item", "path")
+    readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(GeneratedTaskDependency)
+class GeneratedTaskDependencyAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = (
+        "predecessor_task",
+        "successor_task",
+        "dependency_type",
+        "lag_value",
+        "lag_unit",
+        "active",
+        "updated_at",
+    )
+    list_filter = ("dependency_type", "active")
+    search_fields = (
+        "predecessor_task__code",
+        "predecessor_task__name",
+        "successor_task__code",
+        "successor_task__name",
+    )
+    autocomplete_fields = ("predecessor_task", "successor_task")
+    readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
         obj.updated_by = request.user
         super().save_model(request, obj, form, change)
 
