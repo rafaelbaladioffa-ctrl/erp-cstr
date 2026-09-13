@@ -130,7 +130,7 @@ export default function MasterDataPage() {
 
           <div style={{ flex: 1, minWidth: 0 }}>
             {activeEntity ? (
-              <EntityCrudPanel entity={activeEntity} refs={refs} refsLoaded={refsLoaded} />
+              <EntityCrudPanel key={activeEntity.key} entity={activeEntity} refs={refs} refsLoaded={refsLoaded} />
             ) : (
               <div className="empty-state">Selecione um cadastro na lista ao lado.</div>
             )}

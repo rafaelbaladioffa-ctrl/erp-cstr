@@ -138,6 +138,7 @@ export default function CadastrosPage() {
 
   return (
     <EntityCrudPanel
+      key={entity.key}
       entity={entity}
       refs={refs}
       refsLoaded={refsLoaded}
