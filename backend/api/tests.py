@@ -27,6 +27,7 @@ from master_data.models import (
     Location,
     Network,
     Path,
+    ScopeItem,
     TaskTemplate,
     TaskTemplateRule,
     TaskTemplateStep,
@@ -3870,3 +3871,313 @@ class TaskTemplateRuleSimulatorTests(TestCase):
         self.assertEqual(criteria_names, {"cable_family", "cable_spec", "network", "workstream", "medium", "preterminated"})
         family_check = next(c for c in selected_match["checks"] if c["criterion"] == "cable_family")
         self.assertEqual(family_check["result"], "MATCH")
+
+
+class ScopeItemApiTests(TestCase):
+    """Planejamento > Itens de Escopo — CRUD, derivações (normalizer),
+    resolução via Rule Resolver (resolve-template/resolve-all), busca,
+    filtros, ativação/inativação, CSV e os 3 seeds de teste (0032_seed_
+    scope_items) que exercitam o fluxo completo até TaskTemplateStep."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="scope_item_admin", email="scope_item@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de
+        # Cadastros Mestres: o seed real (0032_seed_scope_items) roda
+        # também no banco de testes (3 itens).
+        self.family = CableFamily.objects.create(code="TST-SI-FAM", name="Família de teste", medium="FIBER")
+        self.other_family = CableFamily.objects.create(code="TST-SI-FAM-OTHER", name="Outra família", medium="FIBER")
+        self.spec = CableSpec.objects.create(code="TST-SI-SPEC", name="Spec de teste", cable_family=self.family)
+        self.other_family_spec = CableSpec.objects.create(
+            code="TST-SI-SPEC-OTHER", name="Spec de outra família", cable_family=self.other_family
+        )
+        self.template = TaskTemplate.objects.create(code="TST-SI-TPL", name="Template de teste", category="TEST_CATEGORY")
+        self.rule = TaskTemplateRule.objects.create(
+            code="TST-SI-RULE", name="Regra de teste", task_template=self.template, cable_family=self.family, priority=10
+        )
+
+    def test_raw_text_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/scope-items/", {"item_type": "CABLE"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("raw_text", response.data)
+
+    def test_item_type_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/scope-items/", {"raw_text": "algum texto"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("item_type", response.data)
+
+    def test_quantity_must_be_positive(self):
+        response = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {"raw_text": "texto", "item_type": "CABLE", "quantity": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("quantity", response.data)
+
+    def test_quantity_defaults_to_one(self):
+        item = ScopeItem.objects.create(raw_text="texto", item_type="CABLE")
+        self.assertEqual(item.quantity, 1)
+
+    def test_length_m_must_be_non_negative(self):
+        response = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {"raw_text": "texto", "item_type": "CABLE", "length_m": "-5"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("length_m", response.data)
+
+    def test_confidence_score_must_be_between_zero_and_one(self):
+        too_high = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {"raw_text": "texto", "item_type": "CABLE", "confidence_score": "1.50"},
+            format="json",
+        )
+        self.assertEqual(too_high.status_code, 400)
+        self.assertIn("confidence_score", too_high.data)
+
+        too_low = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {"raw_text": "texto", "item_type": "CABLE", "confidence_score": "-0.10"},
+            format="json",
+        )
+        self.assertEqual(too_low.status_code, 400)
+        self.assertIn("confidence_score", too_low.data)
+
+        valid = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {"raw_text": "texto", "item_type": "CABLE", "confidence_score": "0.97"},
+            format="json",
+        )
+        self.assertEqual(valid.status_code, 201, valid.data)
+
+    def test_code_is_auto_generated_and_unique(self):
+        first = ScopeItem.objects.create(raw_text="texto 1", item_type="CABLE")
+        second = ScopeItem.objects.create(raw_text="texto 2", item_type="CABLE")
+        self.assertTrue(first.code.startswith("SCOPE-ITEM-"))
+        self.assertNotEqual(first.code, second.code)
+
+    def test_spec_compatible_with_family_is_accepted(self):
+        response = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {
+                "raw_text": "texto",
+                "item_type": "CABLE",
+                "cable_family": self.family.pk,
+                "cable_spec": self.spec.pk,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_spec_incompatible_with_family_is_rejected(self):
+        response = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {
+                "raw_text": "texto",
+                "item_type": "CABLE",
+                "cable_family": self.family.pk,
+                "cable_spec": self.other_family_spec.pk,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cable_spec", response.data)
+
+    def test_cable_family_derived_from_cable_spec(self):
+        response = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {"raw_text": "texto", "item_type": "CABLE", "cable_spec": self.spec.pk},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        item = ScopeItem.objects.get(pk=response.data["id"])
+        self.assertEqual(item.cable_family_id, self.family.pk)
+        self.assertEqual(item.normalization_metadata.get("cable_family"), {"source": "cable_spec", "derived": True})
+
+    def test_medium_derived_from_cable_family(self):
+        response = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {"raw_text": "texto", "item_type": "CABLE", "cable_family": self.family.pk},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        item = ScopeItem.objects.get(pk=response.data["id"])
+        self.assertEqual(item.medium, "FIBER")
+        self.assertEqual(item.normalization_metadata.get("medium"), {"source": "cable_family", "derived": True})
+
+    def test_medium_not_derived_when_already_informed(self):
+        response = self.client_api.post(
+            "/api/master-data/scope-items/",
+            {"raw_text": "texto", "item_type": "CABLE", "cable_family": self.family.pk, "medium": "MIXED"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        item = ScopeItem.objects.get(pk=response.data["id"])
+        self.assertEqual(item.medium, "MIXED")
+        self.assertNotIn("medium", item.normalization_metadata)
+
+    def test_cable_family_foreign_key_is_protected(self):
+        ScopeItem.objects.create(raw_text="texto", item_type="CABLE", cable_family=self.family)
+        with self.assertRaises(ProtectedError):
+            self.family.delete()
+
+    def test_resolve_template_sets_resolved_and_status(self):
+        item = ScopeItem.objects.create(raw_text="texto", item_type="CABLE", cable_family=self.family)
+        response = self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["rule_resolution_status"], "RESOLVED")
+        self.assertEqual(response.data["selected_rule"]["code"], "TST-SI-RULE")
+        self.assertEqual(response.data["selected_template"]["code"], "TST-SI-TPL")
+        item.refresh_from_db()
+        self.assertEqual(item.resolved_rule_id, self.rule.pk)
+        self.assertEqual(item.resolved_template_id, self.template.pk)
+        self.assertEqual(item.rule_resolution_status, "RESOLVED")
+
+    def test_resolve_template_no_match(self):
+        item = ScopeItem.objects.create(raw_text="texto", item_type="CABLE", medium="MIXED")
+        response = self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["rule_resolution_status"], "NO_MATCH")
+        self.assertIsNone(response.data["selected_rule"])
+        self.assertIsNone(response.data["selected_template"])
+        item.refresh_from_db()
+        self.assertIsNone(item.resolved_rule)
+        self.assertIsNone(item.resolved_template)
+        self.assertEqual(item.rule_resolution_status, "NO_MATCH")
+
+    def test_resolve_all_resolves_pending_active_items(self):
+        ScopeItem.objects.create(raw_text="texto 1", item_type="CABLE", cable_family=self.family)
+        ScopeItem.objects.create(raw_text="texto 2", item_type="CABLE", medium="MIXED")
+        ScopeItem.objects.create(raw_text="texto 3", item_type="CABLE", cable_family=self.family, active=False)
+
+        response = self.client_api.post("/api/master-data/scope-items/resolve-all/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        # +3 pelo seed real (0032_seed_scope_items), que também roda no
+        # banco de testes e começa NOT_RESOLVED (os 3 itens seedados têm
+        # cable_family/medium que casam com regras reais, então resolvem).
+        self.assertEqual(response.data["resolved"], 1 + 3)
+        self.assertEqual(response.data["no_match"], 1)
+        self.assertEqual(response.data["total"], 2 + 3)
+
+    def test_deactivate_does_not_hard_delete(self):
+        item = ScopeItem.objects.create(raw_text="texto", item_type="CABLE", active=True)
+        response = self.client_api.patch(f"/api/master-data/scope-items/{item.pk}/", {"active": False}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(ScopeItem.objects.filter(pk=item.pk).exists())
+        item.refresh_from_db()
+        self.assertFalse(item.active)
+
+    def test_search_by_raw_text(self):
+        ScopeItem.objects.create(raw_text="texto muito específico de busca", item_type="CABLE")
+        response = self.client_api.get("/api/master-data/scope-items/", {"search": "muito específico"})
+        self.assertEqual(response.data["count"], 1)
+
+    def test_filter_by_item_type(self):
+        ScopeItem.objects.create(raw_text="texto cabo", item_type="CABLE")
+        ScopeItem.objects.create(raw_text="texto hardware", item_type="HARDWARE")
+        response = self.client_api.get("/api/master-data/scope-items/", {"item_type": "HARDWARE"})
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["item_type"], "HARDWARE")
+
+    def test_filter_by_cable_family(self):
+        ScopeItem.objects.create(raw_text="texto 1", item_type="CABLE", cable_family=self.family)
+        ScopeItem.objects.create(raw_text="texto 2", item_type="CABLE", cable_family=self.other_family)
+        response = self.client_api.get("/api/master-data/scope-items/", {"cable_family": self.family.pk})
+        self.assertEqual(response.data["count"], 1)
+
+    def test_filter_by_rule_resolution_status(self):
+        item = ScopeItem.objects.create(raw_text="texto", item_type="CABLE", cable_family=self.family)
+        self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        response = self.client_api.get("/api/master-data/scope-items/", {"rule_resolution_status": "RESOLVED"})
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], item.code)
+
+    def test_export_csv(self):
+        ScopeItem.objects.create(raw_text="texto exportável TST-SI-EXPORT", item_type="CABLE")
+        response = self.client_api.get("/api/master-data/scope-items/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-SI-EXPORT", content)
+
+    def test_import_csv_creates_item_with_auto_generated_code(self):
+        # "quantidade" incluída explicitamente: o importador genérico
+        # (core.csv_io) monta o objeto a partir de TODAS as colunas de
+        # get_csv_fields(), então uma coluna numérica ausente vira None
+        # (não o default do model) — quantity é NOT NULL, então
+        # full_clean() rejeitaria None se a coluna fosse omitida.
+        csv_content = "tipo;texto original;quantidade\nCABLE;TST-SI-IMPORTED raw text;3\n"
+        upload = SimpleUploadedFile("scope_items.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post("/api/master-data/scope-items/import-csv/", {"csv_file": upload}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 1)
+        self.assertEqual(response.data["errors"], [])
+        imported = ScopeItem.objects.get(raw_text__icontains="TST-SI-IMPORTED")
+        self.assertTrue(imported.code.startswith("SCOPE-ITEM-"))
+        self.assertEqual(imported.quantity, 3)
+
+    # --- Seeds (0032_seed_scope_items) e critérios de aceite ---
+
+    def test_seed_scope_items_have_expected_fields(self):
+        item1 = ScopeItem.objects.get(code="SCOPE-ITEM-000001")
+        self.assertEqual(item1.cable_family.code, "FIB-72F-MPOB")
+        self.assertEqual(item1.cable_spec.code, "SPEC-72F-MPOB-0072X6P64")
+        self.assertEqual(item1.quantity, 2)
+        self.assertEqual(item1.length_m, 50)
+        self.assertEqual(item1.medium, "FIBER")
+
+        item2 = ScopeItem.objects.get(code="SCOPE-ITEM-000002")
+        self.assertEqual(item2.cable_family.code, "COP-CAT6")
+        self.assertEqual(item2.quantity, 10)
+        self.assertEqual(item2.length_m, 60)
+        self.assertFalse(item2.preterminated)
+
+        item3 = ScopeItem.objects.get(code="SCOPE-ITEM-000003")
+        self.assertEqual(item3.cable_family.code, "FIB-2F-ROBUST")
+        self.assertEqual(item3.quantity, 4)
+
+    def test_resolve_seed_item_fiber_mpo(self):
+        item = ScopeItem.objects.get(code="SCOPE-ITEM-000001")
+        response = self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["rule_resolution_status"], "RESOLVED")
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-FIB-72F-MPOB")
+        self.assertEqual(response.data["selected_template"]["code"], "TPL-FIBER-MPO")
+        self.assertEqual(len(response.data["steps"]), 9)
+
+    def test_resolve_seed_item_cat6_field(self):
+        item = ScopeItem.objects.get(code="SCOPE-ITEM-000002")
+        response = self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["rule_resolution_status"], "RESOLVED")
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-CAT6-FIELD")
+        self.assertEqual(response.data["selected_template"]["code"], "TPL-COPPER-FIELD-TERMINATED")
+        self.assertEqual(len(response.data["steps"]), 12)
+
+    def test_resolve_seed_item_robust(self):
+        item = ScopeItem.objects.get(code="SCOPE-ITEM-000003")
+        response = self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["rule_resolution_status"], "RESOLVED")
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-FIB-2F-ROBUST")
+        self.assertEqual(response.data["selected_template"]["code"], "TPL-FIBER-ROBUST")
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0032_seed_scope_items")
+        count_before = ScopeItem.objects.count()
+        module.seed_scope_items(django_apps, None)
+        module.seed_scope_items(django_apps, None)
+        self.assertEqual(ScopeItem.objects.count(), count_before)

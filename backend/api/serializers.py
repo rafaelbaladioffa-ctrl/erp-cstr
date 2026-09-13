@@ -28,6 +28,7 @@ from master_data.models import (
     Location,
     Network,
     Path,
+    ScopeItem,
     TaskTemplate,
     TaskTemplateRule,
     TaskTemplateStep,
@@ -695,6 +696,152 @@ class TaskTemplateRuleSimulateSerializer(serializers.Serializer):
         )
         if not has_criterion:
             raise serializers.ValidationError("Informe ao menos um critério para simular.")
+        return attrs
+
+
+class ScopeItemCrudSerializer(serializers.ModelSerializer):
+    """Planejamento > Itens de Escopo. `resolved_rule`/`resolved_template`/
+    `rule_resolution_status`/`normalization_metadata` são só leitura —
+    nunca escritos pelo formulário normal, só pela action `resolve-template`
+    (ScopeItemViewSet.resolve_template), que usa
+    master_data.services.task_rule_resolver.apply_resolution_to_scope_item."""
+
+    cable_family_code = serializers.SerializerMethodField()
+    cable_family_name = serializers.SerializerMethodField()
+    cable_spec_code = serializers.SerializerMethodField()
+    cable_spec_part_number = serializers.SerializerMethodField()
+    network_code = serializers.SerializerMethodField()
+    network_name = serializers.SerializerMethodField()
+    workstream_code = serializers.SerializerMethodField()
+    workstream_name = serializers.SerializerMethodField()
+    path_code = serializers.SerializerMethodField()
+    path_name = serializers.SerializerMethodField()
+    resolved_rule_code = serializers.SerializerMethodField()
+    resolved_rule_name = serializers.SerializerMethodField()
+    resolved_template_code = serializers.SerializerMethodField()
+    resolved_template_name = serializers.SerializerMethodField()
+    rule_resolution_status = serializers.CharField(read_only=True)
+    normalization_metadata = serializers.JSONField(read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScopeItem
+        fields = (
+            "id",
+            "code",
+            "name",
+            "item_type",
+            "cable_family",
+            "cable_family_code",
+            "cable_family_name",
+            "cable_spec",
+            "cable_spec_code",
+            "cable_spec_part_number",
+            "network",
+            "network_code",
+            "network_name",
+            "workstream",
+            "workstream_code",
+            "workstream_name",
+            "path",
+            "path_code",
+            "path_name",
+            "quantity",
+            "unit",
+            "length_type",
+            "length_m",
+            "medium",
+            "preterminated",
+            "color",
+            "fiber_count",
+            "raw_text",
+            "source_type",
+            "source_reference",
+            "confidence_score",
+            "requires_review",
+            "description",
+            "active",
+            "normalization_metadata",
+            "resolved_rule_code",
+            "resolved_rule_name",
+            "resolved_template_code",
+            "resolved_template_name",
+            "rule_resolution_status",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("code", "created_at", "updated_at")
+
+    def get_cable_family_code(self, obj):
+        return obj.cable_family.code if obj.cable_family_id else None
+
+    def get_cable_family_name(self, obj):
+        return obj.cable_family.name if obj.cable_family_id else None
+
+    def get_cable_spec_code(self, obj):
+        return obj.cable_spec.code if obj.cable_spec_id else None
+
+    def get_cable_spec_part_number(self, obj):
+        return obj.cable_spec.part_number if obj.cable_spec_id else None
+
+    def get_network_code(self, obj):
+        return obj.network.code if obj.network_id else None
+
+    def get_network_name(self, obj):
+        return obj.network.name if obj.network_id else None
+
+    def get_workstream_code(self, obj):
+        return obj.workstream.code if obj.workstream_id else None
+
+    def get_workstream_name(self, obj):
+        return obj.workstream.name if obj.workstream_id else None
+
+    def get_path_code(self, obj):
+        return obj.path.code if obj.path_id else None
+
+    def get_path_name(self, obj):
+        return obj.path.name if obj.path_id else None
+
+    def get_resolved_rule_code(self, obj):
+        return obj.resolved_rule.code if obj.resolved_rule_id else None
+
+    def get_resolved_rule_name(self, obj):
+        return obj.resolved_rule.name if obj.resolved_rule_id else None
+
+    def get_resolved_template_code(self, obj):
+        return obj.resolved_template.code if obj.resolved_template_id else None
+
+    def get_resolved_template_name(self, obj):
+        return obj.resolved_template.name if obj.resolved_template_id else None
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+    def validate(self, attrs):
+        # Reaproveita ScopeItem.clean() (que chama
+        # master_data.services.scope_item_normalizer.normalize_scope_item)
+        # em vez de duplicar a regra aqui — mesmo padrão de
+        # LocationCrudSerializer/TaskTemplateRuleCrudSerializer.
+        instance = self.instance or ScopeItem()
+        for field, value in attrs.items():
+            setattr(instance, field, value)
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
+        # clean() pode ter preenchido cable_family/medium derivados —
+        # refletir de volta em attrs para que o valor derivado seja
+        # realmente salvo (attrs, não a instance solta, é o que o
+        # ModelSerializer usa para criar/atualizar o registro de verdade).
+        attrs["cable_family"] = instance.cable_family
+        attrs["medium"] = instance.medium
+        attrs["normalization_metadata"] = instance.normalization_metadata
         return attrs
 
 

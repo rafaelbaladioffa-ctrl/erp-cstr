@@ -10,6 +10,7 @@ import type {
   MasterDataSite,
   Network,
   Path,
+  ScopeItem,
   TaskTemplate,
   TaskTemplateRule,
   TaskTemplateStep,
@@ -111,6 +112,32 @@ function networkOptions(refs: ReferenceData) {
 function workstreamOptions(refs: ReferenceData) {
   return refs.workstreams.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` }));
 }
+
+function pathOptions(refs: ReferenceData) {
+  return refs.paths.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }));
+}
+
+/** Espelha master_data.models.ScopeItem.ITEM_TYPE_SUGGESTIONS/
+ * LENGTH_TYPE_SUGGESTIONS/SOURCE_TYPE_SUGGESTIONS/
+ * RULE_RESOLUTION_STATUS_SUGGESTIONS no backend — não é ENUM rígido, só
+ * as opções mostradas no filtro e como sugestão no formulário. */
+const SCOPE_ITEM_TYPE_SUGGESTIONS = ["CABLE", "HARDWARE", "SERVICE", "OTHER"];
+const SCOPE_ITEM_LENGTH_TYPE_SUGGESTIONS = ["EXACT", "MAXIMUM", "MINIMUM", "RANGE", "UNKNOWN"];
+const SCOPE_ITEM_SOURCE_TYPE_SUGGESTIONS = ["SOW", "CUTSHEET", "MANUAL", "AI", "IMPORT"];
+const SCOPE_ITEM_RULE_RESOLUTION_STATUS_SUGGESTIONS = [
+  "NOT_RESOLVED",
+  "RESOLVED",
+  "NO_MATCH",
+  "CONFLICT",
+  "REVIEW_REQUIRED",
+];
+const SCOPE_ITEM_RULE_RESOLUTION_STATUS_LABELS: Record<string, string> = {
+  NOT_RESOLVED: "Não resolvido",
+  RESOLVED: "Resolvido",
+  NO_MATCH: "Sem match",
+  CONFLICT: "Conflito",
+  REVIEW_REQUIRED: "Exige revisão",
+};
 
 /** Cadastros Mestres: catálogo técnico/operacional normalizado (famílias
  * de cabo, futuramente conectores, certificações, dispositivos etc.) —
@@ -1037,6 +1064,135 @@ const taskTemplateRuleEntity: EntityConfig<TaskTemplateRule> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const scopeItemEntity: EntityConfig<ScopeItem> = {
+  key: "scope-items",
+  label: "Itens de Escopo",
+  icon: "inventory_2",
+  singular: "Item de Escopo",
+  description:
+    "Item técnico extraído de um SOW/cutsheet/escopo — o que o escopo pede, base para a resolução automática do Template de Tarefa correto.",
+  createLabel: "Novo Item de Escopo",
+  perms: modelPerms("master_data", "scopeitem"),
+  api: masterDataApi.scopeItems,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "item_type", label: "Tipo" },
+    { key: "cable_family_code", label: "Família de Cabo", render: (row) => row.cable_family_code || "—" },
+    { key: "cable_spec_code", label: "Spec", render: (row) => row.cable_spec_code || "—" },
+    { key: "network_code", label: "Rede", render: (row) => row.network_code || "—" },
+    { key: "workstream_code", label: "Workstream", render: (row) => row.workstream_code || "—" },
+    { key: "path_code", label: "Rota", render: (row) => row.path_code || "—" },
+    { key: "quantity", label: "Quantidade" },
+    { key: "length_m", label: "Metragem", render: (row) => (row.length_m ? `${row.length_m}m` : "—") },
+    { key: "medium", label: "Meio", render: (row) => row.medium || "—" },
+    {
+      key: "preterminated",
+      label: "Pré-terminado",
+      render: (row) => (row.preterminated === true ? "Sim" : row.preterminated === false ? "Não" : "—"),
+    },
+    {
+      key: "rule_resolution_status",
+      label: "Status da Regra",
+      render: (row) => SCOPE_ITEM_RULE_RESOLUTION_STATUS_LABELS[row.rule_resolution_status] || row.rule_resolution_status,
+    },
+    { key: "resolved_template_code", label: "Template Resolvido", render: (row) => row.resolved_template_code || "—" },
+    { key: "requires_review", label: "Revisão", render: (row) => (row.requires_review ? "Sim" : "Não") },
+  ],
+  filters: [
+    { key: "item_type", label: "Todos os Tipos", options: () => SCOPE_ITEM_TYPE_SUGGESTIONS.map((t) => ({ value: t, label: t })) },
+    { key: "cable_family", label: "Todas as Famílias", options: cableFamilyOptions },
+    { key: "network", label: "Todas as Redes", options: networkOptions },
+    { key: "workstream", label: "Todos os Workstreams", options: workstreamOptions },
+    { key: "path", label: "Todas as Rotas", options: pathOptions },
+    { key: "medium", label: "Todos os Meios", options: (_refs, rows) => distinctOptions(rows, "medium") },
+    {
+      key: "rule_resolution_status",
+      label: "Todos os Status de Regra",
+      options: () =>
+        SCOPE_ITEM_RULE_RESOLUTION_STATUS_SUGGESTIONS.map((s) => ({
+          value: s,
+          label: SCOPE_ITEM_RULE_RESOLUTION_STATUS_LABELS[s] || s,
+        })),
+    },
+    {
+      key: "requires_review",
+      label: "Todos (Exige Revisão)",
+      options: () => [
+        { value: "true", label: "Sim" },
+        { value: "false", label: "Não" },
+      ],
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: (refs) => [
+    { name: "item_type", label: "Tipo", type: "text", required: true, placeholder: "Ex: CABLE, HARDWARE, SERVICE, OTHER" },
+    { name: "name", label: "Nome", type: "text", span: 2, placeholder: "Ex: 72F MPO-B — 50m — QTY 2 (opcional)" },
+    { name: "cable_family", label: "Família de Cabo", type: "select", options: cableFamilyOptions(refs) },
+    { name: "cable_spec", label: "Especificação de Cabo", type: "select", options: cableSpecOptions(refs) },
+    { name: "network", label: "Rede", type: "select", options: networkOptions(refs) },
+    { name: "workstream", label: "Workstream", type: "select", options: workstreamOptions(refs) },
+    { name: "path", label: "Rota/Caminho", type: "select", options: pathOptions(refs) },
+    { name: "quantity", label: "Quantidade", type: "number", required: true },
+    { name: "unit", label: "Unidade", type: "text", placeholder: "Ex: CABLE, LINK, UNIT, HOUR" },
+    { name: "length_type", label: "Tipo de Metragem", type: "text", placeholder: "Ex: EXACT, MAXIMUM, MINIMUM, RANGE, UNKNOWN" },
+    { name: "length_m", label: "Metragem (m)", type: "number", placeholder: "Ex: 50, 2.5" },
+    { name: "medium", label: "Meio", type: "text", placeholder: "Ex: FIBER, COPPER" },
+    {
+      name: "preterminated",
+      label: "Pré-terminado",
+      type: "select",
+      placeholder: "Não informado",
+      options: [
+        { value: "true", label: "Sim" },
+        { value: "false", label: "Não" },
+      ],
+    },
+    { name: "color", label: "Cor", type: "text", placeholder: "Ex: GREEN, ORANGE, YELLOW" },
+    { name: "fiber_count", label: "Nº de Fibras", type: "number" },
+    { name: "raw_text", label: "Texto Original", type: "textarea", required: true, span: 2 },
+    { name: "source_type", label: "Tipo de Fonte", type: "text", placeholder: "Ex: SOW, CUTSHEET, MANUAL, AI, IMPORT" },
+    { name: "source_reference", label: "Referência da Fonte", type: "text", placeholder: "Ex: documento, página, seção" },
+    { name: "confidence_score", label: "Confiança (0 a 1)", type: "number", placeholder: "Ex: 0.97" },
+    { name: "requires_review", label: "Exige Revisão", type: "checkbox", placeholder: "Sim" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativo", span: 2 },
+  ],
+  emptyValues: {
+    item_type: "CABLE",
+    name: "",
+    cable_family: null,
+    cable_spec: null,
+    network: null,
+    workstream: null,
+    path: null,
+    quantity: 1,
+    unit: "",
+    length_type: "",
+    length_m: null,
+    medium: "",
+    preterminated: null,
+    color: "",
+    fiber_count: null,
+    raw_text: "",
+    source_type: "",
+    source_reference: "",
+    confidence_score: null,
+    requires_review: false,
+    description: "",
+    active: true,
+  },
+  rowLabel: (row) => (row.name ? `${row.code} — ${row.name}` : row.code),
+};
+
 const taskRuleSimulatorTool: ToolConfig = {
   kind: "tool",
   key: "task-rule-simulator",
@@ -1076,5 +1232,5 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     icon: "lan",
     entities: [masterDataSiteEntity, locationEntity, deviceTypeEntity],
   },
-  { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },
+  { key: "planejamento", label: "Planejamento", icon: "insights", entities: [scopeItemEntity] },
 ];

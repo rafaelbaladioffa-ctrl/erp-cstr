@@ -27,6 +27,7 @@ const EMPTY_REFS: ReferenceData = {
   cableSpecs: [],
   networks: [],
   workstreams: [],
+  paths: [],
 };
 
 export default function MasterDataPage() {
@@ -39,8 +40,9 @@ export default function MasterDataPage() {
     // Cadastros Mestres não tem tantos cadastros quanto Cadastros Gerais
     // ainda — Aliases/Especificações de Cabo precisam da lista de Famílias
     // (seletor/filtro), Localizações precisa da lista de Sites, Etapas de
-    // Template precisa das listas de Templates e Atividades, e Regras de
-    // Templates precisa também de Especificações/Redes/Workstreams.
+    // Template precisa das listas de Templates e Atividades, Regras de
+    // Templates precisa também de Especificações/Redes/Workstreams, e
+    // Itens de Escopo (Planejamento) precisa de todas essas mais Rotas.
     // Promise.allSettled deixa fácil acrescentar mais entradas conforme
     // novos cadastros forem chegando.
     Promise.allSettled([
@@ -51,8 +53,9 @@ export default function MasterDataPage() {
       masterDataApi.cableSpecs.list({ page_size: "500" } as never),
       masterDataApi.networks.list({ page_size: "500" } as never),
       masterDataApi.workstreams.list({ page_size: "500" } as never),
+      masterDataApi.paths.list({ page_size: "500" } as never),
     ])
-      .then(([cableFamilies, masterDataSites, activities, taskTemplates, cableSpecs, networks, workstreams]) => {
+      .then(([cableFamilies, masterDataSites, activities, taskTemplates, cableSpecs, networks, workstreams, paths]) => {
         setRefs({
           ...EMPTY_REFS,
           cableFamilies: cableFamilies.status === "fulfilled" ? cableFamilies.value.results : [],
@@ -62,6 +65,7 @@ export default function MasterDataPage() {
           cableSpecs: cableSpecs.status === "fulfilled" ? cableSpecs.value.results : [],
           networks: networks.status === "fulfilled" ? networks.value.results : [],
           workstreams: workstreams.status === "fulfilled" ? workstreams.value.results : [],
+          paths: paths.status === "fulfilled" ? paths.value.results : [],
         });
       })
       .finally(() => setRefsLoaded(true));

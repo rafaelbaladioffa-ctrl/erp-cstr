@@ -376,6 +376,58 @@ export interface TaskTemplateRuleSimulateResult {
   warnings: string[];
 }
 
+export interface ScopeItemResolutionResult extends TaskTemplateRuleSimulateResult {
+  rule_resolution_status: "NOT_RESOLVED" | "RESOLVED" | "NO_MATCH" | "CONFLICT" | "REVIEW_REQUIRED";
+  conflict_detail?: string;
+}
+
+export interface ScopeItem {
+  id: number;
+  code: string;
+  name: string;
+  item_type: string;
+  cable_family: number | null;
+  cable_family_code: string | null;
+  cable_family_name: string | null;
+  cable_spec: number | null;
+  cable_spec_code: string | null;
+  cable_spec_part_number: string | null;
+  network: number | null;
+  network_code: string | null;
+  network_name: string | null;
+  workstream: number | null;
+  workstream_code: string | null;
+  workstream_name: string | null;
+  path: number | null;
+  path_code: string | null;
+  path_name: string | null;
+  quantity: number;
+  unit: string;
+  length_type: string;
+  length_m: string | null;
+  medium: string;
+  preterminated: boolean | null;
+  color: string;
+  fiber_count: number | null;
+  raw_text: string;
+  source_type: string;
+  source_reference: string;
+  confidence_score: string | null;
+  requires_review: boolean;
+  description: string;
+  active: boolean;
+  normalization_metadata: Record<string, { source: string; derived: boolean }>;
+  resolved_rule_code: string | null;
+  resolved_rule_name: string | null;
+  resolved_template_code: string | null;
+  resolved_template_name: string | null;
+  rule_resolution_status: string;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface TaskTemplate {
   id: number;
   code: string;

@@ -42,13 +42,18 @@ from master_data.models import (
     Location,
     Network,
     Path,
+    ScopeItem,
     TaskTemplate,
     TaskTemplateRule,
     TaskTemplateStep,
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
-from master_data.services.task_rule_resolver import TaskRuleResolutionError, simulate_task_template
+from master_data.services.task_rule_resolver import (
+    TaskRuleResolutionError,
+    apply_resolution_to_scope_item,
+    simulate_task_template,
+)
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -89,6 +94,7 @@ from .serializers import (
     TaskTemplateStepCrudSerializer,
     TaskTemplateRuleCrudSerializer,
     TaskTemplateRuleSimulateSerializer,
+    ScopeItemCrudSerializer,
     LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
@@ -1192,6 +1198,99 @@ class TaskTemplateRuleViewSet(RequireViewPermissionForActions, RegistryViewSet):
         except TaskRuleResolutionError as exc:
             return Response({"detail": str(exc)}, status=400)
         return Response(result)
+
+
+class ScopeItemViewSet(RequireChangePermissionForActions, RegistryViewSet):
+    """Planejamento > Itens de Escopo. Representa O QUE O ESCOPO PEDE (não
+    O QUE PRECISAMOS FAZER — isso continua sendo Task, numa fase futura)
+    — item técnico extraído de um SOW/cutsheet, cadastrado manualmente
+    nesta etapa. `resolve-template`/`resolve-all` (POST, mutam estado) só
+    gravam o resultado da resolução (resolved_rule/resolved_template/
+    rule_resolution_status); NUNCA criam Task nenhuma."""
+
+    change_permission_actions = ("resolve_template", "resolve_all")
+
+    queryset = ScopeItem.objects.select_related(
+        "cable_family",
+        "cable_spec",
+        "network",
+        "workstream",
+        "path",
+        "resolved_rule",
+        "resolved_template",
+        "created_by",
+        "updated_by",
+    ).order_by("code")
+    serializer_class = ScopeItemCrudSerializer
+    search_fields = (
+        "code",
+        "name",
+        "raw_text",
+        "cable_family__code",
+        "cable_family__name",
+        "cable_spec__part_number",
+        "network__code",
+        "workstream__code",
+        "resolved_template__code",
+    )
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param, field in (
+            ("cable_family", "cable_family_id"),
+            ("network", "network_id"),
+            ("workstream", "workstream_id"),
+            ("path", "path_id"),
+        ):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{field: value})
+        for param in ("item_type", "medium", "rule_resolution_status"):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{param: value})
+        requires_review = self.request.query_params.get("requires_review")
+        if requires_review is not None:
+            queryset = queryset.filter(requires_review=requires_review.lower() in ("1", "true", "yes"))
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="resolve-template")
+    def resolve_template(self, request, pk=None):
+        """Resolve o item (via apply_resolution_to_scope_item — o mesmo
+        motor de match do Simulador de Regras, nada duplicado aqui) e
+        grava o resultado. Não cria nenhuma Task."""
+        scope_item = self.get_object()
+        result = apply_resolution_to_scope_item(scope_item)
+        scope_item.updated_by = request.user
+        scope_item.save(update_fields=("resolved_rule", "resolved_template", "rule_resolution_status", "updated_by", "updated_at"))
+        return Response(result)
+
+    @action(detail=False, methods=["post"], url_path="resolve-all")
+    def resolve_all(self, request):
+        """Resolve todos os ScopeItems ativos ainda com
+        rule_resolution_status=NOT_RESOLVED — mesma lógica de
+        `resolve_template`, um item por vez. Não cria nenhuma Task."""
+        pending = ScopeItem.objects.filter(active=True, rule_resolution_status="NOT_RESOLVED")
+        summary = {"total": pending.count(), "resolved": 0, "no_match": 0, "conflict": 0}
+        for scope_item in pending:
+            result = apply_resolution_to_scope_item(scope_item)
+            scope_item.updated_by = request.user
+            scope_item.save(update_fields=("resolved_rule", "resolved_template", "rule_resolution_status", "updated_by", "updated_at"))
+            status_key = result["rule_resolution_status"].lower()
+            if status_key == "resolved":
+                summary["resolved"] += 1
+            elif status_key == "no_match":
+                summary["no_match"] += 1
+            elif status_key == "conflict":
+                summary["conflict"] += 1
+        return Response(summary)
 
 
 class ProjectTypeViewSet(RegistryViewSet):

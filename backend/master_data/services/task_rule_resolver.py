@@ -227,3 +227,60 @@ def simulate_task_template(**criteria):
         "derived_fields": result["derived_fields"],
         "warnings": warnings,
     }
+
+
+def apply_resolution_to_scope_item(scope_item):
+    """Executa `simulate_task_template` para os critérios de um ScopeItem
+    (Planejamento > Itens de Escopo) e grava o resultado em
+    `scope_item.resolved_rule`/`resolved_template`/`rule_resolution_status`
+    — SEM salvar (quem chama decide quando persistir) e SEM criar nenhuma
+    Task. Reaproveita EXATAMENTE o mesmo motor de match do Simulador de
+    Regras (`simulate_task_template` acima) — nenhuma lógica de match é
+    duplicada aqui, só a tradução do resultado para os campos de resolução
+    do ScopeItem.
+
+    `rule_resolution_status` vira "RESOLVED" quando há uma regra vencedora,
+    "NO_MATCH" quando nenhuma regra ativa é compatível, e "CONFLICT" quando
+    os próprios critérios do ScopeItem são inconsistentes entre si
+    (cable_spec de uma família diferente de cable_family — o mesmo caso
+    que TaskRuleResolutionError já cobre no Simulador). Retorna o mesmo
+    envelope de `simulate_task_template`, mais a chave
+    `rule_resolution_status` (e `conflict_detail` só no caso de conflito)."""
+
+    from master_data.models import TaskTemplate, TaskTemplateRule
+
+    try:
+        result = simulate_task_template(
+            cable_family=scope_item.cable_family,
+            cable_spec=scope_item.cable_spec,
+            network=scope_item.network,
+            workstream=scope_item.workstream,
+            medium=scope_item.medium,
+            preterminated=scope_item.preterminated,
+        )
+    except TaskRuleResolutionError as exc:
+        scope_item.resolved_rule = None
+        scope_item.resolved_template = None
+        scope_item.rule_resolution_status = "CONFLICT"
+        return {
+            "selected_rule": None,
+            "selected_template": None,
+            "steps": [],
+            "matches": [],
+            "derived_fields": {},
+            "warnings": [],
+            "rule_resolution_status": "CONFLICT",
+            "conflict_detail": str(exc),
+        }
+
+    if result["selected_rule"] is None:
+        scope_item.resolved_rule = None
+        scope_item.resolved_template = None
+        scope_item.rule_resolution_status = "NO_MATCH"
+    else:
+        scope_item.resolved_rule = TaskTemplateRule.objects.get(pk=result["selected_rule"]["id"])
+        scope_item.resolved_template = TaskTemplate.objects.get(pk=result["selected_template"]["id"])
+        scope_item.rule_resolution_status = "RESOLVED"
+
+    result["rule_resolution_status"] = scope_item.rule_resolution_status
+    return result

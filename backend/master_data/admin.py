@@ -13,6 +13,7 @@ from .models import (
     Location,
     Network,
     Path,
+    ScopeItem,
     Site,
     TaskTemplate,
     TaskTemplateRule,
@@ -294,6 +295,51 @@ class TaskTemplateRuleAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, 
         return obj.specificity_score
 
     specificity_score_display.short_description = "especificidade"
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(ScopeItem)
+class ScopeItemAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = (
+        "code",
+        "item_type",
+        "cable_family",
+        "quantity",
+        "length_m",
+        "medium",
+        "rule_resolution_status",
+        "requires_review",
+        "active",
+        "updated_at",
+    )
+    list_filter = ("item_type", "medium", "rule_resolution_status", "requires_review", "active")
+    search_fields = (
+        "code",
+        "name",
+        "raw_text",
+        "cable_family__code",
+        "cable_family__name",
+        "cable_spec__part_number",
+        "network__code",
+        "workstream__code",
+        "resolved_template__code",
+    )
+    autocomplete_fields = ("cable_family", "cable_spec", "network", "workstream", "path")
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+        "normalization_metadata",
+        "resolved_rule",
+        "resolved_template",
+        "rule_resolution_status",
+    )
 
     def save_model(self, request, obj, form, change):
         if not change:

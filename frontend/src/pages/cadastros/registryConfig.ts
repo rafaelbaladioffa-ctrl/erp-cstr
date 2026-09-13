@@ -11,6 +11,7 @@ import type {
   MasterDataSite,
   Network,
   Paginated,
+  Path,
   ProjectType,
   ResponsibleFull,
   SiteFull,
@@ -102,11 +103,12 @@ export interface ReferenceData {
    * vazio para quem só usa Cadastros Gerais. */
   activities: Activity[];
   taskTemplates: TaskTemplate[];
-  /** Só usado por Cadastros Mestres (seletores de Regras de Templates) —
-   * vazio para quem só usa Cadastros Gerais. */
+  /** Só usado por Cadastros Mestres (seletores de Regras de Templates e
+   * Itens de Escopo) — vazio para quem só usa Cadastros Gerais. */
   cableSpecs: CableSpec[];
   networks: Network[];
   workstreams: Workstream[];
+  paths: Path[];
 }
 
 function companyOptions(refs: ReferenceData) {

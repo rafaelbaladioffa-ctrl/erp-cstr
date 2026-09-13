@@ -2,10 +2,11 @@ import re
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
-from django.db import models
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import IntegrityError, models, transaction
 
 from core.models import TimestampedModel
+from master_data.services.scope_item_normalizer import ScopeItemNormalizationError, normalize_scope_item
 
 # Variantes tipográficas de traço (en-dash, em-dash, sinal de menos etc.)
 # que devem virar o hífen ASCII comum na normalização — diferente de "/" e
@@ -790,3 +791,205 @@ class TaskTemplateRule(MasterDataModel):
                 )
         if errors:
             raise ValidationError(errors)
+
+
+class ScopeItemSequence(models.Model):
+    """Contador atômico para gerar ScopeItem.code (SCOPE-ITEM-NNNNNN) —
+    mesmo padrão de core.models.TaskSequence, com select_for_update() para
+    evitar colisão de código sob concorrência. Uma única linha (pk=1)."""
+
+    id = models.PositiveIntegerField(primary_key=True, default=1, editable=False)
+    last_number = models.PositiveIntegerField("último número", default=0)
+
+    class Meta:
+        verbose_name = "sequência de itens de escopo"
+        verbose_name_plural = "sequências de itens de escopo"
+
+
+class ScopeItem(MasterDataModel):
+    """Item técnico extraído de um SOW/cutsheet/escopo — o elo
+    intermediário entre texto livre e execução real:
+
+    SOW/Texto Livre -> ScopeItem -> Task Rule Resolver -> TaskTemplate ->
+    TaskTemplateSteps -> Tasks (futuras).
+
+    Representa O QUE O ESCOPO PEDE — nunca O QUE PRECISAMOS FAZER (isso
+    continua sendo responsabilidade de Task, numa fase futura). Por isso
+    NENHUMA Task é criada a partir daqui, mesmo depois de resolvido: os
+    campos `resolved_rule`/`resolved_template`/`rule_resolution_status`
+    só registram o RESULTADO da última resolução (para consulta/auditoria
+    e para uma fase futura de geração de Tasks), nunca uma execução real.
+    Cadastro manual nesta etapa; o preenchimento por IA é uma fase futura
+    que vai gravar exatamente os mesmos campos, através do mesmo
+    mecanismo de normalização/resolução."""
+
+    ITEM_TYPE_SUGGESTIONS = ("CABLE", "HARDWARE", "SERVICE", "OTHER")
+    LENGTH_TYPE_SUGGESTIONS = ("EXACT", "MAXIMUM", "MINIMUM", "RANGE", "UNKNOWN")
+    SOURCE_TYPE_SUGGESTIONS = ("SOW", "CUTSHEET", "MANUAL", "AI", "IMPORT")
+    RULE_RESOLUTION_STATUS_SUGGESTIONS = ("NOT_RESOLVED", "RESOLVED", "NO_MATCH", "CONFLICT", "REVIEW_REQUIRED")
+
+    # Gerado automaticamente em save() (ver abaixo) — não editável
+    # diretamente, mesmo padrão de core.models.Task.code. blank=True (ao
+    # contrário de Task.code) de propósito: permite que
+    # core.csv_io.import_csv_rows() chame obj.full_clean() com o código
+    # ainda vazio (a coluna não existe no CSV — é gerada só em save());
+    # sem isso, clean_fields() rejeitaria o valor vazio antes mesmo de
+    # save() ter a chance de gerar o código.
+    code = models.CharField("código", max_length=30, unique=True, blank=True, editable=False)
+    name = models.CharField("nome", max_length=200, blank=True)
+    # Texto livre (não ENUM/choices) de propósito — sugestões: CABLE,
+    # HARDWARE, SERVICE, OTHER. Nesta primeira etapa o foco real é CABLE.
+    item_type = models.CharField("tipo", max_length=50)
+
+    cable_family = models.ForeignKey(
+        CableFamily,
+        verbose_name="família de cabo",
+        on_delete=models.PROTECT,
+        related_name="scope_items",
+        null=True,
+        blank=True,
+    )
+    cable_spec = models.ForeignKey(
+        CableSpec,
+        verbose_name="especificação de cabo",
+        on_delete=models.PROTECT,
+        related_name="scope_items",
+        null=True,
+        blank=True,
+    )
+    network = models.ForeignKey(
+        Network, verbose_name="rede", on_delete=models.PROTECT, related_name="scope_items", null=True, blank=True
+    )
+    workstream = models.ForeignKey(
+        Workstream,
+        verbose_name="workstream",
+        on_delete=models.PROTECT,
+        related_name="scope_items",
+        null=True,
+        blank=True,
+    )
+    path = models.ForeignKey(
+        Path,
+        verbose_name="rota/caminho",
+        on_delete=models.PROTECT,
+        related_name="scope_items",
+        null=True,
+        blank=True,
+    )
+
+    quantity = models.PositiveIntegerField("quantidade", default=1, validators=[MinValueValidator(1)])
+    # Texto livre (não ENUM/choices) de propósito — sugestões: CABLE,
+    # LINK, UNIT, HOUR. Não cria tabela de unidades ainda.
+    unit = models.CharField("unidade", max_length=50, blank=True)
+
+    # Texto livre (não ENUM/choices) de propósito — sugestões: EXACT,
+    # MAXIMUM, MINIMUM, RANGE, UNKNOWN.
+    length_type = models.CharField("tipo de metragem", max_length=50, blank=True)
+    # DecimalField (não PositiveIntegerField) de propósito — precisa
+    # permitir metragem fracionada (ex: 2.5m).
+    length_m = models.DecimalField(
+        "metragem (m)", max_digits=9, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)]
+    )
+
+    # Texto livre (não ENUM/choices) de propósito — sugestões: FIBER,
+    # COPPER. Derivado de cable_family.medium quando vazio (ver
+    # master_data.services.scope_item_normalizer).
+    medium = models.CharField("meio", max_length=50, blank=True)
+    # Nullable de propósito — tri-state: True/False/None ("não
+    # informado"). NUNCA derivado silenciosamente de
+    # CableFamily.preterminated (ver docstring do normalizer) — uma
+    # mesma família pode ser usada terminada em campo OU pré-terminada
+    # dependendo do item real de escopo.
+    preterminated = models.BooleanField("pré-terminado", null=True, blank=True, default=None)
+    color = models.CharField("cor", max_length=50, blank=True)
+    fiber_count = models.PositiveIntegerField("nº de fibras", null=True, blank=True)
+
+    # Preserva EXATAMENTE o trecho original do SOW/cutsheet que originou
+    # o item — crítico para auditoria, nunca reescrito automaticamente.
+    raw_text = models.TextField("texto original")
+    # Texto livre (não ENUM/choices) de propósito — sugestões: SOW,
+    # CUTSHEET, MANUAL, AI, IMPORT.
+    source_type = models.CharField("tipo de fonte", max_length=50, blank=True)
+    source_reference = models.CharField("referência da fonte", max_length=255, blank=True)
+
+    confidence_score = models.DecimalField(
+        "confiança",
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(1)],
+    )
+    requires_review = models.BooleanField("exige revisão", default=False)
+
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    # Só para auditoria da normalização (ver normalize_scope_item) — NUNCA
+    # substitui os campos estruturados (cable_family/medium), só registra
+    # de onde o valor final veio. editable=False: preenchido só por
+    # normalize_scope_item, nunca diretamente pelo usuário/API.
+    normalization_metadata = models.JSONField(
+        "metadados de normalização", default=dict, blank=True, editable=False
+    )
+
+    # Resultado da ÚLTIMA resolução (ver task_rule_resolver.
+    # apply_resolution_to_scope_item) — nunca preenchido manualmente,
+    # nunca usado para criar uma Task (essa etapa não existe ainda).
+    resolved_rule = models.ForeignKey(
+        TaskTemplateRule,
+        verbose_name="regra resolvida",
+        on_delete=models.PROTECT,
+        related_name="resolved_scope_items",
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    resolved_template = models.ForeignKey(
+        TaskTemplate,
+        verbose_name="template resolvido",
+        on_delete=models.PROTECT,
+        related_name="resolved_scope_items",
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    # Texto livre (não ENUM/choices) de propósito — sugestões:
+    # NOT_RESOLVED, RESOLVED, NO_MATCH, CONFLICT, REVIEW_REQUIRED.
+    rule_resolution_status = models.CharField(
+        "status da resolução", max_length=30, default="NOT_RESOLVED", editable=False
+    )
+
+    class Meta:
+        verbose_name = "Item de Escopo"
+        verbose_name_plural = "Itens de Escopo"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}" if self.name else self.code
+
+    def clean(self):
+        super().clean()
+        try:
+            normalize_scope_item(self)
+        except ScopeItemNormalizationError as exc:
+            raise ValidationError({"cable_spec": str(exc)})
+
+    def save(self, *args, **kwargs):
+        if self.code:
+            return super().save(*args, **kwargs)
+
+        with transaction.atomic():
+            try:
+                sequence = ScopeItemSequence.objects.select_for_update().get(pk=1)
+            except ScopeItemSequence.DoesNotExist:
+                try:
+                    with transaction.atomic():
+                        sequence = ScopeItemSequence.objects.create(pk=1)
+                except IntegrityError:
+                    sequence = ScopeItemSequence.objects.select_for_update().get(pk=1)
+
+            sequence.last_number += 1
+            sequence.save(update_fields=("last_number",))
+            self.code = f"SCOPE-ITEM-{sequence.last_number:06d}"
+            return super().save(*args, **kwargs)

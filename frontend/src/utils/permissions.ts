@@ -85,6 +85,7 @@ export const PERMS = {
   viewTaskTemplate: "master_data.view_tasktemplate",
   viewTaskTemplateStep: "master_data.view_tasktemplatestep",
   viewTaskTemplateRule: "master_data.view_tasktemplaterule",
+  viewScopeItem: "master_data.view_scopeitem",
 };
 
 export const MASTER_DATA_PERMS = [
@@ -102,6 +103,7 @@ export const MASTER_DATA_PERMS = [
   PERMS.viewTaskTemplate,
   PERMS.viewTaskTemplateStep,
   PERMS.viewTaskTemplateRule,
+  PERMS.viewScopeItem,
 ];
 
 export const CADASTROS_PERMS = [

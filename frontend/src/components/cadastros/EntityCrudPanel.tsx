@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { masterDataApi, sitesMapApi } from "../../api/resources";
-import type { CableAlias, CableSpec, TaskTemplateStep } from "../../api/types";
+import type { CableAlias, CableSpec, ScopeItemResolutionResult, TaskTemplateStep } from "../../api/types";
 import { useAuth } from "../../context/AuthContext";
 import { PERMS, hasPerm } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../../pages/cadastros/registryConfig";
@@ -63,6 +63,12 @@ export default function EntityCrudPanel({
   // dos Templates (filtrando por este template).
   const [templateSteps, setTemplateSteps] = useState<TaskTemplateStep[]>([]);
   const [templateStepsLoading, setTemplateStepsLoading] = useState(false);
+  // Só usado por Itens de Escopo: resultado da última chamada a
+  // "Resolver Template" (POST .../resolve-template/) dentro do modal —
+  // não persiste entre aberturas de itens diferentes.
+  const [scopeResolution, setScopeResolution] = useState<ScopeItemResolutionResult | null>(null);
+  const [scopeResolving, setScopeResolving] = useState(false);
+  const [scopeResolutionError, setScopeResolutionError] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -152,6 +158,8 @@ export default function EntityCrudPanel({
     setFamilyAliases([]);
     setFamilySpecs([]);
     setTemplateSteps([]);
+    setScopeResolution(null);
+    setScopeResolutionError(null);
     setModalOpen(true);
   }
 
@@ -165,6 +173,8 @@ export default function EntityCrudPanel({
     setEditingId(row.id as number);
     setFormValues({ ...row });
     setFormErrors({});
+    setScopeResolution(null);
+    setScopeResolutionError(null);
     setModalOpen(true);
     if (entity.key === "cable-families") {
       setFamilyAliasesLoading(true);
@@ -212,6 +222,23 @@ export default function EntityCrudPanel({
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleResolveTemplate() {
+    if (!editingId) return;
+    setScopeResolving(true);
+    setScopeResolutionError(null);
+    try {
+      const result = await masterDataApi.scopeItems.resolveTemplate(editingId);
+      setScopeResolution(result);
+      reload();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      setScopeResolutionError(axiosErr.response?.data?.detail || "Não foi possível resolver o template. Tente novamente.");
+      setScopeResolution(null);
+    } finally {
+      setScopeResolving(false);
     }
   }
 
@@ -449,6 +476,99 @@ export default function EntityCrudPanel({
           />
           {formErrors.non_field_errors && (
             <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{formErrors.non_field_errors.join(" ")}</p>
+          )}
+          {editingId && entity.key === "scope-items" && (
+            <div style={{ marginTop: 8, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "var(--text-faint)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Resolução do Template
+                </div>
+                <button className="btn btn-outline btn-sm" onClick={handleResolveTemplate} disabled={scopeResolving}>
+                  <Icon name="rule" style={{ fontSize: 14 }} />
+                  {scopeResolving ? "Resolvendo..." : "Resolver Template"}
+                </button>
+              </div>
+              {scopeResolutionError && (
+                <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{scopeResolutionError}</p>
+              )}
+              {scopeResolution && !scopeResolution.selected_rule && (
+                <div className="empty-state" style={{ padding: 16 }}>
+                  Nenhuma regra compatível encontrada.
+                </div>
+              )}
+              {scopeResolution && scopeResolution.selected_rule && scopeResolution.selected_template && (
+                <div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 14 }}>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-faint)", marginBottom: 4 }}>Regra</p>
+                      <p style={{ fontSize: 13, margin: 0 }}>
+                        {scopeResolution.selected_rule.code} — {scopeResolution.selected_rule.name}
+                      </p>
+                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                        Prioridade {scopeResolution.selected_rule.priority} · Especificidade{" "}
+                        {scopeResolution.selected_rule.specificity_score}
+                      </p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-faint)", marginBottom: 4 }}>Template</p>
+                      <p style={{ fontSize: 13, margin: 0 }}>
+                        {scopeResolution.selected_template.code} — {scopeResolution.selected_template.name}
+                      </p>
+                      <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+                        {scopeResolution.selected_template.category} · {scopeResolution.selected_template.medium || "—"}
+                      </p>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-faint)", marginBottom: 8 }}>
+                    Etapas que seriam geradas ({scopeResolution.steps.length})
+                  </p>
+                  <div className="table-wrap">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Ordem</th>
+                          <th>Atividade</th>
+                          <th>Nome Efetivo</th>
+                          <th>Obrigatória</th>
+                          <th>Repetível</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scopeResolution.steps.map((s) => (
+                          <tr key={s.step_order}>
+                            <td>{s.step_order}</td>
+                            <td>{s.activity_code}</td>
+                            <td>{s.effective_name}</td>
+                            <td>{s.required ? "Sim" : "Não"}</td>
+                            <td>{s.repeatable ? "Sim" : "Não"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {scopeResolution.matches.length > 1 && (
+                    <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 8 }}>
+                      Outras regras compatíveis:{" "}
+                      {scopeResolution.matches
+                        .slice(1)
+                        .map((m) => m.rule.code)
+                        .join(", ")}
+                    </p>
+                  )}
+                </div>
+              )}
+              <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10 }}>
+                Esta ação só grava o resultado da resolução (regra e template usados) — nenhuma Task é criada.
+              </p>
+            </div>
           )}
           {editingId && entity.key === "cable-families" && (
             <div style={{ marginTop: 8, paddingTop: 14, borderTop: "1px solid var(--border)" }}>

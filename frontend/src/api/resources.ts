@@ -41,6 +41,8 @@ import type {
   UserOption,
   SiteFull,
   SiteMapData,
+  ScopeItem,
+  ScopeItemResolutionResult,
   TaskFull,
   TaskTemplate,
   TaskTemplateRule,
@@ -99,6 +101,19 @@ export const masterDataApi = {
   taskTemplates: crud<TaskTemplate>("/master-data/task-templates"),
   taskTemplateSteps: crud<TaskTemplateStep>("/master-data/task-template-steps"),
   taskTemplateRules: crud<TaskTemplateRule>("/master-data/task-template-rules"),
+  scopeItems: {
+    ...crud<ScopeItem>("/master-data/scope-items"),
+    resolveTemplate: (id: number) =>
+      apiClient
+        .post<ScopeItemResolutionResult>(`/master-data/scope-items/${id}/resolve-template/`)
+        .then((r) => r.data),
+    resolveAll: () =>
+      apiClient
+        .post<{ total: number; resolved: number; no_match: number; conflict: number }>(
+          "/master-data/scope-items/resolve-all/"
+        )
+        .then((r) => r.data),
+  },
 };
 
 export const taskRuleSimulatorApi = {
