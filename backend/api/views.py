@@ -48,6 +48,7 @@ from master_data.models import (
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
+from master_data.services.task_rule_resolver import TaskRuleResolutionError, simulate_task_template
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -65,7 +66,12 @@ from updates.pdf import build_daily_updates_pdf
 from updates.project_client_mail import send_project_daily_update_email
 from updates.project_pdf import build_project_daily_update_pdf
 
-from .permissions import IsSuperUser, RequireChangePermissionForActions, ViewAwareModelPermissions
+from .permissions import (
+    IsSuperUser,
+    RequireChangePermissionForActions,
+    RequireViewPermissionForActions,
+    ViewAwareModelPermissions,
+)
 from .serializers import (
     AuditLogSerializer,
     ClientCrudSerializer,
@@ -82,6 +88,7 @@ from .serializers import (
     TaskTemplateCrudSerializer,
     TaskTemplateStepCrudSerializer,
     TaskTemplateRuleCrudSerializer,
+    TaskTemplateRuleSimulateSerializer,
     LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
@@ -1102,14 +1109,17 @@ class TaskTemplateStepViewSet(RegistryViewSet):
         serializer.save(updated_by=self.request.user)
 
 
-class TaskTemplateRuleViewSet(RegistryViewSet):
+class TaskTemplateRuleViewSet(RequireViewPermissionForActions, RegistryViewSet):
     """Cadastros Mestres > Operação > Regras de Templates. Determina qual
     TaskTemplate deve ser usado para um item de escopo, a partir de
     critérios opcionais (família de cabo, especificação, rede, workstream,
     meio, pré-terminado) — base do futuro motor de geração automática de
     tarefas (Rules Engine, ainda não implementado). Busca/is_active
     herdados de RegistryViewSet, mais filtros exatos por template/família/
-    rede/workstream/meio/pré-terminado."""
+    rede/workstream/meio/pré-terminado. `simulate` (POST, mas só leitura —
+    ver RequireViewPermissionForActions) alimenta o Simulador de Regras."""
+
+    view_permission_actions = ("simulate",)
 
     queryset = TaskTemplateRule.objects.select_related(
         "task_template", "cable_family", "cable_spec", "network", "workstream", "created_by", "updated_by"
@@ -1157,6 +1167,31 @@ class TaskTemplateRuleViewSet(RegistryViewSet):
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
+
+    @action(detail=False, methods=["post"], url_path="simulate")
+    def simulate(self, request):
+        """Cadastros Mestres > Operação > Simulador de Regras. Não cria nem
+        altera nenhum registro — só executa
+        `master_data.services.task_rule_resolver.simulate_task_template`
+        (a lógica de match/ranking vive lá, não aqui) e devolve o
+        resultado. Erros de entrada inconsistente (CableSpec x CableFamily)
+        viram 400; "nenhuma regra compatível" é um resultado 200 normal
+        (matches/selected_rule vazios), não um erro."""
+        input_serializer = TaskTemplateRuleSimulateSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        try:
+            result = simulate_task_template(
+                cable_family=data.get("cable_family"),
+                cable_spec=data.get("cable_spec"),
+                network=data.get("network"),
+                workstream=data.get("workstream"),
+                medium=data.get("medium") or "",
+                preterminated=data.get("preterminated"),
+            )
+        except TaskRuleResolutionError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(result)
 
 
 class ProjectTypeViewSet(RegistryViewSet):

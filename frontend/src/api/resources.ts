@@ -44,6 +44,8 @@ import type {
   TaskFull,
   TaskTemplate,
   TaskTemplateRule,
+  TaskTemplateRuleSimulateRequest,
+  TaskTemplateRuleSimulateResult,
   TaskTemplateStep,
   TechnicianAbsence,
   Workstream,
@@ -97,6 +99,13 @@ export const masterDataApi = {
   taskTemplates: crud<TaskTemplate>("/master-data/task-templates"),
   taskTemplateSteps: crud<TaskTemplateStep>("/master-data/task-template-steps"),
   taskTemplateRules: crud<TaskTemplateRule>("/master-data/task-template-rules"),
+};
+
+export const taskRuleSimulatorApi = {
+  simulate: (payload: TaskTemplateRuleSimulateRequest) =>
+    apiClient
+      .post<TaskTemplateRuleSimulateResult>("/master-data/task-template-rules/simulate/", payload)
+      .then((r) => r.data),
 };
 
 export const auditLogApi = {

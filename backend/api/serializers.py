@@ -669,6 +669,35 @@ class TaskTemplateRuleCrudSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class TaskTemplateRuleSimulateSerializer(serializers.Serializer):
+    """Entrada do Simulador de Regras (Cadastros Mestres > Operação >
+    Simulador de Regras) — todos os critérios são opcionais, mas ao menos
+    um precisa ser informado (não faz sentido simular "sem nenhuma
+    característica de escopo"). Não é um ModelSerializer porque não
+    representa nenhum model diretamente: é só a entrada do motor de match
+    (`master_data.services.task_rule_resolver.resolve_task_template`)."""
+
+    cable_family = serializers.PrimaryKeyRelatedField(queryset=CableFamily.objects.all(), required=False, allow_null=True)
+    cable_spec = serializers.PrimaryKeyRelatedField(queryset=CableSpec.objects.all(), required=False, allow_null=True)
+    network = serializers.PrimaryKeyRelatedField(queryset=Network.objects.all(), required=False, allow_null=True)
+    workstream = serializers.PrimaryKeyRelatedField(queryset=Workstream.objects.all(), required=False, allow_null=True)
+    medium = serializers.CharField(required=False, allow_blank=True, default="")
+    preterminated = serializers.BooleanField(required=False, allow_null=True, default=None)
+
+    def validate(self, attrs):
+        has_criterion = (
+            attrs.get("cable_family") is not None
+            or attrs.get("cable_spec") is not None
+            or attrs.get("network") is not None
+            or attrs.get("workstream") is not None
+            or bool(attrs.get("medium"))
+            or attrs.get("preterminated") is not None
+        )
+        if not has_criterion:
+            raise serializers.ValidationError("Informe ao menos um critério para simular.")
+        return attrs
+
+
 class ProjectTypeCrudSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProjectType

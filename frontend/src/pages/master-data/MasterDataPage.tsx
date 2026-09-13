@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { masterDataApi } from "../../api/resources";
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
+import TaskRuleSimulatorPanel from "../../components/master-data/TaskRuleSimulatorPanel";
 import Icon from "../../components/ui/Icon";
 import PageHeader from "../../components/ui/PageHeader";
 import { useAuth } from "../../context/AuthContext";
 import { hasPerm } from "../../utils/permissions";
 import type { ReferenceData } from "../cadastros/registryConfig";
-import { MASTER_DATA_CATEGORIES } from "./masterDataConfig";
+import { MASTER_DATA_CATEGORIES, type MasterDataNavItem, type ToolConfig } from "./masterDataConfig";
+
+function isToolConfig(item: MasterDataNavItem): item is ToolConfig {
+  return (item as ToolConfig).kind === "tool";
+}
 
 const EMPTY_REFS: ReferenceData = {
   companies: [],
@@ -153,7 +158,11 @@ export default function MasterDataPage() {
 
           <div style={{ flex: 1, minWidth: 0 }}>
             {activeEntity ? (
-              <EntityCrudPanel key={activeEntity.key} entity={activeEntity} refs={refs} refsLoaded={refsLoaded} />
+              isToolConfig(activeEntity) ? (
+                <TaskRuleSimulatorPanel key={activeEntity.key} refs={refs} />
+              ) : (
+                <EntityCrudPanel key={activeEntity.key} entity={activeEntity} refs={refs} refsLoaded={refsLoaded} />
+              )
             ) : (
               <div className="empty-state">Selecione um cadastro na lista ao lado.</div>
             )}

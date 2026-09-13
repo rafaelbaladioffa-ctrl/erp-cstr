@@ -53,3 +53,32 @@ class _HasChangePermission(DjangoModelPermissions):
         queryset = view.get_queryset()
         perms = self.get_required_permissions("PUT", queryset.model)
         return request.user and request.user.has_perms(perms)
+
+
+class RequireViewPermissionForActions:
+    """Mixin para ViewSets: exige só a permissão 'view_<model>' do Django
+    para as actions customizadas listadas em `view_permission_actions` —
+    usado por ações somente-leitura que usam POST por conveniência (ex:
+    simular/consultar algo sem persistir nada), e que por isso NÃO devem
+    herdar a exigência padrão do DjangoModelPermissions para POST
+    ('add_<model>'), que não faz sentido para uma ação que não cria nada.
+    """
+
+    view_permission_actions: tuple[str, ...] = ()
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        if self.action in self.view_permission_actions:
+            permissions = [_HasViewPermission()]
+        return permissions
+
+
+class _HasViewPermission(DjangoModelPermissions):
+    perms_map = {method: ["%(app_label)s.view_%(model_name)s"] for method in ("GET", "POST", "PUT", "PATCH", "DELETE")}
+
+    def has_permission(self, request, view):
+        if not hasattr(view, "get_queryset"):
+            return False
+        queryset = view.get_queryset()
+        perms = self.get_required_permissions("GET", queryset.model)
+        return bool(request.user and request.user.has_perms(perms))

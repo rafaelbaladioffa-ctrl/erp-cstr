@@ -15,7 +15,7 @@ import type {
   TaskTemplateStep,
   Workstream,
 } from "../../api/types";
-import { modelPerms } from "../../utils/permissions";
+import { modelPerms, PERMS } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
 
 /** Espelha master_data.models.CableAlias.ALIAS_TYPE_SUGGESTIONS no backend —
@@ -127,11 +127,27 @@ function workstreamOptions(refs: ReferenceData) {
  * correta — nenhum componente de tela novo é necessário.
  */
 
+/** Item de navegação de Cadastros Mestres que NÃO é um cadastro CRUD —
+ * hoje só o Simulador de Regras (formulário + resultado, sem
+ * listagem/edição). `kind: "tool"` é o único discriminador; um
+ * `EntityConfig` normal nunca tem esse campo, então `isToolConfig()` (em
+ * MasterDataPage.tsx) distingue os dois sem precisar tocar em nenhum
+ * `EntityConfig` já existente. */
+export interface ToolConfig {
+  kind: "tool";
+  key: string;
+  label: string;
+  icon: string;
+  perms: { view: string };
+}
+
+export type MasterDataNavItem = EntityConfig<any> | ToolConfig;
+
 export interface MasterDataCategory {
   key: string;
   label: string;
   icon: string;
-  entities: EntityConfig<any>[];
+  entities: MasterDataNavItem[];
 }
 
 /** "TRUNK" -> "Trunk" — só para exibição; o valor canônico (uppercase)
@@ -1021,6 +1037,17 @@ const taskTemplateRuleEntity: EntityConfig<TaskTemplateRule> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const taskRuleSimulatorTool: ToolConfig = {
+  kind: "tool",
+  key: "task-rule-simulator",
+  label: "Simulador de Regras",
+  icon: "science",
+  // Mesma permissão de visualização de Regras de Templates — o
+  // simulador só executa a mesma action `simulate` do
+  // TaskTemplateRuleViewSet, que já exige essa permissão no backend.
+  perms: { view: PERMS.viewTaskTemplateRule },
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -1040,6 +1067,7 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
       taskTemplateEntity,
       taskTemplateStepEntity,
       taskTemplateRuleEntity,
+      taskRuleSimulatorTool,
     ],
   },
   {

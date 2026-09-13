@@ -317,6 +317,65 @@ export interface DeviceType {
   updated_by_name: string | null;
 }
 
+export interface TaskTemplateRuleSimulateRequest {
+  cable_family?: number | null;
+  cable_spec?: number | null;
+  network?: number | null;
+  workstream?: number | null;
+  medium?: string;
+  preterminated?: boolean | null;
+}
+
+export interface TaskTemplateRuleMatchCheck {
+  criterion: string;
+  result: "MATCH" | "IGNORED" | "MISMATCH";
+  detail: string;
+}
+
+export interface TaskTemplateRuleMatchRuleSummary {
+  id: number;
+  code: string;
+  name: string;
+  priority: number;
+  specificity_score: number;
+  task_template_id: number;
+  task_template_code: string;
+  task_template_name: string;
+}
+
+export interface TaskTemplateRuleMatch {
+  rule: TaskTemplateRuleMatchRuleSummary;
+  checks: TaskTemplateRuleMatchCheck[];
+}
+
+export interface TaskTemplateRuleSimulateStep {
+  step_order: number;
+  activity_code: string;
+  activity_name: string;
+  effective_name: string;
+  required: boolean;
+  repeatable: boolean;
+  quantity_source: string;
+  unit_override: string;
+}
+
+export interface TaskTemplateRuleSimulateTemplate {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  medium: string;
+}
+
+export interface TaskTemplateRuleSimulateResult {
+  selected_rule: TaskTemplateRuleMatchRuleSummary | null;
+  selected_template: TaskTemplateRuleSimulateTemplate | null;
+  steps: TaskTemplateRuleSimulateStep[];
+  matches: TaskTemplateRuleMatch[];
+  derived_fields: Record<string, { value: string; source: string }>;
+  warnings: string[];
+}
+
 export interface TaskTemplate {
   id: number;
   code: string;

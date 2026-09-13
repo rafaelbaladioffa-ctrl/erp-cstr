@@ -3696,3 +3696,177 @@ class TaskTemplateRuleApiTests(TestCase):
         module.seed_task_template_rules(django_apps, None)
         module.seed_task_template_rules(django_apps, None)
         self.assertEqual(TaskTemplateRule.objects.count(), count_before)
+
+
+class TaskTemplateRuleSimulatorTests(TestCase):
+    """Cadastros Mestres > Operação > Simulador de Regras — endpoint
+    POST /api/master-data/task-template-rules/simulate/. Testa o motor de
+    match (master_data.services.task_rule_resolver) através da API real,
+    contra o seed real de TaskTemplateRule/TaskTemplate/TaskTemplateStep
+    (17 regras, 63 etapas) — não recria esses dados aqui, exceto quando o
+    cenário exige regras/famílias dedicadas (prefixo "TST-", mesmo motivo
+    das outras suítes deste módulo: não colidir com o seed real)."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="task_rule_simulator_admin", email="task_rule_simulator@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+
+    def simulate(self, payload):
+        return self.client_api.post("/api/master-data/task-template-rules/simulate/", payload, format="json")
+
+    def test_fib_72f_mpob_selects_specific_rule_and_mpo_template(self):
+        family = CableFamily.objects.get(code="FIB-72F-MPOB")
+        response = self.simulate({"cable_family": family.pk})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-FIB-72F-MPOB")
+        self.assertEqual(response.data["selected_template"]["code"], "TPL-FIBER-MPO")
+        self.assertEqual(len(response.data["steps"]), 9)
+        self.assertEqual(response.data["steps"][0]["step_order"], 10)
+        self.assertEqual(response.data["steps"][0]["activity_code"], "MAT-SEP")
+        # RULE-FIBER-GENERIC também é compatível (medium derivado de FIBER),
+        # com prioridade pior — deve aparecer como match secundário, não
+        # como o selecionado.
+        codes = [m["rule"]["code"] for m in response.data["matches"]]
+        self.assertEqual(codes[0], "RULE-FIB-72F-MPOB")
+        self.assertIn("RULE-FIBER-GENERIC", codes)
+
+    def test_fib_8f_lclc_selects_fiber_preterminated_template(self):
+        family = CableFamily.objects.get(code="FIB-8F-LCLC")
+        response = self.simulate({"cable_family": family.pk})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-FIB-8F-LCLC")
+        self.assertEqual(response.data["selected_template"]["code"], "TPL-FIBER-PRETERMINATED")
+
+    def test_fib_2f_robust_selects_fiber_robust_template(self):
+        family = CableFamily.objects.get(code="FIB-2F-ROBUST")
+        response = self.simulate({"cable_family": family.pk})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-FIB-2F-ROBUST")
+        self.assertEqual(response.data["selected_template"]["code"], "TPL-FIBER-ROBUST")
+
+    def test_cat6_preterminated_false_selects_field_terminated_template(self):
+        family = CableFamily.objects.get(code="COP-CAT6")
+        response = self.simulate({"cable_family": family.pk, "preterminated": False})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-CAT6-FIELD")
+        self.assertEqual(response.data["selected_template"]["code"], "TPL-COPPER-FIELD-TERMINATED")
+        self.assertEqual(len(response.data["steps"]), 12)
+
+    def test_cat6_preterminated_true_selects_preterminated_template(self):
+        family = CableFamily.objects.get(code="COP-CAT6")
+        response = self.simulate({"cable_family": family.pk, "preterminated": True})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-CAT6-PRETERM")
+        self.assertEqual(response.data["selected_template"]["code"], "TPL-COPPER-PRETERMINATED")
+        self.assertEqual(len(response.data["steps"]), 9)
+
+    def test_fiber_family_without_specific_rule_falls_back_to_generic(self):
+        # Família nova, sem nenhuma TaskTemplateRule específica — só o
+        # fallback genérico (medium=FIBER) deve casar.
+        family = CableFamily.objects.create(code="TST-FIB-NO-RULE", name="Fibra sem regra", medium="FIBER")
+        response = self.simulate({"cable_family": family.pk})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-FIBER-GENERIC")
+        self.assertEqual(response.data["selected_template"]["code"], "TPL-FIBER-PRETERMINATED")
+        self.assertTrue(any("fallback" in w.lower() for w in response.data["warnings"]))
+
+    def test_more_specific_rule_wins_when_priority_is_equal(self):
+        family = CableFamily.objects.create(code="TST-TIE-FAM", name="Família de teste", medium="FIBER")
+        template = TaskTemplate.objects.create(code="TST-TIE-TPL", name="Template de teste", category="TEST_CATEGORY")
+        TaskTemplateRule.objects.create(
+            code="TST-TIE-LOW-SCORE", name="Score baixo", task_template=template, cable_family=family, priority=10
+        )
+        TaskTemplateRule.objects.create(
+            code="TST-TIE-HIGH-SCORE",
+            name="Score alto",
+            task_template=template,
+            cable_family=family,
+            medium="FIBER",
+            priority=10,
+        )
+        response = self.simulate({"cable_family": family.pk, "medium": "FIBER"})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["selected_rule"]["code"], "TST-TIE-HIGH-SCORE")
+
+    def test_lower_priority_wins_over_higher_specificity(self):
+        family = CableFamily.objects.create(code="TST-PRIO-FAM", name="Família de teste", medium="FIBER")
+        network = Network.objects.create(code="TST-PRIO-NET", name="Rede de teste", domain="MANAGEMENT", medium="FIBER")
+        template = TaskTemplate.objects.create(code="TST-PRIO-TPL", name="Template de teste", category="TEST_CATEGORY")
+        TaskTemplateRule.objects.create(
+            code="TST-PRIO-LOW-PRIORITY-LOW-SCORE",
+            name="Prioridade baixa (número), score baixo",
+            task_template=template,
+            cable_family=family,
+            priority=5,
+        )
+        TaskTemplateRule.objects.create(
+            code="TST-PRIO-HIGH-PRIORITY-HIGH-SCORE",
+            name="Prioridade alta (número), score alto",
+            task_template=template,
+            cable_family=family,
+            network=network,
+            medium="FIBER",
+            priority=10,
+        )
+        response = self.simulate({"cable_family": family.pk, "network": network.pk, "medium": "FIBER"})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["selected_rule"]["code"], "TST-PRIO-LOW-PRIORITY-LOW-SCORE")
+
+    def test_cable_spec_derives_cable_family(self):
+        spec = CableSpec.objects.get(code="SPEC-72F-MPOB-0072X6P64")
+        response = self.simulate({"cable_spec": spec.pk})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["derived_fields"]["cable_family"]["value"], "FIB-72F-MPOB")
+        self.assertEqual(response.data["derived_fields"]["cable_family"]["source"], "cable_spec")
+        self.assertEqual(response.data["selected_rule"]["code"], "RULE-FIB-72F-MPOB")
+
+    def test_incompatible_cable_spec_and_cable_family_returns_error(self):
+        spec = CableSpec.objects.get(code="SPEC-72F-MPOB-0072X6P64")
+        other_family = CableFamily.objects.get(code="FIB-8F-LCLC")
+        response = self.simulate({"cable_spec": spec.pk, "cable_family": other_family.pk})
+        self.assertEqual(response.status_code, 400)
+
+    def test_no_match_returns_empty_controlled_result(self):
+        response = self.simulate({"medium": "MIXED"})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["matches"], [])
+        self.assertIsNone(response.data["selected_rule"])
+        self.assertIsNone(response.data["selected_template"])
+        self.assertEqual(response.data["steps"], [])
+
+    def test_only_active_rules_are_considered(self):
+        # medium="" (não FIBER/COPPER) de propósito: evita que o medium seja
+        # derivado da família e o fallback genérico (RULE-FIBER-GENERIC)
+        # acabe casando por outro caminho, o que mascararia o teste.
+        family = CableFamily.objects.create(code="TST-INACTIVE-FAM", name="Família de teste", medium="")
+        template = TaskTemplate.objects.create(code="TST-INACTIVE-TPL", name="Template de teste", category="TEST_CATEGORY")
+        TaskTemplateRule.objects.create(
+            code="TST-INACTIVE-RULE",
+            name="Regra inativa",
+            task_template=template,
+            cable_family=family,
+            priority=1,
+            active=False,
+        )
+        response = self.simulate({"cable_family": family.pk})
+        self.assertEqual(response.status_code, 200, response.data)
+        codes = [m["rule"]["code"] for m in response.data["matches"]]
+        self.assertNotIn("TST-INACTIVE-RULE", codes)
+        self.assertEqual(response.data["matches"], [])
+
+    def test_at_least_one_criterion_required(self):
+        response = self.simulate({})
+        self.assertEqual(response.status_code, 400)
+
+    def test_match_explanation_included_for_each_compatible_rule(self):
+        family = CableFamily.objects.get(code="FIB-72F-MPOB")
+        response = self.simulate({"cable_family": family.pk})
+        self.assertEqual(response.status_code, 200, response.data)
+        selected_match = response.data["matches"][0]
+        criteria_names = {check["criterion"] for check in selected_match["checks"]}
+        self.assertEqual(criteria_names, {"cable_family", "cable_spec", "network", "workstream", "medium", "preterminated"})
+        family_check = next(c for c in selected_match["checks"] if c["criterion"] == "cable_family")
+        self.assertEqual(family_check["result"], "MATCH")
