@@ -25,6 +25,21 @@ export interface MasterDataCategory {
   entities: EntityConfig<any>[];
 }
 
+/** "TRUNK" -> "Trunk" — só para exibição; o valor canônico (uppercase)
+ * continua sendo o que é salvo e editado no formulário. */
+function titleCase(value: string) {
+  if (!value) return value;
+  return value.charAt(0) + value.slice(1).toLowerCase();
+}
+
+/** "LC ↔ LC" quando os dois conectores são iguais, "MPO → LC" quando são
+ * diferentes, "—" quando nenhum dos dois está preenchido. */
+function connectorsDisplay(a: string, b: string) {
+  if (!a && !b) return "—";
+  if (a && b) return a === b ? `${a} ↔ ${b}` : `${a} → ${b}`;
+  return a || b;
+}
+
 const cableFamilyEntity: EntityConfig<CableFamily> = {
   key: "cable-families",
   label: "Famílias de Cabos",
@@ -34,17 +49,15 @@ const cableFamilyEntity: EntityConfig<CableFamily> = {
   createLabel: "Nova Família de Cabo",
   perms: modelPerms("master_data", "cablefamily"),
   api: masterDataApi.cableFamilies,
+  statusField: "active",
+  disableHardDelete: true,
   columns: [
     { key: "code", label: "Código" },
     { key: "name", label: "Nome" },
     { key: "medium", label: "Meio", render: (row) => (row.medium === "COPPER" ? "Cobre" : "Fibra") },
     { key: "fiber_count", label: "Fibras", render: (row) => (row.fiber_count == null ? "—" : String(row.fiber_count)) },
-    {
-      key: "connectors",
-      label: "Conector",
-      render: (row) => [row.connector_a, row.connector_b].filter(Boolean).join(" / ") || "—",
-    },
-    { key: "cable_category", label: "Categoria", render: (row) => row.cable_category || "—" },
+    { key: "connectors", label: "Conectores", render: (row) => connectorsDisplay(row.connector_a, row.connector_b) },
+    { key: "cable_category", label: "Categoria", render: (row) => (row.cable_category ? titleCase(row.cable_category) : "—") },
     { key: "preterminated", label: "Pré-terminado", render: (row) => (row.preterminated ? "Sim" : "Não") },
   ],
   fields: () => [
@@ -63,10 +76,10 @@ const cableFamilyEntity: EntityConfig<CableFamily> = {
     { name: "fiber_count", label: "Nº de Fibras", type: "number" },
     { name: "connector_a", label: "Conector A", type: "text" },
     { name: "connector_b", label: "Conector B", type: "text" },
-    { name: "cable_category", label: "Categoria do Cabo", type: "text", placeholder: "Ex: Trunk, Patch, Breakout" },
+    { name: "cable_category", label: "Categoria do Cabo", type: "text", placeholder: "Ex: TRUNK, PATCH, BREAKOUT" },
     { name: "preterminated", label: "Pré-terminado", type: "checkbox", placeholder: "Sim" },
     { name: "description", label: "Descrição", type: "textarea", span: 2 },
-    { name: "is_active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
   ],
   emptyValues: {
     code: "",
@@ -78,7 +91,7 @@ const cableFamilyEntity: EntityConfig<CableFamily> = {
     cable_category: "",
     preterminated: false,
     description: "",
-    is_active: true,
+    active: true,
   },
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };

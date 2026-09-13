@@ -145,11 +145,17 @@ class RegistryViewSet(CSVExportImportMixin, viewsets.ModelViewSet):
     client_scope_mode = "deny"
     client_scope_field = None
 
+    # Nome do campo booleano "ativo" no model — todo cadastro existente usa
+    # is_active; CableFamily (Cadastros Mestres) usa "active" (ver estrutura
+    # pedida para o módulo). O parâmetro de busca na URL continua sempre
+    # ?is_active=, só o campo filtrado no banco muda por subclasse.
+    active_field = "is_active"
+
     def get_queryset(self):
         queryset = super().get_queryset()
         is_active = self.request.query_params.get("is_active")
         if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() in ("1", "true", "yes"))
+            queryset = queryset.filter(**{self.active_field: is_active.lower() in ("1", "true", "yes")})
         search = self.request.query_params.get("search")
         if search:
             from django.db.models import Q
@@ -711,6 +717,7 @@ class CableFamilyViewSet(RegistryViewSet):
     queryset = CableFamily.objects.select_related("created_by", "updated_by").order_by("code")
     serializer_class = CableFamilyCrudSerializer
     search_fields = ("code", "name", "description")
+    active_field = "active"
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, updated_by=self.request.user)

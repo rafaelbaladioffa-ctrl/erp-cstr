@@ -43,6 +43,13 @@ export interface EntityConfig<T extends { id: number; is_active?: boolean }> {
   emptyValues: Partial<T>;
   rowLabel: (row: T) => string;
   createLabel: string;
+  /** Nome do campo booleano "ativo" neste model — quase todo cadastro usa
+   * "is_active" (padrão, pode omitir); Famílias de Cabo usa "active". */
+  statusField?: string;
+  /** Quando true, a ação de lixeira (exclusão física) é substituída por
+   * Ativar/Inativar — para cadastros que não podem ser apagados de fato
+   * uma vez persistidos (podem já ter sido usados em projetos/escopos). */
+  disableHardDelete?: boolean;
   /** Padrão "Adicionar Vários" do Admin: textarea com um nome por linha,
    * cada linha vira um registro separado com os mesmos dados complementares. */
   bulkCreate?: {

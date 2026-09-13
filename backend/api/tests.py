@@ -1005,11 +1005,42 @@ class CableFamilyApiTests(TestCase):
         self.assertEqual(family.updated_by, self.admin)
 
     def test_is_active_filter(self):
-        CableFamily.objects.create(code="TST-ACTIVE", name="Cabo ativo", is_active=True)
-        CableFamily.objects.create(code="TST-OLD", name="Descontinuado", is_active=False)
+        # O modelo usa "active" (não "is_active", diferente do resto dos
+        # Cadastros Gerais) — o parâmetro de busca na URL continua
+        # ?is_active= (ver RegistryViewSet.active_field).
+        CableFamily.objects.create(code="TST-ACTIVE", name="Cabo ativo", active=True)
+        CableFamily.objects.create(code="TST-OLD", name="Descontinuado", active=False)
 
         response = self.client_api.get("/api/master-data/cable-families/", {"is_active": "false"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["code"], "TST-OLD")
+
+    def test_medium_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-families/",
+            {"code": "TST-NOMEDIUM", "name": "Sem meio"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("medium", response.data)
+
+    def test_fiber_count_rejects_negative(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-families/",
+            {"code": "TST-NEGATIVE", "name": "Fibras negativas", "medium": "FIBER", "fiber_count": -1},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("fiber_count", response.data)
+
+    def test_deactivate_does_not_hard_delete(self):
+        family = CableFamily.objects.create(code="TST-TOGGLE", name="Cabo para inativar", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/cable-families/{family.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(CableFamily.objects.filter(pk=family.pk).exists())
+        family.refresh_from_db()
+        self.assertFalse(family.active)

@@ -139,7 +139,7 @@ export interface CableFamily {
   cable_category: string;
   preterminated: boolean;
   description: string;
-  is_active: boolean;
+  active: boolean;
   created_at: string;
   updated_at: string;
   created_by_name: string | null;

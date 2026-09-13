@@ -80,6 +80,11 @@ class CategoryCrudSerializer(serializers.ModelSerializer):
 
 
 class CableFamilyCrudSerializer(serializers.ModelSerializer):
+    # Declarado explicitamente (em vez de deixar o DRF gerar sozinho a
+    # partir do model) para forçar "obrigatório" na API mesmo o campo
+    # tendo um default no model — o default existe só como rede de
+    # segurança no banco, não deve permitir omitir o meio na criação.
+    medium = serializers.ChoiceField(choices=CableFamily.MEDIUM_CHOICES)
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
 
@@ -96,7 +101,7 @@ class CableFamilyCrudSerializer(serializers.ModelSerializer):
             "cable_category",
             "preterminated",
             "description",
-            "is_active",
+            "active",
             "created_at",
             "updated_at",
             "created_by_name",

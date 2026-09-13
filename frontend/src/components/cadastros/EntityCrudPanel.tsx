@@ -37,6 +37,8 @@ export default function EntityCrudPanel({
   const canChange = hasPerm(user, entity.perms.change);
   const canDelete = hasPerm(user, entity.perms.delete);
   const canChangeSite = hasPerm(user, PERMS.changeSite);
+  const statusField = entity.statusField ?? "is_active";
+  const showActionsColumn = canChange || (canDelete && !entity.disableHardDelete);
 
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,6 +155,18 @@ export default function EntityCrudPanel({
     reload();
   }
 
+  async function handleToggleActive(row: Record<string, unknown>) {
+    if (!canChange) return;
+    const label = entity.rowLabel(row as never);
+    const isActive = !!row[statusField];
+    const question = isActive
+      ? `Inativar "${label}"? O registro deixa de aparecer como ativo, mas continua disponível para consultas históricas.`
+      : `Reativar "${label}"?`;
+    if (!window.confirm(question)) return;
+    await entity.api.update(row.id as number, { [statusField]: !isActive } as never);
+    reload();
+  }
+
   const fields = refsLoaded ? entity.fields(refs) : [];
 
   return (
@@ -242,7 +256,7 @@ export default function EntityCrudPanel({
                     <th key={col.key}>{col.label}</th>
                   ))}
                   <th>Situação</th>
-                  {(canChange || canDelete) && <th>Ações</th>}
+                  {showActionsColumn && <th>Ações</th>}
                 </tr>
               </thead>
               <tbody>
@@ -257,14 +271,14 @@ export default function EntityCrudPanel({
                       <span
                         className="badge"
                         style={{
-                          background: row.is_active ? "var(--green-soft)" : "#eef1f6",
-                          color: row.is_active ? "var(--green)" : "var(--text-muted)",
+                          background: row[statusField] ? "var(--green-soft)" : "#eef1f6",
+                          color: row[statusField] ? "var(--green)" : "var(--text-muted)",
                         }}
                       >
-                        {row.is_active ? "Ativo" : "Inativo"}
+                        {row[statusField] ? "Ativo" : "Inativo"}
                       </span>
                     </td>
-                    {(canChange || canDelete) && (
+                    {showActionsColumn && (
                       <td>
                         <div style={{ display: "flex", gap: 8 }}>
                           {canChange && (
@@ -272,15 +286,25 @@ export default function EntityCrudPanel({
                               <Icon name="edit" style={{ fontSize: 14 }} />
                             </button>
                           )}
-                          {canDelete && (
-                            <button
-                              className="btn btn-outline btn-sm"
-                              onClick={() => handleDelete(row)}
-                              style={{ color: "var(--red)" }}
-                            >
-                              <Icon name="delete" style={{ fontSize: 14 }} />
-                            </button>
-                          )}
+                          {entity.disableHardDelete
+                            ? canChange && (
+                                <button
+                                  className="btn btn-outline btn-sm"
+                                  onClick={() => handleToggleActive(row)}
+                                  title={row[statusField] ? "Inativar" : "Reativar"}
+                                >
+                                  <Icon name={row[statusField] ? "toggle_on" : "toggle_off"} style={{ fontSize: 14 }} />
+                                </button>
+                              )
+                            : canDelete && (
+                                <button
+                                  className="btn btn-outline btn-sm"
+                                  onClick={() => handleDelete(row)}
+                                  style={{ color: "var(--red)" }}
+                                >
+                                  <Icon name="delete" style={{ fontSize: 14 }} />
+                                </button>
+                              )}
                           {entity.key === "sites" && canChangeSite && !row.manual_coordinates && (
                             <button
                               className="btn btn-outline btn-sm"

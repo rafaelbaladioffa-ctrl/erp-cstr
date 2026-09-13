@@ -14,8 +14,8 @@ class CableAliasInline(admin.TabularInline):
 
 @admin.register(CableFamily)
 class CableFamilyAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("code", "name", "medium", "fiber_count", "cable_category", "is_active", "updated_at")
-    list_filter = ("medium", "is_active", "preterminated")
+    list_display = ("code", "name", "medium", "fiber_count", "cable_category", "active", "updated_at")
+    list_filter = ("medium", "active", "preterminated")
     search_fields = ("code", "name", "description")
     readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
     inlines = [CableAliasInline]

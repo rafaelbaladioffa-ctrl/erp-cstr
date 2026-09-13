@@ -55,7 +55,7 @@ class CableFamily(MasterDataModel):
     cable_category = models.CharField("categoria do cabo", max_length=50, blank=True)
     preterminated = models.BooleanField("pré-terminado", default=False)
     description = models.TextField("descrição", blank=True)
-    is_active = models.BooleanField("ativa", default=True)
+    active = models.BooleanField("ativa", default=True)
 
     class Meta:
         verbose_name = "Família de Cabo"
