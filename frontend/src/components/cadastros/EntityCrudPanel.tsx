@@ -43,6 +43,7 @@ export default function EntityCrudPanel({
 
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [page, setPage] = useState(1);
@@ -68,9 +69,24 @@ export default function EntityCrudPanel({
 
   function reload() {
     setLoading(true);
+    setLoadError(null);
     entity.api
-      .list()
+      // page_size grande (o teto permitido pela API) porque este painel faz
+      // busca/filtro/paginação no lado do cliente sobre `rows` — sem isso,
+      // uma entidade com mais registros que o page_size padrão da API (25)
+      // aparece truncada na primeira página, mesmo a contagem exibida
+      // batendo com `rows.length` (nunca com o total real do backend).
+      .list({ page_size: "500" })
       .then((data) => setRows(data.results))
+      .catch(() => {
+        // Nunca deixar a tabela anterior (de outra entidade) visível em
+        // caso de falha — isso já causou confusão real: uma falha ao
+        // trocar de aba deixava a listagem antiga na tela, parecendo
+        // (incorretamente) que a nova entidade estava usando o dataset
+        // errado.
+        setRows([]);
+        setLoadError(`Não foi possível carregar ${entity.label.toLowerCase()}. Tente novamente.`);
+      })
       .finally(() => setLoading(false));
   }
 
@@ -299,6 +315,10 @@ export default function EntityCrudPanel({
             </select>
           ))}
         </div>
+
+        {loadError && (
+          <p style={{ padding: "0 20px 12px", color: "var(--red)", fontSize: 13.5 }}>{loadError}</p>
+        )}
 
         {loading ? (
           <p style={{ padding: 20, color: "var(--text-muted)" }}>Carregando...</p>
