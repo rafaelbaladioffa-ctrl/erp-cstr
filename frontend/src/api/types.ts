@@ -162,6 +162,29 @@ export interface CableAlias {
   updated_by_name: string | null;
 }
 
+export interface CableSpec {
+  id: number;
+  cable_family: number | null;
+  cable_family_code: string;
+  cable_family_name: string;
+  code: string;
+  name: string;
+  manufacturer: string;
+  part_number: string;
+  fiber_type: string;
+  jacket_color: string;
+  polarity: string;
+  connector_a: string;
+  connector_b: string;
+  fiber_count: number | null;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;

@@ -23,11 +23,15 @@ export interface ColumnConfig<T> {
 
 /** Filtro adicional (além da busca por texto) exibido como um <select> na
  * barra de filtros — ex: filtrar Aliases de Cabo por Família ou por Tipo.
- * Comparação sempre por igualdade de string contra `row[key]`. */
+ * Comparação sempre por igualdade de string contra `row[key]`. `options`
+ * recebe as referências (ex: lista de Famílias) e as linhas já carregadas
+ * da própria entidade — úteis quando as opções são derivadas dos dados
+ * (ex: valores distintos de part_number/tipo de fibra já cadastrados, que
+ * não têm uma lista fixa em ReferenceData). */
 export interface FilterConfig {
   key: string;
   label: string;
-  options: (refs: ReferenceData) => FieldOption[];
+  options: (refs: ReferenceData, rows: Record<string, unknown>[]) => FieldOption[];
 }
 
 export interface EntityConfig<T extends { id: number; is_active?: boolean }> {

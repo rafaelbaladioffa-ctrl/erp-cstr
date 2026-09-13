@@ -17,7 +17,7 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
-from master_data.models import CableAlias, CableFamily
+from master_data.models import CableAlias, CableFamily, CableSpec
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -1166,3 +1166,186 @@ class CableAliasApiTests(TestCase):
             self.family.delete()
         alias.refresh_from_db()
         self.assertEqual(alias.cable_family_id, self.family.pk)
+
+
+class CableSpecApiTests(TestCase):
+    """Cadastros Mestres > Engenharia > Especificações de Cabos — CRUD,
+    duplicidade de part number ativo, consistência com aliases, busca,
+    filtros e ausência de hard delete."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(username="cable_spec_admin", email="cable_spec@example.com", password="test-password")
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0002/0004/0006/0008) roda também no banco
+        # de testes.
+        self.family = CableFamily.objects.create(code="TST-SPEC-FAMILY", name="Família de teste", medium="FIBER")
+        self.other_family = CableFamily.objects.create(code="TST-SPEC-OTHER", name="Outra família de teste", medium="FIBER")
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {"cable_family": self.family.pk, "code": "TST-SPEC-0001", "name": "Spec de teste"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        spec = CableSpec.objects.get(pk=response.data["id"])
+        self.assertEqual(spec.created_by, self.admin)
+        self.assertEqual(spec.updated_by, self.admin)
+        self.assertEqual(response.data["cable_family_code"], "TST-SPEC-FAMILY")
+
+    def test_cable_family_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {"code": "TST-SPEC-0002", "name": "Sem família"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cable_family", response.data)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {"cable_family": self.family.pk, "name": "Sem código"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-DUP", name="Original")
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {"cable_family": self.family.pk, "code": "TST-SPEC-DUP", "name": "Duplicado"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(CableSpec.objects.filter(code="TST-SPEC-DUP").count(), 1)
+
+    def test_name_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {"cable_family": self.family.pk, "code": "TST-SPEC-0003"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_fiber_count_rejects_negative(self):
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {"cable_family": self.family.pk, "code": "TST-SPEC-0004", "name": "Fibras negativas", "fiber_count": -1},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("fiber_count", response.data)
+
+    def test_duplicate_active_part_number_rejected(self):
+        CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-PN1", name="Original", part_number="TST-PN-0001")
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {"cable_family": self.family.pk, "code": "TST-SPEC-PN2", "name": "Duplicado", "part_number": "tst-pn-0001"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("part_number", response.data)
+        self.assertEqual(CableSpec.objects.filter(part_number__iexact="TST-PN-0001").count(), 1)
+
+    def test_inactive_duplicate_part_number_allowed(self):
+        # Um spec INATIVO (ex: revisão descontinuada) não deve travar o
+        # cadastro de um novo spec ativo com o mesmo part number.
+        CableSpec.objects.create(
+            cable_family=self.family, code="TST-SPEC-OLD", name="Revisão antiga", part_number="TST-PN-0002", active=False
+        )
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {"cable_family": self.family.pk, "code": "TST-SPEC-NEW", "name": "Revisão nova", "part_number": "TST-PN-0002"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_part_number_alias_family_mismatch_rejected(self):
+        CableAlias.objects.create(cable_family=self.other_family, alias="TST-ALIAS-PN-0001")
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {
+                "cable_family": self.family.pk,
+                "code": "TST-SPEC-MISMATCH",
+                "name": "Spec com part number conflitante",
+                "part_number": "tst-alias-pn-0001",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("part_number", response.data)
+        self.assertFalse(CableSpec.objects.filter(code="TST-SPEC-MISMATCH").exists())
+
+    def test_part_number_alias_family_match_allowed(self):
+        CableAlias.objects.create(cable_family=self.family, alias="TST-ALIAS-PN-0002")
+        response = self.client_api.post(
+            "/api/master-data/cable-specs/",
+            {
+                "cable_family": self.family.pk,
+                "code": "TST-SPEC-MATCH",
+                "name": "Spec com part number consistente",
+                "part_number": "tst-alias-pn-0002",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_search_by_code_name_part_number_manufacturer_and_family(self):
+        CableSpec.objects.create(
+            cable_family=self.family,
+            code="TST-SPEC-SEARCH",
+            name="Spec pesquisável",
+            manufacturer="Fabricante Teste Search",
+            part_number="TST-PN-SEARCH",
+        )
+
+        by_manufacturer = self.client_api.get("/api/master-data/cable-specs/", {"search": "Fabricante Teste Search"})
+        self.assertEqual(by_manufacturer.data["count"], 1)
+
+        by_family_code = self.client_api.get("/api/master-data/cable-specs/", {"search": "TST-SPEC-FAMILY"})
+        self.assertEqual(by_family_code.data["count"], 1)
+        self.assertEqual(by_family_code.data["results"][0]["code"], "TST-SPEC-SEARCH")
+
+    def test_filter_by_cable_family(self):
+        CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-FILTER-A", name="A")
+        CableSpec.objects.create(cable_family=self.other_family, code="TST-SPEC-FILTER-B", name="B")
+
+        response = self.client_api.get("/api/master-data/cable-specs/", {"cable_family": self.family.pk})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-SPEC-FILTER-A")
+
+    def test_filter_by_fiber_type_and_polarity(self):
+        CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-OS2-A", name="OS2 A", fiber_type="OS2", polarity="A")
+        CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-OM4-B", name="OM4 B", fiber_type="OM4", polarity="B")
+
+        by_fiber_type = self.client_api.get("/api/master-data/cable-specs/", {"fiber_type": "OS2"})
+        self.assertEqual(by_fiber_type.data["count"], 1)
+        self.assertEqual(by_fiber_type.data["results"][0]["code"], "TST-SPEC-OS2-A")
+
+        by_polarity = self.client_api.get("/api/master-data/cable-specs/", {"polarity": "B"})
+        self.assertEqual(by_polarity.data["count"], 1)
+        self.assertEqual(by_polarity.data["results"][0]["code"], "TST-SPEC-OM4-B")
+
+    def test_deactivate_does_not_hard_delete(self):
+        spec = CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-TOGGLE", name="Spec para inativar", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/cable-specs/{spec.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(CableSpec.objects.filter(pk=spec.pk).exists())
+        spec.refresh_from_db()
+        self.assertFalse(spec.active)
+
+    def test_cable_family_foreign_key_integrity(self):
+        spec = CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-FK", name="Spec com FK")
+        with self.assertRaises(ProtectedError):
+            self.family.delete()
+        spec.refresh_from_db()
+        self.assertEqual(spec.cable_family_id, self.family.pk)

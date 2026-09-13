@@ -18,7 +18,7 @@ from core.models import (
     update_person,
 )
 from dispatch.models import TechnicianAbsence, TechnicianDailyPresence
-from master_data.models import CableAlias, CableFamily, normalize_alias_text
+from master_data.models import CableAlias, CableFamily, CableSpec, normalize_alias_text
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
@@ -174,6 +174,59 @@ class CableAliasCrudSerializer(serializers.ModelSerializer):
                         )
                     }
                 )
+        return attrs
+
+
+class CableSpecCrudSerializer(serializers.ModelSerializer):
+    cable_family_code = serializers.CharField(source="cable_family.code", read_only=True)
+    cable_family_name = serializers.CharField(source="cable_family.name", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CableSpec
+        fields = (
+            "id",
+            "cable_family",
+            "cable_family_code",
+            "cable_family_name",
+            "code",
+            "name",
+            "manufacturer",
+            "part_number",
+            "fiber_type",
+            "jacket_color",
+            "polarity",
+            "connector_a",
+            "connector_b",
+            "fiber_count",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+    def validate(self, attrs):
+        # Reaproveita CableSpec.clean() (duplicidade de part number ativo +
+        # consistência com CableAlias) em vez de duplicar a regra aqui —
+        # monta uma instância transitória com os valores já validados pelo
+        # DRF e roda a validação de negócio do model sobre ela.
+        instance = self.instance or CableSpec()
+        for field, value in attrs.items():
+            setattr(instance, field, value)
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
         return attrs
 
 

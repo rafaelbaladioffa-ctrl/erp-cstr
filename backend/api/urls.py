@@ -33,6 +33,7 @@ router.register("registry/collaborators", views.CollaboratorRegistryViewSet, bas
 router.register("registry/tasks", views.TaskViewSet, basename="registry-task")
 router.register("master-data/cable-families", views.CableFamilyViewSet, basename="master-data-cable-family")
 router.register("master-data/cable-aliases", views.CableAliasViewSet, basename="master-data-cable-alias")
+router.register("master-data/cable-specs", views.CableSpecViewSet, basename="master-data-cable-spec")
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),

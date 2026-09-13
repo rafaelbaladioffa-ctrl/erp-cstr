@@ -3,6 +3,7 @@ import type {
   AuditLogEntry,
   CableAlias,
   CableFamily,
+  CableSpec,
   Category,
   ClientFull,
   Collaborator,
@@ -73,6 +74,7 @@ export const registryApi = {
 export const masterDataApi = {
   cableFamilies: crud<CableFamily>("/master-data/cable-families"),
   cableAliases: crud<CableAlias>("/master-data/cable-aliases"),
+  cableSpecs: crud<CableSpec>("/master-data/cable-specs"),
 };
 
 export const auditLogApi = {

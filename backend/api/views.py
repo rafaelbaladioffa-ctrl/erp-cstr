@@ -32,7 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
-from master_data.models import CableAlias, CableFamily
+from master_data.models import CableAlias, CableFamily, CableSpec
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -60,6 +60,7 @@ from .serializers import (
     CompanyCrudSerializer,
     CableAliasCrudSerializer,
     CableFamilyCrudSerializer,
+    CableSpecCrudSerializer,
     CategoryCrudSerializer,
     DailyUpdateSerializer,
     JobTitleCrudSerializer,
@@ -746,6 +747,37 @@ class CableAliasViewSet(RegistryViewSet):
         alias_type = self.request.query_params.get("alias_type")
         if alias_type:
             queryset = queryset.filter(alias_type=alias_type)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class CableSpecViewSet(RegistryViewSet):
+    """Cadastros Mestres > Engenharia > Especificações de Cabos. Mesmo
+    padrão de CableFamilyViewSet/CableAliasViewSet; filtros exatos por
+    família, part number, tipo de fibra e polaridade além da busca/is_active
+    herdados de RegistryViewSet."""
+
+    queryset = CableSpec.objects.select_related("cable_family", "created_by", "updated_by").order_by("code")
+    serializer_class = CableSpecCrudSerializer
+    search_fields = ("code", "name", "part_number", "manufacturer", "cable_family__name", "cable_family__code")
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param, field in (
+            ("cable_family", "cable_family_id"),
+            ("part_number", "part_number"),
+            ("fiber_type", "fiber_type"),
+            ("polarity", "polarity"),
+        ):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{field: value})
         return queryset
 
     def perform_create(self, serializer):

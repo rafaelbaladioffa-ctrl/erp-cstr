@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { masterDataApi, sitesMapApi } from "../../api/resources";
-import type { CableAlias } from "../../api/types";
+import type { CableAlias, CableSpec } from "../../api/types";
 import { useAuth } from "../../context/AuthContext";
 import { PERMS, hasPerm } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../../pages/cadastros/registryConfig";
@@ -48,12 +48,14 @@ export default function EntityCrudPanel({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Só usado pela Família de Cabo: lista de aliases apontando para o
-  // registro em edição, mostrada como seção somente-leitura no modal (o
+  // Só usado pela Família de Cabo: aliases e specs apontando para o
+  // registro em edição, mostrados como seções somente-leitura no modal (o
   // equivalente mais próximo de "tela de detalhes" que este painel genérico
   // tem hoje — ver EntityConfig/masterDataConfig para o resto da entidade).
   const [familyAliases, setFamilyAliases] = useState<CableAlias[]>([]);
   const [familyAliasesLoading, setFamilyAliasesLoading] = useState(false);
+  const [familySpecs, setFamilySpecs] = useState<CableSpec[]>([]);
+  const [familySpecsLoading, setFamilySpecsLoading] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -126,6 +128,7 @@ export default function EntityCrudPanel({
     setFormValues(entity.emptyValues);
     setFormErrors({});
     setFamilyAliases([]);
+    setFamilySpecs([]);
     setModalOpen(true);
   }
 
@@ -146,8 +149,14 @@ export default function EntityCrudPanel({
         .list({ cable_family: String(row.id) })
         .then((data) => setFamilyAliases(data.results))
         .finally(() => setFamilyAliasesLoading(false));
+      setFamilySpecsLoading(true);
+      masterDataApi.cableSpecs
+        .list({ cable_family: String(row.id) })
+        .then((data) => setFamilySpecs(data.results))
+        .finally(() => setFamilySpecsLoading(false));
     } else {
       setFamilyAliases([]);
+      setFamilySpecs([]);
     }
   }
 
@@ -282,7 +291,7 @@ export default function EntityCrudPanel({
               }}
             >
               <option value="">{filter.label}</option>
-              {filter.options(refs).map((opt) => (
+              {filter.options(refs, rows).map((opt) => (
                 <option key={opt.value} value={String(opt.value)}>
                   {opt.label}
                 </option>
@@ -429,6 +438,36 @@ export default function EntityCrudPanel({
                     <li key={a.id}>
                       {a.alias}
                       {a.alias_type ? ` (${a.alias_type})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {editingId && entity.key === "cable-families" && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--text-faint)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: 8,
+                }}
+              >
+                Especificações ({familySpecs.length})
+              </div>
+              {familySpecsLoading ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+              ) : familySpecs.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhuma especificação cadastrada para esta família ainda.</p>
+              ) : (
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text)" }}>
+                  {familySpecs.map((s) => (
+                    <li key={s.id}>
+                      {s.code}
+                      {s.part_number ? ` (${s.part_number})` : ""}
                     </li>
                   ))}
                 </ul>

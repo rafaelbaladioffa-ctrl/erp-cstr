@@ -1,5 +1,5 @@
 import { masterDataApi } from "../../api/resources";
-import type { CableAlias, CableFamily } from "../../api/types";
+import type { CableAlias, CableFamily, CableSpec } from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
 
@@ -47,6 +47,20 @@ function connectorsDisplay(a: string, b: string) {
   if (!a && !b) return "—";
   if (a && b) return a === b ? `${a} ↔ ${b}` : `${a} → ${b}`;
   return a || b;
+}
+
+/** Opções de filtro derivadas dos valores já cadastrados (ex: part numbers,
+ * tipos de fibra, polaridades) — não têm uma lista fixa como alias_type,
+ * então em vez de inventar valores, o filtro só oferece o que já existe. */
+function distinctOptions(rows: Record<string, unknown>[], key: string) {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const value = row[key];
+    if (typeof value === "string" && value) seen.add(value);
+  }
+  return Array.from(seen)
+    .sort()
+    .map((value) => ({ value, label: value }));
 }
 
 const cableFamilyEntity: EntityConfig<CableFamily> = {
@@ -142,8 +156,77 @@ const cableAliasEntity: EntityConfig<CableAlias> = {
   rowLabel: (row) => `${row.alias} → ${row.cable_family_code}`,
 };
 
+const cableSpecEntity: EntityConfig<CableSpec> = {
+  key: "cable-specs",
+  label: "Especificações de Cabos",
+  icon: "settings_ethernet",
+  singular: "Especificação de Cabo",
+  description: "Fabricante, part number e características físicas concretas de uma Família de Cabo canônica.",
+  createLabel: "Nova Especificação de Cabo",
+  perms: modelPerms("master_data", "cablespec"),
+  api: masterDataApi.cableSpecs,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "name", label: "Nome" },
+    { key: "cable_family_code", label: "Família" },
+    { key: "part_number", label: "Part Number", render: (row) => row.part_number || "—" },
+    { key: "fiber_type", label: "Tipo de Fibra", render: (row) => row.fiber_type || "—" },
+    { key: "jacket_color", label: "Cor", render: (row) => (row.jacket_color ? titleCase(row.jacket_color) : "—") },
+    { key: "polarity", label: "Polaridade", render: (row) => row.polarity || "—" },
+    { key: "connectors", label: "Conectores", render: (row) => connectorsDisplay(row.connector_a, row.connector_b) },
+    { key: "fiber_count", label: "Fibras", render: (row) => (row.fiber_count == null ? "—" : String(row.fiber_count)) },
+  ],
+  filters: [
+    { key: "cable_family", label: "Todas as Famílias", options: cableFamilyOptions },
+    { key: "part_number", label: "Todos os Part Numbers", options: (_refs, rows) => distinctOptions(rows, "part_number") },
+    { key: "fiber_type", label: "Todos os Tipos de Fibra", options: (_refs, rows) => distinctOptions(rows, "fiber_type") },
+    { key: "polarity", label: "Todas as Polaridades", options: (_refs, rows) => distinctOptions(rows, "polarity") },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: (refs) => [
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: SPEC-72F-MPOB-0072X6P64" },
+    { name: "name", label: "Nome", type: "text", required: true, placeholder: "Ex: 72F OS2 Yellow MPO/MPO MPO-B" },
+    { name: "cable_family", label: "Família de Cabo", type: "select", required: true, span: 2, options: cableFamilyOptions(refs) },
+    { name: "manufacturer", label: "Fabricante", type: "text" },
+    { name: "part_number", label: "Part Number", type: "text" },
+    { name: "fiber_type", label: "Tipo de Fibra", type: "text", placeholder: "Ex: OS2, OM3, OM4" },
+    { name: "jacket_color", label: "Cor da Capa", type: "text", placeholder: "Ex: YELLOW" },
+    { name: "polarity", label: "Polaridade", type: "text", placeholder: "Ex: A, B" },
+    { name: "connector_a", label: "Conector A", type: "text" },
+    { name: "connector_b", label: "Conector B", type: "text" },
+    { name: "fiber_count", label: "Nº de Fibras", type: "number" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+  ],
+  emptyValues: {
+    code: "",
+    name: "",
+    cable_family: null,
+    manufacturer: "",
+    part_number: "",
+    fiber_type: "",
+    jacket_color: "",
+    polarity: "",
+    connector_a: "",
+    connector_b: "",
+    fiber_count: null,
+    description: "",
+    active: true,
+  },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
-  { key: "engenharia", label: "Engenharia", icon: "cable", entities: [cableFamilyEntity, cableAliasEntity] },
+  { key: "engenharia", label: "Engenharia", icon: "cable", entities: [cableFamilyEntity, cableAliasEntity, cableSpecEntity] },
   { key: "operacao", label: "Operação", icon: "engineering", entities: [] },
   { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [] },
   { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },
