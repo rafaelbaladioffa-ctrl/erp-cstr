@@ -17,7 +17,7 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Workstream
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Path, Workstream
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -2023,3 +2023,178 @@ class WorkstreamApiTests(TestCase):
         module.seed_workstreams(django_apps, None)
         module.seed_workstreams(django_apps, None)
         self.assertEqual(Workstream.objects.count(), count_before)
+
+
+class PathApiTests(TestCase):
+    """Cadastros Mestres > Operação > Rotas/Caminhos — CRUD, obrigatoriedade,
+    busca, filtros, CSV, ativação/inativação e seed idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="path_admin", email="path@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0018_seed_paths) roda também no banco de
+        # testes (6 registros: PATH-A, PATH-B, INTER-RACK, CROSS-CONNECT,
+        # DIRECT-DUCT, UNSPECIFIED).
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/paths/",
+            {"code": "TST-PATH-0001", "name": "Rota de teste", "path_group": "TEST_GROUP", "path_type": "TEST_TYPE"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        path = Path.objects.get(pk=response.data["id"])
+        self.assertEqual(path.created_by, self.admin)
+        self.assertEqual(path.updated_by, self.admin)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/paths/",
+            {"name": "Sem código", "path_group": "TEST_GROUP", "path_type": "TEST_TYPE"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        Path.objects.create(code="TST-PATH-DUP", name="Original", path_group="TEST_GROUP", path_type="TEST_TYPE")
+        response = self.client_api.post(
+            "/api/master-data/paths/",
+            {"code": "TST-PATH-DUP", "name": "Duplicado", "path_group": "TEST_GROUP", "path_type": "TEST_TYPE"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(Path.objects.filter(code="TST-PATH-DUP").count(), 1)
+
+    def test_name_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/paths/",
+            {"code": "TST-PATH-0002", "path_group": "TEST_GROUP", "path_type": "TEST_TYPE"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_path_group_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/paths/",
+            {"code": "TST-PATH-0003", "name": "Sem grupo", "path_type": "TEST_TYPE"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("path_group", response.data)
+
+    def test_path_type_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/paths/",
+            {"code": "TST-PATH-0004", "name": "Sem tipo", "path_group": "TEST_GROUP"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("path_type", response.data)
+
+    def test_update_edits_fields(self):
+        path = Path.objects.create(code="TST-PATH-EDIT", name="Original", path_group="TEST_GROUP", path_type="TEST_TYPE")
+
+        response = self.client_api.patch(
+            f"/api/master-data/paths/{path.pk}/",
+            {"name": "Editada", "path_type": "OTHER_TYPE"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        path.refresh_from_db()
+        self.assertEqual(path.name, "Editada")
+        self.assertEqual(path.path_type, "OTHER_TYPE")
+
+    def test_search_by_code_name_path_group_path_type(self):
+        Path.objects.create(
+            code="TST-PATH-SEARCH", name="Rota pesquisável", path_group="TST_SEARCHABLE_GROUP", path_type="TEST_TYPE"
+        )
+
+        response = self.client_api.get("/api/master-data/paths/", {"search": "TST_SEARCHABLE_GROUP"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-PATH-SEARCH")
+
+    def test_filter_by_path_group(self):
+        Path.objects.create(code="TST-PATH-GROUPA", name="A", path_group="TST_GROUP_A", path_type="TEST_TYPE")
+        Path.objects.create(code="TST-PATH-GROUPB", name="B", path_group="TST_GROUP_B", path_type="TEST_TYPE")
+
+        response = self.client_api.get("/api/master-data/paths/", {"path_group": "TST_GROUP_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-PATH-GROUPA")
+
+    def test_filter_by_path_type(self):
+        Path.objects.create(code="TST-PATH-TYPEA", name="A", path_group="TEST_GROUP", path_type="TST_TYPE_A")
+        Path.objects.create(code="TST-PATH-TYPEB", name="B", path_group="TEST_GROUP", path_type="TST_TYPE_B")
+
+        response = self.client_api.get("/api/master-data/paths/", {"path_type": "TST_TYPE_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-PATH-TYPEA")
+
+    def test_filter_by_active(self):
+        Path.objects.create(code="TST-PATH-ACTIVE", name="Ativa", path_group="TEST_GROUP", path_type="TEST_TYPE", active=True)
+        Path.objects.create(code="TST-PATH-INACTIVE", name="Inativa", path_group="TEST_GROUP", path_type="TEST_TYPE", active=False)
+
+        response = self.client_api.get("/api/master-data/paths/", {"is_active": "false"})
+
+        codes = [row["code"] for row in response.data["results"]]
+        self.assertIn("TST-PATH-INACTIVE", codes)
+        self.assertNotIn("TST-PATH-ACTIVE", codes)
+
+    def test_deactivate_does_not_hard_delete(self):
+        path = Path.objects.create(code="TST-PATH-TOGGLE", name="Para inativar", path_group="TEST_GROUP", path_type="TEST_TYPE", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/paths/{path.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(Path.objects.filter(pk=path.pk).exists())
+        path.refresh_from_db()
+        self.assertFalse(path.active)
+
+    def test_export_csv(self):
+        Path.objects.create(code="TST-PATH-EXPORT", name="Exportação de teste", path_group="TEST_GROUP", path_type="TEST_TYPE")
+        response = self.client_api.get("/api/master-data/paths/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-PATH-EXPORT", content)
+        self.assertIn("código", content)
+
+    def test_import_csv_creates_rows(self):
+        csv_content = (
+            "código;nome;grupo;tipo\n"
+            "TST-PATH-IMPORT1;Rota Importada 1;TEST_GROUP;A\n"
+            "TST-PATH-IMPORT2;Rota Importada 2;TEST_GROUP;B\n"
+        )
+        upload = SimpleUploadedFile("paths.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post("/api/master-data/paths/import-csv/", {"csv_file": upload}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 2)
+        self.assertEqual(response.data["errors"], [])
+        imported = Path.objects.get(code="TST-PATH-IMPORT1")
+        self.assertEqual(imported.path_group, "TEST_GROUP")
+        self.assertEqual(imported.path_type, "A")
+
+    def test_seed_matches_expected_six_records(self):
+        expected_codes = {"PATH-A", "PATH-B", "INTER-RACK", "CROSS-CONNECT", "DIRECT-DUCT", "UNSPECIFIED"}
+        codes = set(Path.objects.values_list("code", flat=True))
+        self.assertEqual(expected_codes & codes, expected_codes)
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0018_seed_paths")
+        count_before = Path.objects.count()
+        module.seed_paths(django_apps, None)
+        module.seed_paths(django_apps, None)
+        self.assertEqual(Path.objects.count(), count_before)

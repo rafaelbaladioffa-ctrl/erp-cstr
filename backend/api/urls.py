@@ -38,6 +38,7 @@ router.register("master-data/certification-types", views.CertificationTypeViewSe
 router.register("master-data/activities", views.ActivityViewSet, basename="master-data-activity")
 router.register("master-data/networks", views.NetworkViewSet, basename="master-data-network")
 router.register("master-data/workstreams", views.WorkstreamViewSet, basename="master-data-workstream")
+router.register("master-data/paths", views.PathViewSet, basename="master-data-path")
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),

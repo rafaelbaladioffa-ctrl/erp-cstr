@@ -21,6 +21,7 @@ import type {
   OperationsReports,
   OperationsTimeline,
   Paginated,
+  Path,
   Project,
   ProjectAttachment,
   ProjectDailyUpdate,
@@ -83,6 +84,7 @@ export const masterDataApi = {
   activities: crud<Activity>("/master-data/activities"),
   networks: crud<Network>("/master-data/networks"),
   workstreams: crud<Workstream>("/master-data/workstreams"),
+  paths: crud<Path>("/master-data/paths"),
 };
 
 export const auditLogApi = {

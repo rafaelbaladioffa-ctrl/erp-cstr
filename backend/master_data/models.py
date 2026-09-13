@@ -380,3 +380,34 @@ class Workstream(MasterDataModel):
 
     def __str__(self):
         return f"{self.code} — {self.name}"
+
+
+class Path(MasterDataModel):
+    """Catálogo canônico dos tipos de caminho/rota usados na execução de
+    cabeamento — o tipo lógico/operacional do caminho (ex: PATH-A), não uma
+    rota física concreta de um projeto. Existe para padronizar termos
+    equivalentes encontrados em SOWs ("Route A", "Path A", "Rota A" devem
+    todos apontar para o mesmo registro canônico PATH-A); a normalização
+    de texto livre por alias fica preparada para uma fase futura
+    (path_aliases), mas não é criada nesta etapa — aqui é só o catálogo,
+    sem relação com CableFamily, Network ou scope_connections."""
+
+    # Sugestões (não é ENUM/choices — texto livre para não travar valores
+    # novos que apareçam na prática).
+    PATH_GROUP_SUGGESTIONS = ("REDUNDANT_PATH", "INTERNAL", "CROSS_CONNECTION", "DUCT", "UNSPECIFIED")
+    PATH_TYPE_SUGGESTIONS = ("A", "B", "INTER_RACK", "CROSS_CONNECT", "DIRECT", "UNSPECIFIED")
+
+    code = models.CharField("código", max_length=50, unique=True)
+    name = models.CharField("nome", max_length=150)
+    path_group = models.CharField("grupo", max_length=50)
+    path_type = models.CharField("tipo", max_length=50)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Rota/Caminho"
+        verbose_name_plural = "Rotas/Caminhos"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"

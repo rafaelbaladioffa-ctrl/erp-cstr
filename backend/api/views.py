@@ -32,7 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
-from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Workstream
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Path, Workstream
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -63,6 +63,7 @@ from .serializers import (
     CableSpecCrudSerializer,
     ActivityCrudSerializer,
     NetworkCrudSerializer,
+    PathCrudSerializer,
     WorkstreamCrudSerializer,
     CertificationTypeCrudSerializer,
     CategoryCrudSerializer,
@@ -879,6 +880,33 @@ class WorkstreamViewSet(RegistryViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         for param in ("category", "default_medium"):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{param: value})
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class PathViewSet(RegistryViewSet):
+    """Cadastros Mestres > Operação > Rotas/Caminhos. Catálogo canônico dos
+    tipos de caminho/rota — mesmo padrão de WorkstreamViewSet; filtros
+    exatos por grupo e tipo além da busca/is_active herdados de
+    RegistryViewSet. Sem relação com CableFamily/Network/scope_connections
+    nesta etapa (deliberadamente fora de escopo — ver docstring do model)."""
+
+    queryset = Path.objects.select_related("created_by", "updated_by").order_by("code")
+    serializer_class = PathCrudSerializer
+    search_fields = ("code", "name", "path_group", "path_type", "description")
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param in ("path_group", "path_type"):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{param: value})

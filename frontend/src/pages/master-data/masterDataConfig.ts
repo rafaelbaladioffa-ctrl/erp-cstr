@@ -1,5 +1,5 @@
 import { masterDataApi } from "../../api/resources";
-import type { Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Workstream } from "../../api/types";
+import type { Activity, CableAlias, CableFamily, CableSpec, CertificationType, Network, Path, Workstream } from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
 
@@ -35,6 +35,12 @@ const NETWORK_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER"];
  * mostradas no filtro e como sugestão no formulário. */
 const WORKSTREAM_CATEGORY_SUGGESTIONS = ["CABLING", "HARDWARE", "WIRELESS", "SERVICE", "CLOSURE"];
 const WORKSTREAM_DEFAULT_MEDIUM_SUGGESTIONS = ["FIBER", "COPPER", "MIXED", "GENERAL"];
+
+/** Espelha master_data.models.Path.PATH_GROUP_SUGGESTIONS/
+ * PATH_TYPE_SUGGESTIONS no backend — não é ENUM rígido, só as opções
+ * mostradas no filtro e como sugestão no formulário. */
+const PATH_GROUP_SUGGESTIONS = ["REDUNDANT_PATH", "INTERNAL", "CROSS_CONNECTION", "DUCT", "UNSPECIFIED"];
+const PATH_TYPE_SUGGESTIONS = ["A", "B", "INTER_RACK", "CROSS_CONNECT", "DIRECT", "UNSPECIFIED"];
 
 function cableFamilyOptions(refs: ReferenceData) {
   return refs.cableFamilies.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }));
@@ -483,6 +489,55 @@ const workstreamEntity: EntityConfig<Workstream> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const pathEntity: EntityConfig<Path> = {
+  key: "paths",
+  label: "Rotas / Caminhos",
+  icon: "alt_route",
+  singular: "Rota/Caminho",
+  description: "Tipo lógico/operacional de caminho usado na execução de cabeamento (ex: Path A, Path B, Cross Connection).",
+  createLabel: "Nova Rota/Caminho",
+  perms: modelPerms("master_data", "path"),
+  api: masterDataApi.paths,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "name", label: "Nome" },
+    { key: "path_group", label: "Grupo" },
+    { key: "path_type", label: "Tipo" },
+  ],
+  filters: [
+    {
+      key: "path_group",
+      label: "Todos os Grupos",
+      options: () => PATH_GROUP_SUGGESTIONS.map((g) => ({ value: g, label: g })),
+    },
+    {
+      key: "path_type",
+      label: "Todos os Tipos",
+      options: () => PATH_TYPE_SUGGESTIONS.map((t) => ({ value: t, label: t })),
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: () => [
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: PATH-A" },
+    { name: "name", label: "Nome", type: "text", required: true, placeholder: "Ex: Path A" },
+    { name: "path_group", label: "Grupo", type: "text", required: true, placeholder: "Ex: REDUNDANT_PATH, INTERNAL, CROSS_CONNECTION, DUCT" },
+    { name: "path_type", label: "Tipo", type: "text", required: true, placeholder: "Ex: A, B, INTER_RACK, CROSS_CONNECT, DIRECT" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+  ],
+  emptyValues: { code: "", name: "", path_group: "", path_type: "", description: "", active: true },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -490,7 +545,12 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     icon: "cable",
     entities: [cableFamilyEntity, cableAliasEntity, cableSpecEntity, certificationTypeEntity],
   },
-  { key: "operacao", label: "Operação", icon: "engineering", entities: [activityEntity, networkEntity, workstreamEntity] },
+  {
+    key: "operacao",
+    label: "Operação",
+    icon: "engineering",
+    entities: [activityEntity, networkEntity, workstreamEntity, pathEntity],
+  },
   { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [] },
   { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },
 ];
