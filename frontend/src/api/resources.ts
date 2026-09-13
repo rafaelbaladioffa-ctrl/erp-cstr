@@ -43,6 +43,7 @@ import type {
   SiteMapData,
   TaskFull,
   TaskTemplate,
+  TaskTemplateRule,
   TaskTemplateStep,
   TechnicianAbsence,
   Workstream,
@@ -95,6 +96,7 @@ export const masterDataApi = {
   deviceTypes: crud<DeviceType>("/master-data/device-types"),
   taskTemplates: crud<TaskTemplate>("/master-data/task-templates"),
   taskTemplateSteps: crud<TaskTemplateStep>("/master-data/task-template-steps"),
+  taskTemplateRules: crud<TaskTemplateRule>("/master-data/task-template-rules"),
 };
 
 export const auditLogApi = {

@@ -44,6 +44,7 @@ router.register("master-data/locations", views.LocationViewSet, basename="master
 router.register("master-data/device-types", views.DeviceTypeViewSet, basename="master-data-device-type")
 router.register("master-data/task-templates", views.TaskTemplateViewSet, basename="master-data-task-template")
 router.register("master-data/task-template-steps", views.TaskTemplateStepViewSet, basename="master-data-task-template-step")
+router.register("master-data/task-template-rules", views.TaskTemplateRuleViewSet, basename="master-data-task-template-rule")
 
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),

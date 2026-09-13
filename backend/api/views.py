@@ -43,6 +43,7 @@ from master_data.models import (
     Network,
     Path,
     TaskTemplate,
+    TaskTemplateRule,
     TaskTemplateStep,
     Workstream,
 )
@@ -80,6 +81,7 @@ from .serializers import (
     DeviceTypeCrudSerializer,
     TaskTemplateCrudSerializer,
     TaskTemplateStepCrudSerializer,
+    TaskTemplateRuleCrudSerializer,
     LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
@@ -1091,6 +1093,63 @@ class TaskTemplateStepViewSet(RegistryViewSet):
             value = self.request.query_params.get(param)
             if value is not None:
                 queryset = queryset.filter(**{param: value.lower() in ("1", "true", "yes")})
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class TaskTemplateRuleViewSet(RegistryViewSet):
+    """Cadastros Mestres > Operação > Regras de Templates. Determina qual
+    TaskTemplate deve ser usado para um item de escopo, a partir de
+    critérios opcionais (família de cabo, especificação, rede, workstream,
+    meio, pré-terminado) — base do futuro motor de geração automática de
+    tarefas (Rules Engine, ainda não implementado). Busca/is_active
+    herdados de RegistryViewSet, mais filtros exatos por template/família/
+    rede/workstream/meio/pré-terminado."""
+
+    queryset = TaskTemplateRule.objects.select_related(
+        "task_template", "cable_family", "cable_spec", "network", "workstream", "created_by", "updated_by"
+    ).order_by("priority", "code")
+    serializer_class = TaskTemplateRuleCrudSerializer
+    search_fields = (
+        "code",
+        "name",
+        "task_template__code",
+        "task_template__name",
+        "cable_family__code",
+        "cable_family__name",
+        "cable_spec__code",
+        "cable_spec__part_number",
+        "network__code",
+        "network__name",
+        "workstream__code",
+        "workstream__name",
+        "description",
+    )
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param, field in (
+            ("task_template", "task_template_id"),
+            ("cable_family", "cable_family_id"),
+            ("cable_spec", "cable_spec_id"),
+            ("network", "network_id"),
+            ("workstream", "workstream_id"),
+        ):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{field: value})
+        medium = self.request.query_params.get("medium")
+        if medium:
+            queryset = queryset.filter(medium=medium)
+        preterminated = self.request.query_params.get("preterminated")
+        if preterminated is not None:
+            queryset = queryset.filter(preterminated=preterminated.lower() in ("1", "true", "yes"))
         return queryset
 
     def perform_create(self, serializer):

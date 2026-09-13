@@ -165,6 +165,13 @@ def parse_csv_value(row, field):
 
     internal_type = field.get_internal_type()
     if internal_type == "BooleanField":
+        # Campo booleano nullable (ex: TaskTemplateRule.preterminated) e
+        # célula vazia: "" significa "não informado/não considerar" (None),
+        # diferente de "Não" (False) — só se aplica quando o model permite
+        # null; um booleano obrigatório com célula vazia continua caindo no
+        # comportamento de sempre (célula ausente = falso).
+        if field.null and not raw:
+            return None
         return raw.strip().casefold() not in ("", "não", "nao", "0", "false")
     if internal_type == "DateField":
         if not raw:

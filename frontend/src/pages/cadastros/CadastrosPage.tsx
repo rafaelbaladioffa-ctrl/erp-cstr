@@ -15,7 +15,7 @@ export default function CadastrosPage() {
   const [quickCreateSignal, setQuickCreateSignal] = useState<{ key: string; nonce: number } | null>(null);
   const [refs, setRefs] = useState<ReferenceData>({
     companies: [], jobTitles: [], sites: [], clients: [], projectTypes: [], collaborators: [], cableFamilies: [], masterDataSites: [],
-    activities: [], taskTemplates: [],
+    activities: [], taskTemplates: [], cableSpecs: [], networks: [], workstreams: [],
   });
   const [refsLoaded, setRefsLoaded] = useState(false);
 
@@ -52,6 +52,9 @@ export default function CadastrosPage() {
           masterDataSites: [],
           activities: [],
           taskTemplates: [],
+          cableSpecs: [],
+          networks: [],
+          workstreams: [],
         });
       })
       .finally(() => setRefsLoaded(true));

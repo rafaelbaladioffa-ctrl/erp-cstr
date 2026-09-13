@@ -83,7 +83,7 @@ function renderInput(field: FieldConfig, value: unknown, onChange: (name: string
           value={value === null || value === undefined ? "" : String(value)}
           onChange={(e) => onChange(field.name, e.target.value === "" ? null : Number(e.target.value) || e.target.value)}
         >
-          <option value="">Selecione...</option>
+          <option value="">{field.placeholder || "Selecione..."}</option>
           {field.options?.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}

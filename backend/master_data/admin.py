@@ -15,6 +15,7 @@ from .models import (
     Path,
     Site,
     TaskTemplate,
+    TaskTemplateRule,
     TaskTemplateStep,
     Workstream,
 )
@@ -246,6 +247,53 @@ class TaskTemplateStepAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, 
         return obj.effective_name
 
     effective_name_display.short_description = "nome efetivo"
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(TaskTemplateRule)
+class TaskTemplateRuleAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = (
+        "code",
+        "name",
+        "task_template",
+        "cable_family",
+        "network",
+        "workstream",
+        "medium",
+        "preterminated",
+        "priority",
+        "specificity_score_display",
+        "active",
+        "updated_at",
+    )
+    list_filter = ("medium", "preterminated", "active")
+    search_fields = (
+        "code",
+        "name",
+        "task_template__code",
+        "task_template__name",
+        "cable_family__code",
+        "cable_family__name",
+        "cable_spec__code",
+        "cable_spec__part_number",
+        "network__code",
+        "network__name",
+        "workstream__code",
+        "workstream__name",
+        "description",
+    )
+    autocomplete_fields = ("task_template", "cable_family", "cable_spec", "network", "workstream")
+    readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
+
+    def specificity_score_display(self, obj):
+        return obj.specificity_score
+
+    specificity_score_display.short_description = "especificidade"
 
     def save_model(self, request, obj, form, change):
         if not change:

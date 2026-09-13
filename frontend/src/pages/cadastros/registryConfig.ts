@@ -2,18 +2,21 @@ import { bulkCreateApi, registryApi } from "../../api/resources";
 import type {
   Activity,
   CableFamily,
+  CableSpec,
   Category,
   ClientFull,
   CollaboratorFull,
   Company,
   JobTitle,
   MasterDataSite,
+  Network,
   Paginated,
   ProjectType,
   ResponsibleFull,
   SiteFull,
   TaskFull,
   TaskTemplate,
+  Workstream,
 } from "../../api/types";
 import type { FieldConfig, FieldOption, FormValues } from "../../components/ui/DynamicForm";
 import { modelPerms, type ModelPerms } from "../../utils/permissions";
@@ -99,6 +102,11 @@ export interface ReferenceData {
    * vazio para quem só usa Cadastros Gerais. */
   activities: Activity[];
   taskTemplates: TaskTemplate[];
+  /** Só usado por Cadastros Mestres (seletores de Regras de Templates) —
+   * vazio para quem só usa Cadastros Gerais. */
+  cableSpecs: CableSpec[];
+  networks: Network[];
+  workstreams: Workstream[];
 }
 
 function companyOptions(refs: ReferenceData) {

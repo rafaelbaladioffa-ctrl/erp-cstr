@@ -354,6 +354,37 @@ export interface TaskTemplateStep {
   updated_by_name: string | null;
 }
 
+export interface TaskTemplateRule {
+  id: number;
+  code: string;
+  name: string;
+  task_template: number | null;
+  task_template_code: string;
+  task_template_name: string;
+  cable_family: number | null;
+  cable_family_code: string | null;
+  cable_family_name: string | null;
+  cable_spec: number | null;
+  cable_spec_code: string | null;
+  cable_spec_part_number: string | null;
+  network: number | null;
+  network_code: string | null;
+  network_name: string | null;
+  workstream: number | null;
+  workstream_code: string | null;
+  workstream_name: string | null;
+  medium: string;
+  preterminated: boolean | null;
+  priority: number;
+  specificity_score: number;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;

@@ -19,6 +19,9 @@ const EMPTY_REFS: ReferenceData = {
   masterDataSites: [],
   activities: [],
   taskTemplates: [],
+  cableSpecs: [],
+  networks: [],
+  workstreams: [],
 };
 
 export default function MasterDataPage() {
@@ -30,8 +33,9 @@ export default function MasterDataPage() {
   useEffect(() => {
     // Cadastros Mestres não tem tantos cadastros quanto Cadastros Gerais
     // ainda — Aliases/Especificações de Cabo precisam da lista de Famílias
-    // (seletor/filtro), Localizações precisa da lista de Sites, e Etapas
-    // de Template precisa das listas de Templates e Atividades.
+    // (seletor/filtro), Localizações precisa da lista de Sites, Etapas de
+    // Template precisa das listas de Templates e Atividades, e Regras de
+    // Templates precisa também de Especificações/Redes/Workstreams.
     // Promise.allSettled deixa fácil acrescentar mais entradas conforme
     // novos cadastros forem chegando.
     Promise.allSettled([
@@ -39,14 +43,20 @@ export default function MasterDataPage() {
       masterDataApi.sites.list({ page_size: "500" } as never),
       masterDataApi.activities.list({ page_size: "500" } as never),
       masterDataApi.taskTemplates.list({ page_size: "500" } as never),
+      masterDataApi.cableSpecs.list({ page_size: "500" } as never),
+      masterDataApi.networks.list({ page_size: "500" } as never),
+      masterDataApi.workstreams.list({ page_size: "500" } as never),
     ])
-      .then(([cableFamilies, masterDataSites, activities, taskTemplates]) => {
+      .then(([cableFamilies, masterDataSites, activities, taskTemplates, cableSpecs, networks, workstreams]) => {
         setRefs({
           ...EMPTY_REFS,
           cableFamilies: cableFamilies.status === "fulfilled" ? cableFamilies.value.results : [],
           masterDataSites: masterDataSites.status === "fulfilled" ? masterDataSites.value.results : [],
           activities: activities.status === "fulfilled" ? activities.value.results : [],
           taskTemplates: taskTemplates.status === "fulfilled" ? taskTemplates.value.results : [],
+          cableSpecs: cableSpecs.status === "fulfilled" ? cableSpecs.value.results : [],
+          networks: networks.status === "fulfilled" ? networks.value.results : [],
+          workstreams: workstreams.status === "fulfilled" ? workstreams.value.results : [],
         });
       })
       .finally(() => setRefsLoaded(true));

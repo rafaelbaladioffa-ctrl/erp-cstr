@@ -28,6 +28,7 @@ from master_data.models import (
     Network,
     Path,
     TaskTemplate,
+    TaskTemplateRule,
     TaskTemplateStep,
     Workstream,
 )
@@ -3310,3 +3311,388 @@ class TaskTemplateStepApiTests(TestCase):
         module.seed_task_template_steps(django_apps, None)
         module.seed_task_template_steps(django_apps, None)
         self.assertEqual(TaskTemplateStep.objects.count(), count_before)
+
+
+class TaskTemplateRuleApiTests(TestCase):
+    """Cadastros Mestres > Operação > Regras de Templates — CRUD,
+    obrigatoriedade, unicidade de código, critérios opcionais,
+    specificity_score, consistência spec x family, duplicidade lógica,
+    busca, filtros, CSV, ativação/inativação, seed idempotente e FK
+    PROTECT."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="task_template_rule_admin", email="task_template_rule@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0030_seed_task_template_rules) roda também
+        # no banco de testes (17 regras).
+        self.template = TaskTemplate.objects.create(code="TST-TPL", name="Template de teste", category="TEST_CATEGORY")
+        self.other_template = TaskTemplate.objects.create(code="TST-TPL-OTHER", name="Outro template", category="TEST_CATEGORY")
+        self.family = CableFamily.objects.create(code="TST-FAM", name="Família de teste", medium="FIBER")
+        self.other_family = CableFamily.objects.create(code="TST-FAM-OTHER", name="Outra família", medium="FIBER")
+        self.spec = CableSpec.objects.create(code="TST-SPEC", name="Spec de teste", cable_family=self.family)
+        self.other_family_spec = CableSpec.objects.create(
+            code="TST-SPEC-OTHER-FAM", name="Spec de outra família", cable_family=self.other_family
+        )
+        self.network = Network.objects.create(code="TST-NET", name="Rede de teste", domain="MANAGEMENT", medium="FIBER")
+        self.workstream = Workstream.objects.create(code="TST-WS", name="Workstream de teste", category="CABLING")
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/",
+            {"code": "TST-RULE-1", "name": "Regra de teste", "task_template": self.template.pk},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        rule = TaskTemplateRule.objects.get(pk=response.data["id"])
+        self.assertEqual(rule.created_by, self.admin)
+        self.assertEqual(rule.updated_by, self.admin)
+        self.assertEqual(response.data["task_template_code"], "TST-TPL")
+
+    def test_task_template_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/",
+            {"code": "TST-RULE-2", "name": "Regra sem template"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("task_template", response.data)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/",
+            {"name": "Regra sem código", "task_template": self.template.pk},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        TaskTemplateRule.objects.create(code="TST-RULE-DUP", name="Original", task_template=self.template)
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/",
+            {"code": "TST-RULE-DUP", "name": "Duplicada", "task_template": self.other_template.pk},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_priority_defaults_to_100(self):
+        rule = TaskTemplateRule.objects.create(code="TST-RULE-PRIO", name="Regra", task_template=self.template)
+        self.assertEqual(rule.priority, 100)
+
+    def test_optional_criteria_can_be_left_blank(self):
+        rule = TaskTemplateRule.objects.create(code="TST-RULE-BLANK", name="Regra genérica", task_template=self.template)
+        self.assertIsNone(rule.cable_family_id)
+        self.assertIsNone(rule.cable_spec_id)
+        self.assertIsNone(rule.network_id)
+        self.assertIsNone(rule.workstream_id)
+        self.assertEqual(rule.medium, "")
+        self.assertIsNone(rule.preterminated)
+
+    def test_preterminated_accepts_true_false_and_null(self):
+        rule_true = TaskTemplateRule.objects.create(
+            code="TST-RULE-PT-TRUE", name="Pré-terminado true", task_template=self.template, preterminated=True
+        )
+        rule_false = TaskTemplateRule.objects.create(
+            code="TST-RULE-PT-FALSE", name="Pré-terminado false", task_template=self.template, preterminated=False
+        )
+        rule_null = TaskTemplateRule.objects.create(
+            code="TST-RULE-PT-NULL", name="Pré-terminado null", task_template=self.template
+        )
+        self.assertTrue(rule_true.preterminated)
+        self.assertFalse(rule_false.preterminated)
+        self.assertIsNone(rule_null.preterminated)
+
+    def test_specificity_score_counts_filled_optional_criteria(self):
+        rule = TaskTemplateRule.objects.create(
+            code="TST-RULE-SCORE",
+            name="Regra específica",
+            task_template=self.template,
+            cable_family=self.family,
+            network=self.network,
+        )
+        self.assertEqual(rule.specificity_score, 2)
+
+        response = self.client_api.get(f"/api/master-data/task-template-rules/{rule.pk}/")
+        self.assertEqual(response.data["specificity_score"], 2)
+
+    def test_specificity_score_zero_when_fully_generic(self):
+        rule = TaskTemplateRule.objects.create(code="TST-RULE-GENERIC", name="Fallback", task_template=self.template)
+        self.assertEqual(rule.specificity_score, 0)
+
+    def test_specificity_score_counts_all_six_criteria(self):
+        rule = TaskTemplateRule.objects.create(
+            code="TST-RULE-FULL",
+            name="Regra totalmente específica",
+            task_template=self.template,
+            cable_family=self.family,
+            cable_spec=self.spec,
+            network=self.network,
+            workstream=self.workstream,
+            medium="FIBER",
+            preterminated=False,
+        )
+        self.assertEqual(rule.specificity_score, 6)
+
+    def test_spec_compatible_with_family_is_accepted(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/",
+            {
+                "code": "TST-RULE-COMPAT",
+                "name": "Spec compatível",
+                "task_template": self.template.pk,
+                "cable_family": self.family.pk,
+                "cable_spec": self.spec.pk,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_spec_incompatible_with_family_is_rejected(self):
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/",
+            {
+                "code": "TST-RULE-INCOMPAT",
+                "name": "Spec incompatível",
+                "task_template": self.template.pk,
+                "cable_family": self.family.pk,
+                "cable_spec": self.other_family_spec.pk,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cable_spec", response.data)
+        self.assertFalse(TaskTemplateRule.objects.filter(code="TST-RULE-INCOMPAT").exists())
+
+    def test_logical_duplicate_is_rejected(self):
+        TaskTemplateRule.objects.create(
+            code="TST-RULE-ORIG",
+            name="Original",
+            task_template=self.template,
+            cable_family=self.family,
+            priority=10,
+        )
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/",
+            {
+                "code": "TST-RULE-COPY",
+                "name": "Cópia idêntica nos critérios",
+                "task_template": self.template.pk,
+                "cable_family": self.family.pk,
+                "priority": 10,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(TaskTemplateRule.objects.filter(code="TST-RULE-COPY").exists())
+
+    def test_same_criteria_with_different_priority_is_not_duplicate(self):
+        TaskTemplateRule.objects.create(
+            code="TST-RULE-P10", name="Prioridade 10", task_template=self.template, cable_family=self.family, priority=10
+        )
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/",
+            {
+                "code": "TST-RULE-P20",
+                "name": "Prioridade 20",
+                "task_template": self.template.pk,
+                "cable_family": self.family.pk,
+                "priority": 20,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_inactive_duplicate_does_not_block_new_active_rule(self):
+        TaskTemplateRule.objects.create(
+            code="TST-RULE-INACTIVE",
+            name="Inativa",
+            task_template=self.template,
+            cable_family=self.family,
+            priority=10,
+            active=False,
+        )
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/",
+            {
+                "code": "TST-RULE-REACTIVATED",
+                "name": "Nova ativa, mesmos critérios",
+                "task_template": self.template.pk,
+                "cable_family": self.family.pk,
+                "priority": 10,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_task_template_foreign_key_is_protected(self):
+        TaskTemplateRule.objects.create(code="TST-RULE-PROTECT", name="Regra", task_template=self.template)
+        with self.assertRaises(ProtectedError):
+            self.template.delete()
+
+    def test_cable_family_foreign_key_is_protected(self):
+        TaskTemplateRule.objects.create(
+            code="TST-RULE-PROTECT-FAM", name="Regra", task_template=self.template, cable_family=self.family
+        )
+        with self.assertRaises(ProtectedError):
+            self.family.delete()
+
+    def test_update_edits_fields(self):
+        rule = TaskTemplateRule.objects.create(code="TST-RULE-EDIT", name="Original", task_template=self.template)
+
+        response = self.client_api.patch(
+            f"/api/master-data/task-template-rules/{rule.pk}/",
+            {"name": "Editada", "priority": 250, "medium": "COPPER"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        rule.refresh_from_db()
+        self.assertEqual(rule.name, "Editada")
+        self.assertEqual(rule.priority, 250)
+        self.assertEqual(rule.medium, "COPPER")
+
+    def test_search_by_code_and_name(self):
+        TaskTemplateRule.objects.create(code="TST-RULE-SEARCH", name="Regra pesquisável", task_template=self.template)
+
+        by_code = self.client_api.get("/api/master-data/task-template-rules/", {"search": "TST-RULE-SEARCH"})
+        self.assertEqual(by_code.data["count"], 1)
+
+        by_name = self.client_api.get("/api/master-data/task-template-rules/", {"search": "pesquisável"})
+        self.assertEqual(by_name.data["count"], 1)
+
+        by_template = self.client_api.get("/api/master-data/task-template-rules/", {"search": "TST-TPL-OTHER"})
+        self.assertEqual(by_template.data["count"], 0)
+
+    def test_filter_by_task_template(self):
+        TaskTemplateRule.objects.create(code="TST-RULE-F1", name="Regra 1", task_template=self.template)
+        TaskTemplateRule.objects.create(code="TST-RULE-F2", name="Regra 2", task_template=self.other_template)
+
+        response = self.client_api.get("/api/master-data/task-template-rules/", {"task_template": self.template.pk})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-RULE-F1")
+
+    def test_filter_by_cable_family(self):
+        TaskTemplateRule.objects.create(
+            code="TST-RULE-FAM1", name="Regra família 1", task_template=self.template, cable_family=self.family
+        )
+        TaskTemplateRule.objects.create(
+            code="TST-RULE-FAM2", name="Regra família 2", task_template=self.template, cable_family=self.other_family
+        )
+
+        response = self.client_api.get("/api/master-data/task-template-rules/", {"cable_family": self.family.pk})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-RULE-FAM1")
+
+    def test_filter_by_medium_and_preterminated(self):
+        TaskTemplateRule.objects.create(
+            code="TST-RULE-MED1", name="Fibra", task_template=self.template, medium="FIBER", preterminated=True
+        )
+        TaskTemplateRule.objects.create(
+            code="TST-RULE-MED2", name="Cobre", task_template=self.template, medium="COPPER", preterminated=False
+        )
+
+        by_medium = self.client_api.get(
+            "/api/master-data/task-template-rules/", {"task_template": self.template.pk, "medium": "FIBER"}
+        )
+        self.assertEqual(by_medium.data["count"], 1)
+        self.assertEqual(by_medium.data["results"][0]["code"], "TST-RULE-MED1")
+
+        by_preterminated = self.client_api.get(
+            "/api/master-data/task-template-rules/", {"task_template": self.template.pk, "preterminated": "false"}
+        )
+        self.assertEqual(by_preterminated.data["count"], 1)
+        self.assertEqual(by_preterminated.data["results"][0]["code"], "TST-RULE-MED2")
+
+    def test_deactivate_does_not_hard_delete(self):
+        rule = TaskTemplateRule.objects.create(code="TST-RULE-DEACT", name="Regra", task_template=self.template, active=True)
+
+        response = self.client_api.patch(f"/api/master-data/task-template-rules/{rule.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(TaskTemplateRule.objects.filter(pk=rule.pk).exists())
+        rule.refresh_from_db()
+        self.assertFalse(rule.active)
+
+    def test_export_csv(self):
+        TaskTemplateRule.objects.create(
+            code="TST-RULE-EXPORT", name="Regra exportável", task_template=self.template, cable_family=self.family
+        )
+        response = self.client_api.get("/api/master-data/task-template-rules/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-RULE-EXPORT", content)
+        self.assertIn("TST-TPL", content)
+
+    def test_import_csv_resolves_task_template_by_code(self):
+        csv_content = "código;nome;template;prioridade\nTST-RULE-IMPORT;Regra importada;TST-TPL;150\n"
+        upload = SimpleUploadedFile("task_template_rules.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/import-csv/", {"csv_file": upload}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 1)
+        self.assertEqual(response.data["errors"], [])
+        imported = TaskTemplateRule.objects.get(code="TST-RULE-IMPORT")
+        self.assertEqual(imported.task_template_id, self.template.pk)
+        self.assertEqual(imported.priority, 150)
+
+    def test_import_csv_resolves_optional_relations_by_str(self):
+        # cable_family/network/workstream resolvem pelo __str__ padrão
+        # ("código — nome"), mesmo mecanismo genérico de core.csv_io usado
+        # por CableAlias/CableSpec.
+        csv_content = (
+            "código;nome;template;família de cabo;rede;workstream;prioridade\n"
+            f"TST-RULE-IMPORT-REL;Regra com relações;TST-TPL;{self.family};{self.network};{self.workstream};10\n"
+        )
+        upload = SimpleUploadedFile("task_template_rules.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post(
+            "/api/master-data/task-template-rules/import-csv/", {"csv_file": upload}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 1)
+        self.assertEqual(response.data["errors"], [])
+        imported = TaskTemplateRule.objects.get(code="TST-RULE-IMPORT-REL")
+        self.assertEqual(imported.cable_family_id, self.family.pk)
+        self.assertEqual(imported.network_id, self.network.pk)
+        self.assertEqual(imported.workstream_id, self.workstream.pk)
+
+    def test_seed_total_matches_seventeen(self):
+        self.assertEqual(TaskTemplateRule.objects.count(), 17)
+
+    def test_seed_acceptance_criteria_fib_72f_mpob(self):
+        rule = TaskTemplateRule.objects.get(code="RULE-FIB-72F-MPOB")
+        self.assertEqual(rule.cable_family.code, "FIB-72F-MPOB")
+        self.assertEqual(rule.task_template.code, "TPL-FIBER-MPO")
+
+    def test_seed_fallback_fiber_generic(self):
+        rule = TaskTemplateRule.objects.get(code="RULE-FIBER-GENERIC")
+        self.assertEqual(rule.medium, "FIBER")
+        self.assertIsNone(rule.cable_family_id)
+        self.assertEqual(rule.task_template.code, "TPL-FIBER-PRETERMINATED")
+        self.assertEqual(rule.priority, 500)
+
+    def test_seed_cat6_rules_use_preterminated_attribute(self):
+        field_rule = TaskTemplateRule.objects.get(code="RULE-CAT6-FIELD")
+        preterm_rule = TaskTemplateRule.objects.get(code="RULE-CAT6-PRETERM")
+        self.assertFalse(field_rule.preterminated)
+        self.assertTrue(preterm_rule.preterminated)
+        self.assertEqual(field_rule.cable_family.code, "COP-CAT6")
+        self.assertEqual(preterm_rule.cable_family.code, "COP-CAT6")
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0030_seed_task_template_rules")
+        count_before = TaskTemplateRule.objects.count()
+        module.seed_task_template_rules(django_apps, None)
+        module.seed_task_template_rules(django_apps, None)
+        self.assertEqual(TaskTemplateRule.objects.count(), count_before)

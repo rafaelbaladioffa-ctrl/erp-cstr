@@ -650,3 +650,143 @@ class TaskTemplateStep(MasterDataModel):
     @property
     def effective_name(self):
         return self.name_override or self.activity.name
+
+
+class TaskTemplateRule(MasterDataModel):
+    """Regra de seleção de TaskTemplate para um item de escopo — a base do
+    futuro motor de geração automática de tarefas (Rules Engine). Uma regra
+    associa um TaskTemplate obrigatório a um conjunto de critérios
+    OPCIONAIS (família de cabo, especificação, rede, workstream, meio,
+    pré-terminado); um critério deixado em branco/nulo significa "não
+    restringir por este atributo" — uma regra com todos os critérios
+    vazios é um fallback totalmente genérico (ex: qualquer item de meio
+    FIBER usa TPL-FIBER-PRETERMINATED). `cable_family`/`cable_spec`/
+    `network`/`workstream` resolvem em CSV pelo __str__ padrão desses
+    models ("código — nome", já usado por CableAlias/CableSpec há mais
+    tempo) — não alteramos esses __str__ para bare code, ao contrário do
+    que foi feito para Site/Activity/TaskTemplate, porque isso quebraria o
+    formato de CSV já em uso por CableAlias/CableSpec; só `task_template`
+    resolve por código puro, pois TaskTemplate.__str__ já é bare code.
+
+    Esta etapa cria só o CATÁLOGO de regras e a métrica de especificidade
+    (`specificity_score`); a seleção automática de fato (comparar um
+    ScopeItem real contra as regras, aplicar priority/specificity_score
+    para desempate) fica para uma fase futura — ScopeItem ainda não existe
+    no sistema."""
+
+    task_template = models.ForeignKey(
+        TaskTemplate, verbose_name="template", on_delete=models.PROTECT, related_name="rules"
+    )
+    cable_family = models.ForeignKey(
+        CableFamily,
+        verbose_name="família de cabo",
+        on_delete=models.PROTECT,
+        related_name="task_template_rules",
+        null=True,
+        blank=True,
+    )
+    cable_spec = models.ForeignKey(
+        CableSpec,
+        verbose_name="especificação de cabo",
+        on_delete=models.PROTECT,
+        related_name="task_template_rules",
+        null=True,
+        blank=True,
+    )
+    network = models.ForeignKey(
+        Network,
+        verbose_name="rede",
+        on_delete=models.PROTECT,
+        related_name="task_template_rules",
+        null=True,
+        blank=True,
+    )
+    workstream = models.ForeignKey(
+        Workstream,
+        verbose_name="workstream",
+        on_delete=models.PROTECT,
+        related_name="task_template_rules",
+        null=True,
+        blank=True,
+    )
+    code = models.CharField("código", max_length=50, unique=True)
+    name = models.CharField("nome", max_length=150)
+    # Texto livre (não ENUM/choices) de propósito — sugestões: FIBER,
+    # COPPER, MIXED. "" (vazio) significa "não restringir por meio".
+    medium = models.CharField("meio", max_length=50, blank=True)
+    # Nullable de propósito — tri-state: True/False restringem a regra a
+    # itens pré-terminados ou terminados em campo; None significa "não
+    # restringir por este atributo" (diferente de False, que EXIGE que o
+    # item NÃO seja pré-terminado).
+    preterminated = models.BooleanField("pré-terminado", null=True, blank=True, default=None)
+    # Menor valor = maior prioridade (ex: 10 = regra específica, 100 =
+    # genérica, 500 = fallback). Usado pelo futuro Rules Engine para
+    # desempate entre regras compatíveis — não implementado ainda.
+    priority = models.PositiveIntegerField("prioridade", default=100)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Regra de Template de Tarefa"
+        verbose_name_plural = "Regras de Template de Tarefa"
+        ordering = ("priority", "code")
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
+
+    @property
+    def specificity_score(self):
+        """Quantidade de critérios OPCIONAIS preenchidos nesta regra —
+        cable_family, cable_spec, network, workstream, medium,
+        preterminated. Quanto maior, mais específica a regra (usado pelo
+        futuro Rules Engine, junto com `priority`, para desempate)."""
+        score = 0
+        if self.cable_family_id:
+            score += 1
+        if self.cable_spec_id:
+            score += 1
+        if self.network_id:
+            score += 1
+        if self.workstream_id:
+            score += 1
+        if self.medium:
+            score += 1
+        if self.preterminated is not None:
+            score += 1
+        return score
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.cable_spec_id and self.cable_family_id and self.cable_spec.cable_family_id != self.cable_family_id:
+            errors["cable_spec"] = (
+                f'A especificação "{self.cable_spec.code}" pertence à família '
+                f'"{self.cable_spec.cable_family.code}", diferente da família selecionada nesta regra '
+                f'("{self.cable_family.code}").'
+            )
+        if not errors and self.active:
+            duplicate = (
+                TaskTemplateRule.objects.filter(
+                    active=True,
+                    task_template_id=self.task_template_id,
+                    cable_family_id=self.cable_family_id,
+                    cable_spec_id=self.cable_spec_id,
+                    network_id=self.network_id,
+                    workstream_id=self.workstream_id,
+                    medium=self.medium or "",
+                    preterminated=self.preterminated,
+                    priority=self.priority,
+                )
+                .exclude(pk=self.pk)
+                .first()
+            )
+            if duplicate is not None:
+                # Chave "non_field_errors" (não "__all__") de propósito: é o
+                # que o frontend (EntityCrudPanel) já procura para mostrar
+                # um erro de formulário que não pertence a um campo
+                # específico (ver formErrors.non_field_errors).
+                errors["non_field_errors"] = (
+                    f'Já existe uma regra ativa idêntica nos critérios, template e prioridade ("{duplicate.code}").'
+                )
+        if errors:
+            raise ValidationError(errors)

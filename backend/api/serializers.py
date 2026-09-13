@@ -29,6 +29,7 @@ from master_data.models import (
     Network,
     Path,
     TaskTemplate,
+    TaskTemplateRule,
     TaskTemplateStep,
     Workstream,
     normalize_alias_text,
@@ -569,6 +570,103 @@ class TaskTemplateStepCrudSerializer(serializers.ModelSerializer):
 
     def get_updated_by_name(self, obj):
         return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+
+class TaskTemplateRuleCrudSerializer(serializers.ModelSerializer):
+    task_template_code = serializers.CharField(source="task_template.code", read_only=True)
+    task_template_name = serializers.CharField(source="task_template.name", read_only=True)
+    # cable_family/cable_spec/network/workstream são opcionais — usar
+    # SerializerMethodField (em vez de CharField(source="x.code")) porque
+    # este último levanta AttributeError/SkipField quando a FK é None,
+    # omitindo o campo da resposta em vez de retornar null explicitamente.
+    cable_family_code = serializers.SerializerMethodField()
+    cable_family_name = serializers.SerializerMethodField()
+    cable_spec_code = serializers.SerializerMethodField()
+    cable_spec_part_number = serializers.SerializerMethodField()
+    network_code = serializers.SerializerMethodField()
+    network_name = serializers.SerializerMethodField()
+    workstream_code = serializers.SerializerMethodField()
+    workstream_name = serializers.SerializerMethodField()
+    specificity_score = serializers.IntegerField(read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskTemplateRule
+        fields = (
+            "id",
+            "code",
+            "name",
+            "task_template",
+            "task_template_code",
+            "task_template_name",
+            "cable_family",
+            "cable_family_code",
+            "cable_family_name",
+            "cable_spec",
+            "cable_spec_code",
+            "cable_spec_part_number",
+            "network",
+            "network_code",
+            "network_name",
+            "workstream",
+            "workstream_code",
+            "workstream_name",
+            "medium",
+            "preterminated",
+            "priority",
+            "specificity_score",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_cable_family_code(self, obj):
+        return obj.cable_family.code if obj.cable_family_id else None
+
+    def get_cable_family_name(self, obj):
+        return obj.cable_family.name if obj.cable_family_id else None
+
+    def get_cable_spec_code(self, obj):
+        return obj.cable_spec.code if obj.cable_spec_id else None
+
+    def get_cable_spec_part_number(self, obj):
+        return obj.cable_spec.part_number if obj.cable_spec_id else None
+
+    def get_network_code(self, obj):
+        return obj.network.code if obj.network_id else None
+
+    def get_network_name(self, obj):
+        return obj.network.name if obj.network_id else None
+
+    def get_workstream_code(self, obj):
+        return obj.workstream.code if obj.workstream_id else None
+
+    def get_workstream_name(self, obj):
+        return obj.workstream.name if obj.workstream_id else None
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+    def validate(self, attrs):
+        # Reaproveita TaskTemplateRule.clean() (consistência cable_spec x
+        # cable_family + duplicidade lógica) em vez de duplicar a regra
+        # aqui — mesmo padrão de LocationCrudSerializer.
+        instance = self.instance or TaskTemplateRule()
+        for field, value in attrs.items():
+            setattr(instance, field, value)
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
+        return attrs
 
 
 class ProjectTypeCrudSerializer(serializers.ModelSerializer):

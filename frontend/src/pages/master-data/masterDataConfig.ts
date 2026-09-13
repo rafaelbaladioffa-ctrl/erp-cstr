@@ -11,6 +11,7 @@ import type {
   Network,
   Path,
   TaskTemplate,
+  TaskTemplateRule,
   TaskTemplateStep,
   Workstream,
 } from "../../api/types";
@@ -97,6 +98,18 @@ function taskTemplateOptions(refs: ReferenceData) {
 
 function activityOptions(refs: ReferenceData) {
   return refs.activities.map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }));
+}
+
+function cableSpecOptions(refs: ReferenceData) {
+  return refs.cableSpecs.map((s) => ({ value: s.id, label: `${s.code} — ${s.part_number || s.name}` }));
+}
+
+function networkOptions(refs: ReferenceData) {
+  return refs.networks.map((n) => ({ value: n.id, label: `${n.code} — ${n.name}` }));
+}
+
+function workstreamOptions(refs: ReferenceData) {
+  return refs.workstreams.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` }));
 }
 
 /** Cadastros Mestres: catálogo técnico/operacional normalizado (famílias
@@ -910,6 +923,104 @@ const taskTemplateStepEntity: EntityConfig<TaskTemplateStep> = {
   rowLabel: (row) => `${row.task_template_code} #${row.step_order} — ${row.effective_name}`,
 };
 
+const taskTemplateRuleEntity: EntityConfig<TaskTemplateRule> = {
+  key: "task-template-rules",
+  label: "Regras de Templates",
+  icon: "rule",
+  singular: "Regra de Template",
+  description: "Determina qual Template de Tarefa deve ser usado para um item de escopo — base do futuro motor de geração automática de tarefas.",
+  createLabel: "Nova Regra de Template",
+  perms: modelPerms("master_data", "tasktemplaterule"),
+  api: masterDataApi.taskTemplateRules,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "name", label: "Nome" },
+    { key: "task_template_code", label: "Template" },
+    { key: "cable_family_code", label: "Família de Cabo", render: (row) => row.cable_family_code || "—" },
+    { key: "cable_spec_code", label: "Especificação", render: (row) => row.cable_spec_code || "—" },
+    { key: "network_code", label: "Rede", render: (row) => row.network_code || "—" },
+    { key: "workstream_code", label: "Workstream", render: (row) => row.workstream_code || "—" },
+    { key: "medium", label: "Meio", render: (row) => row.medium || "—" },
+    {
+      key: "preterminated",
+      label: "Pré-terminado",
+      render: (row) => (row.preterminated === true ? "Sim" : row.preterminated === false ? "Não" : "—"),
+    },
+    { key: "priority", label: "Prioridade" },
+    { key: "specificity_score", label: "Especificidade" },
+  ],
+  filters: [
+    { key: "task_template", label: "Todos os Templates", options: taskTemplateOptions },
+    { key: "cable_family", label: "Todas as Famílias", options: cableFamilyOptions },
+    { key: "network", label: "Todas as Redes", options: networkOptions },
+    { key: "workstream", label: "Todos os Workstreams", options: workstreamOptions },
+    { key: "medium", label: "Todos os Meios", options: (_refs, rows) => distinctOptions(rows, "medium") },
+    {
+      key: "preterminated",
+      label: "Todos (Pré-terminado)",
+      options: () => [
+        { value: "true", label: "Sim" },
+        { value: "false", label: "Não" },
+      ],
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: (refs) => [
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: RULE-FIB-8F-LCLC" },
+    {
+      name: "name",
+      label: "Nome",
+      type: "text",
+      required: true,
+      span: 2,
+      placeholder: "Ex: 8F LC-LC → Template Fiber Preterminated",
+    },
+    { name: "task_template", label: "Template", type: "select", required: true, span: 2, options: taskTemplateOptions(refs) },
+    { name: "cable_family", label: "Família de Cabo", type: "select", options: cableFamilyOptions(refs) },
+    { name: "cable_spec", label: "Especificação de Cabo", type: "select", options: cableSpecOptions(refs) },
+    { name: "network", label: "Rede", type: "select", options: networkOptions(refs) },
+    { name: "workstream", label: "Workstream", type: "select", options: workstreamOptions(refs) },
+    { name: "medium", label: "Meio", type: "text", placeholder: "Ex: FIBER, COPPER, MIXED" },
+    {
+      name: "preterminated",
+      label: "Pré-terminado",
+      type: "select",
+      placeholder: "Não considerar",
+      options: [
+        { value: "true", label: "Sim" },
+        { value: "false", label: "Não" },
+      ],
+    },
+    { name: "priority", label: "Prioridade", type: "number", required: true, placeholder: "Ex: 10, 100, 500" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+  ],
+  emptyValues: {
+    code: "",
+    name: "",
+    task_template: null,
+    cable_family: null,
+    cable_spec: null,
+    network: null,
+    workstream: null,
+    medium: "",
+    preterminated: null,
+    priority: 100,
+    description: "",
+    active: true,
+  },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -921,7 +1032,15 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     key: "operacao",
     label: "Operação",
     icon: "engineering",
-    entities: [activityEntity, networkEntity, workstreamEntity, pathEntity, taskTemplateEntity, taskTemplateStepEntity],
+    entities: [
+      activityEntity,
+      networkEntity,
+      workstreamEntity,
+      pathEntity,
+      taskTemplateEntity,
+      taskTemplateStepEntity,
+      taskTemplateRuleEntity,
+    ],
   },
   {
     key: "infraestrutura",
