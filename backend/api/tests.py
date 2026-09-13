@@ -17,7 +17,7 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
-from master_data.models import CableAlias, CableFamily, CableSpec, CertificationType
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -1490,3 +1490,185 @@ class CertificationTypeApiTests(TestCase):
         module.seed_certification_types(django_apps, None)
         module.seed_certification_types(django_apps, None)
         self.assertEqual(CertificationType.objects.count(), count_before)
+
+
+class ActivityApiTests(TestCase):
+    """Cadastros Mestres > Operação > Atividades — CRUD, obrigatoriedade,
+    busca, filtros, CSV, ativação/inativação e seed idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="activity_admin", email="activity@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0012_seed_activities) roda também no banco
+        # de testes (14 registros: MAT-SEP, MAT-CHECK, CAB-MEASURE,
+        # CAB-CUT, CAB-LABEL, CAB-RUN, CAB-DRESS, CAB-CRIMP, CAB-PATCH,
+        # CERTIFY, QAQC, EVIDENCE, SITE-CLEAN, HANDOVER).
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/activities/",
+            {"code": "TST-ACT-0001", "name": "Atividade de teste", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        activity = Activity.objects.get(pk=response.data["id"])
+        self.assertEqual(activity.created_by, self.admin)
+        self.assertEqual(activity.updated_by, self.admin)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/activities/",
+            {"name": "Sem código", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        Activity.objects.create(code="TST-ACT-DUP", name="Original", category="TEST_CATEGORY")
+        response = self.client_api.post(
+            "/api/master-data/activities/",
+            {"code": "TST-ACT-DUP", "name": "Duplicado", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(Activity.objects.filter(code="TST-ACT-DUP").count(), 1)
+
+    def test_name_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/activities/",
+            {"code": "TST-ACT-0002", "category": "TEST_CATEGORY"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_category_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/activities/",
+            {"code": "TST-ACT-0003", "name": "Sem categoria"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("category", response.data)
+
+    def test_update_edits_fields(self):
+        activity = Activity.objects.create(code="TST-ACT-EDIT", name="Original", category="TEST_CATEGORY")
+
+        response = self.client_api.patch(
+            f"/api/master-data/activities/{activity.pk}/",
+            {"name": "Editada", "execution_type": "MANUAL", "measurable": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        activity.refresh_from_db()
+        self.assertEqual(activity.name, "Editada")
+        self.assertEqual(activity.execution_type, "MANUAL")
+        self.assertTrue(activity.measurable)
+
+    def test_search_by_code_name_category_execution_type(self):
+        Activity.objects.create(
+            code="TST-ACT-SEARCH", name="Atividade pesquisável", category="TEST_CATEGORY", execution_type="TEST_EXEC"
+        )
+
+        response = self.client_api.get("/api/master-data/activities/", {"search": "TEST_EXEC"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-ACT-SEARCH")
+
+    def test_filter_by_category(self):
+        Activity.objects.create(code="TST-ACT-CATA", name="A", category="TST_CAT_A")
+        Activity.objects.create(code="TST-ACT-CATB", name="B", category="TST_CAT_B")
+
+        response = self.client_api.get("/api/master-data/activities/", {"category": "TST_CAT_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-ACT-CATA")
+
+    def test_filter_by_execution_type(self):
+        Activity.objects.create(code="TST-ACT-EXECA", name="A", category="TEST_CATEGORY", execution_type="TST_EXEC_A")
+        Activity.objects.create(code="TST-ACT-EXECB", name="B", category="TEST_CATEGORY", execution_type="TST_EXEC_B")
+
+        response = self.client_api.get("/api/master-data/activities/", {"execution_type": "TST_EXEC_A"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-ACT-EXECA")
+
+    def test_filter_by_measurable(self):
+        Activity.objects.create(code="TST-ACT-MEASURABLE", name="A", category="TEST_CATEGORY", measurable=True)
+        Activity.objects.create(code="TST-ACT-NOTMEASURABLE", name="B", category="TEST_CATEGORY", measurable=False)
+
+        response = self.client_api.get("/api/master-data/activities/", {"measurable": "true"})
+
+        codes = [row["code"] for row in response.data["results"]]
+        self.assertIn("TST-ACT-MEASURABLE", codes)
+        self.assertNotIn("TST-ACT-NOTMEASURABLE", codes)
+
+    def test_filter_by_active(self):
+        Activity.objects.create(code="TST-ACT-ACTIVE", name="Ativa", category="TEST_CATEGORY", active=True)
+        Activity.objects.create(code="TST-ACT-INACTIVE", name="Inativa", category="TEST_CATEGORY", active=False)
+
+        response = self.client_api.get("/api/master-data/activities/", {"is_active": "false"})
+
+        codes = [row["code"] for row in response.data["results"]]
+        self.assertIn("TST-ACT-INACTIVE", codes)
+        self.assertNotIn("TST-ACT-ACTIVE", codes)
+
+    def test_deactivate_does_not_hard_delete(self):
+        activity = Activity.objects.create(code="TST-ACT-TOGGLE", name="Para inativar", category="TEST_CATEGORY", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/activities/{activity.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(Activity.objects.filter(pk=activity.pk).exists())
+        activity.refresh_from_db()
+        self.assertFalse(activity.active)
+
+    def test_export_csv(self):
+        Activity.objects.create(code="TST-ACT-EXPORT", name="Exportação de teste", category="TEST_CATEGORY")
+        response = self.client_api.get("/api/master-data/activities/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-ACT-EXPORT", content)
+        self.assertIn("código", content)
+
+    def test_import_csv_creates_rows(self):
+        csv_content = (
+            "código;nome;categoria;tipo de execução;unidade padrão;mensurável;exige quantidade;exige evidência;exige certificação\n"
+            "TST-ACT-IMPORT1;Atividade Importada 1;TEST_CATEGORY;MANUAL;UNIT;Sim;Sim;Não;Não\n"
+            "TST-ACT-IMPORT2;Atividade Importada 2;TEST_CATEGORY;;PROJECT;Não;Não;Sim;Não\n"
+        )
+        upload = SimpleUploadedFile("activities.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post("/api/master-data/activities/import-csv/", {"csv_file": upload}, format="multipart")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 2)
+        self.assertEqual(response.data["errors"], [])
+        imported = Activity.objects.get(code="TST-ACT-IMPORT1")
+        self.assertTrue(imported.measurable)
+        self.assertTrue(imported.requires_quantity)
+        self.assertFalse(imported.requires_evidence)
+
+    def test_seed_matches_expected_fourteen_records(self):
+        expected_codes = {
+            "MAT-SEP", "MAT-CHECK", "CAB-MEASURE", "CAB-CUT", "CAB-LABEL", "CAB-RUN", "CAB-DRESS",
+            "CAB-CRIMP", "CAB-PATCH", "CERTIFY", "QAQC", "EVIDENCE", "SITE-CLEAN", "HANDOVER",
+        }
+        codes = set(Activity.objects.values_list("code", flat=True))
+        self.assertEqual(expected_codes & codes, expected_codes)
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0012_seed_activities")
+        count_before = Activity.objects.count()
+        module.seed_activities(django_apps, None)
+        module.seed_activities(django_apps, None)
+        self.assertEqual(Activity.objects.count(), count_before)

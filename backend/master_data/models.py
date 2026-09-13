@@ -266,3 +266,52 @@ class CertificationType(MasterDataModel):
 
     def __str__(self):
         return f"{self.code} — {self.name}"
+
+
+class Activity(MasterDataModel):
+    """Catálogo canônico de atividades operacionais — ações padronizadas
+    executadas nos projetos (ex: CAB-RUN = "Lançar cabeamento"). Existe para
+    impedir que a mesma ação seja cadastrada com nomes diferentes ("Lançar
+    cabo", "Passar cabo", "Run cable" etc.); a normalização de texto livre
+    por alias/IA fica para uma fase futura — aqui é só o catálogo em si,
+    sem relação com CableFamily, sem template de tarefas."""
+
+    # Sugestões (não é ENUM/choices — texto livre para não travar valores
+    # novos que apareçam na prática).
+    CATEGORY_SUGGESTIONS = (
+        "PREPARATION",
+        "INSTALLATION",
+        "ORGANIZATION",
+        "TERMINATION",
+        "CERTIFICATION",
+        "QUALITY",
+        "DOCUMENTATION",
+        "SITE",
+        "CLOSURE",
+    )
+    EXECUTION_TYPE_SUGGESTIONS = ("MANUAL", "TEST", "DOCUMENTATION", "INSPECTION", "SERVICE")
+
+    code = models.CharField("código", max_length=50, unique=True)
+    name = models.CharField("nome", max_length=150)
+    category = models.CharField("categoria", max_length=50)
+    execution_type = models.CharField("tipo de execução", max_length=50, blank=True)
+    default_unit = models.CharField("unidade padrão", max_length=50, blank=True)
+    measurable = models.BooleanField("mensurável", default=False)
+    requires_quantity = models.BooleanField("exige quantidade", default=False)
+    requires_evidence = models.BooleanField("exige evidência", default=False)
+    # Indica que a ATIVIDADE (ex: CAB-RUN) depende de uma certificação
+    # técnica ser feita em algum momento do fluxo — não que a atividade em
+    # si seja uma certificação (esse é o caso de CERTIFY, que também tem
+    # requires_certification=False, pois ela é quem certifica, não quem
+    # depende de certificação).
+    requires_certification = models.BooleanField("exige certificação", default=False)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Atividade"
+        verbose_name_plural = "Atividades"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"

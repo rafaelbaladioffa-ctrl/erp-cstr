@@ -32,7 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
-from master_data.models import CableAlias, CableFamily, CableSpec, CertificationType
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -61,6 +61,7 @@ from .serializers import (
     CableAliasCrudSerializer,
     CableFamilyCrudSerializer,
     CableSpecCrudSerializer,
+    ActivityCrudSerializer,
     CertificationTypeCrudSerializer,
     CategoryCrudSerializer,
     DailyUpdateSerializer,
@@ -797,6 +798,35 @@ class CertificationTypeViewSet(RegistryViewSet):
     serializer_class = CertificationTypeCrudSerializer
     search_fields = ("code", "name", "method", "description")
     active_field = "active"
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class ActivityViewSet(RegistryViewSet):
+    """Cadastros Mestres > Operação > Atividades. Catálogo canônico de
+    ações operacionais padronizadas — mesmo padrão de CertificationTypeViewSet
+    (catálogo interno, active_field="active"); acrescenta filtros exatos por
+    categoria, tipo de execução e mensurável."""
+
+    queryset = Activity.objects.select_related("created_by", "updated_by").order_by("code")
+    serializer_class = ActivityCrudSerializer
+    search_fields = ("code", "name", "category", "execution_type", "description")
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param in ("category", "execution_type"):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{param: value})
+        measurable = self.request.query_params.get("measurable")
+        if measurable is not None:
+            queryset = queryset.filter(measurable=measurable.lower() in ("1", "true", "yes"))
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, updated_by=self.request.user)

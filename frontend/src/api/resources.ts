@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
 import type {
+  Activity,
   AuditLogEntry,
   CableAlias,
   CableFamily,
@@ -77,6 +78,7 @@ export const masterDataApi = {
   cableAliases: crud<CableAlias>("/master-data/cable-aliases"),
   cableSpecs: crud<CableSpec>("/master-data/cable-specs"),
   certificationTypes: crud<CertificationType>("/master-data/certification-types"),
+  activities: crud<Activity>("/master-data/activities"),
 };
 
 export const auditLogApi = {

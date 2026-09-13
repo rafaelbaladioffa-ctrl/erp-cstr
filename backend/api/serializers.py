@@ -18,7 +18,7 @@ from core.models import (
     update_person,
 )
 from dispatch.models import TechnicianAbsence, TechnicianDailyPresence
-from master_data.models import CableAlias, CableFamily, CableSpec, CertificationType, normalize_alias_text
+from master_data.models import Activity, CableAlias, CableFamily, CableSpec, CertificationType, normalize_alias_text
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
@@ -244,6 +244,39 @@ class CertificationTypeCrudSerializer(serializers.ModelSerializer):
             "method",
             "requires_report",
             "requires_attachment",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
+
+
+class ActivityCrudSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Activity
+        fields = (
+            "id",
+            "code",
+            "name",
+            "category",
+            "execution_type",
+            "default_unit",
+            "measurable",
+            "requires_quantity",
+            "requires_evidence",
+            "requires_certification",
             "description",
             "active",
             "created_at",

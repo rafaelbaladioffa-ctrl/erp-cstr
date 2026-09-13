@@ -1,5 +1,5 @@
 import { masterDataApi } from "../../api/resources";
-import type { CableAlias, CableFamily, CableSpec, CertificationType } from "../../api/types";
+import type { Activity, CableAlias, CableFamily, CableSpec, CertificationType } from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
 
@@ -7,6 +7,22 @@ import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
  * não é um ENUM rígido (o campo é texto livre), só as opções mostradas no
  * filtro e como sugestão no formulário. */
 const ALIAS_TYPE_SUGGESTIONS = ["NAME_VARIATION", "PART_NUMBER", "LEGACY_NAME", "SOW_TERM", "INTERNAL_TERM"];
+
+/** Espelha master_data.models.Activity.CATEGORY_SUGGESTIONS/
+ * EXECUTION_TYPE_SUGGESTIONS no backend — não é ENUM rígido, só as opções
+ * mostradas no filtro e como sugestão no formulário. */
+const ACTIVITY_CATEGORY_SUGGESTIONS = [
+  "PREPARATION",
+  "INSTALLATION",
+  "ORGANIZATION",
+  "TERMINATION",
+  "CERTIFICATION",
+  "QUALITY",
+  "DOCUMENTATION",
+  "SITE",
+  "CLOSURE",
+];
+const ACTIVITY_EXECUTION_TYPE_SUGGESTIONS = ["MANUAL", "TEST", "DOCUMENTATION", "INSPECTION", "SERVICE"];
 
 function cableFamilyOptions(refs: ReferenceData) {
   return refs.cableFamilies.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }));
@@ -280,6 +296,83 @@ const certificationTypeEntity: EntityConfig<CertificationType> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const activityEntity: EntityConfig<Activity> = {
+  key: "activities",
+  label: "Atividades",
+  icon: "checklist",
+  singular: "Atividade",
+  description: "Catálogo canônico de ações operacionais padronizadas executadas nos projetos.",
+  createLabel: "Nova Atividade",
+  perms: modelPerms("master_data", "activity"),
+  api: masterDataApi.activities,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "name", label: "Nome" },
+    { key: "category", label: "Categoria" },
+    { key: "execution_type", label: "Tipo de Execução", render: (row) => row.execution_type || "—" },
+    { key: "default_unit", label: "Unidade Padrão", render: (row) => row.default_unit || "—" },
+    { key: "measurable", label: "Mensurável", render: (row) => (row.measurable ? "Sim" : "Não") },
+    { key: "requires_evidence", label: "Exige Evidência", render: (row) => (row.requires_evidence ? "Sim" : "Não") },
+  ],
+  filters: [
+    {
+      key: "category",
+      label: "Todas as Categorias",
+      options: () => ACTIVITY_CATEGORY_SUGGESTIONS.map((c) => ({ value: c, label: c })),
+    },
+    {
+      key: "execution_type",
+      label: "Todos os Tipos de Execução",
+      options: () => ACTIVITY_EXECUTION_TYPE_SUGGESTIONS.map((t) => ({ value: t, label: t })),
+    },
+    {
+      key: "measurable",
+      label: "Todas (Mensurável)",
+      options: () => [
+        { value: "true", label: "Mensurável" },
+        { value: "false", label: "Não mensurável" },
+      ],
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: () => [
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: CAB-RUN" },
+    { name: "name", label: "Nome", type: "text", required: true, placeholder: "Ex: Lançar cabeamento" },
+    { name: "category", label: "Categoria", type: "text", required: true, placeholder: "Ex: PREPARATION, INSTALLATION, CERTIFICATION" },
+    { name: "execution_type", label: "Tipo de Execução", type: "text", placeholder: "Ex: MANUAL, TEST, INSPECTION" },
+    { name: "default_unit", label: "Unidade Padrão", type: "text", placeholder: "Ex: CABLE, METER, UNIT, HOUR, PROJECT" },
+    { name: "measurable", label: "Mensurável", type: "checkbox", placeholder: "Sim" },
+    { name: "requires_quantity", label: "Exige Quantidade", type: "checkbox", placeholder: "Sim" },
+    { name: "requires_evidence", label: "Exige Evidência", type: "checkbox", placeholder: "Sim" },
+    { name: "requires_certification", label: "Exige Certificação", type: "checkbox", placeholder: "Sim" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+  ],
+  emptyValues: {
+    code: "",
+    name: "",
+    category: "",
+    execution_type: "",
+    default_unit: "",
+    measurable: false,
+    requires_quantity: false,
+    requires_evidence: false,
+    requires_certification: false,
+    description: "",
+    active: true,
+  },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -287,7 +380,7 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     icon: "cable",
     entities: [cableFamilyEntity, cableAliasEntity, cableSpecEntity, certificationTypeEntity],
   },
-  { key: "operacao", label: "Operação", icon: "engineering", entities: [] },
+  { key: "operacao", label: "Operação", icon: "engineering", entities: [activityEntity] },
   { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [] },
   { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },
 ];

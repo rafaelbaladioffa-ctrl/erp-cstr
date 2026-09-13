@@ -201,6 +201,25 @@ export interface CertificationType {
   updated_by_name: string | null;
 }
 
+export interface Activity {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  execution_type: string;
+  default_unit: string;
+  measurable: boolean;
+  requires_quantity: boolean;
+  requires_evidence: boolean;
+  requires_certification: boolean;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;
