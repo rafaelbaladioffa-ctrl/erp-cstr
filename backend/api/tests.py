@@ -1322,16 +1322,22 @@ class CableSpecApiTests(TestCase):
         self.assertEqual(response.data["results"][0]["code"], "TST-SPEC-FILTER-A")
 
     def test_filter_by_fiber_type_and_polarity(self):
+        # O seed real já tem um spec com fiber_type=OS2/polarity=B
+        # (SPEC-72F-MPOB-0072X6P64, também presente no banco de testes) —
+        # não assumir contagem absoluta, só que o filtro inclui o registro
+        # criado aqui e exclui o de fiber_type/polarity diferente.
         CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-OS2-A", name="OS2 A", fiber_type="OS2", polarity="A")
         CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-OM4-B", name="OM4 B", fiber_type="OM4", polarity="B")
 
         by_fiber_type = self.client_api.get("/api/master-data/cable-specs/", {"fiber_type": "OS2"})
-        self.assertEqual(by_fiber_type.data["count"], 1)
-        self.assertEqual(by_fiber_type.data["results"][0]["code"], "TST-SPEC-OS2-A")
+        codes = [row["code"] for row in by_fiber_type.data["results"]]
+        self.assertIn("TST-SPEC-OS2-A", codes)
+        self.assertNotIn("TST-SPEC-OM4-B", codes)
 
         by_polarity = self.client_api.get("/api/master-data/cable-specs/", {"polarity": "B"})
-        self.assertEqual(by_polarity.data["count"], 1)
-        self.assertEqual(by_polarity.data["results"][0]["code"], "TST-SPEC-OM4-B")
+        codes = [row["code"] for row in by_polarity.data["results"]]
+        self.assertIn("TST-SPEC-OM4-B", codes)
+        self.assertNotIn("TST-SPEC-OS2-A", codes)
 
     def test_deactivate_does_not_hard_delete(self):
         spec = CableSpec.objects.create(cable_family=self.family, code="TST-SPEC-TOGGLE", name="Spec para inativar", active=True)
