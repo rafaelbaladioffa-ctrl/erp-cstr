@@ -148,7 +148,7 @@ export interface CableFamily {
 
 export interface CableAlias {
   id: number;
-  cable_family: number;
+  cable_family: number | null;
   cable_family_code: string;
   cable_family_name: string;
   alias: string;
