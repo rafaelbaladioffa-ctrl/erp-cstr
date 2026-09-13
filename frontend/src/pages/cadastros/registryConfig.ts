@@ -71,6 +71,11 @@ export interface EntityConfig<T extends { id: number; is_active?: boolean }> {
    * Ativar/Inativar — para cadastros que não podem ser apagados de fato
    * uma vez persistidos (podem já ter sido usados em projetos/escopos). */
   disableHardDelete?: boolean;
+  /** Quando true, esconde "Novo <entidade>", "Adicionar Vários" e
+   * "Importar CSV" (a criação continua bloqueada no backend mesmo que o
+   * usuário tenha permissão de add_<model> — ex: GeneratedTask só é
+   * criada pelo service de geração, nunca manualmente). */
+  disableCreate?: boolean;
   /** Filtros extras (além da busca por texto) exibidos como <select> na
    * barra de filtros — ex: por Família ou por Tipo de Alias. */
   filters?: FilterConfig[];

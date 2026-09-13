@@ -12,6 +12,7 @@ from .models import (
     DeviceType,
     Location,
     Network,
+    GeneratedTask,
     Path,
     ScopeItem,
     Site,
@@ -252,6 +253,58 @@ class TaskTemplateStepAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, 
     def save_model(self, request, obj, form, change):
         if not change:
             obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(GeneratedTask)
+class GeneratedTaskAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = (
+        "code",
+        "scope_item",
+        "step_order",
+        "activity",
+        "name",
+        "quantity",
+        "unit",
+        "status",
+        "generation_source",
+        "active",
+        "updated_at",
+    )
+    list_filter = ("status", "generation_source", "active")
+    search_fields = (
+        "code",
+        "name",
+        "scope_item__code",
+        "scope_item__raw_text",
+        "activity__code",
+        "activity__name",
+        "task_template__code",
+    )
+    autocomplete_fields = ("scope_item", "task_template", "task_template_step", "activity")
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+        "scope_item",
+        "task_template",
+        "task_template_step",
+        "activity",
+        "step_order",
+        "required",
+        "repeatable",
+        "generation_source",
+    )
+
+    def has_add_permission(self, request):
+        # Mesma decisão da API (ScopeItemViewSet.create bloqueado): nesta
+        # primeira versão, GeneratedTask só é criada pelo service
+        # (via "Gerar Tarefas"), nunca manualmente.
+        return False
+
+    def save_model(self, request, obj, form, change):
         obj.updated_by = request.user
         super().save_model(request, obj, form, change)
 

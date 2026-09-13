@@ -428,6 +428,44 @@ export interface ScopeItem {
   updated_by_name: string | null;
 }
 
+export interface GeneratedTask {
+  id: number;
+  code: string;
+  scope_item_code: string;
+  scope_item_raw_text: string;
+  task_template_code: string;
+  task_template_name: string;
+  activity_code: string;
+  activity_name: string;
+  step_order: number;
+  name: string;
+  quantity: string | null;
+  unit: string;
+  required: boolean;
+  repeatable: boolean;
+  generation_source: string;
+  status: string;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
+export interface ScopeItemGenerateTasksResult {
+  scope_item_id: number;
+  scope_item_code: string;
+  resolved_rule_code: string | null;
+  resolved_template_code: string | null;
+  created_count: number;
+  existing_count: number;
+  created_tasks: GeneratedTask[];
+  existing_tasks: GeneratedTask[];
+  tasks: GeneratedTask[];
+  warnings: string[];
+}
+
 export interface TaskTemplate {
   id: number;
   code: string;

@@ -999,3 +999,117 @@ class ScopeItem(MasterDataModel):
             sequence.save(update_fields=("last_number",))
             self.code = f"SCOPE-ITEM-{sequence.last_number:06d}"
             return super().save(*args, **kwargs)
+
+
+class GeneratedTaskSequence(models.Model):
+    """Contador atômico para gerar GeneratedTask.code (TASK-GEN-NNNNNN) —
+    mesmo padrão de ScopeItemSequence/core.models.TaskSequence."""
+
+    id = models.PositiveIntegerField(primary_key=True, default=1, editable=False)
+    last_number = models.PositiveIntegerField("último número", default=0)
+
+    class Meta:
+        verbose_name = "sequência de tarefas geradas"
+        verbose_name_plural = "sequências de tarefas geradas"
+
+
+class GeneratedTask(MasterDataModel):
+    """Tarefa operacional concreta gerada a partir de um ScopeItem já
+    resolvido:
+
+    ScopeItem -> TaskTemplate -> TaskTemplateSteps -> GeneratedTask.
+
+    ScopeItem representa O QUE O PROJETO PEDE; GeneratedTask representa O
+    QUE A EQUIPE PRECISA EXECUTAR — um nunca substitui o outro. Criada só
+    via master_data.services.task_generator.generate_tasks_for_scope_item
+    (a API bloqueia criação manual nesta primeira versão — ver
+    GeneratedTaskViewSet.create). Guarda um SNAPSHOT de
+    step_order/name/quantity/unit/required/repeatable no momento da
+    geração: uma alteração futura no TaskTemplate/TaskTemplateStep não
+    deve alterar retroativamente tarefas já geradas."""
+
+    GENERATION_SOURCE_SUGGESTIONS = ("TEMPLATE", "MANUAL", "AI", "IMPORT")
+    STATUS_SUGGESTIONS = (
+        "PENDING",
+        "READY",
+        "IN_PROGRESS",
+        "BLOCKED",
+        "WAITING_QAQC",
+        "COMPLETED",
+        "CANCELLED",
+    )
+
+    # Gerado automaticamente em save() (ver abaixo) — mesmo padrão de
+    # ScopeItem.code. blank=True pelo mesmo motivo (core.csv_io.
+    # import_csv_rows chama full_clean() com o código ainda vazio).
+    code = models.CharField("código", max_length=30, unique=True, blank=True, editable=False)
+
+    scope_item = models.ForeignKey(
+        ScopeItem, verbose_name="item de escopo", on_delete=models.PROTECT, related_name="generated_tasks"
+    )
+    task_template = models.ForeignKey(
+        TaskTemplate, verbose_name="template", on_delete=models.PROTECT, related_name="generated_tasks"
+    )
+    task_template_step = models.ForeignKey(
+        TaskTemplateStep,
+        verbose_name="etapa do template",
+        on_delete=models.PROTECT,
+        related_name="generated_tasks",
+    )
+    activity = models.ForeignKey(
+        Activity, verbose_name="atividade", on_delete=models.PROTECT, related_name="generated_tasks"
+    )
+
+    # Snapshot no momento da geração — ver docstring da classe.
+    step_order = models.PositiveIntegerField("ordem")
+    name = models.CharField("nome", max_length=200)
+    quantity = models.DecimalField("quantidade", max_digits=9, decimal_places=2, null=True, blank=True)
+    unit = models.CharField("unidade", max_length=50, blank=True)
+    required = models.BooleanField("obrigatória", default=True)
+    repeatable = models.BooleanField("repetível", default=False)
+
+    # Texto livre (não ENUM/choices) de propósito — sugestões: TEMPLATE,
+    # MANUAL, AI, IMPORT. A geração automática (única implementada nesta
+    # etapa) sempre usa TEMPLATE.
+    generation_source = models.CharField("origem da geração", max_length=50, default="TEMPLATE")
+    # Texto livre (não ENUM/choices) de propósito — sugestões: PENDING,
+    # READY, IN_PROGRESS, BLOCKED, WAITING_QAQC, COMPLETED, CANCELLED.
+    status = models.CharField("status", max_length=30, default="PENDING")
+
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Tarefa Gerada"
+        verbose_name_plural = "Tarefas Geradas"
+        ordering = ("scope_item", "step_order")
+        constraints = [
+            # Idempotência da geração: clicar "Gerar Tarefas" de novo não
+            # duplica — ver master_data.services.task_generator.
+            models.UniqueConstraint(
+                fields=("scope_item", "task_template_step"),
+                name="unique_generated_task_per_scope_item_step",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
+
+    def save(self, *args, **kwargs):
+        if self.code:
+            return super().save(*args, **kwargs)
+
+        with transaction.atomic():
+            try:
+                sequence = GeneratedTaskSequence.objects.select_for_update().get(pk=1)
+            except GeneratedTaskSequence.DoesNotExist:
+                try:
+                    with transaction.atomic():
+                        sequence = GeneratedTaskSequence.objects.create(pk=1)
+                except IntegrityError:
+                    sequence = GeneratedTaskSequence.objects.select_for_update().get(pk=1)
+
+            sequence.last_number += 1
+            sequence.save(update_fields=("last_number",))
+            self.code = f"TASK-GEN-{sequence.last_number:06d}"
+            return super().save(*args, **kwargs)

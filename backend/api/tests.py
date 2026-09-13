@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
@@ -24,6 +26,7 @@ from master_data.models import (
     CableSpec,
     CertificationType,
     DeviceType,
+    GeneratedTask,
     Location,
     Network,
     Path,
@@ -4181,3 +4184,307 @@ class ScopeItemApiTests(TestCase):
         module.seed_scope_items(django_apps, None)
         module.seed_scope_items(django_apps, None)
         self.assertEqual(ScopeItem.objects.count(), count_before)
+
+
+class GeneratedTaskApiTests(TestCase):
+    """Planejamento > Tarefas Geradas — master_data.services.task_generator
+    (ScopeItem RESOLVED -> TaskTemplateSteps ativos -> GeneratedTask),
+    regra de quantidade/unit, snapshot, idempotência, FK PROTECT, busca,
+    filtros, criação manual bloqueada, e os 3 templates reais (Fiber
+    MPO=9, Copper Field=12, Fiber Robust=9) com as quantidades exatas do
+    critério de aceite."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="generated_task_admin", email="generated_task@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+
+        self.family = CableFamily.objects.create(code="TST-GT-FAM", name="Família de teste", medium="FIBER")
+        self.template = TaskTemplate.objects.create(code="TST-GT-TPL", name="Template de teste", category="TEST_CATEGORY")
+        self.rule = TaskTemplateRule.objects.create(
+            code="TST-GT-RULE", name="Regra de teste", task_template=self.template, cable_family=self.family, priority=10
+        )
+
+        # Atividades/steps com quantity_source e unit variados, para
+        # testar cada regra de cálculo isoladamente.
+        self.act_scope_item = Activity.objects.create(code="TST-GT-ACT-SCOPE", name="Atividade scope_item", category="TEST_CATEGORY")
+        self.act_cable_count = Activity.objects.create(
+            code="TST-GT-ACT-CABLE", name="Atividade cable_count", category="TEST_CATEGORY", default_unit="ACTIVITY_UNIT"
+        )
+        self.act_link_count = Activity.objects.create(
+            code="TST-GT-ACT-LINK", name="Atividade link_count", category="TEST_CATEGORY", default_unit="LINK_UNIT"
+        )
+        self.act_conn_count = Activity.objects.create(code="TST-GT-ACT-CONN", name="Atividade connection_count", category="TEST_CATEGORY")
+        self.act_meterage = Activity.objects.create(code="TST-GT-ACT-METER", name="Atividade meterage", category="TEST_CATEGORY")
+        self.act_project = Activity.objects.create(code="TST-GT-ACT-PROJECT", name="Atividade project", category="TEST_CATEGORY")
+        self.act_manual = Activity.objects.create(code="TST-GT-ACT-MANUAL", name="Atividade manual", category="TEST_CATEGORY")
+        self.act_unknown = Activity.objects.create(code="TST-GT-ACT-UNKNOWN", name="Atividade unknown source", category="TEST_CATEGORY")
+        self.act_inactive_step = Activity.objects.create(code="TST-GT-ACT-INACTIVE", name="Atividade de step inativo", category="TEST_CATEGORY")
+
+        self.step_scope_item = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_scope_item, step_order=10, quantity_source="SCOPE_ITEM"
+        )
+        self.step_cable_count = TaskTemplateStep.objects.create(
+            task_template=self.template,
+            activity=self.act_cable_count,
+            step_order=20,
+            quantity_source="CABLE_COUNT",
+            unit_override="OVERRIDE_UNIT",
+        )
+        self.step_link_count = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_link_count, step_order=30, quantity_source="LINK_COUNT"
+        )
+        self.step_conn_count = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_conn_count, step_order=40, quantity_source="CONNECTION_COUNT"
+        )
+        self.step_meterage = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_meterage, step_order=50, quantity_source="METERAGE"
+        )
+        self.step_project = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_project, step_order=60, quantity_source="PROJECT"
+        )
+        self.step_manual = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_manual, step_order=70, quantity_source="MANUAL"
+        )
+        self.step_unknown = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.act_unknown, step_order=80, quantity_source="WEIRD_SOURCE"
+        )
+        self.step_inactive = TaskTemplateStep.objects.create(
+            task_template=self.template,
+            activity=self.act_inactive_step,
+            step_order=90,
+            quantity_source="SCOPE_ITEM",
+            active=False,
+        )
+
+        self.scope_item = ScopeItem.objects.create(
+            raw_text="texto de teste",
+            item_type="CABLE",
+            cable_family=self.family,
+            quantity=5,
+            unit="SCOPE_UNIT",
+            length_m=Decimal("42.50"),
+        )
+        self.scope_item.resolved_rule = self.rule
+        self.scope_item.resolved_template = self.template
+        self.scope_item.rule_resolution_status = "RESOLVED"
+        self.scope_item.save()
+
+    def generate(self, item_pk=None):
+        return self.client_api.post(f"/api/master-data/scope-items/{item_pk or self.scope_item.pk}/generate-tasks/")
+
+    def test_generate_tasks_requires_resolved_status(self):
+        unresolved = ScopeItem.objects.create(raw_text="não resolvido", item_type="CABLE")
+        response = self.generate(unresolved.pk)
+        self.assertEqual(response.status_code, 400)
+
+    def test_generate_tasks_requires_resolved_template(self):
+        item = ScopeItem.objects.create(raw_text="status inconsistente", item_type="CABLE")
+        item.rule_resolution_status = "RESOLVED"
+        item.save()
+        response = self.generate(item.pk)
+        self.assertEqual(response.status_code, 400)
+
+    def test_generate_tasks_only_active_steps(self):
+        response = self.generate()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created_count"], 8)
+        activity_codes = [t["activity_code"] for t in response.data["tasks"]]
+        self.assertNotIn("TST-GT-ACT-INACTIVE", activity_codes)
+
+    def test_generate_tasks_correct_order(self):
+        response = self.generate()
+        self.assertEqual(response.status_code, 200, response.data)
+        orders = [t["step_order"] for t in response.data["tasks"]]
+        self.assertEqual(orders, [10, 20, 30, 40, 50, 60, 70, 80])
+
+    def test_quantity_scope_item_cable_link_connection_count(self):
+        self.generate()
+        for code in ("TST-GT-ACT-SCOPE", "TST-GT-ACT-CABLE", "TST-GT-ACT-LINK", "TST-GT-ACT-CONN"):
+            task = GeneratedTask.objects.get(scope_item=self.scope_item, activity__code=code)
+            self.assertEqual(task.quantity, Decimal("5"), code)
+
+    def test_quantity_meterage(self):
+        self.generate()
+        task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_meterage)
+        self.assertEqual(task.quantity, Decimal("42.50"))
+
+    def test_quantity_project(self):
+        self.generate()
+        task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_project)
+        self.assertEqual(task.quantity, Decimal("1"))
+
+    def test_quantity_manual_is_null(self):
+        self.generate()
+        task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_manual)
+        self.assertIsNone(task.quantity)
+
+    def test_unrecognized_quantity_source_is_null_with_warning(self):
+        response = self.generate()
+        self.assertEqual(response.status_code, 200, response.data)
+        task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_unknown)
+        self.assertIsNone(task.quantity)
+        self.assertTrue(any("WEIRD_SOURCE" in w for w in response.data["warnings"]))
+
+    def test_unit_resolution_priority(self):
+        self.generate()
+        override_task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_cable_count)
+        self.assertEqual(override_task.unit, "OVERRIDE_UNIT")
+        activity_default_task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_link_count)
+        self.assertEqual(activity_default_task.unit, "LINK_UNIT")
+        scope_fallback_task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_scope_item)
+        self.assertEqual(scope_fallback_task.unit, "SCOPE_UNIT")
+
+    def test_snapshot_name_and_step_order(self):
+        self.generate()
+        task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_scope_item)
+        self.assertEqual(task.name, self.step_scope_item.effective_name)
+        self.assertEqual(task.step_order, 10)
+
+    def test_required_and_repeatable_snapshot(self):
+        activity = Activity.objects.create(code="TST-GT-ACT-REQREP", name="Atividade req/rep", category="TEST_CATEGORY")
+        step = TaskTemplateStep.objects.create(
+            task_template=self.template,
+            activity=activity,
+            step_order=15,
+            required=False,
+            repeatable=True,
+            quantity_source="SCOPE_ITEM",
+        )
+        self.generate()
+        task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=step)
+        self.assertFalse(task.required)
+        self.assertTrue(task.repeatable)
+
+    def test_status_and_generation_source_defaults(self):
+        self.generate()
+        task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_scope_item)
+        self.assertEqual(task.status, "PENDING")
+        self.assertEqual(task.generation_source, "TEMPLATE")
+
+    def test_idempotent_second_generation_creates_nothing_new(self):
+        first = self.generate()
+        self.assertEqual(first.data["created_count"], 8)
+        self.assertEqual(first.data["existing_count"], 0)
+        second = self.generate()
+        self.assertEqual(second.data["created_count"], 0)
+        self.assertEqual(second.data["existing_count"], 8)
+        self.assertEqual(GeneratedTask.objects.filter(scope_item=self.scope_item).count(), 8)
+
+    def test_unique_constraint_scope_item_and_template_step(self):
+        self.generate()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                GeneratedTask.objects.create(
+                    scope_item=self.scope_item,
+                    task_template=self.template,
+                    task_template_step=self.step_scope_item,
+                    activity=self.act_scope_item,
+                    step_order=10,
+                    name="Duplicada",
+                )
+
+    def test_scope_item_foreign_key_is_protected(self):
+        self.generate()
+        with self.assertRaises(ProtectedError):
+            self.scope_item.delete()
+
+    def test_activity_foreign_key_is_protected(self):
+        self.generate()
+        with self.assertRaises(ProtectedError):
+            self.act_scope_item.delete()
+
+    def test_manual_create_is_blocked(self):
+        response = self.client_api.post(
+            "/api/master-data/generated-tasks/", {"name": "Manual", "status": "PENDING"}, format="json"
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_csv_import_is_blocked(self):
+        csv_content = "código;nome\nTASK-GEN-FAKE;Falsa\n"
+        upload = SimpleUploadedFile("generated_tasks.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post(
+            "/api/master-data/generated-tasks/import-csv/", {"csv_file": upload}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_update_allows_editable_fields_only(self):
+        self.generate()
+        task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_scope_item)
+        response = self.client_api.patch(
+            f"/api/master-data/generated-tasks/{task.pk}/", {"status": "READY", "quantity": "9.00"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "READY")
+        self.assertEqual(task.quantity, Decimal("9.00"))
+
+    def test_search_by_scope_item_code(self):
+        self.generate()
+        response = self.client_api.get("/api/master-data/generated-tasks/", {"search": self.scope_item.code})
+        self.assertEqual(response.data["count"], 8)
+
+    def test_filter_by_scope_item(self):
+        self.generate()
+        response = self.client_api.get("/api/master-data/generated-tasks/", {"scope_item": self.scope_item.pk})
+        self.assertEqual(response.data["count"], 8)
+
+    def test_filter_by_status(self):
+        self.generate()
+        response = self.client_api.get("/api/master-data/generated-tasks/", {"status": "PENDING"})
+        self.assertGreaterEqual(response.data["count"], 8)
+
+    # --- Os 3 templates reais (seed 0032) ---
+
+    def test_fiber_mpo_generates_nine_tasks_matching_example(self):
+        item = ScopeItem.objects.get(code="SCOPE-ITEM-000001")
+        self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        response = self.generate(item.pk)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created_count"], 9)
+        self.assertEqual(response.data["resolved_template_code"], "TPL-FIBER-MPO")
+        quantities = {
+            t.activity.code: t.quantity for t in GeneratedTask.objects.filter(scope_item=item).select_related("activity")
+        }
+        self.assertEqual(quantities["MAT-SEP"], Decimal("2"))
+        self.assertEqual(quantities["MAT-CHECK"], Decimal("2"))
+        self.assertEqual(quantities["CAB-LABEL"], Decimal("2"))
+        self.assertEqual(quantities["CAB-RUN"], Decimal("2"))
+        self.assertEqual(quantities["CAB-DRESS"], Decimal("2"))
+        self.assertEqual(quantities["CAB-PATCH"], Decimal("2"))
+        self.assertEqual(quantities["CERTIFY"], Decimal("2"))
+        self.assertEqual(quantities["QAQC"], Decimal("1"))
+        self.assertEqual(quantities["EVIDENCE"], Decimal("1"))
+
+    def test_copper_field_generates_twelve_tasks_matching_example(self):
+        item = ScopeItem.objects.get(code="SCOPE-ITEM-000002")
+        self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        response = self.generate(item.pk)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created_count"], 12)
+        quantities = {
+            t.activity.code: t.quantity for t in GeneratedTask.objects.filter(scope_item=item).select_related("activity")
+        }
+        self.assertEqual(quantities["CAB-MEASURE"], Decimal("10"))
+        self.assertEqual(quantities["CAB-CUT"], Decimal("10"))
+        self.assertEqual(quantities["CAB-CRIMP"], Decimal("10"))
+        self.assertEqual(quantities["CERTIFY"], Decimal("10"))
+        self.assertEqual(quantities["QAQC"], Decimal("1"))
+        self.assertEqual(quantities["EVIDENCE"], Decimal("1"))
+
+    def test_robust_generates_nine_tasks(self):
+        item = ScopeItem.objects.get(code="SCOPE-ITEM-000003")
+        self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        response = self.generate(item.pk)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created_count"], 9)
+
+    def test_second_generation_on_seed_item_has_zero_created(self):
+        item = ScopeItem.objects.get(code="SCOPE-ITEM-000001")
+        self.client_api.post(f"/api/master-data/scope-items/{item.pk}/resolve-template/")
+        self.generate(item.pk)
+        second = self.generate(item.pk)
+        self.assertEqual(second.data["created_count"], 0)
+        self.assertEqual(second.data["existing_count"], 9)

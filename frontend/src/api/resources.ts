@@ -41,7 +41,9 @@ import type {
   UserOption,
   SiteFull,
   SiteMapData,
+  GeneratedTask,
   ScopeItem,
+  ScopeItemGenerateTasksResult,
   ScopeItemResolutionResult,
   TaskFull,
   TaskTemplate,
@@ -113,7 +115,12 @@ export const masterDataApi = {
           "/master-data/scope-items/resolve-all/"
         )
         .then((r) => r.data),
+    generateTasks: (id: number) =>
+      apiClient
+        .post<ScopeItemGenerateTasksResult>(`/master-data/scope-items/${id}/generate-tasks/`)
+        .then((r) => r.data),
   },
+  generatedTasks: crud<GeneratedTask>("/master-data/generated-tasks"),
 };
 
 export const taskRuleSimulatorApi = {

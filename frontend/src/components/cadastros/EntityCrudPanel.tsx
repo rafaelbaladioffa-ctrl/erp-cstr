@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { masterDataApi, sitesMapApi } from "../../api/resources";
-import type { CableAlias, CableSpec, ScopeItemResolutionResult, TaskTemplateStep } from "../../api/types";
+import type {
+  CableAlias,
+  CableSpec,
+  ScopeItemGenerateTasksResult,
+  ScopeItemResolutionResult,
+  TaskTemplateStep,
+} from "../../api/types";
 import { useAuth } from "../../context/AuthContext";
 import { PERMS, hasPerm } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../../pages/cadastros/registryConfig";
@@ -34,7 +40,7 @@ export default function EntityCrudPanel({
   autoOpenCreateNonce?: number;
 }) {
   const { user } = useAuth();
-  const canAdd = hasPerm(user, entity.perms.add);
+  const canAdd = hasPerm(user, entity.perms.add) && !entity.disableCreate;
   const canChange = hasPerm(user, entity.perms.change);
   const canDelete = hasPerm(user, entity.perms.delete);
   const canChangeSite = hasPerm(user, PERMS.changeSite);
@@ -69,6 +75,11 @@ export default function EntityCrudPanel({
   const [scopeResolution, setScopeResolution] = useState<ScopeItemResolutionResult | null>(null);
   const [scopeResolving, setScopeResolving] = useState(false);
   const [scopeResolutionError, setScopeResolutionError] = useState<string | null>(null);
+  // Idem para a geração de tarefas (POST .../generate-tasks/) a partir de
+  // um Item de Escopo já resolvido — mesmo espírito do bloco acima.
+  const [generateTasksResult, setGenerateTasksResult] = useState<ScopeItemGenerateTasksResult | null>(null);
+  const [generatingTasks, setGeneratingTasks] = useState(false);
+  const [generateTasksError, setGenerateTasksError] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -160,6 +171,8 @@ export default function EntityCrudPanel({
     setTemplateSteps([]);
     setScopeResolution(null);
     setScopeResolutionError(null);
+    setGenerateTasksResult(null);
+    setGenerateTasksError(null);
     setModalOpen(true);
   }
 
@@ -175,6 +188,8 @@ export default function EntityCrudPanel({
     setFormErrors({});
     setScopeResolution(null);
     setScopeResolutionError(null);
+    setGenerateTasksResult(null);
+    setGenerateTasksError(null);
     setModalOpen(true);
     if (entity.key === "cable-families") {
       setFamilyAliasesLoading(true);
@@ -239,6 +254,30 @@ export default function EntityCrudPanel({
       setScopeResolution(null);
     } finally {
       setScopeResolving(false);
+    }
+  }
+
+  async function handleGenerateTasks() {
+    if (!editingId) return;
+    const templateCode = scopeResolution?.selected_template?.code || (formValues.resolved_template_code as string | undefined);
+    const stepCount = scopeResolution?.steps?.length;
+    const question =
+      stepCount != null
+        ? `Serão geradas ${stepCount} tarefas com base no template ${templateCode}.`
+        : `Gerar tarefas com base no template ${templateCode || "resolvido"}?`;
+    if (!window.confirm(question)) return;
+    setGeneratingTasks(true);
+    setGenerateTasksError(null);
+    try {
+      const result = await masterDataApi.scopeItems.generateTasks(editingId);
+      setGenerateTasksResult(result);
+      reload();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      setGenerateTasksError(axiosErr.response?.data?.detail || "Não foi possível gerar as tarefas. Tente novamente.");
+      setGenerateTasksResult(null);
+    } finally {
+      setGeneratingTasks(false);
     }
   }
 
@@ -567,6 +606,74 @@ export default function EntityCrudPanel({
               )}
               <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10 }}>
                 Esta ação só grava o resultado da resolução (regra e template usados) — nenhuma Task é criada.
+              </p>
+            </div>
+          )}
+          {editingId && entity.key === "scope-items" && formValues.rule_resolution_status === "RESOLVED" && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "var(--text-faint)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Geração de Tarefas
+                </div>
+                <button className="btn btn-outline btn-sm" onClick={handleGenerateTasks} disabled={generatingTasks}>
+                  <Icon name="playlist_add_check" style={{ fontSize: 14 }} />
+                  {generatingTasks ? "Gerando..." : "Gerar Tarefas"}
+                </button>
+              </div>
+              {generateTasksError && (
+                <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{generateTasksError}</p>
+              )}
+              {generateTasksResult && (
+                <div>
+                  <p style={{ fontSize: 13, marginBottom: 8 }}>
+                    Criadas: <strong>{generateTasksResult.created_count}</strong> · Já existentes:{" "}
+                    <strong>{generateTasksResult.existing_count}</strong>
+                  </p>
+                  {generateTasksResult.warnings.length > 0 &&
+                    generateTasksResult.warnings.map((w, i) => (
+                      <p key={i} style={{ color: "var(--amber)", fontSize: 13, margin: "0 0 4px" }}>
+                        ⚠ {w}
+                      </p>
+                    ))}
+                  <div className="table-wrap">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Ordem</th>
+                          <th>Atividade</th>
+                          <th>Tarefa</th>
+                          <th>Quantidade</th>
+                          <th>Unidade</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {generateTasksResult.tasks.map((t) => (
+                          <tr key={t.id}>
+                            <td>{t.step_order}</td>
+                            <td>{t.activity_code}</td>
+                            <td>{t.name}</td>
+                            <td>{t.quantity ?? "—"}</td>
+                            <td>{t.unit || "—"}</td>
+                            <td>{t.status}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10 }}>
+                Gera uma Tarefa Gerada por etapa ativa do template resolvido — clicar de novo não duplica. Consulte
+                Planejamento &gt; Tarefas Geradas para o histórico completo.
               </p>
             </div>
           )}

@@ -25,6 +25,7 @@ from master_data.models import (
     CableSpec,
     CertificationType,
     DeviceType,
+    GeneratedTask,
     Location,
     Network,
     Path,
@@ -843,6 +844,63 @@ class ScopeItemCrudSerializer(serializers.ModelSerializer):
         attrs["medium"] = instance.medium
         attrs["normalization_metadata"] = instance.normalization_metadata
         return attrs
+
+
+class GeneratedTaskCrudSerializer(serializers.ModelSerializer):
+    """Planejamento > Tarefas Geradas. `scope_item`/`task_template`/
+    `task_template_step`/`activity` (e o snapshot `step_order`/`required`/
+    `repeatable`/`generation_source`) são só leitura — uma GeneratedTask
+    criada por TEMPLATE não deve ter esse vínculo de rastreabilidade
+    editado; só `name`/`quantity`/`unit`/`status`/`description`/`active`
+    são editáveis (ver GeneratedTaskViewSet.create, que bloqueia criação
+    manual nesta primeira versão)."""
+
+    scope_item_code = serializers.CharField(source="scope_item.code", read_only=True)
+    scope_item_raw_text = serializers.CharField(source="scope_item.raw_text", read_only=True)
+    task_template_code = serializers.CharField(source="task_template.code", read_only=True)
+    task_template_name = serializers.CharField(source="task_template.name", read_only=True)
+    activity_code = serializers.CharField(source="activity.code", read_only=True)
+    activity_name = serializers.CharField(source="activity.name", read_only=True)
+    step_order = serializers.IntegerField(read_only=True)
+    required = serializers.BooleanField(read_only=True)
+    repeatable = serializers.BooleanField(read_only=True)
+    generation_source = serializers.CharField(read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GeneratedTask
+        fields = (
+            "id",
+            "code",
+            "scope_item_code",
+            "scope_item_raw_text",
+            "task_template_code",
+            "task_template_name",
+            "activity_code",
+            "activity_name",
+            "step_order",
+            "name",
+            "quantity",
+            "unit",
+            "required",
+            "repeatable",
+            "generation_source",
+            "status",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("code", "created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
 
 
 class ProjectTypeCrudSerializer(serializers.ModelSerializer):

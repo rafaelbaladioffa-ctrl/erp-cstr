@@ -39,6 +39,7 @@ from master_data.models import (
     CableSpec,
     CertificationType,
     DeviceType,
+    GeneratedTask,
     Location,
     Network,
     Path,
@@ -49,6 +50,7 @@ from master_data.models import (
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
+from master_data.services.task_generator import TaskGenerationError, generate_tasks_for_scope_item
 from master_data.services.task_rule_resolver import (
     TaskRuleResolutionError,
     apply_resolution_to_scope_item,
@@ -95,6 +97,7 @@ from .serializers import (
     TaskTemplateRuleCrudSerializer,
     TaskTemplateRuleSimulateSerializer,
     ScopeItemCrudSerializer,
+    GeneratedTaskCrudSerializer,
     LocationCrudSerializer,
     MasterDataSiteCrudSerializer,
     PathCrudSerializer,
@@ -1208,7 +1211,7 @@ class ScopeItemViewSet(RequireChangePermissionForActions, RegistryViewSet):
     gravam o resultado da resolução (resolved_rule/resolved_template/
     rule_resolution_status); NUNCA criam Task nenhuma."""
 
-    change_permission_actions = ("resolve_template", "resolve_all")
+    change_permission_actions = ("resolve_template", "resolve_all", "generate_tasks")
 
     queryset = ScopeItem.objects.select_related(
         "cable_family",
@@ -1291,6 +1294,111 @@ class ScopeItemViewSet(RequireChangePermissionForActions, RegistryViewSet):
             elif status_key == "conflict":
                 summary["conflict"] += 1
         return Response(summary)
+
+    @action(detail=True, methods=["post"], url_path="generate-tasks")
+    def generate_tasks(self, request, pk=None):
+        """Gera GeneratedTasks a partir das TaskTemplateSteps do template já
+        resolvido do item (via master_data.services.task_generator — a
+        lógica de geração/idempotência vive lá, não aqui). Exige
+        rule_resolution_status=RESOLVED; NÃO resolve o template
+        automaticamente (o fluxo é sempre Resolver Template -> Gerar
+        Tarefas, nunca implícito, para ficar auditável)."""
+        scope_item = self.get_object()
+        try:
+            result = generate_tasks_for_scope_item(scope_item, user=request.user)
+        except TaskGenerationError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        created_data = GeneratedTaskCrudSerializer(result["created_tasks"], many=True).data
+        existing_data = GeneratedTaskCrudSerializer(result["existing_tasks"], many=True).data
+        all_tasks = sorted(list(created_data) + list(existing_data), key=lambda t: t["step_order"])
+        return Response(
+            {
+                "scope_item_id": scope_item.pk,
+                "scope_item_code": scope_item.code,
+                "resolved_rule_code": scope_item.resolved_rule.code if scope_item.resolved_rule_id else None,
+                "resolved_template_code": scope_item.resolved_template.code
+                if scope_item.resolved_template_id
+                else None,
+                "created_count": len(created_data),
+                "existing_count": len(existing_data),
+                "created_tasks": created_data,
+                "existing_tasks": existing_data,
+                "tasks": all_tasks,
+                "warnings": result["warnings"],
+            }
+        )
+
+
+class GeneratedTaskViewSet(RegistryViewSet):
+    """Planejamento > Tarefas Geradas. Tarefa operacional concreta gerada a
+    partir de um ScopeItem resolvido — O QUE A EQUIPE PRECISA EXECUTAR
+    (nunca substitui ScopeItem, que continua representando O QUE O
+    PROJETO PEDE). Criação SÓ via
+    ScopeItemViewSet.generate_tasks/master_data.services.task_generator
+    nesta primeira versão — POST direto neste endpoint é bloqueado (ver
+    `create` abaixo); edição é permitida só para os campos que fazem
+    sentido revisar depois de gerada (name/quantity/unit/status/
+    description/active — o vínculo de rastreabilidade e o snapshot da
+    geração são somente leitura, ver GeneratedTaskCrudSerializer)."""
+
+    queryset = GeneratedTask.objects.select_related(
+        "scope_item", "task_template", "task_template_step", "activity", "created_by", "updated_by"
+    ).order_by("scope_item__code", "step_order")
+    serializer_class = GeneratedTaskCrudSerializer
+    search_fields = (
+        "code",
+        "name",
+        "scope_item__code",
+        "scope_item__raw_text",
+        "activity__code",
+        "activity__name",
+        "task_template__code",
+    )
+    active_field = "active"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        for param, field in (
+            ("scope_item", "scope_item_id"),
+            ("task_template", "task_template_id"),
+            ("activity", "activity_id"),
+        ):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{field: value})
+        for param in ("status", "generation_source"):
+            value = self.request.query_params.get(param)
+            if value:
+                queryset = queryset.filter(**{param: value})
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        # Bloqueado de propósito nesta primeira versão — ver docstring da
+        # classe: GeneratedTask só é criada via
+        # ScopeItemViewSet.generate_tasks (master_data.services.
+        # task_generator.generate_tasks_for_scope_item), nunca por POST
+        # manual direto neste endpoint.
+        return Response(
+            {
+                "detail": (
+                    "Tarefas Geradas só podem ser criadas via "
+                    '"Gerar Tarefas" em um Item de Escopo resolvido (POST '
+                    ".../scope-items/{id}/generate-tasks/), não diretamente."
+                )
+            },
+            status=405,
+        )
+
+    def import_csv(self, request):
+        # Mesmo motivo de create() acima — import-csv também criaria
+        # registros diretamente, contornando o service de geração.
+        return Response(
+            {"detail": "Tarefas Geradas não podem ser importadas via CSV — só geradas via template."}, status=405
+        )
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
 
 
 class ProjectTypeViewSet(RegistryViewSet):

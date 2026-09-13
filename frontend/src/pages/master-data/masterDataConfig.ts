@@ -7,6 +7,7 @@ import type {
   CertificationType,
   DeviceType,
   Location,
+  GeneratedTask,
   MasterDataSite,
   Network,
   Path,
@@ -1193,6 +1194,107 @@ const scopeItemEntity: EntityConfig<ScopeItem> = {
   rowLabel: (row) => (row.name ? `${row.code} — ${row.name}` : row.code),
 };
 
+/** Espelha master_data.models.GeneratedTask.STATUS_SUGGESTIONS/
+ * GENERATION_SOURCE_SUGGESTIONS no backend — não é ENUM rígido, só as
+ * opções mostradas no filtro e como sugestão no formulário. */
+const GENERATED_TASK_STATUS_SUGGESTIONS = [
+  "PENDING",
+  "READY",
+  "IN_PROGRESS",
+  "BLOCKED",
+  "WAITING_QAQC",
+  "COMPLETED",
+  "CANCELLED",
+];
+const GENERATED_TASK_STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pendente",
+  READY: "Pronta",
+  IN_PROGRESS: "Em andamento",
+  BLOCKED: "Bloqueada",
+  WAITING_QAQC: "Aguardando QA/QC",
+  COMPLETED: "Concluída",
+  CANCELLED: "Cancelada",
+};
+const GENERATED_TASK_GENERATION_SOURCE_SUGGESTIONS = ["TEMPLATE", "MANUAL", "AI", "IMPORT"];
+
+const generatedTaskEntity: EntityConfig<GeneratedTask> = {
+  key: "generated-tasks",
+  label: "Tarefas Geradas",
+  icon: "checklist_rtl",
+  singular: "Tarefa Gerada",
+  description:
+    "Tarefa operacional concreta gerada a partir de um Item de Escopo resolvido — o que a equipe precisa executar.",
+  createLabel: "Nova Tarefa Gerada",
+  perms: modelPerms("master_data", "generatedtask"),
+  api: masterDataApi.generatedTasks,
+  statusField: "active",
+  disableHardDelete: true,
+  // Só criada via "Gerar Tarefas" (Itens de Escopo resolvidos) — nunca
+  // manualmente nem por CSV (bloqueado também no backend).
+  disableCreate: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "scope_item_code", label: "Item de Escopo" },
+    { key: "step_order", label: "Ordem" },
+    { key: "activity_code", label: "Atividade" },
+    { key: "name", label: "Tarefa" },
+    { key: "quantity", label: "Quantidade", render: (row) => (row.quantity == null ? "—" : String(row.quantity)) },
+    { key: "unit", label: "Unidade", render: (row) => row.unit || "—" },
+    { key: "task_template_code", label: "Template" },
+    {
+      key: "status",
+      label: "Status",
+      render: (row) => GENERATED_TASK_STATUS_LABELS[row.status] || row.status,
+    },
+    { key: "generation_source", label: "Origem" },
+  ],
+  filters: [
+    { key: "scope_item_code", label: "Todos os Itens de Escopo", options: (_refs, rows) => distinctOptions(rows, "scope_item_code") },
+    { key: "task_template_code", label: "Todos os Templates", options: (_refs, rows) => distinctOptions(rows, "task_template_code") },
+    { key: "activity_code", label: "Todas as Atividades", options: (_refs, rows) => distinctOptions(rows, "activity_code") },
+    {
+      key: "status",
+      label: "Todos os Status",
+      options: () => GENERATED_TASK_STATUS_SUGGESTIONS.map((s) => ({ value: s, label: GENERATED_TASK_STATUS_LABELS[s] || s })),
+    },
+    {
+      key: "generation_source",
+      label: "Todas as Origens",
+      options: () => GENERATED_TASK_GENERATION_SOURCE_SUGGESTIONS.map((s) => ({ value: s, label: s })),
+    },
+    {
+      key: "active",
+      label: "Todas as Situações",
+      options: () => [
+        { value: "true", label: "Ativo" },
+        { value: "false", label: "Inativo" },
+      ],
+    },
+  ],
+  fields: () => [
+    { name: "name", label: "Tarefa", type: "text", required: true, span: 2 },
+    { name: "quantity", label: "Quantidade", type: "number" },
+    { name: "unit", label: "Unidade", type: "text" },
+    {
+      name: "status",
+      label: "Status",
+      type: "text",
+      placeholder: `Ex: ${GENERATED_TASK_STATUS_SUGGESTIONS.join(", ")}`,
+    },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativa", span: 2 },
+  ],
+  emptyValues: {
+    name: "",
+    quantity: null,
+    unit: "",
+    status: "PENDING",
+    description: "",
+    active: true,
+  },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 const taskRuleSimulatorTool: ToolConfig = {
   kind: "tool",
   key: "task-rule-simulator",
@@ -1232,5 +1334,5 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     icon: "lan",
     entities: [masterDataSiteEntity, locationEntity, deviceTypeEntity],
   },
-  { key: "planejamento", label: "Planejamento", icon: "insights", entities: [scopeItemEntity] },
+  { key: "planejamento", label: "Planejamento", icon: "insights", entities: [scopeItemEntity, generatedTaskEntity] },
 ];
