@@ -185,6 +185,22 @@ export interface CableSpec {
   updated_by_name: string | null;
 }
 
+export interface CertificationType {
+  id: number;
+  code: string;
+  name: string;
+  medium: "FIBER" | "COPPER" | "GENERAL" | "";
+  method: string;
+  requires_report: boolean;
+  requires_attachment: boolean;
+  description: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+}
+
 export interface JobTitle {
   id: number;
   company: number | null;

@@ -18,7 +18,7 @@ from core.models import (
     update_person,
 )
 from dispatch.models import TechnicianAbsence, TechnicianDailyPresence
-from master_data.models import CableAlias, CableFamily, CableSpec, normalize_alias_text
+from master_data.models import CableAlias, CableFamily, CableSpec, CertificationType, normalize_alias_text
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition, merged_worked_hours
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
@@ -228,6 +228,36 @@ class CableSpecCrudSerializer(serializers.ModelSerializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
         return attrs
+
+
+class CertificationTypeCrudSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CertificationType
+        fields = (
+            "id",
+            "code",
+            "name",
+            "medium",
+            "method",
+            "requires_report",
+            "requires_attachment",
+            "description",
+            "active",
+            "created_at",
+            "updated_at",
+            "created_by_name",
+            "updated_by_name",
+        )
+        read_only_fields = ("created_at", "updated_at")
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() or obj.created_by.get_username() if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.get_full_name() or obj.updated_by.get_username() if obj.updated_by_id else None
 
 
 class ProjectTypeCrudSerializer(serializers.ModelSerializer):

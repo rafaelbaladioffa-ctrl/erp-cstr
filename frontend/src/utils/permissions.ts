@@ -74,9 +74,15 @@ export const PERMS = {
   viewCableFamily: "master_data.view_cablefamily",
   viewCableAlias: "master_data.view_cablealias",
   viewCableSpec: "master_data.view_cablespec",
+  viewCertificationType: "master_data.view_certificationtype",
 };
 
-export const MASTER_DATA_PERMS = [PERMS.viewCableFamily, PERMS.viewCableAlias, PERMS.viewCableSpec];
+export const MASTER_DATA_PERMS = [
+  PERMS.viewCableFamily,
+  PERMS.viewCableAlias,
+  PERMS.viewCableSpec,
+  PERMS.viewCertificationType,
+];
 
 export const CADASTROS_PERMS = [
   PERMS.viewCompany,

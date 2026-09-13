@@ -17,7 +17,7 @@ def make_collaborator(company, name, **kwargs):
     person = Person.objects.create(name=name, company=company)
     return Collaborator.objects.create(person=person, **kwargs)
 from dispatch.models import CollaboratorPair, TechnicianAbsence
-from master_data.models import CableAlias, CableFamily, CableSpec
+from master_data.models import CableAlias, CableFamily, CableSpec, CertificationType
 from projects.models import Project, ProjectTask, ProjectTaskAssignment, RackPosition
 from updates.models import DailyUpdate, DailyUpdateAllocation
 from users.models import User
@@ -1355,3 +1355,138 @@ class CableSpecApiTests(TestCase):
             self.family.delete()
         spec.refresh_from_db()
         self.assertEqual(spec.cable_family_id, self.family.pk)
+
+
+class CertificationTypeApiTests(TestCase):
+    """Cadastros Mestres > Engenharia > Tipos de Certificação — CRUD,
+    obrigatoriedade, busca, CSV, ativação/inativação e seed idempotente."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="certification_type_admin", email="certification_type@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        # Prefixo "TST-" pelo mesmo motivo das outras entidades de Cadastros
+        # Mestres: o seed real (0010_seed_certification_types) roda também
+        # no banco de testes (4 registros: CERT-OTDR, CERT-COPPER,
+        # CERT-FIBER-GENERAL, CERT-QAQC).
+
+    def test_create_sets_created_by_and_updated_by(self):
+        response = self.client_api.post(
+            "/api/master-data/certification-types/",
+            {"code": "TST-CERT-0001", "name": "Certificação de teste", "method": "TEST_METHOD"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        cert = CertificationType.objects.get(pk=response.data["id"])
+        self.assertEqual(cert.created_by, self.admin)
+        self.assertEqual(cert.updated_by, self.admin)
+
+    def test_code_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/certification-types/",
+            {"name": "Sem código", "method": "TEST_METHOD"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+
+    def test_code_must_be_unique(self):
+        CertificationType.objects.create(code="TST-CERT-DUP", name="Original", method="TEST_METHOD")
+        response = self.client_api.post(
+            "/api/master-data/certification-types/",
+            {"code": "TST-CERT-DUP", "name": "Duplicado", "method": "TEST_METHOD"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertEqual(CertificationType.objects.filter(code="TST-CERT-DUP").count(), 1)
+
+    def test_name_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/certification-types/",
+            {"code": "TST-CERT-0002", "method": "TEST_METHOD"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("name", response.data)
+
+    def test_method_is_required(self):
+        response = self.client_api.post(
+            "/api/master-data/certification-types/",
+            {"code": "TST-CERT-0003", "name": "Sem método"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("method", response.data)
+
+    def test_medium_is_optional(self):
+        response = self.client_api.post(
+            "/api/master-data/certification-types/",
+            {"code": "TST-CERT-0004", "name": "Sem meio", "method": "TEST_METHOD"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["medium"], "")
+
+    def test_search_by_code_name_and_method(self):
+        CertificationType.objects.create(code="TST-CERT-SEARCH", name="Busca de teste", method="SEARCHABLE_METHOD")
+
+        response = self.client_api.get("/api/master-data/certification-types/", {"search": "SEARCHABLE_METHOD"})
+
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["code"], "TST-CERT-SEARCH")
+
+    def test_deactivate_does_not_hard_delete(self):
+        cert = CertificationType.objects.create(code="TST-CERT-TOGGLE", name="Para inativar", method="TEST_METHOD", active=True)
+
+        response = self.client_api.patch(f"/api/master-data/certification-types/{cert.pk}/", {"active": False}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(CertificationType.objects.filter(pk=cert.pk).exists())
+        cert.refresh_from_db()
+        self.assertFalse(cert.active)
+
+    def test_export_csv(self):
+        CertificationType.objects.create(code="TST-CERT-EXPORT", name="Exportação de teste", method="EXPORT_METHOD")
+        response = self.client_api.get("/api/master-data/certification-types/export-csv/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("TST-CERT-EXPORT", content)
+        self.assertIn("código", content)
+
+    def test_import_csv_creates_rows(self):
+        csv_content = (
+            "código;nome;meio;método;exige relatório;exige anexo\n"
+            "TST-CERT-IMPORT1;Certificação Importada 1;FIBER;IMPORT_METHOD;Sim;Sim\n"
+            "TST-CERT-IMPORT2;Certificação Importada 2;;IMPORT_METHOD_2;Não;Não\n"
+        )
+        upload = SimpleUploadedFile("certification_types.csv", csv_content.encode("utf-8"), content_type="text/csv")
+        response = self.client_api.post(
+            "/api/master-data/certification-types/import-csv/", {"csv_file": upload}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created"], 2)
+        self.assertEqual(response.data["errors"], [])
+        imported = CertificationType.objects.get(code="TST-CERT-IMPORT1")
+        self.assertTrue(imported.requires_report)
+        self.assertTrue(imported.requires_attachment)
+
+    def test_seed_matches_expected_four_records(self):
+        codes = set(CertificationType.objects.values_list("code", flat=True))
+        self.assertEqual(
+            {"CERT-OTDR", "CERT-COPPER", "CERT-FIBER-GENERAL", "CERT-QAQC"} & codes,
+            {"CERT-OTDR", "CERT-COPPER", "CERT-FIBER-GENERAL", "CERT-QAQC"},
+        )
+
+    def test_seed_is_idempotent(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        module = importlib.import_module("master_data.migrations.0010_seed_certification_types")
+        count_before = CertificationType.objects.count()
+        module.seed_certification_types(django_apps, None)
+        module.seed_certification_types(django_apps, None)
+        self.assertEqual(CertificationType.objects.count(), count_before)

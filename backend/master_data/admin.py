@@ -3,7 +3,7 @@ from unfold.admin import ModelAdmin
 
 from core.admin_mixins import CSVImportExportMixin, SelectablePageSizeAdminMixin
 
-from .models import CableAlias, CableFamily, CableSpec
+from .models import CableAlias, CableFamily, CableSpec, CertificationType
 
 
 class CableAliasInline(admin.TabularInline):
@@ -56,6 +56,20 @@ class CableAliasAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelA
     search_fields = ("alias", "normalized_alias", "cable_family__code", "cable_family__name")
     autocomplete_fields = ("cable_family",)
     readonly_fields = ("normalized_alias", "created_at", "updated_at", "created_by", "updated_by")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(CertificationType)
+class CertificationTypeAdmin(CSVImportExportMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("code", "name", "medium", "method", "requires_report", "requires_attachment", "active", "updated_at")
+    list_filter = ("medium", "active", "requires_report", "requires_attachment")
+    search_fields = ("code", "name", "method", "description")
+    readonly_fields = ("created_at", "updated_at", "created_by", "updated_by")
 
     def save_model(self, request, obj, form, change):
         if not change:

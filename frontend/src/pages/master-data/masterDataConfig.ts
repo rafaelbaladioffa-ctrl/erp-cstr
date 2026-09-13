@@ -1,5 +1,5 @@
 import { masterDataApi } from "../../api/resources";
-import type { CableAlias, CableFamily, CableSpec } from "../../api/types";
+import type { CableAlias, CableFamily, CableSpec, CertificationType } from "../../api/types";
 import { modelPerms } from "../../utils/permissions";
 import type { EntityConfig, ReferenceData } from "../cadastros/registryConfig";
 
@@ -225,8 +225,68 @@ const cableSpecEntity: EntityConfig<CableSpec> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+const certificationTypeEntity: EntityConfig<CertificationType> = {
+  key: "certification-types",
+  label: "Tipos de Certificação",
+  icon: "verified",
+  singular: "Tipo de Certificação",
+  description: "Métodos de certificação/validação usados na operação (OTDR, cobre, QA/QC etc.).",
+  createLabel: "Novo Tipo de Certificação",
+  perms: modelPerms("master_data", "certificationtype"),
+  api: masterDataApi.certificationTypes,
+  statusField: "active",
+  disableHardDelete: true,
+  columns: [
+    { key: "code", label: "Código" },
+    { key: "name", label: "Nome" },
+    {
+      key: "medium",
+      label: "Meio",
+      render: (row) => (row.medium === "FIBER" ? "Fibra" : row.medium === "COPPER" ? "Cobre" : row.medium === "GENERAL" ? "Geral" : "—"),
+    },
+    { key: "method", label: "Método" },
+    { key: "requires_report", label: "Exige Relatório", render: (row) => (row.requires_report ? "Sim" : "Não") },
+    { key: "requires_attachment", label: "Exige Anexo", render: (row) => (row.requires_attachment ? "Sim" : "Não") },
+  ],
+  fields: () => [
+    { name: "code", label: "Código", type: "text", required: true, placeholder: "Ex: CERT-OTDR" },
+    { name: "name", label: "Nome", type: "text", required: true, placeholder: "Ex: Certificação OTDR" },
+    {
+      name: "medium",
+      label: "Meio",
+      type: "select",
+      options: [
+        { value: "FIBER", label: "Fibra" },
+        { value: "COPPER", label: "Cobre" },
+        { value: "GENERAL", label: "Geral" },
+      ],
+    },
+    { name: "method", label: "Método", type: "text", required: true, placeholder: "Ex: OTDR, COPPER_CERTIFIER, QA_QC" },
+    { name: "requires_report", label: "Exige Relatório", type: "checkbox", placeholder: "Sim" },
+    { name: "requires_attachment", label: "Exige Anexo", type: "checkbox", placeholder: "Sim" },
+    { name: "description", label: "Descrição", type: "textarea", span: 2 },
+    { name: "active", label: "Situação", type: "checkbox", placeholder: "Ativo", span: 2 },
+  ],
+  emptyValues: {
+    code: "",
+    name: "",
+    medium: "",
+    method: "",
+    requires_report: false,
+    requires_attachment: false,
+    description: "",
+    active: true,
+  },
+  rowLabel: (row) => `${row.code} — ${row.name}`,
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
-  { key: "engenharia", label: "Engenharia", icon: "cable", entities: [cableFamilyEntity, cableAliasEntity, cableSpecEntity] },
+  {
+    key: "engenharia",
+    label: "Engenharia",
+    icon: "cable",
+    entities: [cableFamilyEntity, cableAliasEntity, cableSpecEntity, certificationTypeEntity],
+  },
   { key: "operacao", label: "Operação", icon: "engineering", entities: [] },
   { key: "infraestrutura", label: "Infraestrutura", icon: "lan", entities: [] },
   { key: "planejamento", label: "Planejamento", icon: "insights", entities: [] },

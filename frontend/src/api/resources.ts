@@ -4,6 +4,7 @@ import type {
   CableAlias,
   CableFamily,
   CableSpec,
+  CertificationType,
   Category,
   ClientFull,
   Collaborator,
@@ -75,6 +76,7 @@ export const masterDataApi = {
   cableFamilies: crud<CableFamily>("/master-data/cable-families"),
   cableAliases: crud<CableAlias>("/master-data/cable-aliases"),
   cableSpecs: crud<CableSpec>("/master-data/cable-specs"),
+  certificationTypes: crud<CertificationType>("/master-data/certification-types"),
 };
 
 export const auditLogApi = {

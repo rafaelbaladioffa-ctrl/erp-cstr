@@ -32,7 +32,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
-from master_data.models import CableAlias, CableFamily, CableSpec
+from master_data.models import CableAlias, CableFamily, CableSpec, CertificationType
 from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
 from projects.services import (
     BulkActionError,
@@ -61,6 +61,7 @@ from .serializers import (
     CableAliasCrudSerializer,
     CableFamilyCrudSerializer,
     CableSpecCrudSerializer,
+    CertificationTypeCrudSerializer,
     CategoryCrudSerializer,
     DailyUpdateSerializer,
     JobTitleCrudSerializer,
@@ -779,6 +780,23 @@ class CableSpecViewSet(RegistryViewSet):
             if value:
                 queryset = queryset.filter(**{field: value})
         return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class CertificationTypeViewSet(RegistryViewSet):
+    """Cadastros Mestres > Engenharia > Tipos de Certificação. Mesmo padrão
+    de CableFamilyViewSet — catálogo interno, active_field="active". Sem
+    relação com CableFamily nesta etapa (deliberadamente fora de escopo)."""
+
+    queryset = CertificationType.objects.select_related("created_by", "updated_by").order_by("code")
+    serializer_class = CertificationTypeCrudSerializer
+    search_fields = ("code", "name", "method", "description")
+    active_field = "active"
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, updated_by=self.request.user)

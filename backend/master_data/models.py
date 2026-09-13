@@ -228,3 +228,41 @@ class CableSpec(MasterDataModel):
             )
         if errors:
             raise ValidationError(errors)
+
+
+class CertificationType(MasterDataModel):
+    """Catálogo de MÉTODOS de certificação/validação usados na operação
+    (ex: OTDR, certificação de cobre, validação QA/QC) — representa o
+    método em si, não o tipo de cabo/conector; regras de aplicabilidade por
+    família/conector ficam para uma fase futura, deliberadamente fora do
+    escopo aqui (ver `method`)."""
+
+    MEDIUM_FIBER = "FIBER"
+    MEDIUM_COPPER = "COPPER"
+    MEDIUM_GENERAL = "GENERAL"
+    MEDIUM_CHOICES = (
+        (MEDIUM_FIBER, "Fibra"),
+        (MEDIUM_COPPER, "Cobre"),
+        (MEDIUM_GENERAL, "Geral"),
+    )
+
+    code = models.CharField("código", max_length=50, unique=True)
+    name = models.CharField("nome", max_length=150)
+    medium = models.CharField("meio", max_length=10, choices=MEDIUM_CHOICES, blank=True)
+    # Texto livre (não ENUM/choices) de propósito — "controlado pela
+    # aplicação" nesta fase significa apenas convenção de nomenclatura
+    # (ex: OTDR, COPPER_CERTIFIER, FIBER_CERTIFICATION, QA_QC), não uma
+    # lista fechada travada no banco.
+    method = models.CharField("método", max_length=50)
+    requires_report = models.BooleanField("exige relatório", default=False)
+    requires_attachment = models.BooleanField("exige anexo", default=False)
+    description = models.TextField("descrição", blank=True)
+    active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Tipo de Certificação"
+        verbose_name_plural = "Tipos de Certificação"
+        ordering = ("code",)
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
