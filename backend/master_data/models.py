@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -888,7 +889,12 @@ class ScopeItem(MasterDataModel):
     # DecimalField (não PositiveIntegerField) de propósito — precisa
     # permitir metragem fracionada (ex: 2.5m).
     length_m = models.DecimalField(
-        "metragem (m)", max_digits=9, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)]
+        "metragem (m)",
+        max_digits=9,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
     )
 
     # Texto livre (não ENUM/choices) de propósito — sugestões: FIBER,
@@ -918,7 +924,7 @@ class ScopeItem(MasterDataModel):
         decimal_places=2,
         null=True,
         blank=True,
-        validators=[MinValueValidator(0), MaxValueValidator(1)],
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
     )
     requires_review = models.BooleanField("exige revisão", default=False)
 

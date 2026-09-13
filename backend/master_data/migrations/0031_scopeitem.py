@@ -1,3 +1,5 @@
+import decimal
+
 import django.core.validators
 import django.db.models.deletion
 from django.conf import settings
@@ -53,7 +55,7 @@ class Migration(migrations.Migration):
                         decimal_places=2,
                         max_digits=9,
                         null=True,
-                        validators=[django.core.validators.MinValueValidator(0)],
+                        validators=[django.core.validators.MinValueValidator(decimal.Decimal("0"))],
                         verbose_name="metragem (m)",
                     ),
                 ),
@@ -72,8 +74,8 @@ class Migration(migrations.Migration):
                         max_digits=3,
                         null=True,
                         validators=[
-                            django.core.validators.MinValueValidator(0),
-                            django.core.validators.MaxValueValidator(1),
+                            django.core.validators.MinValueValidator(decimal.Decimal("0")),
+                            django.core.validators.MaxValueValidator(decimal.Decimal("1")),
                         ],
                         verbose_name="confiança",
                     ),
