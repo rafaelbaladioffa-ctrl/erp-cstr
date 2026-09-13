@@ -144,8 +144,8 @@ export default function SitesMap() {
 
       {data && (
         <div className="stat-grid">
-          <StatCard label="Sites no mapa" value={data.points_count} icon="location_on" tone="blue" />
-          <StatCard label="Sem coordenadas" value={data.without_coords} hint="ativos, ainda não geocodificados" icon="location_off" tone="amber" />
+          <StatCard label="Sites no mapa" value={data.points_count} />
+          <StatCard label="Sem coordenadas" value={data.without_coords} hint="ativos, ainda não geocodificados" />
         </div>
       )}
 

@@ -189,10 +189,10 @@ export default function Dashboard() {
           {technical && (
             <>
               <div className="stat-grid">
-                <StatCard label="Colaboradores" value={technical.summary.total_collaborators} icon="groups" tone="blue" />
-                <StatCard label="Tarefas Concluídas" value={technical.summary.total_tasks_completed} icon="task_alt" tone="green" />
-                <StatCard label="Horas Trabalhadas" value={formatHours(technical.summary.total_hours_worked)} icon="schedule" tone="orange" />
-                <StatCard label="Links Executados" value={technical.summary.total_links_executed} icon="lan" tone="teal" />
+                <StatCard label="Colaboradores" value={technical.summary.total_collaborators} />
+                <StatCard label="Tarefas Concluídas" value={technical.summary.total_tasks_completed} />
+                <StatCard label="Horas Trabalhadas" value={formatHours(technical.summary.total_hours_worked)} />
+                <StatCard label="Links Executados" value={technical.summary.total_links_executed} />
               </div>
 
               <div className="card" style={{ padding: 16, marginBottom: 16 }}>
@@ -248,10 +248,10 @@ export default function Dashboard() {
           {projectsData && (
             <>
               <div className="stat-grid">
-                <StatCard label="Projetos" value={projectsData.summary.total_projects} icon="folder" tone="blue" />
-                <StatCard label="Atrasados" value={projectsData.summary.overdue_projects} icon="warning" tone="amber" />
-                <StatCard label="Progresso Médio" value={`${projectsData.summary.avg_progress_percent}%`} icon="bar_chart" tone="orange" />
-                <StatCard label="Horas Trabalhadas" value={formatHours(projectsData.summary.total_worked_hours)} icon="schedule" tone="teal" />
+                <StatCard label="Projetos" value={projectsData.summary.total_projects} />
+                <StatCard label="Atrasados" value={projectsData.summary.overdue_projects} />
+                <StatCard label="Progresso Médio" value={`${projectsData.summary.avg_progress_percent}%`} />
+                <StatCard label="Horas Trabalhadas" value={formatHours(projectsData.summary.total_worked_hours)} />
               </div>
 
               <div className="panel-field-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>

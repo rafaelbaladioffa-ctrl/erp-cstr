@@ -161,10 +161,10 @@ export default function ProjectsList() {
       />
 
       <div className="stat-grid">
-        <StatCard label="Projetos ativos" value={activeCount} hint={`${inProgressCount} em andamento`} icon="folder" tone="orange" />
-        <StatCard label="Progresso médio" value={`${avgProgress}%`} hint="do portfólio exibido" icon="bar_chart" tone="blue" />
-        <StatCard label="Horas registradas" value={formatHours(totalHours)} hint="tempo acumulado" icon="schedule" tone="teal" />
-        <StatCard label="Requer atenção" value={pausedCount} hint="projetos pausados" icon="warning" tone="amber" />
+        <StatCard label="Projetos ativos" value={activeCount} hint={`${inProgressCount} em andamento`} />
+        <StatCard label="Progresso médio" value={`${avgProgress}%`} hint="do portfólio exibido" />
+        <StatCard label="Horas registradas" value={formatHours(totalHours)} hint="tempo acumulado" />
+        <StatCard label="Requer atenção" value={pausedCount} hint="projetos pausados" />
       </div>
 
       <div className="card">

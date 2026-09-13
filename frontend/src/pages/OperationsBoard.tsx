@@ -4,6 +4,7 @@ import type { OperationsBoard as OperationsBoardData, OperationsBoardTechnician,
 import TechnicianAbsenceFormModal from "../components/projects/TechnicianAbsenceFormModal";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
+import StatCard from "../components/ui/StatCard";
 import {
   AWAY_STATUSES,
   BUSY_COLOR,
@@ -226,60 +227,12 @@ export default function OperationsBoard() {
         <>
           <div className="ops-stat-row">
             <div className="stat-grid" style={{ flex: 1, marginBottom: 0, gridTemplateColumns: "repeat(6, 1fr)" }}>
-              <div className="stat-card">
-                <div>
-                  <div className="stat-label">Atividades Planejadas</div>
-                  <div className="stat-value">{stats?.planned ?? 0}</div>
-                </div>
-                <div className="stat-icon" style={{ background: "var(--orange-soft)", color: "var(--orange)" }}>
-                  <Icon name="checklist" />
-                </div>
-              </div>
-              <div className="stat-card">
-                <div>
-                  <div className="stat-label">Em Execução</div>
-                  <div className="stat-value">{stats?.active ?? 0}</div>
-                </div>
-                <div className="stat-icon" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>
-                  <Icon name="play_arrow" />
-                </div>
-              </div>
-              <div className="stat-card">
-                <div>
-                  <div className="stat-label">Concluídas</div>
-                  <div className="stat-value">{stats?.completed ?? 0}</div>
-                </div>
-                <div className="stat-icon" style={{ background: "var(--green-soft)", color: "var(--green)" }}>
-                  <Icon name="check" />
-                </div>
-              </div>
-              <div className="stat-card">
-                <div>
-                  <div className="stat-label">Pendentes</div>
-                  <div className="stat-value">{stats?.pending ?? 0}</div>
-                </div>
-                <div className="stat-icon" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>
-                  <Icon name="hourglass_empty" />
-                </div>
-              </div>
-              <div className="stat-card">
-                <div>
-                  <div className="stat-label">Técnicos no Site</div>
-                  <div className="stat-value">{stats?.technicians_on_site ?? 0}</div>
-                </div>
-                <div className="stat-icon" style={{ background: "var(--teal-soft)", color: "var(--teal)" }}>
-                  <Icon name="groups" />
-                </div>
-              </div>
-              <div className="stat-card">
-                <div>
-                  <div className="stat-label">Técnicos Ausentes</div>
-                  <div className="stat-value">{stats?.technicians_absent ?? 0}</div>
-                </div>
-                <div className="stat-icon" style={{ background: "var(--red-soft)", color: "var(--red)" }}>
-                  <Icon name="person_off" />
-                </div>
-              </div>
+              <StatCard label="Atividades Planejadas" value={stats?.planned ?? 0} />
+              <StatCard label="Em Execução" value={stats?.active ?? 0} />
+              <StatCard label="Concluídas" value={stats?.completed ?? 0} />
+              <StatCard label="Pendentes" value={stats?.pending ?? 0} />
+              <StatCard label="Técnicos no Site" value={stats?.technicians_on_site ?? 0} />
+              <StatCard label="Técnicos Ausentes" value={stats?.technicians_absent ?? 0} />
             </div>
             <div className="ops-progress-card">
               <div className="ops-progress-ring" style={{ ["--pct" as string]: stats?.progress_pct ?? 0 }}>

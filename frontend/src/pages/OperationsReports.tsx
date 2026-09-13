@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsReports } from "../api/types";
-import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
+import StatCard from "../components/ui/StatCard";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -81,42 +81,10 @@ export default function OperationsReportsPage() {
       ) : (
         <>
           <div className="stat-grid">
-            <div className="stat-card">
-              <div>
-                <div className="stat-label">Utilização Média</div>
-                <div className="stat-value">{stats?.avg_utilization_pct ?? 0}%</div>
-              </div>
-              <div className="stat-icon" style={{ background: "var(--orange-soft)", color: "var(--orange)" }}>
-                <Icon name="percent" />
-              </div>
-            </div>
-            <div className="stat-card">
-              <div>
-                <div className="stat-label">Horas Produtivas Hoje</div>
-                <div className="stat-value">{formatHours(stats?.today_productive_hours ?? 0)}</div>
-              </div>
-              <div className="stat-icon" style={{ background: "var(--green-soft)", color: "var(--green)" }}>
-                <Icon name="login" />
-              </div>
-            </div>
-            <div className="stat-card">
-              <div>
-                <div className="stat-label">Horas Improdutivas Hoje</div>
-                <div className="stat-value">{formatHours(stats?.today_unproductive_hours ?? 0)}</div>
-              </div>
-              <div className="stat-icon" style={{ background: "var(--red-soft)", color: "var(--red)" }}>
-                <Icon name="hourglass_disabled" />
-              </div>
-            </div>
-            <div className="stat-card">
-              <div>
-                <div className="stat-label">Concluídas no Mês</div>
-                <div className="stat-value">{stats?.completed_this_month ?? 0}</div>
-              </div>
-              <div className="stat-icon" style={{ background: "var(--teal-soft)", color: "var(--teal)" }}>
-                <Icon name="checklist" />
-              </div>
-            </div>
+            <StatCard label="Utilização Média" value={`${stats?.avg_utilization_pct ?? 0}%`} />
+            <StatCard label="Horas Produtivas Hoje" value={formatHours(stats?.today_productive_hours ?? 0)} />
+            <StatCard label="Horas Improdutivas Hoje" value={formatHours(stats?.today_unproductive_hours ?? 0)} />
+            <StatCard label="Concluídas no Mês" value={stats?.completed_this_month ?? 0} />
           </div>
 
           <div className="reports-two-col">
