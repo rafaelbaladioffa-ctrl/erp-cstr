@@ -428,6 +428,11 @@ export interface ScopeItem {
    * confundir com o campo `path` singular acima (mantido por
    * compatibilidade). */
   paths: number[];
+  /** Derivado no backend (não persistido) — resume onde este item está no
+   * fluxo SOW -> ScopeItem -> resolução -> Tarefas Geradas. Ver
+   * ScopeItemCrudSerializer.get_operational_status. */
+  operational_status: "AWAITING_RESOLUTION" | "READY_TO_GENERATE" | "TASKS_GENERATED" | "REQUIRES_REVIEW" | "NO_MATCH";
+  has_generated_tasks: boolean;
   created_at: string;
   updated_at: string;
   created_by_name: string | null;
@@ -439,6 +444,7 @@ export interface GeneratedTask {
   code: string;
   scope_item_code: string;
   scope_item_raw_text: string;
+  scope_item_source_reference: string;
   task_template_code: string;
   task_template_name: string;
   activity_code: string;

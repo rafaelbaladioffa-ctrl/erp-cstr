@@ -1,8 +1,19 @@
 import { Fragment, useEffect, useState } from "react";
-import { planningApi } from "../../api/resources";
+import { useNavigate } from "react-router-dom";
+import { masterDataApi, planningApi } from "../../api/resources";
 import type { AiStatus, SowImport, SowParsedItem } from "../../api/types";
 import Icon from "../ui/Icon";
 import type { ReferenceData } from "../../pages/cadastros/registryConfig";
+
+interface SowSummary {
+  total_items_detected: number;
+  total_items_approved: number;
+  total_items_rejected: number;
+  scope_items_created: number;
+  templates_resolved: number;
+  items_awaiting_resolution: number;
+  tasks_generated: number;
+}
 
 /** Planejamento > Importar SOW — primeiro módulo de ingestão inteligente
  * de escopo: SOW/texto/arquivo -> parser determinístico + IA opcional ->
@@ -88,10 +99,15 @@ function editFormFromItem(item: SowParsedItem): EditForm {
 }
 
 export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<"list" | "new" | "detail">("list");
   const [imports, setImports] = useState<SowImport[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [summary, setSummary] = useState<SowSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [bulkActionBusy, setBulkActionBusy] = useState(false);
 
   const [title, setTitle] = useState("");
   const [sourceType, setSourceType] = useState("TEXT");
@@ -141,7 +157,66 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
     setSelectedIds(new Set());
     setEditingId(null);
     setActionError(null);
+    setSuccessMessage(null);
+    setSummary(null);
     await loadItems(imp.id);
+    await loadSummary(imp.id);
+  }
+
+  function loadSummary(importId: number) {
+    setSummaryLoading(true);
+    return planningApi.sowImports
+      .summary(importId)
+      .then(setSummary)
+      .catch(() => setSummary(null))
+      .finally(() => setSummaryLoading(false));
+  }
+
+  function openScopeItemsForThisSow() {
+    if (!activeImport) return;
+    navigate(`/cadastros-mestres?focusEntity=scope-items&focusSearch=${encodeURIComponent(activeImport.code)}`);
+  }
+
+  function openGeneratedTasksForThisSow() {
+    if (!activeImport) return;
+    navigate(`/cadastros-mestres?focusEntity=generated-tasks&focusSearch=${encodeURIComponent(activeImport.code)}`);
+  }
+
+  async function handleResolvePendingTemplates() {
+    if (!activeImport) return;
+    setActionError(null);
+    setBulkActionBusy(true);
+    try {
+      const result = await masterDataApi.scopeItems.resolveAll(activeImport.code);
+      setSuccessMessage(
+        `Resolução em lote: ${result.resolved} resolvido(s), ${result.no_match} sem match, ${result.conflict} em conflito (de ${result.total} pendente(s)).`
+      );
+      await loadSummary(activeImport.id);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      setActionError(axiosErr.response?.data?.detail || "Não foi possível resolver os templates pendentes.");
+    } finally {
+      setBulkActionBusy(false);
+    }
+  }
+
+  async function handleGenerateReadyTasks() {
+    if (!activeImport) return;
+    setActionError(null);
+    setBulkActionBusy(true);
+    try {
+      const result = await masterDataApi.scopeItems.generateTasksBulk(activeImport.code);
+      setSuccessMessage(
+        `${result.tasks_created} tarefa(s) gerada(s) para ${result.scope_items_processed} item(ns) de escopo.` +
+          (result.tasks_existing > 0 ? ` (${result.tasks_existing} já existiam)` : "")
+      );
+      await loadSummary(activeImport.id);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      setActionError(axiosErr.response?.data?.detail || "Não foi possível gerar as tarefas.");
+    } finally {
+      setBulkActionBusy(false);
+    }
   }
 
   async function loadItems(importId: number) {
@@ -263,14 +338,21 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
   async function handleApproveSelected() {
     if (!activeImport || selectedIds.size === 0) return;
     setActionError(null);
+    setSuccessMessage(null);
     const result = await planningApi.sowImports.approveSelected(activeImport.id, Array.from(selectedIds));
     setActiveImport(result.sow_import);
     setImports((prev) => prev.map((i) => (i.id === result.sow_import.id ? result.sow_import : i)));
     if (result.errors.length > 0) {
       setActionError(`${result.errors.length} item(ns) não puderam ser aprovados: ${result.errors.map((e) => e.detail).join(" ")}`);
     }
+    if (result.approved.length > 0) {
+      setSuccessMessage(
+        `${result.approved.length} ScopeItem(ns) criado(s). Use "Abrir Itens de Escopo desta SOW" abaixo para resolver os templates e gerar as tarefas.`
+      );
+    }
     setSelectedIds(new Set());
     await loadItems(activeImport.id);
+    await loadSummary(activeImport.id);
   }
 
   async function handleRejectSelected() {
@@ -286,10 +368,14 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
   async function handleFinalize() {
     if (!activeImport) return;
     setActionError(null);
+    setSuccessMessage(null);
     try {
       const updated = await planningApi.sowImports.finalize(activeImport.id);
       setActiveImport(updated);
       setImports((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      setSuccessMessage(
+        `Importação finalizada. ${updated.total_items_approved} ScopeItem(ns) criado(s), ${updated.total_items_rejected} rejeitado(s).`
+      );
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
       setActionError(axiosErr.response?.data?.detail || "Ainda há itens pendentes de revisão.");
@@ -492,7 +578,68 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
       {activeImport.status === "FAILED" && (
         <p style={{ color: "var(--red)", fontSize: 13 }}>⚠ Falha no processamento: {activeImport.error_message}</p>
       )}
+      {successMessage && (
+        <p style={{ color: "var(--green)", fontSize: 13, marginBottom: 10 }}>✓ {successMessage}</p>
+      )}
       {actionError && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{actionError}</p>}
+
+      {!summaryLoading && summary && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 10,
+            padding: 12,
+            marginBottom: 14,
+            background: "var(--surface-2, #f7f7f8)",
+            borderRadius: 8,
+            fontSize: 13,
+          }}
+        >
+          <div>
+            <strong>{summary.scope_items_created}</strong>
+            <br />
+            ScopeItems criados
+          </div>
+          <div>
+            <strong>{summary.templates_resolved}</strong>
+            <br />
+            templates resolvidos
+          </div>
+          <div>
+            <strong>{summary.items_awaiting_resolution}</strong>
+            <br />
+            itens aguardando resolução
+          </div>
+          <div>
+            <strong>{summary.tasks_generated}</strong>
+            <br />
+            tarefas geradas
+          </div>
+          <div style={{ gridColumn: "span 4", display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+            <button className="btn btn-outline btn-sm" onClick={openScopeItemsForThisSow} disabled={summary.scope_items_created === 0}>
+              Abrir Itens de Escopo desta SOW
+            </button>
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={handleResolvePendingTemplates}
+              disabled={bulkActionBusy || summary.items_awaiting_resolution === 0}
+            >
+              Resolver templates pendentes ({summary.items_awaiting_resolution})
+            </button>
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={handleGenerateReadyTasks}
+              disabled={bulkActionBusy || summary.templates_resolved === 0}
+            >
+              Gerar tarefas dos itens prontos
+            </button>
+            <button className="btn btn-outline btn-sm" onClick={openGeneratedTasksForThisSow} disabled={summary.tasks_generated === 0}>
+              Abrir Tarefas Geradas desta SOW
+            </button>
+          </div>
+        </div>
+      )}
 
       {loadingItems && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando itens…</p>}
 

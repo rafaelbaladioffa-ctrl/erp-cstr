@@ -1065,6 +1065,17 @@ const taskTemplateRuleEntity: EntityConfig<TaskTemplateRule> = {
   rowLabel: (row) => `${row.code} — ${row.name}`,
 };
 
+/** Espelha ScopeItemCrudSerializer.get_operational_status no backend —
+ * status derivado (não persistido) que resume onde o item está no fluxo
+ * SOW -> ScopeItem -> resolução -> Tarefas Geradas. */
+const SCOPE_ITEM_OPERATIONAL_STATUS_LABELS: Record<string, string> = {
+  AWAITING_RESOLUTION: "Aguardando resolução",
+  READY_TO_GENERATE: "Pronto para gerar",
+  TASKS_GENERATED: "Tarefas geradas",
+  REQUIRES_REVIEW: "Exige revisão",
+  NO_MATCH: "Sem match",
+};
+
 const scopeItemEntity: EntityConfig<ScopeItem> = {
   key: "scope-items",
   label: "Itens de Escopo",
@@ -1100,6 +1111,13 @@ const scopeItemEntity: EntityConfig<ScopeItem> = {
     },
     { key: "resolved_template_code", label: "Template Resolvido", render: (row) => row.resolved_template_code || "—" },
     { key: "requires_review", label: "Revisão", render: (row) => (row.requires_review ? "Sim" : "Não") },
+    { key: "source_type", label: "Origem", render: (row) => row.source_type || "—" },
+    { key: "source_reference", label: "Referência da Origem", render: (row) => row.source_reference || "—" },
+    {
+      key: "operational_status",
+      label: "Status Operacional",
+      render: (row) => SCOPE_ITEM_OPERATIONAL_STATUS_LABELS[row.operational_status] || row.operational_status,
+    },
   ],
   filters: [
     { key: "item_type", label: "Todos os Tipos", options: () => SCOPE_ITEM_TYPE_SUGGESTIONS.map((t) => ({ value: t, label: t })) },
@@ -1108,6 +1126,13 @@ const scopeItemEntity: EntityConfig<ScopeItem> = {
     { key: "workstream", label: "Todos os Workstreams", options: workstreamOptions },
     { key: "path", label: "Todas as Rotas", options: pathOptions },
     { key: "medium", label: "Todos os Meios", options: (_refs, rows) => distinctOptions(rows, "medium") },
+    { key: "source_reference", label: "Todas as Importações SOW", options: (_refs, rows) => distinctOptions(rows, "source_reference") },
+    {
+      key: "operational_status",
+      label: "Todos os Status Operacionais",
+      options: () =>
+        Object.entries(SCOPE_ITEM_OPERATIONAL_STATUS_LABELS).map(([value, label]) => ({ value, label })),
+    },
     {
       key: "rule_resolution_status",
       label: "Todos os Status de Regra",
@@ -1269,12 +1294,22 @@ const generatedTaskEntity: EntityConfig<GeneratedTask> = {
       render: (row) => GENERATED_TASK_STATUS_LABELS[row.status] || row.status,
     },
     { key: "generation_source", label: "Origem" },
+    {
+      key: "scope_item_source_reference",
+      label: "Importação SOW",
+      render: (row) => row.scope_item_source_reference || "—",
+    },
   ],
   filters: [
     { key: "scope_item_code", label: "Todos os Itens de Escopo", options: (_refs, rows) => distinctOptions(rows, "scope_item_code") },
     { key: "task_template_code", label: "Todos os Templates", options: (_refs, rows) => distinctOptions(rows, "task_template_code") },
     { key: "activity_code", label: "Todas as Atividades", options: (_refs, rows) => distinctOptions(rows, "activity_code") },
     { key: "path_code", label: "Todos os Paths", options: (_refs, rows) => distinctOptions(rows, "path_code") },
+    {
+      key: "scope_item_source_reference",
+      label: "Todas as Importações SOW",
+      options: (_refs, rows) => distinctOptions(rows, "scope_item_source_reference"),
+    },
     {
       key: "status",
       label: "Todos os Status",

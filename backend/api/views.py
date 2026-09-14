@@ -1233,7 +1233,7 @@ class ScopeItemViewSet(RequireChangePermissionForActions, RegistryViewSet):
     gravam o resultado da resolução (resolved_rule/resolved_template/
     rule_resolution_status); NUNCA criam Task nenhuma."""
 
-    change_permission_actions = ("resolve_template", "resolve_all", "generate_tasks")
+    change_permission_actions = ("resolve_template", "resolve_all", "generate_tasks", "generate_tasks_bulk")
 
     queryset = ScopeItem.objects.select_related(
         "cable_family",
@@ -1301,8 +1301,14 @@ class ScopeItemViewSet(RequireChangePermissionForActions, RegistryViewSet):
     def resolve_all(self, request):
         """Resolve todos os ScopeItems ativos ainda com
         rule_resolution_status=NOT_RESOLVED — mesma lógica de
-        `resolve_template`, um item por vez. Não cria nenhuma Task."""
+        `resolve_template`, um item por vez. Não cria nenhuma Task.
+        Aceita `?source_reference=` opcional para restringir a uma única
+        importação de SOW (usado pela ação "Resolver templates
+        pendentes" na tela Importar SOW)."""
         pending = ScopeItem.objects.filter(active=True, rule_resolution_status="NOT_RESOLVED")
+        source_reference = request.query_params.get("source_reference")
+        if source_reference:
+            pending = pending.filter(source_reference=source_reference)
         summary = {"total": pending.count(), "resolved": 0, "no_match": 0, "conflict": 0}
         for scope_item in pending:
             result = apply_resolution_to_scope_item(scope_item)
@@ -1367,6 +1373,52 @@ class ScopeItemViewSet(RequireChangePermissionForActions, RegistryViewSet):
             }
         )
 
+    @action(detail=False, methods=["post"], url_path="generate-tasks-bulk")
+    def generate_tasks_bulk(self, request):
+        """Gera tarefas para TODOS os ScopeItems ativos com
+        rule_resolution_status=RESOLVED que baterem com o filtro
+        informado — hoje só `source_reference` (usado pela ação "Gerar
+        tarefas dos itens prontos" na tela Importar SOW, que fecha o
+        fluxo SOW -> ScopeItems -> Tarefas Geradas sem o usuário precisar
+        abrir item por item). Mesma lógica de geração/idempotência de
+        `generate_tasks` (um item de cada vez, via
+        master_data.services.task_generator) — nunca duplica, nunca gera
+        para item ainda não resolvido."""
+        source_reference = request.data.get("source_reference") or request.query_params.get("source_reference")
+        candidates = ScopeItem.objects.filter(active=True, rule_resolution_status="RESOLVED")
+        if source_reference:
+            candidates = candidates.filter(source_reference=source_reference)
+
+        scope_items_processed = 0
+        tasks_created = 0
+        tasks_existing = 0
+        dependencies_created = 0
+        dependencies_existing = 0
+        errors = []
+        for scope_item in candidates:
+            try:
+                result = generate_tasks_for_scope_item(scope_item, user=request.user)
+            except TaskGenerationError as exc:
+                errors.append({"scope_item_code": scope_item.code, "detail": str(exc)})
+                continue
+            dependency_result = generate_dependencies_for_scope_item(scope_item)
+            scope_items_processed += 1
+            tasks_created += len(result["created_tasks"])
+            tasks_existing += len(result["existing_tasks"])
+            dependencies_created += len(dependency_result["created"])
+            dependencies_existing += len(dependency_result["existing"])
+
+        return Response(
+            {
+                "scope_items_processed": scope_items_processed,
+                "tasks_created": tasks_created,
+                "tasks_existing": tasks_existing,
+                "dependencies_created": dependencies_created,
+                "dependencies_existing": dependencies_existing,
+                "errors": errors,
+            }
+        )
+
 
 class GeneratedTaskViewSet(RegistryViewSet):
     """Planejamento > Tarefas Geradas. Tarefa operacional concreta gerada a
@@ -1410,6 +1462,13 @@ class GeneratedTaskViewSet(RegistryViewSet):
             value = self.request.query_params.get(param)
             if value:
                 queryset = queryset.filter(**{param: value})
+        # Filtra por importação de SOW de origem (via ScopeItem.
+        # source_reference) — fecha o link "Abrir Tarefas Geradas desta
+        # SOW" a partir da tela Importar SOW, sem precisar de FK direta
+        # entre GeneratedTask e SowImport.
+        sow_import_code = self.request.query_params.get("sow_import")
+        if sow_import_code:
+            queryset = queryset.filter(scope_item__source_reference=sow_import_code)
         return queryset
 
     def create(self, request, *args, **kwargs):
@@ -1564,6 +1623,33 @@ class SowImportViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet)
         except FinalizeBlockedError as exc:
             return Response({"detail": str(exc)}, status=400)
         return Response(self.get_serializer(sow_import).data)
+
+    @action(detail=True, methods=["get"])
+    def summary(self, request, pk=None):
+        """Resumo operacional desta importação — fecha o fluxo SOW ->
+        ScopeItems -> resolução -> Tarefas Geradas numa única chamada,
+        pra tela de detalhe não precisar navegar até Itens de Escopo só
+        pra saber quantos já foram resolvidos/geraram tarefa. ScopeItems
+        e GeneratedTasks são relacionados a esta importação por
+        `ScopeItem.source_reference == self.code` (mesmo mecanismo já
+        usado por approve_sow_parsed_item)."""
+        sow_import = self.get_object()
+        scope_items = ScopeItem.objects.filter(source_reference=sow_import.code, active=True)
+        scope_items_created = scope_items.count()
+        templates_resolved = scope_items.filter(rule_resolution_status="RESOLVED").count()
+        items_awaiting_resolution = scope_items.exclude(rule_resolution_status="RESOLVED").count()
+        tasks_generated = GeneratedTask.objects.filter(scope_item__source_reference=sow_import.code).count()
+        return Response(
+            {
+                "total_items_detected": sow_import.total_items_detected,
+                "total_items_approved": sow_import.total_items_approved,
+                "total_items_rejected": sow_import.total_items_rejected,
+                "scope_items_created": scope_items_created,
+                "templates_resolved": templates_resolved,
+                "items_awaiting_resolution": items_awaiting_resolution,
+                "tasks_generated": tasks_generated,
+            }
+        )
 
 
 class SowParsedItemViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):

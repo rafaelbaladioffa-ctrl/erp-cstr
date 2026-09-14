@@ -740,6 +740,12 @@ class ScopeItemCrudSerializer(serializers.ModelSerializer):
     paths = serializers.PrimaryKeyRelatedField(queryset=Path.objects.all(), many=True, required=False)
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
+    # Status derivado (não persistido) que resume, num único valor, onde
+    # este item está no fluxo SOW -> ScopeItem -> resolução -> Tarefas
+    # Geradas — ver get_operational_status(). Usado pela grade de Itens
+    # de Escopo (coluna/badge) e para habilitar a ação "Gerar Tarefas".
+    operational_status = serializers.SerializerMethodField()
+    has_generated_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = ScopeItem
@@ -787,12 +793,32 @@ class ScopeItemCrudSerializer(serializers.ModelSerializer):
             "expansion_mode",
             "tasks_outdated",
             "paths",
+            "operational_status",
+            "has_generated_tasks",
             "created_at",
             "updated_at",
             "created_by_name",
             "updated_by_name",
         )
         read_only_fields = ("code", "created_at", "updated_at")
+
+    def get_has_generated_tasks(self, obj):
+        return obj.generated_tasks.exists()
+
+    def get_operational_status(self, obj):
+        # Ordem importa: revisão pendente/sem match têm prioridade sobre
+        # "já tem tarefas geradas" (um item pode ter gerado tarefas antes
+        # de um dado ficar desatualizado — tasks_outdated cobre esse caso
+        # à parte, ver o campo já existente).
+        if obj.requires_review:
+            return "REQUIRES_REVIEW"
+        if obj.rule_resolution_status == "NO_MATCH":
+            return "NO_MATCH"
+        if obj.rule_resolution_status != "RESOLVED":
+            return "AWAITING_RESOLUTION"
+        if obj.generated_tasks.exists():
+            return "TASKS_GENERATED"
+        return "READY_TO_GENERATE"
 
     def get_cable_family_code(self, obj):
         return obj.cable_family.code if obj.cable_family_id else None
@@ -921,6 +947,11 @@ class GeneratedTaskCrudSerializer(serializers.ModelSerializer):
 
     scope_item_code = serializers.CharField(source="scope_item.code", read_only=True)
     scope_item_raw_text = serializers.CharField(source="scope_item.raw_text", read_only=True)
+    # "" (não "" -> texto vazio na tela) quando o item de escopo não veio
+    # de uma importação de SOW — usado para a tela Tarefas Geradas poder
+    # ser filtrada/pesquisada pelo código da importação de origem (ver
+    # também GeneratedTaskViewSet.get_queryset ?sow_import=).
+    scope_item_source_reference = serializers.CharField(source="scope_item.source_reference", read_only=True)
     task_template_code = serializers.CharField(source="task_template.code", read_only=True)
     task_template_name = serializers.CharField(source="task_template.name", read_only=True)
     activity_code = serializers.CharField(source="activity.code", read_only=True)
@@ -942,6 +973,7 @@ class GeneratedTaskCrudSerializer(serializers.ModelSerializer):
             "code",
             "scope_item_code",
             "scope_item_raw_text",
+            "scope_item_source_reference",
             "task_template_code",
             "task_template_name",
             "activity_code",

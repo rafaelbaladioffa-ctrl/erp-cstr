@@ -5406,3 +5406,205 @@ class AiParserTests(TestCase):
         items_response = self.client_api.get(f"/api/planning/sow-imports/{sow_import_id}/items/")
         warning_codes = [w["code"] for w in items_response.data[0]["warnings"]]
         self.assertIn("AI_UNAVAILABLE", warning_codes)
+
+
+class SowScopeItemClosedLoopTests(TestCase):
+    """Fecha o fluxo Importar SOW -> ScopeItem -> resolução de template ->
+    Gerar Tarefas: preservação de Path/Route na aprovação, ação explícita
+    "Gerar Tarefas" (individual e em lote, escopada por importação),
+    status operacional derivado, e o resumo operacional da tela Importar
+    SOW. Usa os dados reais já seedados (FIB-2F-LCLC -> RULE-FIB-2F-LCLC
+    -> TPL-FIBER-PRETERMINATED, mesmos 9 steps já validados para
+    FIB-8F-LCLC no recurso de expansão por Path)."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="sow_closed_loop_admin", email="sow_closed_loop_admin@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        env_patcher = patch.dict(os.environ, {"AI_API_KEY": ""})
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
+
+    def create_and_process(self, text):
+        create_response = self.client_api.post(
+            "/api/planning/sow-imports/",
+            {"title": "Teste fechamento do fluxo", "source_type": "TEXT", "source_text": text},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201, create_response.data)
+        sow_import_id = create_response.data["id"]
+        process_response = self.client_api.post(f"/api/planning/sow-imports/{sow_import_id}/process/")
+        self.assertEqual(process_response.status_code, 200, process_response.data)
+        items_response = self.client_api.get(f"/api/planning/sow-imports/{sow_import_id}/items/")
+        return create_response.data, items_response.data
+
+    # --- bloco 1: preservação de Path/Route na aprovação ---
+
+    def test_approval_preserves_single_path_a(self):
+        data, items = self.create_and_process("1x 2F LC-LC (55m) from A to B (Path A)")
+        item_id = items[0]["id"]
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200, approve_response.data)
+        scope_item = ScopeItem.objects.get(pk=approve_response.data["scope_item_id"])
+        self.assertEqual(scope_item.path.code, "PATH-A")
+        self.assertEqual(scope_item.expansion_mode, "NONE")
+        self.assertEqual(scope_item.source_type, "SOW")
+        self.assertEqual(scope_item.source_reference, data["code"])
+
+    def test_approval_preserves_single_path_b(self):
+        _data, items = self.create_and_process("1x 2F LC-LC (79m) from A to B (Path B)")
+        item_id = items[0]["id"]
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        scope_item = ScopeItem.objects.get(pk=approve_response.data["scope_item_id"])
+        self.assertEqual(scope_item.path.code, "PATH-B")
+        self.assertEqual(scope_item.expansion_mode, "NONE")
+
+    def test_approval_without_path_leaves_scope_item_without_route(self):
+        _data, items = self.create_and_process("10x CAT6 UTP up to 60m")
+        item_id = items[0]["id"]
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        scope_item = ScopeItem.objects.get(pk=approve_response.data["scope_item_id"])
+        self.assertIsNone(scope_item.path)
+        self.assertEqual(scope_item.expansion_mode, "NONE")
+
+    def test_approval_with_both_paths_preserves_both_and_sets_expansion_mode(self):
+        _data, items = self.create_and_process("1x 2F LC-LC (55m) from A to B (Path A)")
+        item_id = items[0]["id"]
+        path_b = Path.objects.get(code="PATH-B")
+        # Simula um revisor adicionando a segunda rota manualmente antes de
+        # aprovar (edição inline na tela de revisão) — o parser
+        # determinístico só reconhece 1 path por linha.
+        patch_response = self.client_api.patch(
+            f"/api/planning/sow-parsed-items/{item_id}/",
+            {"suggested_paths": items[0]["suggested_paths"] + [path_b.pk]},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, 200, patch_response.data)
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        scope_item = ScopeItem.objects.get(pk=approve_response.data["scope_item_id"])
+        self.assertEqual(scope_item.expansion_mode, "PATH")
+        self.assertEqual({p.code for p in scope_item.paths}, {"PATH-A", "PATH-B"})
+
+    def test_reapproval_is_idempotent_does_not_duplicate_scope_item(self):
+        _data, items = self.create_and_process("10x CAT6 UTP up to 60m")
+        item_id = items[0]["id"]
+        first = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        before = ScopeItem.objects.count()
+        second = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        self.assertEqual(ScopeItem.objects.count(), before)
+        self.assertEqual(first.data["scope_item_id"], second.data["scope_item_id"])
+
+    # --- bloco 2: ação explícita "Gerar Tarefas" (individual e em lote) ---
+
+    def test_generate_tasks_bulk_action_scoped_by_source_reference(self):
+        data, items = self.create_and_process("10x CAT6 UTP up to 60m")
+        item_id = items[0]["id"]
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        scope_item_id = approve_response.data["scope_item_id"]
+        self.client_api.post(f"/api/master-data/scope-items/{scope_item_id}/resolve-template/")
+
+        bulk_response = self.client_api.post(
+            "/api/master-data/scope-items/generate-tasks-bulk/", {"source_reference": data["code"]}, format="json"
+        )
+        self.assertEqual(bulk_response.status_code, 200, bulk_response.data)
+        self.assertEqual(bulk_response.data["scope_items_processed"], 1)
+        self.assertGreater(bulk_response.data["tasks_created"], 0)
+
+        second_bulk = self.client_api.post(
+            "/api/master-data/scope-items/generate-tasks-bulk/", {"source_reference": data["code"]}, format="json"
+        )
+        self.assertEqual(second_bulk.data["tasks_created"], 0)
+        self.assertEqual(second_bulk.data["scope_items_processed"], 1)
+
+    def test_resolve_all_scoped_by_source_reference(self):
+        data, items = self.create_and_process("10x CAT6 UTP up to 60m")
+        item_id = items[0]["id"]
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        scope_item = ScopeItem.objects.get(pk=approve_response.data["scope_item_id"])
+        self.assertEqual(scope_item.rule_resolution_status, "NOT_RESOLVED")
+
+        response = self.client_api.post(f"/api/master-data/scope-items/resolve-all/?source_reference={data['code']}")
+        self.assertEqual(response.status_code, 200, response.data)
+        scope_item.refresh_from_db()
+        self.assertEqual(scope_item.rule_resolution_status, "RESOLVED")
+
+    def test_operational_status_transitions_through_the_flow(self):
+        _data, items = self.create_and_process("10x CAT6 UTP up to 60m")
+        item_id = items[0]["id"]
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        scope_item_id = approve_response.data["scope_item_id"]
+
+        detail = self.client_api.get(f"/api/master-data/scope-items/{scope_item_id}/")
+        self.assertEqual(detail.data["operational_status"], "AWAITING_RESOLUTION")
+        self.assertFalse(detail.data["has_generated_tasks"])
+
+        self.client_api.post(f"/api/master-data/scope-items/{scope_item_id}/resolve-template/")
+        detail = self.client_api.get(f"/api/master-data/scope-items/{scope_item_id}/")
+        self.assertEqual(detail.data["operational_status"], "READY_TO_GENERATE")
+
+        self.client_api.post(f"/api/master-data/scope-items/{scope_item_id}/generate-tasks/")
+        detail = self.client_api.get(f"/api/master-data/scope-items/{scope_item_id}/")
+        self.assertEqual(detail.data["operational_status"], "TASKS_GENERATED")
+        self.assertTrue(detail.data["has_generated_tasks"])
+
+    # --- bloco 3: resumo operacional da tela Importar SOW ---
+
+    def test_sow_summary_endpoint(self):
+        data, items = self.create_and_process("10x CAT6 UTP up to 60m\n1x 2F LC-LC (55m) from A to B (Path A)")
+        self.client_api.post(f"/api/planning/sow-parsed-items/{items[0]['id']}/approve/")
+        self.client_api.post(f"/api/planning/sow-parsed-items/{items[1]['id']}/reject/")
+
+        summary_response = self.client_api.get(f"/api/planning/sow-imports/{data['id']}/summary/")
+        self.assertEqual(summary_response.status_code, 200, summary_response.data)
+        self.assertEqual(summary_response.data["scope_items_created"], 1)
+        self.assertEqual(summary_response.data["templates_resolved"], 0)
+        self.assertEqual(summary_response.data["items_awaiting_resolution"], 1)
+        self.assertEqual(summary_response.data["tasks_generated"], 0)
+
+    # --- bloco 6: critério de aceite fim a fim ---
+
+    def test_end_to_end_acceptance_two_paths_closes_the_loop(self):
+        data, items = self.create_and_process("1x 2F LC-LC (55m) from A to B (Path A)")
+        item_id = items[0]["id"]
+        path_b = Path.objects.get(code="PATH-B")
+        self.client_api.patch(
+            f"/api/planning/sow-parsed-items/{item_id}/",
+            {"suggested_paths": items[0]["suggested_paths"] + [path_b.pk]},
+            format="json",
+        )
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        self.assertEqual(approve_response.status_code, 200, approve_response.data)
+        scope_item_id = approve_response.data["scope_item_id"]
+
+        # 3. resolver template
+        resolve_response = self.client_api.post(f"/api/master-data/scope-items/{scope_item_id}/resolve-template/")
+        self.assertEqual(resolve_response.data["selected_template"]["code"], "TPL-FIBER-PRETERMINATED")
+
+        # 4. gerar tarefas
+        generate_response = self.client_api.post(f"/api/master-data/scope-items/{scope_item_id}/generate-tasks/")
+        self.assertEqual(generate_response.status_code, 200, generate_response.data)
+        self.assertEqual(generate_response.data["created_count"], 14)
+
+        # 5/6. tarefas aparecem em Tarefas Geradas, separadas por path
+        tasks = GeneratedTask.objects.filter(scope_item_id=scope_item_id)
+        self.assertEqual(tasks.count(), 14)
+        self.assertEqual(tasks.filter(expansion_key="PATH-A").count(), 5)
+        self.assertEqual(tasks.filter(expansion_key="PATH-B").count(), 5)
+
+        # 7. QA/QC e evidências aparecem só uma vez
+        self.assertEqual(tasks.filter(activity__code="QAQC").count(), 1)
+        self.assertEqual(tasks.filter(activity__code="EVIDENCE").count(), 1)
+
+        # 8. gerar de novo não duplica
+        second_generate = self.client_api.post(f"/api/master-data/scope-items/{scope_item_id}/generate-tasks/")
+        self.assertEqual(second_generate.data["created_count"], 0)
+        self.assertEqual(second_generate.data["existing_count"], 14)
+        self.assertEqual(GeneratedTask.objects.filter(scope_item_id=scope_item_id).count(), 14)
+
+        # 9. o resumo da SOW reflete o progresso
+        summary_response = self.client_api.get(f"/api/planning/sow-imports/{data['id']}/summary/")
+        self.assertEqual(summary_response.data["scope_items_created"], 1)
+        self.assertEqual(summary_response.data["templates_resolved"], 1)
+        self.assertEqual(summary_response.data["tasks_generated"], 14)

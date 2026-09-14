@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { masterDataApi } from "../../api/resources";
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
 import SowImportPanel from "../../components/master-data/SowImportPanel";
@@ -33,6 +34,15 @@ const EMPTY_REFS: ReferenceData = {
 
 export default function MasterDataPage() {
   const { user } = useAuth();
+  // Links contextuais da tela Importar SOW ("Abrir Itens de Escopo desta
+  // SOW" etc.) chegam aqui como ?focusEntity=scope-items&focusSearch=
+  // SOW-IMPORT-000001 — nenhuma outra tela deste app usa querystring
+  // hoje, mas é o jeito mais simples de atravessar a fronteira entre
+  // "tool" (SowImportPanel) e "entity" (EntityCrudPanel) sem inventar
+  // estado global só pra isso.
+  const [searchParams] = useSearchParams();
+  const focusEntity = searchParams.get("focusEntity");
+  const focusSearch = searchParams.get("focusSearch");
 
   const [refs, setRefs] = useState<ReferenceData>(EMPTY_REFS);
   const [refsLoaded, setRefsLoaded] = useState(false);
@@ -82,7 +92,12 @@ export default function MasterDataPage() {
   );
 
   const firstEntityKey = categories.find((c) => c.entities.length > 0)?.entities[0]?.key ?? null;
-  const [activeKey, setActiveKey] = useState<string | null>(firstEntityKey);
+  const [activeKey, setActiveKey] = useState<string | null>(focusEntity || firstEntityKey);
+
+  useEffect(() => {
+    if (focusEntity) setActiveKey(focusEntity);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusEntity, focusSearch]);
 
   const activeEntity = useMemo(() => {
     for (const cat of categories) {
@@ -170,7 +185,13 @@ export default function MasterDataPage() {
                   <TaskRuleSimulatorPanel key={activeEntity.key} refs={refs} />
                 )
               ) : (
-                <EntityCrudPanel key={activeEntity.key} entity={activeEntity} refs={refs} refsLoaded={refsLoaded} />
+                <EntityCrudPanel
+                  key={activeEntity.key}
+                  entity={activeEntity}
+                  refs={refs}
+                  refsLoaded={refsLoaded}
+                  initialSearch={activeEntity.key === focusEntity ? focusSearch ?? undefined : undefined}
+                />
               )
             ) : (
               <div className="empty-state">Selecione um cadastro na lista ao lado.</div>

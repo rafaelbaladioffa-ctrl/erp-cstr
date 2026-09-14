@@ -439,6 +439,15 @@ def approve_sow_parsed_item(item, user):
     from master_data.models import ScopeItem, ScopeItemPath
     from master_data.services.scope_item_normalizer import normalize_scope_item
 
+    # Preserva o(s) path(s) detectados pelo parser — nunca descartados na
+    # conversão (ver pedido original): 1 path só -> ScopeItem.path (campo
+    # singular de compatibilidade, é o que a grade de Itens de Escopo
+    # mostra como "Rota"); 2+ paths -> expansion_mode=PATH, para que
+    # master_data.services.task_generator expanda os steps repetíveis um
+    # por Path quando as tarefas forem geradas (mesmo mecanismo já
+    # validado manualmente para FIB-8F-LCLC com PATH-A/PATH-B).
+    paths = list(item.suggested_paths.all())
+
     scope_item = ScopeItem(
         raw_text=item.raw_text,
         item_type=item.item_type or "CABLE",
@@ -446,6 +455,8 @@ def approve_sow_parsed_item(item, user):
         cable_spec=item.suggested_cable_spec,
         network=item.suggested_network,
         workstream=item.suggested_workstream,
+        path=paths[0] if len(paths) == 1 else None,
+        expansion_mode="PATH" if len(paths) >= 2 else "NONE",
         quantity=item.quantity or 1,
         unit=item.unit,
         length_type=item.length_type,
@@ -465,7 +476,7 @@ def approve_sow_parsed_item(item, user):
     normalize_scope_item(scope_item)
     scope_item.save()
 
-    for index, path in enumerate(item.suggested_paths.all()):
+    for index, path in enumerate(paths):
         ScopeItemPath.objects.create(scope_item=scope_item, path=path, sequence=index, created_by=user, updated_by=user)
 
     item.approved_scope_item = scope_item

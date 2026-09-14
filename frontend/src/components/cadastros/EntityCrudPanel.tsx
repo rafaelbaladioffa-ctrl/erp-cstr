@@ -31,6 +31,7 @@ export default function EntityCrudPanel({
   refsLoaded,
   onBack,
   autoOpenCreateNonce,
+  initialSearch,
 }: {
   entity: EntityConfig<any>;
   refs: ReferenceData;
@@ -39,6 +40,11 @@ export default function EntityCrudPanel({
   /** Muda de valor sempre que o catálogo pedir para abrir esta entidade já
    * com o modal de criação aberto ("Novo cadastro" > escolher o tipo). */
   autoOpenCreateNonce?: number;
+  /** Preenche a busca já ao abrir esta entidade — usado pelos links
+   * contextuais da tela Importar SOW ("Abrir Itens de Escopo desta SOW"
+   * etc.), que navegam pra cá já filtrados pelo código da importação. Só
+   * lido na montagem/troca de entidade, não controla o campo depois. */
+  initialSearch?: string;
 }) {
   const { user } = useAuth();
   const canAdd = hasPerm(user, entity.perms.add) && !entity.disableCreate;
@@ -121,7 +127,7 @@ export default function EntityCrudPanel({
 
   useEffect(() => {
     reload();
-    setSearch("");
+    setSearch(initialSearch ?? "");
     setFilterValues({});
     setPage(1);
     setCsvImportOpen(false);
@@ -324,6 +330,59 @@ export default function EntityCrudPanel({
     reload();
   }
 
+  // Só usado por Itens de Escopo: ação rápida direto na grade (sem abrir
+  // o modal) — mesmo endpoint idempotente de "Gerar Tarefas" já usado
+  // dentro do modal, só exposto de um jeito mais visível (ver pedido de
+  // fechamento do fluxo SOW -> ScopeItem -> Tarefas Geradas).
+  async function handleQuickGenerateTasks(row: Record<string, unknown>) {
+    const label = entity.rowLabel(row as never);
+    const template = (row.resolved_template_code as string) || "(nenhum)";
+    const expansionNote =
+      row.expansion_mode === "PATH" ? " Este item expande por Path (uma tarefa por rota ativa)." : "";
+    const alreadyNote = row.has_generated_tasks
+      ? " Já existem tarefas geradas para este item — gerar de novo não duplica."
+      : "";
+    if (!window.confirm(`Gerar tarefas para "${label}" usando o template ${template}?${expansionNote}${alreadyNote}`)) {
+      return;
+    }
+    try {
+      const result = await masterDataApi.scopeItems.generateTasks(row.id as number);
+      window.alert(
+        `Tarefas — Criadas: ${result.created_count} · Já existentes: ${result.existing_count}\n` +
+          `Dependências — Criadas: ${result.created_dependencies.length} · Já existentes: ${result.existing_dependencies.length}`
+      );
+      reload();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      window.alert(axiosErr.response?.data?.detail || "Não foi possível gerar tarefas para este item.");
+    }
+  }
+
+  const [bulkGeneratingTasks, setBulkGeneratingTasks] = useState(false);
+
+  async function handleBulkGenerateTasks() {
+    if (
+      !window.confirm(
+        "Gerar tarefas para todos os Itens de Escopo prontos (regra e template resolvidos, ativos)? Itens que já têm tarefas não são duplicados."
+      )
+    ) {
+      return;
+    }
+    setBulkGeneratingTasks(true);
+    try {
+      const result = await masterDataApi.scopeItems.generateTasksBulk();
+      window.alert(
+        `${result.scope_items_processed} item(ns) processado(s).\n` +
+          `Tarefas — Criadas: ${result.tasks_created} · Já existentes: ${result.tasks_existing}\n` +
+          `Dependências — Criadas: ${result.dependencies_created} · Já existentes: ${result.dependencies_existing}` +
+          (result.errors.length > 0 ? `\n${result.errors.length} erro(s): ${result.errors.map((e) => e.detail).join(" ")}` : "")
+      );
+      reload();
+    } finally {
+      setBulkGeneratingTasks(false);
+    }
+  }
+
   const fields = refsLoaded ? entity.fields(refs) : [];
 
   return (
@@ -376,6 +435,12 @@ export default function EntityCrudPanel({
               <button className="btn btn-outline" onClick={() => setBulkCreateOpen(true)}>
                 <Icon name="playlist_add" style={{ fontSize: 16 }} />
                 {entity.bulkCreate.label}
+              </button>
+            )}
+            {canChange && entity.key === "scope-items" && (
+              <button className="btn btn-outline" onClick={handleBulkGenerateTasks} disabled={bulkGeneratingTasks}>
+                <Icon name="playlist_add_check" style={{ fontSize: 16 }} />
+                {bulkGeneratingTasks ? "Gerando…" : "Gerar Tarefas dos Itens Prontos"}
               </button>
             )}
             {canAdd && (
@@ -466,6 +531,17 @@ export default function EntityCrudPanel({
                               <Icon name="edit" style={{ fontSize: 14 }} />
                             </button>
                           )}
+                          {canChange &&
+                            entity.key === "scope-items" &&
+                            (row.operational_status === "READY_TO_GENERATE" || row.operational_status === "TASKS_GENERATED") && (
+                              <button
+                                className="btn btn-outline btn-sm"
+                                onClick={() => handleQuickGenerateTasks(row)}
+                                title="Gerar Tarefas"
+                              >
+                                <Icon name="playlist_add_check" style={{ fontSize: 14 }} />
+                              </button>
+                            )}
                           {entity.disableHardDelete
                             ? canChange && (
                                 <button

@@ -117,15 +117,28 @@ export const masterDataApi = {
       apiClient
         .post<ScopeItemResolutionResult>(`/master-data/scope-items/${id}/resolve-template/`)
         .then((r) => r.data),
-    resolveAll: () =>
+    resolveAll: (sourceReference?: string) =>
       apiClient
         .post<{ total: number; resolved: number; no_match: number; conflict: number }>(
-          "/master-data/scope-items/resolve-all/"
+          "/master-data/scope-items/resolve-all/",
+          {},
+          { params: sourceReference ? { source_reference: sourceReference } : undefined }
         )
         .then((r) => r.data),
     generateTasks: (id: number) =>
       apiClient
         .post<ScopeItemGenerateTasksResult>(`/master-data/scope-items/${id}/generate-tasks/`)
+        .then((r) => r.data),
+    generateTasksBulk: (sourceReference?: string) =>
+      apiClient
+        .post<{
+          scope_items_processed: number;
+          tasks_created: number;
+          tasks_existing: number;
+          dependencies_created: number;
+          dependencies_existing: number;
+          errors: { scope_item_code: string; detail: string }[];
+        }>("/master-data/scope-items/generate-tasks-bulk/", sourceReference ? { source_reference: sourceReference } : {})
         .then((r) => r.data),
   },
   generatedTasks: crud<GeneratedTask>("/master-data/generated-tasks"),
@@ -169,6 +182,18 @@ export const planningApi = {
         .post<SowRejectSelectedResult>(`/planning/sow-imports/${id}/reject-selected/`, { item_ids: itemIds })
         .then((r) => r.data),
     finalize: (id: number) => apiClient.post<SowImport>(`/planning/sow-imports/${id}/finalize/`).then((r) => r.data),
+    summary: (id: number) =>
+      apiClient
+        .get<{
+          total_items_detected: number;
+          total_items_approved: number;
+          total_items_rejected: number;
+          scope_items_created: number;
+          templates_resolved: number;
+          items_awaiting_resolution: number;
+          tasks_generated: number;
+        }>(`/planning/sow-imports/${id}/summary/`)
+        .then((r) => r.data),
   },
   sowParsedItems: {
     ...crud<SowParsedItem>("/planning/sow-parsed-items"),
