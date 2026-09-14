@@ -56,6 +56,31 @@ def _resolve_unit(step, scope_item):
     return step.unit_override or step.activity.default_unit or scope_item.unit or ""
 
 
+def _scope_item_identity(scope_item):
+    """Trecho curto e legível que identifica O QUE está sendo executado
+    (qual cabo, quantas fibras, quantos metros) — concatenado ao nome da
+    GeneratedTask/ProjectTask para não perder rastreabilidade quando várias
+    tarefas do mesmo tipo de atividade (ex: "Lançar cabeamento") existem
+    lado a lado no mesmo projeto, uma por ScopeItem. Cai para um recorte de
+    `raw_text` quando os campos estruturados não bastam para identificar o
+    item (ex: item ainda sem cable_family/cable_spec resolvido)."""
+    parts = []
+    if scope_item.cable_spec_id:
+        parts.append(scope_item.cable_spec.name)
+    elif scope_item.cable_family_id:
+        parts.append(scope_item.cable_family.name)
+    if scope_item.fiber_count:
+        parts.append(f"{scope_item.fiber_count}F")
+    if scope_item.length_m:
+        parts.append(f"{scope_item.length_m}m")
+    elif scope_item.quantity and scope_item.unit:
+        parts.append(f"{scope_item.quantity}{scope_item.unit}")
+    if parts:
+        return " ".join(str(part) for part in parts)
+    text = scope_item.raw_text.strip()
+    return f"{text[:57]}..." if len(text) > 60 else text
+
+
 def _resolve_expansions(step, scope_item, active_paths, warnings):
     """Retorna a lista de (path_or_none, expansion_key) para este step —
     uma entrada só (None, "DEFAULT") quando o step não expande; uma
@@ -123,8 +148,11 @@ def generate_tasks_for_scope_item(scope_item, user=None):
         for step in steps:
             quantity = _resolve_quantity(scope_item, step.quantity_source or "", warnings)
             unit = _resolve_unit(step, scope_item)
+            identity = _scope_item_identity(scope_item)
             for path, expansion_key in _resolve_expansions(step, scope_item, active_paths, warnings):
-                name = f"{step.effective_name} — {path.name}" if path is not None else step.effective_name
+                name = f"{step.effective_name} — {identity}"
+                if path is not None:
+                    name = f"{name} — {path.name}"
                 task, was_created = GeneratedTask.objects.get_or_create(
                     scope_item=scope_item,
                     task_template_step=step,

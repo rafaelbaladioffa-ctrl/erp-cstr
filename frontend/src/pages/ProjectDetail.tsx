@@ -611,6 +611,8 @@ export default function ProjectDetail() {
                         <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("task_name")}>
                           Tarefa{sortIndicator("task_name")}
                         </th>
+                        <th>Path</th>
+                        <th>Qtd.</th>
                         {project.has_rack_positions && <th>Rack Position</th>}
                         <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("status")}>
                           Status{sortIndicator("status")}
@@ -629,7 +631,11 @@ export default function ProjectDetail() {
                           <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />
                         </td>
                       )}
-                      <td>{task.task_name}</td>
+                      <td title={task.scope_item_code ? `Item de Escopo: ${task.scope_item_code}` : undefined}>{task.task_name}</td>
+                      <td>{task.path_code || "—"}</td>
+                      <td>
+                        {task.quantity_planned ? `${task.quantity_planned} ${task.unit}`.trim() : "—"}
+                      </td>
                       {project.has_rack_positions && <td>{task.rack_position_labels.join(", ") || "—"}</td>}
                       <td>
                         <StatusBadge status={task.status} label={task.status_display} />
@@ -661,7 +667,7 @@ export default function ProjectDetail() {
                   ))}
                   {filteredTasks.length === 0 && (
                     <tr>
-                      <td colSpan={project.has_rack_positions ? 6 : 5}>
+                      <td colSpan={project.has_rack_positions ? 8 : 7}>
                         <div className="table-empty">
                           {tasks.length === 0 ? "Nenhuma tarefa cadastrada." : "Nenhuma tarefa encontrada com esse filtro."}
                         </div>

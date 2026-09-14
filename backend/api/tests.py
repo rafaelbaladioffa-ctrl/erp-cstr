@@ -4347,7 +4347,7 @@ class GeneratedTaskApiTests(TestCase):
     def test_snapshot_name_and_step_order(self):
         self.generate()
         task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_scope_item)
-        self.assertEqual(task.name, self.step_scope_item.effective_name)
+        self.assertEqual(task.name, f"{self.step_scope_item.effective_name} — {self.family.name} 42.50m")
         self.assertEqual(task.step_order, 10)
 
     def test_required_and_repeatable_snapshot(self):
@@ -4588,7 +4588,7 @@ class PathExpansionAndDependencyTests(TestCase):
         self.assertEqual(b_tasks.count(), 2)
         self.assertEqual([t.expansion_key for t in b_tasks], ["TST-PE-PATH-A", "TST-PE-PATH-B"])
         self.assertEqual(b_tasks[0].path_id, self.path_a.pk)
-        self.assertEqual(b_tasks[0].name, f"{self.step_b.effective_name} — {self.path_a.name}")
+        self.assertEqual(b_tasks[0].name, f"{self.step_b.effective_name} — {self.family.name} — {self.path_a.name}")
 
         a_task = GeneratedTask.objects.get(scope_item=self.scope_item, task_template_step=self.step_a)
         self.assertEqual(a_task.expansion_key, "DEFAULT")
