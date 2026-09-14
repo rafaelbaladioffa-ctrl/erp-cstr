@@ -504,47 +504,49 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
           </button>
         </div>
 
-        {createError && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{createError}</p>}
+        <div style={{ padding: "0 20px 20px" }}>
+          {createError && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{createError}</p>}
 
-        <div className="field-group" style={{ marginBottom: 14 }}>
-          <span className="field-label">Título</span>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Opcional" />
+          <div className="field-group" style={{ marginBottom: 14 }}>
+            <span className="field-label">Título</span>
+            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Opcional" />
+          </div>
+
+          <div className="field-group" style={{ marginBottom: 14 }}>
+            <span className="field-label">Tipo de origem</span>
+            <select className="select" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
+              {SOURCE_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field-group" style={{ marginBottom: 14 }}>
+            <span className="field-label">Texto do SOW</span>
+            <textarea
+              className="input"
+              rows={10}
+              value={sourceText}
+              onChange={(e) => setSourceText(e.target.value)}
+              placeholder={"Uma linha por item, ex:\n2x 72F OS2 Yellow MPO/MPO, MPO-B, 0072X6P64 with 50m\n4x 2F robust fibers up to 60m\n10x CAT6 UTP up to 60m"}
+            />
+          </div>
+
+          <div className="field-group" style={{ marginBottom: 14 }}>
+            <span className="field-label">Ou envie um arquivo</span>
+            <input type="file" onChange={(e) => setSourceFile(e.target.files?.[0] || null)} />
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+              Nesta versão a extração automática de texto só é garantida para arquivos de texto simples — PDF/DOCX/
+              imagem são preservados para auditoria, mas podem exigir colar o texto manualmente.
+            </p>
+          </div>
+
+          <button className="btn btn-primary" onClick={handleCreateAndProcess} disabled={creating}>
+            {creating ? "Processando…" : "Processar SOW"}
+          </button>
         </div>
-
-        <div className="field-group" style={{ marginBottom: 14 }}>
-          <span className="field-label">Tipo de origem</span>
-          <select className="select" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
-            {SOURCE_TYPE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field-group" style={{ marginBottom: 14 }}>
-          <span className="field-label">Texto do SOW</span>
-          <textarea
-            className="input"
-            rows={10}
-            value={sourceText}
-            onChange={(e) => setSourceText(e.target.value)}
-            placeholder={"Uma linha por item, ex:\n2x 72F OS2 Yellow MPO/MPO, MPO-B, 0072X6P64 with 50m\n4x 2F robust fibers up to 60m\n10x CAT6 UTP up to 60m"}
-          />
-        </div>
-
-        <div className="field-group" style={{ marginBottom: 14 }}>
-          <span className="field-label">Ou envie um arquivo</span>
-          <input type="file" onChange={(e) => setSourceFile(e.target.files?.[0] || null)} />
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-            Nesta versão a extração automática de texto só é garantida para arquivos de texto simples — PDF/DOCX/
-            imagem são preservados para auditoria, mas podem exigir colar o texto manualmente.
-          </p>
-        </div>
-
-        <button className="btn btn-primary" onClick={handleCreateAndProcess} disabled={creating}>
-          {creating ? "Processando…" : "Processar SOW"}
-        </button>
       </div>
     );
   }
