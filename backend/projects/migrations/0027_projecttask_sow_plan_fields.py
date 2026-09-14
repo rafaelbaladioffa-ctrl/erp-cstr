@@ -28,7 +28,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="projecttask",
             name="instructions",
-            field=models.TextField(blank=True, verbose_name="instrução operacional"),
+            field=models.TextField(
+                blank=True,
+                help_text="Instrução para o técnico — diferente de 'observações', que é preenchido durante a execução.",
+                verbose_name="instrução operacional",
+            ),
         ),
         migrations.AddField(
             model_name="projecttask",
