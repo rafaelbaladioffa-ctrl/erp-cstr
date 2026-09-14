@@ -155,11 +155,14 @@ def import_tasks_from_project_type(project):
 
 
 def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, planned_end=None,
-                            estimated_hours=None, collaborators=None, rack_positions=None):
+                            estimated_hours=None, priority=None, collaborators=None, rack_positions=None):
     """Aplica os valores informados (todos opcionais) às ProjectTasks do
     queryset `project_tasks`. `collaborators`/`rack_positions`, quando
     informados, SUBSTITUEM o conjunto atual de cada tarefa (não somam).
-    Retorna a quantidade de tarefas afetadas, ou 0 se nada foi informado."""
+    Retorna a quantidade de tarefas afetadas, ou 0 se nada foi informado.
+    `priority` reaproveita esta mesma ação em massa já existente para a
+    tela Planejamento > Plano do Projeto atribuir prazo/prioridade junto
+    com o técnico, sem precisar de um endpoint novo."""
     updates = {}
     if status:
         updates["status"] = status
@@ -177,6 +180,8 @@ def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, pl
         updates["planned_end"] = planned_end
     if estimated_hours is not None:
         updates["estimated_hours"] = estimated_hours
+    if priority:
+        updates["priority"] = priority
 
     updated = 0
     if updates:
@@ -192,3 +197,49 @@ def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, pl
             project_task.rack_positions.set(rack_positions)
         updated = project_tasks.count()
     return updated
+
+
+def create_project_tasks_from_generated_tasks(project, generated_tasks, *, user=None):
+    """Cria uma ProjectTask por master_data.GeneratedTask informada —
+    idempotente por (project, generated_task): se a mesma GeneratedTask já
+    gerou uma ProjectTask neste projeto, ela é reaproveitada (nunca
+    duplicada, nunca sobrescrita — status/prazo/responsável/descrição de
+    uma tarefa já existente NUNCA são alterados aqui). Preserva:
+
+    - nome (já vem com "— Path A"/"— Path B" quando expandida, ver
+      master_data.services.task_generator);
+    - ordem (order = step_order do template — a mesma ordem relativa da
+      GeneratedTaskDependency, sem duplicar um grafo de dependências
+      aqui: master_data já é a fonte da verdade dessa sequência);
+    - quantidade/unidade;
+    - exigência de evidência/QA/QC (snapshot de Activity.requires_evidence/
+      requires_certification no momento da criação);
+    - origin="SOW_TEMPLATE" para diferenciar de tarefas manuais/do catálogo.
+
+    Retorna {"created": [...], "existing": [...]} — nunca levanta exceção
+    por já existir, isso é o caminho feliz (idempotência)."""
+    created = []
+    existing = []
+    with transaction.atomic():
+        Project.objects.select_for_update().filter(pk=project.pk).exists()
+        for generated_task in generated_tasks:
+            project_task, was_created = ProjectTask.objects.get_or_create(
+                project=project,
+                generated_task=generated_task,
+                defaults=dict(
+                    custom_name=generated_task.name,
+                    status=ProjectTask.STATUS_NOT_STARTED,
+                    order=generated_task.step_order,
+                    quantity_planned=generated_task.quantity,
+                    unit=generated_task.unit,
+                    origin=ProjectTask.ORIGIN_SOW_TEMPLATE,
+                    requires_evidence=generated_task.activity.requires_evidence,
+                    requires_qaqc=generated_task.activity.requires_certification,
+                    instructions=generated_task.description,
+                ),
+            )
+            if was_created:
+                created.append(project_task)
+            else:
+                existing.append(project_task)
+    return {"created": created, "existing": existing}

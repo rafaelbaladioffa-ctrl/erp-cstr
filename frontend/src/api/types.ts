@@ -783,6 +783,8 @@ export interface ProjectTask {
   collaborator_ids?: number[];
   status: string;
   status_display: string;
+  priority: string;
+  priority_display: string;
   order: number;
   queue_order: number | null;
   planned_start: string | null;
@@ -794,7 +796,25 @@ export interface ProjectTask {
   worked_hours: number;
   completion_outcome: string;
   quantity_done: string;
+  quantity_planned: string | null;
+  unit: string;
+  requires_evidence: boolean;
+  requires_qaqc: boolean;
+  instructions: string;
   notes: string;
+  /** Rastreabilidade até o SOW/ScopeItem/Template de origem — ver
+   * ProjectTask.generated_task (master_data.GeneratedTask). "MANUAL"
+   * quando a tarefa não veio do Plano do Projeto. */
+  origin: string;
+  generated_task: number | null;
+  generated_task_code: string | null;
+  scope_item_code: string | null;
+  sow_import_code: string | null;
+  task_template_code: string | null;
+  activity_code: string | null;
+  path_code: string | null;
+  expansion_key: string | null;
+  step_order: number | null;
 }
 
 export interface TechnicianPresence {
@@ -1092,8 +1112,45 @@ export interface ProjectTaskBulkPayload {
   planned_start?: string | null;
   planned_end?: string | null;
   estimated_hours?: number | string | null;
+  priority?: string;
   collaborator_ids?: number[];
   rack_position_ids?: number[];
+}
+
+export interface ProjectPlanScopeItem {
+  id: number;
+  code: string;
+  raw_text: string;
+  rule_resolution_status: string;
+  resolved_template_code: string | null;
+  requires_review: boolean;
+  generated_tasks_count: number;
+  project_tasks_existing_count: number;
+}
+
+export interface ProjectPlan {
+  project: { id: number; code: string; name: string };
+  sow_import: { id: number; code: string; title: string } | null;
+  scope_items: ProjectPlanScopeItem[];
+  totals: {
+    scope_items_total: number;
+    scope_items_ready: number;
+    scope_items_pending_resolution: number;
+    generated_tasks_total: number;
+    project_tasks_to_create: number;
+    project_tasks_existing: number;
+    paths_involved: string[];
+    warnings: string[];
+  };
+}
+
+export interface ProjectPlanCreateResult {
+  project_id: number;
+  project_name: string;
+  created_count: number;
+  existing_count: number;
+  created_tasks: ProjectTask[];
+  existing_tasks: ProjectTask[];
 }
 
 export interface ProjectTaskCreatePayload {

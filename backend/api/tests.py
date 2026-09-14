@@ -5608,3 +5608,279 @@ class SowScopeItemClosedLoopTests(TestCase):
         self.assertEqual(summary_response.data["scope_items_created"], 1)
         self.assertEqual(summary_response.data["templates_resolved"], 1)
         self.assertEqual(summary_response.data["tasks_generated"], 14)
+
+
+class ProjectPlanApiTests(TestCase):
+    """Etapa operacional: SOW -> ScopeItem -> GeneratedTask -> Plano do
+    Projeto -> ProjectTask (tarefa real, atribuível a técnico). Reaproveita
+    o mesmo fluxo/dado seedado já validado por SowScopeItemClosedLoopTests
+    (RULE-FIB-2F-LCLC -> TPL-FIBER-PRETERMINATED, 14 tarefas com Path A/B)
+    e cobre os 10 critérios de aceite: seleção de projeto/SOW, visualização
+    no plano, criação idempotente sem duplicar, rastreabilidade preservada,
+    separação por Path, QA/QC e evidência únicos, atribuição a técnico,
+    aparição em Minhas Tarefas, e status refletindo na ProjectTask."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(
+            company=self.company, name="Projeto Plano", status=Project.STATUS_IN_PROGRESS
+        )
+        self.admin = User.objects.create_superuser(
+            username="plan_admin", email="plan_admin@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+        env_patcher = patch.dict(os.environ, {"AI_API_KEY": ""})
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
+
+    def create_and_process(self, text):
+        create_response = self.client_api.post(
+            "/api/planning/sow-imports/",
+            {"title": "Teste Plano do Projeto", "source_type": "TEXT", "source_text": text},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201, create_response.data)
+        sow_import_id = create_response.data["id"]
+        process_response = self.client_api.post(f"/api/planning/sow-imports/{sow_import_id}/process/")
+        self.assertEqual(process_response.status_code, 200, process_response.data)
+        items_response = self.client_api.get(f"/api/planning/sow-imports/{sow_import_id}/items/")
+        return create_response.data, items_response.data
+
+    def generate_two_path_scope_item(self):
+        """Sobe uma SOW com 1 ScopeItem expandido em Path A + Path B (14
+        GeneratedTask no total, mesmo cenário de
+        test_end_to_end_acceptance_two_paths_closes_the_loop)."""
+        data, items = self.create_and_process("1x 2F LC-LC (55m) from A to B (Path A)")
+        item_id = items[0]["id"]
+        path_b = Path.objects.get(code="PATH-B")
+        self.client_api.patch(
+            f"/api/planning/sow-parsed-items/{item_id}/",
+            {"suggested_paths": items[0]["suggested_paths"] + [path_b.pk]},
+            format="json",
+        )
+        approve_response = self.client_api.post(f"/api/planning/sow-parsed-items/{item_id}/approve/")
+        scope_item_id = approve_response.data["scope_item_id"]
+        self.client_api.post(f"/api/master-data/scope-items/{scope_item_id}/resolve-template/")
+        generate_response = self.client_api.post(f"/api/master-data/scope-items/{scope_item_id}/generate-tasks/")
+        self.assertEqual(generate_response.data["created_count"], 14, generate_response.data)
+        return data, scope_item_id
+
+    # --- 1/2/3: seleção de projeto/SOW e visualização no plano ---
+
+    def test_plan_view_shows_scope_items_ready_and_totals(self):
+        data, _scope_item_id = self.generate_two_path_scope_item()
+
+        response = self.client_api.get(
+            "/api/planning/project-plan/", {"project": self.project.pk, "sow_import": data["code"]}
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["project"]["id"], self.project.pk)
+        self.assertEqual(response.data["sow_import"]["code"], data["code"])
+        totals = response.data["totals"]
+        self.assertEqual(totals["scope_items_total"], 1)
+        self.assertEqual(totals["scope_items_ready"], 1)
+        self.assertEqual(totals["generated_tasks_total"], 14)
+        self.assertEqual(totals["project_tasks_to_create"], 14)
+        self.assertEqual(totals["project_tasks_existing"], 0)
+        self.assertEqual(sorted(totals["paths_involved"]), ["PATH-A", "PATH-B"])
+
+    def test_plan_view_requires_project(self):
+        response = self.client_api.get("/api/planning/project-plan/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_plan_view_unknown_project_404(self):
+        response = self.client_api.get("/api/planning/project-plan/", {"project": 999999, "sow_import": "X"})
+        self.assertEqual(response.status_code, 404)
+
+    # --- 4/5/6/7: criação idempotente com rastreabilidade e separação por Path ---
+
+    def test_create_tasks_creates_and_preserves_traceability(self):
+        data, scope_item_id = self.generate_two_path_scope_item()
+
+        response = self.client_api.post(
+            "/api/planning/project-plan/create-tasks/", {"project": self.project.pk, "sow_import": data["code"]}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created_count"], 14)
+        self.assertEqual(response.data["existing_count"], 0)
+        self.assertEqual(ProjectTask.objects.filter(project=self.project).count(), 14)
+
+        created = ProjectTask.objects.filter(project=self.project)
+        for project_task in created:
+            self.assertEqual(project_task.origin, ProjectTask.ORIGIN_SOW_TEMPLATE)
+            self.assertIsNotNone(project_task.generated_task_id)
+            self.assertEqual(project_task.generated_task.scope_item_id, scope_item_id)
+
+        by_path = ProjectTask.objects.filter(project=self.project, generated_task__path__code="PATH-A")
+        self.assertEqual(by_path.count(), 5)
+        by_path_b = ProjectTask.objects.filter(project=self.project, generated_task__path__code="PATH-B")
+        self.assertEqual(by_path_b.count(), 5)
+
+        # QA/QC e evidência globais (sem Path) não são duplicados por Path
+        qaqc = ProjectTask.objects.filter(project=self.project, generated_task__activity__code="QAQC")
+        evidence = ProjectTask.objects.filter(project=self.project, generated_task__activity__code="EVIDENCE")
+        self.assertEqual(qaqc.count(), 1)
+        self.assertIsNone(qaqc.first().generated_task.path)
+        self.assertEqual(evidence.count(), 1)
+        self.assertIsNone(evidence.first().generated_task.path)
+
+        # rastreabilidade completa via API (dotted-source do serializer)
+        api_task = self.client_api.get(f"/api/project-tasks/{by_path.first().pk}/")
+        self.assertEqual(api_task.data["sow_import_code"], data["code"])
+        self.assertEqual(api_task.data["path_code"], "PATH-A")
+        self.assertIsNotNone(api_task.data["scope_item_code"])
+        self.assertIsNotNone(api_task.data["task_template_code"])
+        self.assertIsNotNone(api_task.data["activity_code"])
+
+    def test_create_tasks_is_idempotent_no_duplicates(self):
+        data, _scope_item_id = self.generate_two_path_scope_item()
+        self.client_api.post(
+            "/api/planning/project-plan/create-tasks/", {"project": self.project.pk, "sow_import": data["code"]}, format="json",
+        )
+
+        second = self.client_api.post(
+            "/api/planning/project-plan/create-tasks/", {"project": self.project.pk, "sow_import": data["code"]}, format="json",
+        )
+
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(second.data["created_count"], 0)
+        self.assertEqual(second.data["existing_count"], 14)
+        self.assertEqual(ProjectTask.objects.filter(project=self.project).count(), 14)
+
+    def test_create_tasks_only_creates_missing_ones_and_never_overwrites_existing(self):
+        data, scope_item_id = self.generate_two_path_scope_item()
+        first_generated_task = GeneratedTask.objects.filter(scope_item_id=scope_item_id).order_by("step_order").first()
+
+        # Simula 1 tarefa já existente (ex: criada numa rodada anterior) e
+        # editada manualmente pelo usuário — status/instruções não podem
+        # ser sobrescritos por uma nova chamada de "Criar tarefas".
+        pre_existing = ProjectTask.objects.create(
+            project=self.project,
+            generated_task=first_generated_task,
+            custom_name=first_generated_task.name,
+            order=first_generated_task.step_order,
+            status=ProjectTask.STATUS_IN_PROGRESS,
+            origin=ProjectTask.ORIGIN_SOW_TEMPLATE,
+            instructions="Editado manualmente pelo usuário",
+        )
+
+        response = self.client_api.post(
+            "/api/planning/project-plan/create-tasks/", {"project": self.project.pk, "sow_import": data["code"]}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["created_count"], 13)
+        self.assertEqual(response.data["existing_count"], 1)
+        self.assertEqual(ProjectTask.objects.filter(project=self.project).count(), 14)
+        pre_existing.refresh_from_db()
+        self.assertEqual(pre_existing.status, ProjectTask.STATUS_IN_PROGRESS)
+        self.assertEqual(pre_existing.instructions, "Editado manualmente pelo usuário")
+
+    # --- 8/9: atribuição a técnico e aparição em Minhas Tarefas ---
+
+    def test_assigned_task_appears_in_technician_my_tasks(self):
+        data, _scope_item_id = self.generate_two_path_scope_item()
+        self.client_api.post(
+            "/api/planning/project-plan/create-tasks/", {"project": self.project.pk, "sow_import": data["code"]}, format="json",
+        )
+        target_task = ProjectTask.objects.filter(project=self.project, generated_task__path__code="PATH-A").first()
+
+        tech_user = User.objects.create_user(
+            username="tecnico1", email="tecnico1@example.com", password="test-password", company=self.company,
+        )
+        for codename in ("view_mytask", "change_mytask"):
+            tech_user.user_permissions.add(Permission.objects.get(codename=codename, content_type__app_label="technical"))
+        person = Person.objects.create(name="Técnico Um", company=self.company, user=tech_user)
+        collaborator = Collaborator.objects.create(person=person)
+
+        bulk_response = self.client_api.post(
+            f"/api/projects/{self.project.pk}/tasks/bulk/",
+            {
+                "action": "update",
+                "task_ids": [target_task.pk],
+                "collaborator_ids": [collaborator.pk],
+                "priority": ProjectTask.PRIORITY_HIGH,
+            },
+            format="json",
+        )
+        self.assertEqual(bulk_response.status_code, 200, bulk_response.data)
+
+        tech_client = APIClient()
+        tech_client.force_authenticate(user=tech_user)
+        my_tasks = tech_client.get("/api/my-tasks/")
+
+        self.assertEqual(my_tasks.status_code, 200, my_tasks.data)
+        codes = [row["id"] for row in my_tasks.data["results"]] if "results" in my_tasks.data else [row["id"] for row in my_tasks.data]
+        self.assertIn(target_task.pk, codes)
+        my_row = next(row for row in (my_tasks.data["results"] if "results" in my_tasks.data else my_tasks.data) if row["id"] == target_task.pk)
+        self.assertEqual(my_row["project_name"], self.project.name)
+        self.assertEqual(my_row["path_code"], "PATH-A")
+        self.assertEqual(my_row["priority"], ProjectTask.PRIORITY_HIGH)
+
+    # --- 10: status atualizado pelo técnico reflete na ProjectTask ---
+
+    def test_technician_status_update_reflects_on_project_task(self):
+        data, _scope_item_id = self.generate_two_path_scope_item()
+        self.client_api.post(
+            "/api/planning/project-plan/create-tasks/", {"project": self.project.pk, "sow_import": data["code"]}, format="json",
+        )
+        target_task = ProjectTask.objects.filter(project=self.project, generated_task__path__code="PATH-A").first()
+
+        tech_user = User.objects.create_user(
+            username="tecnico2", email="tecnico2@example.com", password="test-password", company=self.company,
+        )
+        for codename in ("view_mytask", "change_mytask"):
+            tech_user.user_permissions.add(Permission.objects.get(codename=codename, content_type__app_label="technical"))
+        person = Person.objects.create(name="Técnico Dois", company=self.company, user=tech_user)
+        collaborator = Collaborator.objects.create(person=person)
+        target_task.collaborators.add(collaborator)
+
+        tech_client = APIClient()
+        tech_client.force_authenticate(user=tech_user)
+        response = tech_client.patch(
+            f"/api/my-tasks/{target_task.pk}/", {"status": ProjectTask.STATUS_IN_PROGRESS}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        target_task.refresh_from_db()
+        self.assertEqual(target_task.status, ProjectTask.STATUS_IN_PROGRESS)
+
+
+class CreateProjectTasksFromGeneratedTasksServiceTests(TestCase):
+    """Teste unitário direto do service (sem passar pela API), focado só
+    na idempotência por (project, generated_task) — a mesma garantia que
+    ProjectPlanApiTests cobre fim a fim pela API."""
+
+    def setUp(self):
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(company=self.company, name="Projeto Service", status=Project.STATUS_IN_PROGRESS)
+        self.template = TaskTemplate.objects.create(code="TST-CPT-TPL", name="Template de teste", category="TEST_CATEGORY")
+        self.activity = Activity.objects.create(code="TST-CPT-ACT", name="Atividade de teste", category="TEST_CATEGORY")
+        self.template_step = TaskTemplateStep.objects.create(
+            task_template=self.template, activity=self.activity, step_order=1
+        )
+        self.scope_item = ScopeItem.objects.create(raw_text="texto", item_type="CABLE")
+        self.generated_task = GeneratedTask.objects.create(
+            scope_item=self.scope_item,
+            task_template=self.template,
+            task_template_step=self.template_step,
+            activity=self.activity,
+            name="Separar materiais",
+            step_order=1,
+        )
+
+    def test_second_call_does_not_duplicate(self):
+        from projects.services import create_project_tasks_from_generated_tasks
+
+        first = create_project_tasks_from_generated_tasks(self.project, [self.generated_task])
+        self.assertEqual(len(first["created"]), 1)
+        self.assertEqual(len(first["existing"]), 0)
+
+        second = create_project_tasks_from_generated_tasks(self.project, [self.generated_task])
+        self.assertEqual(len(second["created"]), 0)
+        self.assertEqual(len(second["existing"]), 1)
+        self.assertEqual(second["existing"][0].pk, first["created"][0].pk)
+        self.assertEqual(ProjectTask.objects.filter(project=self.project, generated_task=self.generated_task).count(), 1)

@@ -81,6 +81,7 @@ from projects.services import (
     add_custom_tasks_to_project,
     add_tasks_to_project,
     apply_bulk_task_update,
+    create_project_tasks_from_generated_tasks,
     create_rack_positions_bulk,
     create_task_instances,
     import_tasks_from_project_type,
@@ -572,7 +573,15 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             if invalid:
                 names = ", ".join(rp.position for rp in invalid)
                 return Response({"detail": f"Rack Position(s) que não pertencem a este projeto: {names}."}, status=400)
-        has_input = data["status"] or data["planned_start"] or data["planned_end"] or data["estimated_hours"] is not None or collaborators or rack_positions
+        has_input = (
+            data["status"]
+            or data["planned_start"]
+            or data["planned_end"]
+            or data["estimated_hours"] is not None
+            or data.get("priority")
+            or collaborators
+            or rack_positions
+        )
         if not has_input:
             return Response({"detail": "Informe ao menos um valor para a atualização em massa."}, status=400)
         updated = apply_bulk_task_update(
@@ -581,6 +590,7 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             planned_start=data["planned_start"],
             planned_end=data["planned_end"],
             estimated_hours=data["estimated_hours"],
+            priority=data.get("priority") or None,
             collaborators=collaborators,
             rack_positions=rack_positions,
         )
@@ -588,7 +598,9 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
 
 
 class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
-    queryset = ProjectTask.objects.select_related("task", "project").prefetch_related("collaborators", "rack_positions")
+    queryset = ProjectTask.objects.select_related(
+        "task", "project", "generated_task__activity", "generated_task__path", "generated_task__scope_item", "generated_task__task_template"
+    ).prefetch_related("collaborators", "rack_positions")
     serializer_class = ProjectTaskSerializer
     permission_classes = [ViewAwareModelPermissions]
     change_permission_actions = ("dispatch_task", "undispatch_task")
@@ -598,6 +610,22 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
         project_id = self.request.query_params.get("project")
         if project_id:
             queryset = queryset.filter(project_id=project_id)
+        # Filtros usados pela tela Planejamento > Plano do Projeto ao
+        # atribuir tarefas geradas a partir de uma SOW — nenhum desses é
+        # uma coluna própria de ProjectTask, todos vêm de generated_task
+        # (ver ProjectTaskSerializer).
+        activity_code = self.request.query_params.get("activity")
+        if activity_code:
+            queryset = queryset.filter(generated_task__activity__code=activity_code)
+        path_code = self.request.query_params.get("path")
+        if path_code:
+            queryset = queryset.filter(generated_task__path__code=path_code)
+        sow_import_code = self.request.query_params.get("sow_import")
+        if sow_import_code:
+            queryset = queryset.filter(generated_task__scope_item__source_reference=sow_import_code)
+        origin = self.request.query_params.get("origin")
+        if origin:
+            queryset = queryset.filter(origin=origin)
         queryset = scope_project_queryset(queryset, self.request.user, field_prefix="project__")
         return queryset.order_by("order", "id")
 
@@ -1761,6 +1789,140 @@ class AiTestView(APIView):
         except AiSowParserError as exc:
             return Response({"success": False, "error_code": exc.code, "detail": str(exc)}, status=503)
         return Response(result)
+
+
+class ProjectPlanView(APIView):
+    """GET /api/planning/project-plan/?project=<id>&sow_import=<code>
+    (ou &scope_item_ids=1,2,3) — Planejamento > Plano do Projeto: consolida
+    uma SOW (ou um conjunto de ScopeItems) dentro de um Projeto, sem criar
+    nada — só leitura, pra alimentar o resumo antes da confirmação de
+    "Criar tarefas do projeto" (ver ProjectPlanCreateTasksView)."""
+
+    def get(self, request):
+        project_id = request.query_params.get("project")
+        if not project_id:
+            return Response({"detail": "Informe o parâmetro project."}, status=400)
+        project = Project.objects.filter(pk=project_id).first()
+        if project is None:
+            return Response({"detail": "Projeto não encontrado."}, status=404)
+
+        scope_items_qs = ScopeItem.objects.filter(active=True)
+        sow_import_code = request.query_params.get("sow_import")
+        sow_import_data = None
+        if sow_import_code:
+            scope_items_qs = scope_items_qs.filter(source_reference=sow_import_code)
+            sow_import = SowImport.objects.filter(code=sow_import_code).first()
+            if sow_import is not None:
+                sow_import_data = {"id": sow_import.pk, "code": sow_import.code, "title": sow_import.title}
+        else:
+            raw_ids = request.query_params.get("scope_item_ids", "")
+            ids = [int(part) for part in raw_ids.split(",") if part.strip().isdigit()]
+            if not ids:
+                return Response({"detail": "Informe sow_import ou scope_item_ids."}, status=400)
+            scope_items_qs = scope_items_qs.filter(pk__in=ids)
+
+        scope_items = list(
+            scope_items_qs.select_related("resolved_template").prefetch_related("generated_tasks__path")
+        )
+
+        scope_item_rows = []
+        paths_involved = set()
+        warnings = []
+        generated_tasks_total = 0
+        project_tasks_existing_total = 0
+        scope_items_ready = 0
+        scope_items_pending = 0
+
+        for scope_item in scope_items:
+            generated_tasks = [gt for gt in scope_item.generated_tasks.all() if gt.active]
+            generated_tasks_total += len(generated_tasks)
+            existing_count = ProjectTask.objects.filter(project=project, generated_task__in=generated_tasks).count()
+            project_tasks_existing_total += existing_count
+            for generated_task in generated_tasks:
+                if generated_task.path_id:
+                    paths_involved.add(generated_task.path.code)
+            if scope_item.rule_resolution_status == "RESOLVED":
+                scope_items_ready += 1
+            else:
+                scope_items_pending += 1
+            if scope_item.requires_review:
+                warnings.append(f"{scope_item.code}: exige revisão.")
+            scope_item_rows.append(
+                {
+                    "id": scope_item.pk,
+                    "code": scope_item.code,
+                    "raw_text": scope_item.raw_text,
+                    "rule_resolution_status": scope_item.rule_resolution_status,
+                    "resolved_template_code": scope_item.resolved_template.code
+                    if scope_item.resolved_template_id
+                    else None,
+                    "requires_review": scope_item.requires_review,
+                    "generated_tasks_count": len(generated_tasks),
+                    "project_tasks_existing_count": existing_count,
+                }
+            )
+
+        return Response(
+            {
+                "project": {"id": project.pk, "code": project.code, "name": project.name},
+                "sow_import": sow_import_data,
+                "scope_items": scope_item_rows,
+                "totals": {
+                    "scope_items_total": len(scope_items),
+                    "scope_items_ready": scope_items_ready,
+                    "scope_items_pending_resolution": scope_items_pending,
+                    "generated_tasks_total": generated_tasks_total,
+                    "project_tasks_to_create": generated_tasks_total - project_tasks_existing_total,
+                    "project_tasks_existing": project_tasks_existing_total,
+                    "paths_involved": sorted(paths_involved),
+                    "warnings": warnings,
+                },
+            }
+        )
+
+
+class ProjectPlanCreateTasksView(APIView):
+    """POST /api/planning/project-plan/create-tasks/ — cria (via
+    projects.services.create_project_tasks_from_generated_tasks) uma
+    ProjectTask por GeneratedTask ativa dos ScopeItems selecionados (por
+    `sow_import` ou `scope_item_ids`) que já têm rule_resolution_status=
+    RESOLVED. Idempotente: nunca duplica, nunca sobrescreve uma
+    ProjectTask já vinculada a uma GeneratedTask."""
+
+    def post(self, request):
+        project_id = request.data.get("project")
+        if not project_id:
+            return Response({"detail": "Informe project."}, status=400)
+        project = Project.objects.filter(pk=project_id).first()
+        if project is None:
+            return Response({"detail": "Projeto não encontrado."}, status=404)
+
+        scope_items_qs = ScopeItem.objects.filter(active=True, rule_resolution_status="RESOLVED")
+        sow_import_code = request.data.get("sow_import")
+        scope_item_ids = request.data.get("scope_item_ids")
+        if sow_import_code:
+            scope_items_qs = scope_items_qs.filter(source_reference=sow_import_code)
+        elif scope_item_ids:
+            scope_items_qs = scope_items_qs.filter(pk__in=scope_item_ids)
+        else:
+            return Response({"detail": "Informe sow_import ou scope_item_ids."}, status=400)
+
+        generated_tasks = GeneratedTask.objects.filter(
+            scope_item__in=scope_items_qs, active=True
+        ).select_related("scope_item", "task_template", "activity", "path")
+        result = create_project_tasks_from_generated_tasks(project, generated_tasks, user=request.user)
+        created_data = ProjectTaskSerializer(result["created"], many=True, context={"request": request}).data
+        existing_data = ProjectTaskSerializer(result["existing"], many=True, context={"request": request}).data
+        return Response(
+            {
+                "project_id": project.pk,
+                "project_name": project.name,
+                "created_count": len(created_data),
+                "existing_count": len(existing_data),
+                "created_tasks": created_data,
+                "existing_tasks": existing_data,
+            }
+        )
 
 
 class ProjectTypeViewSet(RegistryViewSet):

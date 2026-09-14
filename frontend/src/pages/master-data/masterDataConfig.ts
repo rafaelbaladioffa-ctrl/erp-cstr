@@ -1372,6 +1372,17 @@ const sowImportTool: ToolConfig = {
   perms: { view: PERMS.viewSowImport },
 };
 
+const projectPlanTool: ToolConfig = {
+  kind: "tool",
+  key: "project-plan",
+  label: "Plano do Projeto",
+  icon: "checklist",
+  // Fecha o loop SOW -> ScopeItem -> GeneratedTask -> ProjectTask: lê os
+  // mesmos dados de Itens de Escopo/Tarefas Geradas, por isso reaproveita
+  // a mesma permissão de leitura do restante desta categoria.
+  perms: { view: PERMS.viewGeneratedTask },
+};
+
 export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
   {
     key: "engenharia",
@@ -1404,6 +1415,6 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     key: "planejamento",
     label: "Planejamento",
     icon: "insights",
-    entities: [scopeItemEntity, generatedTaskEntity, sowImportTool],
+    entities: [scopeItemEntity, generatedTaskEntity, sowImportTool, projectPlanTool],
   },
 ];

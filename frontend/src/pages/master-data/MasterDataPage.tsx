@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { masterDataApi } from "../../api/resources";
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
+import ProjectPlanPanel from "../../components/master-data/ProjectPlanPanel";
 import SowImportPanel from "../../components/master-data/SowImportPanel";
 import TaskRuleSimulatorPanel from "../../components/master-data/TaskRuleSimulatorPanel";
 import Icon from "../../components/ui/Icon";
@@ -181,6 +182,8 @@ export default function MasterDataPage() {
               isToolConfig(activeEntity) ? (
                 activeEntity.key === "sow-import" ? (
                   <SowImportPanel key={activeEntity.key} refs={refs} />
+                ) : activeEntity.key === "project-plan" ? (
+                  <ProjectPlanPanel key={activeEntity.key} />
                 ) : (
                   <TaskRuleSimulatorPanel key={activeEntity.key} refs={refs} />
                 )

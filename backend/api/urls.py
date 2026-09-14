@@ -64,6 +64,12 @@ urlpatterns = [
     path("search/", views.GlobalSearchView.as_view(), name="global-search"),
     path("planning/ai/status/", views.AiStatusView.as_view(), name="planning-ai-status"),
     path("planning/ai/test/", views.AiTestView.as_view(), name="planning-ai-test"),
+    path("planning/project-plan/", views.ProjectPlanView.as_view(), name="planning-project-plan"),
+    path(
+        "planning/project-plan/create-tasks/",
+        views.ProjectPlanCreateTasksView.as_view(),
+        name="planning-project-plan-create-tasks",
+    ),
     path("dashboard/projects/", ProjectsPerformanceView.as_view(), name="dashboard-projects"),
     path("dashboard/technical/", TechnicalPerformanceView.as_view(), name="dashboard-technical"),
     path("operations/board/", OperationsBoardView.as_view(), name="operations-board"),

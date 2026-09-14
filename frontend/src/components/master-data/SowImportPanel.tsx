@@ -182,6 +182,13 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
     navigate(`/cadastros-mestres?focusEntity=generated-tasks&focusSearch=${encodeURIComponent(activeImport.code)}`);
   }
 
+  function openProjectPlanForThisSow() {
+    if (!activeImport) return;
+    // Projeto não é escolhido aqui de propósito — uma SOW não é associada
+    // a um Projeto na importação, só dentro do Plano do Projeto.
+    navigate(`/cadastros-mestres?focusEntity=project-plan&planSow=${encodeURIComponent(activeImport.code)}`);
+  }
+
   async function handleResolvePendingTemplates() {
     if (!activeImport) return;
     setActionError(null);
@@ -636,6 +643,13 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
             </button>
             <button className="btn btn-outline btn-sm" onClick={openGeneratedTasksForThisSow} disabled={summary.tasks_generated === 0}>
               Abrir Tarefas Geradas desta SOW
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={openProjectPlanForThisSow}
+              disabled={summary.tasks_generated === 0}
+            >
+              Abrir Plano do Projeto
             </button>
           </div>
         </div>

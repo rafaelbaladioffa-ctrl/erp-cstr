@@ -1530,6 +1530,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source="project.name", read_only=True)
     project_code = serializers.CharField(source="project.code", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    priority_display = serializers.CharField(source="get_priority_display", read_only=True)
     worked_hours = serializers.SerializerMethodField()
     rack_position_labels = serializers.SerializerMethodField()
     collaborators = CollaboratorSerializer(many=True, read_only=True)
@@ -1537,6 +1538,20 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
         source="collaborators", queryset=Collaborator.objects.filter(is_active=True), many=True, write_only=True, required=False
     )
     queue_order = serializers.SerializerMethodField()
+    # Rastreabilidade até o SOW/ScopeItem/Template de origem — tudo
+    # derivado de `generated_task` (nunca duplicado como coluna própria),
+    # ver ProjectTask.generated_task e
+    # projects.services.create_project_tasks_from_generated_tasks.
+    generated_task_code = serializers.CharField(source="generated_task.code", read_only=True, default=None)
+    scope_item_code = serializers.CharField(source="generated_task.scope_item.code", read_only=True, default=None)
+    sow_import_code = serializers.CharField(
+        source="generated_task.scope_item.source_reference", read_only=True, default=None
+    )
+    task_template_code = serializers.CharField(source="generated_task.task_template.code", read_only=True, default=None)
+    activity_code = serializers.CharField(source="generated_task.activity.code", read_only=True, default=None)
+    path_code = serializers.SerializerMethodField()
+    expansion_key = serializers.CharField(source="generated_task.expansion_key", read_only=True, default=None)
+    step_order = serializers.IntegerField(source="generated_task.step_order", read_only=True, default=None)
 
     class Meta:
         model = ProjectTask
@@ -1554,6 +1569,8 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "collaborator_ids",
             "status",
             "status_display",
+            "priority",
+            "priority_display",
             "order",
             "queue_order",
             "planned_start",
@@ -1565,11 +1582,32 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "worked_hours",
             "completion_outcome",
             "quantity_done",
+            "quantity_planned",
+            "unit",
+            "requires_evidence",
+            "requires_qaqc",
+            "instructions",
             "notes",
+            "origin",
+            "generated_task",
+            "generated_task_code",
+            "scope_item_code",
+            "sow_import_code",
+            "task_template_code",
+            "activity_code",
+            "path_code",
+            "expansion_key",
+            "step_order",
         )
+        read_only_fields = ("origin", "generated_task")
 
     def get_rack_position_labels(self, obj):
         return [rp.position for rp in obj.rack_positions.all()]
+
+    def get_path_code(self, obj):
+        if not obj.generated_task_id or not obj.generated_task.path_id:
+            return None
+        return obj.generated_task.path.code
 
     def get_worked_hours(self, obj):
         return obj.worked_hours
@@ -1705,6 +1743,7 @@ class ProjectTaskBulkActionSerializer(serializers.Serializer):
     planned_start = serializers.DateTimeField(required=False, allow_null=True, default=None)
     planned_end = serializers.DateTimeField(required=False, allow_null=True, default=None)
     estimated_hours = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True, default=None)
+    priority = serializers.ChoiceField(choices=ProjectTask.PRIORITY_CHOICES, required=False, allow_blank=True, default="")
     collaborator_ids = serializers.PrimaryKeyRelatedField(
         queryset=Collaborator.objects.filter(is_active=True), many=True, required=False, default=list
     )

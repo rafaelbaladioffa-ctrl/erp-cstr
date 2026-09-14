@@ -29,6 +29,8 @@ import type {
   ProjectAttachment,
   ProjectDailyUpdate,
   ProjectOccurrence,
+  ProjectPlan,
+  ProjectPlanCreateResult,
   ProjectsPerformanceData,
   ProjectTask,
   ProjectTaskBulkPayload,
@@ -217,6 +219,32 @@ export const planningApi = {
         .then((r) => r.data)
         .catch((err) => (err.response?.data as AiTestResult) || { success: false, detail: "Falha ao testar a IA." }),
   },
+  // Planejamento > Plano do Projeto — consolida uma SOW (ou ScopeItems
+  // avulsos) dentro de um Projeto e cria ProjectTask a partir das
+  // GeneratedTask já resolvidas (ver ProjectPlanView/
+  // ProjectPlanCreateTasksView e projects.services.
+  // create_project_tasks_from_generated_tasks). Nunca chamado
+  // automaticamente — sempre por ação explícita do usuário.
+  projectPlan: {
+    get: (projectId: number, opts: { sowImport?: string; scopeItemIds?: number[] }) =>
+      apiClient
+        .get<ProjectPlan>("/planning/project-plan/", {
+          params: {
+            project: String(projectId),
+            ...(opts.sowImport ? { sow_import: opts.sowImport } : {}),
+            ...(opts.scopeItemIds?.length ? { scope_item_ids: opts.scopeItemIds.join(",") } : {}),
+          },
+        })
+        .then((r) => r.data),
+    createTasks: (projectId: number, opts: { sowImport?: string; scopeItemIds?: number[] }) =>
+      apiClient
+        .post<ProjectPlanCreateResult>("/planning/project-plan/create-tasks/", {
+          project: projectId,
+          ...(opts.sowImport ? { sow_import: opts.sowImport } : {}),
+          ...(opts.scopeItemIds?.length ? { scope_item_ids: opts.scopeItemIds } : {}),
+        })
+        .then((r) => r.data),
+  },
 };
 
 export const taskRuleSimulatorApi = {
@@ -344,6 +372,8 @@ export const rackPositionsApi = {
 };
 
 export const projectTasksApi = {
+  list: (params?: Record<string, string>) =>
+    apiClient.get<Paginated<ProjectTask>>("/project-tasks/", { params: { page_size: "500", ...params } }).then((r) => r.data),
   create: (payload: Partial<ProjectTask>) => apiClient.post<ProjectTask>("/project-tasks/", payload).then((r) => r.data),
   update: (id: number, payload: Partial<ProjectTask>) =>
     apiClient.patch<ProjectTask>(`/project-tasks/${id}/`, payload).then((r) => r.data),
@@ -399,7 +429,8 @@ export const sitesApi = {
 };
 
 export const collaboratorsApi = {
-  list: () => apiClient.get<Paginated<Collaborator>>("/collaborators/").then((r) => r.data),
+  list: (params?: Record<string, string>) =>
+    apiClient.get<Paginated<Collaborator>>("/collaborators/", { params }).then((r) => r.data),
 };
 
 export const dailyUpdatesApi = {

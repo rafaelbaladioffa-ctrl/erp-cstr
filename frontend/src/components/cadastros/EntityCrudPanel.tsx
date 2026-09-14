@@ -561,6 +561,26 @@ export default function EntityCrudPanel({
                                   <Icon name="delete" style={{ fontSize: 14 }} />
                                 </button>
                               )}
+                          {entity.key === "scope-items" &&
+                            (row.operational_status === "READY_TO_GENERATE" || row.operational_status === "TASKS_GENERATED") &&
+                            Boolean(row.source_reference) && (
+                              <Link
+                                className="btn btn-outline btn-sm"
+                                to={`/cadastros-mestres?focusEntity=project-plan&planSow=${encodeURIComponent(row.source_reference as string)}`}
+                                title="Ver no Plano do Projeto"
+                              >
+                                <Icon name="checklist" style={{ fontSize: 14 }} />
+                              </Link>
+                            )}
+                          {entity.key === "generated-tasks" && Boolean(row.scope_item_source_reference) && (
+                            <Link
+                              className="btn btn-outline btn-sm"
+                              to={`/cadastros-mestres?focusEntity=project-plan&planSow=${encodeURIComponent(row.scope_item_source_reference as string)}`}
+                              title="Criar tarefas no projeto"
+                            >
+                              <Icon name="checklist" style={{ fontSize: 14 }} />
+                            </Link>
+                          )}
                           {entity.key === "sites" && canChangeSite && !row.manual_coordinates && (
                             <button
                               className="btn btn-outline btn-sm"

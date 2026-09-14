@@ -168,15 +168,35 @@ class ProjectTask(TimestampedModel):
     STATUS_NOT_STARTED = "not_started"
     STATUS_IN_PROGRESS = "in_progress"
     STATUS_PAUSED = "paused"
+    STATUS_WAITING_QAQC = "waiting_qaqc"
     STATUS_COMPLETED = "completed"
     STATUS_CANCELED = "canceled"
     STATUS_CHOICES = (
         (STATUS_NOT_STARTED, "Não Iniciada"),
         (STATUS_IN_PROGRESS, "Em Andamento"),
         (STATUS_PAUSED, "Pausada"),
+        (STATUS_WAITING_QAQC, "Aguardando QA/QC"),
         (STATUS_COMPLETED, "Concluída"),
         (STATUS_CANCELED, "Cancelada"),
     )
+
+    PRIORITY_LOW = "low"
+    PRIORITY_MEDIUM = "medium"
+    PRIORITY_HIGH = "high"
+    PRIORITY_URGENT = "urgent"
+    PRIORITY_CHOICES = (
+        (PRIORITY_LOW, "Baixa"),
+        (PRIORITY_MEDIUM, "Média"),
+        (PRIORITY_HIGH, "Alta"),
+        (PRIORITY_URGENT, "Urgente"),
+    )
+
+    # Sugestão (não é choices rígido): "MANUAL" (padrão — criada à mão ou
+    # pelo catálogo de projeto/ProjectType) ou "SOW_TEMPLATE" (criada a
+    # partir de uma master_data.GeneratedTask via Planejamento > Plano do
+    # Projeto — ver projects.services.create_project_tasks_from_generated_tasks).
+    ORIGIN_MANUAL = "MANUAL"
+    ORIGIN_SOW_TEMPLATE = "SOW_TEMPLATE"
 
     project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="project_tasks")
     task = models.ForeignKey(
@@ -188,6 +208,34 @@ class ProjectTask(TimestampedModel):
         blank=True,
         help_text="Usado só quando a tarefa não vem do catálogo (campo 'Tarefa' em branco).",
     )
+    # Rastreabilidade até o SOW/ScopeItem/Template de origem — sem
+    # duplicar nenhum dado do master_data aqui: ScopeItem/SOW/template/
+    # atividade/path/expansion_key/ordem são todos alcançados via
+    # generated_task.scope_item/.task_template/.activity/.path/
+    # .expansion_key/.step_order (ver ProjectTaskSerializer). PROTECT
+    # porque uma GeneratedTask com ProjectTask vinculada não deve poder
+    # ser excluída "por baixo" sem decisão explícita. Editável só pelo
+    # service de criação, nunca pelo formulário normal.
+    generated_task = models.ForeignKey(
+        "master_data.GeneratedTask",
+        verbose_name="tarefa gerada de origem",
+        on_delete=models.PROTECT,
+        related_name="project_tasks",
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    origin = models.CharField("origem", max_length=30, default=ORIGIN_MANUAL, blank=True, editable=False)
+    priority = models.CharField("prioridade", max_length=20, choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM)
+    instructions = models.TextField(
+        "instrução operacional",
+        blank=True,
+        help_text="Instrução para o técnico — diferente de 'observações', que é preenchido durante a execução.",
+    )
+    quantity_planned = models.DecimalField("quantidade planejada", max_digits=9, decimal_places=2, null=True, blank=True)
+    unit = models.CharField("unidade", max_length=50, blank=True)
+    requires_evidence = models.BooleanField("exige evidência", default=False)
+    requires_qaqc = models.BooleanField("exige QA/QC", default=False)
     rack_positions = models.ManyToManyField(
         RackPosition,
         verbose_name="Rack Positions",
@@ -230,6 +278,18 @@ class ProjectTask(TimestampedModel):
         verbose_name = "Tarefa do Projeto"
         verbose_name_plural = "Tarefas do Projeto"
         ordering = ("order", "id")
+        constraints = [
+            # Idempotência da criação a partir do Plano do Projeto — nunca
+            # duas ProjectTask para a mesma (projeto, GeneratedTask). Índice
+            # PARCIAL (só quando generated_task não é nulo) para não afetar
+            # em nada as tarefas manuais/do catálogo, que sempre têm
+            # generated_task=None.
+            models.UniqueConstraint(
+                fields=("project", "generated_task"),
+                condition=models.Q(generated_task__isnull=False),
+                name="unique_project_task_per_generated_task",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.project} - {self.display_name}"
