@@ -53,6 +53,7 @@ from master_data.models import (
     Workstream,
 )
 from master_data.models import Site as MasterDataSite
+from master_data.services.sow_parser.ai_parser import AiSowParserError, get_ai_config_status, get_ai_sow_parser
 from master_data.services.sow_parser.service import (
     ApprovalBlockedError,
     FinalizeBlockedError,
@@ -1643,6 +1644,37 @@ class SowParsedItemViewSet(RequireChangePermissionForActions, viewsets.ModelView
             return Response({"detail": str(exc)}, status=400)
         item.refresh_from_db()
         return Response(self.get_serializer(item).data)
+
+
+class AiStatusView(APIView):
+    """GET /api/planning/ai/status/ — só reporta como o provider de IA do
+    parser de SOW está CONFIGURADO (env vars), sem nenhuma chamada real ao
+    OpenRouter. Nunca retorna a API key."""
+
+    def get(self, request):
+        return Response(get_ai_config_status())
+
+
+class AiTestView(APIView):
+    """POST /api/planning/ai/test/ — executa UMA chamada mínima real ao
+    provider configurado (prompt curto pedindo só `{"ok": true}`), pra
+    validar credencial/conectividade sem rodar o pipeline de SOW inteiro.
+    Nunca retorna a API key. Retorna 503 (não 200) quando a IA não está
+    configurada ou a chamada falha — o corpo sempre traz `success` e,
+    quando falha, `error_code`/`detail`."""
+
+    def post(self, request):
+        ai_parser = get_ai_sow_parser()
+        if ai_parser is None:
+            return Response(
+                {"success": False, "error_code": "OPENROUTER_NOT_CONFIGURED", "detail": "IA não configurada (AI_API_KEY/AI_MODEL ausentes)."},
+                status=503,
+            )
+        try:
+            result = ai_parser.test_connection()
+        except AiSowParserError as exc:
+            return Response({"success": False, "error_code": exc.code, "detail": str(exc)}, status=503)
+        return Response(result)
 
 
 class ProjectTypeViewSet(RegistryViewSet):

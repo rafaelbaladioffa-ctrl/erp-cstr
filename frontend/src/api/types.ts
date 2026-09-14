@@ -515,6 +515,7 @@ export interface SowImport {
   parser_version: string;
   ai_provider: string;
   ai_model: string;
+  ai_mode: string;
   processing_started_at: string | null;
   processing_finished_at: string | null;
   total_items_detected: number;
@@ -580,6 +581,27 @@ export interface SowRejectSelectedResult {
   rejected: number[];
   errors: { item_id: number; detail: string }[];
   sow_import: SowImport;
+}
+
+export interface AiStatus {
+  provider: string;
+  configured: boolean;
+  configured_model: string | null;
+  base_url: string;
+}
+
+export interface AiTestResult {
+  success: boolean;
+  provider?: string;
+  configured_model?: string | null;
+  resolved_model?: string;
+  latency_ms?: number;
+  retries?: number;
+  http_status?: number;
+  usage?: Record<string, unknown>;
+  structured_json_ok?: boolean;
+  error_code?: string;
+  detail?: string;
 }
 
 export interface SowApproveItemResult {

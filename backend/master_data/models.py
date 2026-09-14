@@ -1330,6 +1330,7 @@ class SowImport(MasterDataModel):
         "FAILED",
         "CANCELLED",
     )
+    AI_MODE_SUGGESTIONS = ("HYBRID_AI", "DETERMINISTIC_ONLY")
 
     code = models.CharField("código", max_length=30, unique=True, blank=True, editable=False)
     title = models.CharField("título", max_length=200, blank=True)
@@ -1348,7 +1349,17 @@ class SowImport(MasterDataModel):
     status = models.CharField("status", max_length=30, default="DRAFT")
     parser_version = models.CharField("versão do parser", max_length=20, blank=True)
     ai_provider = models.CharField("provedor de IA", max_length=50, blank=True)
-    ai_model = models.CharField("modelo de IA", max_length=100, blank=True)
+    # Modelo REALMENTE utilizado (resolved_model, capturado da resposta do
+    # provider) quando uma chamada de IA foi bem-sucedida neste import —
+    # não o modelo configurado (AI_MODEL), que pode ser um roteador
+    # automático (ex: "openrouter/free") resolvido para um modelo
+    # concreto diferente a cada chamada.
+    ai_model = models.CharField("modelo de IA utilizado", max_length=100, blank=True)
+    # Texto livre (não ENUM/choices) de propósito — sugestões: HYBRID_AI
+    # (parser determinístico + IA usada com sucesso neste import),
+    # DETERMINISTIC_ONLY (IA não configurada, ou configurada mas
+    # indisponível/falhou — ver AI_UNAVAILABLE em SowParsedItem.warnings).
+    ai_mode = models.CharField("modo do parser", max_length=20, default="DETERMINISTIC_ONLY", blank=True)
 
     processing_started_at = models.DateTimeField("início do processamento", null=True, blank=True)
     processing_finished_at = models.DateTimeField("fim do processamento", null=True, blank=True)

@@ -48,5 +48,8 @@ def validate_ai_output(data):
 
     serializer = AiSowParserOutputSchema(data=data if isinstance(data, dict) else {})
     if not serializer.is_valid():
-        raise AiSowParserError(f"JSON retornado pela IA não bate com o schema esperado: {serializer.errors}")
+        raise AiSowParserError(
+            f"JSON retornado pela IA não bate com o schema esperado: {serializer.errors}",
+            code="OPENROUTER_SCHEMA_ERROR",
+        )
     return list(serializer.validated_data["items"])

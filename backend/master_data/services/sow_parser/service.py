@@ -214,13 +214,22 @@ def _run_parsing(sow_import):
         ai_items = None
         ai_provider_label = ""
         ai_model_label = ""
+        ai_mode = "DETERMINISTIC_ONLY"
+        ai_error_code = None
         ai_parser = get_ai_sow_parser()
         if ai_parser is not None:
+            ai_provider_label = os.getenv("AI_PROVIDER", "openrouter").strip().lower()
             try:
                 master_data_context = build_master_data_context()
-                ai_items = ai_parser.parse(sow_import.source_text, deterministic_drafts, master_data_context)
+                ai_items, ai_meta = ai_parser.parse(sow_import.source_text, deterministic_drafts, master_data_context)
             except AiSowParserError as exc:
-                logger.warning("SOW %s: IA indisponível, seguindo em modo determinístico (%s)", sow_import.code, exc)
+                ai_error_code = getattr(exc, "code", None) or "OPENROUTER_UPSTREAM_ERROR"
+                logger.warning(
+                    "SOW %s: IA indisponível (%s), seguindo em modo determinístico (%s)",
+                    sow_import.code,
+                    ai_error_code,
+                    exc,
+                )
                 ai_items = None
             else:
                 if len(ai_items) != len(deterministic_drafts):
@@ -233,8 +242,8 @@ def _run_parsing(sow_import):
                     )
                     ai_items = None
                 else:
-                    ai_provider_label = os.getenv("AI_PROVIDER", "openrouter").strip().lower()
-                    ai_model_label = os.getenv("AI_MODEL", "").strip()
+                    ai_mode = "HYBRID_AI"
+                    ai_model_label = ai_meta["resolved_model"]
 
         created_items = []
         total_warnings = 0
@@ -242,6 +251,15 @@ def _run_parsing(sow_import):
             ai_item = ai_items[index - 1] if ai_items is not None else None
             merged, ai_raw_payload = _merge_draft(det_draft, ai_item)
             normalized = normalize_parsed_item(merged)
+            if ai_error_code:
+                normalized["warnings"].append(
+                    build_warning(
+                        "AI_UNAVAILABLE",
+                        "ai",
+                        f"IA configurada mas indisponível ({ai_error_code}) — item processado em modo determinístico.",
+                        critical=False,
+                    )
+                )
 
             item = SowParsedItem.objects.create(
                 sow_import=sow_import,
@@ -275,6 +293,7 @@ def _run_parsing(sow_import):
         sow_import.parser_version = PARSER_VERSION
         sow_import.ai_provider = ai_provider_label
         sow_import.ai_model = ai_model_label
+        sow_import.ai_mode = ai_mode
         sow_import.total_items_detected = len(created_items)
         sow_import.total_items_approved = 0
         sow_import.total_items_rejected = 0
@@ -336,18 +355,29 @@ def reprocess_sow_parsed_item(item):
 
     det_draft = parse_line(item.raw_text)
     ai_item = None
+    ai_error_code = None
     ai_parser = get_ai_sow_parser()
     if ai_parser is not None:
         try:
             master_data_context = build_master_data_context()
-            ai_items = ai_parser.parse(item.raw_text, [det_draft], master_data_context)
+            ai_items, _ai_meta = ai_parser.parse(item.raw_text, [det_draft], master_data_context)
             if ai_items:
                 ai_item = ai_items[0]
         except AiSowParserError as exc:
+            ai_error_code = getattr(exc, "code", None) or "OPENROUTER_UPSTREAM_ERROR"
             logger.warning("Reprocessamento do SowParsedItem %s: IA indisponível (%s)", item.pk, exc)
 
     merged, ai_raw_payload = _merge_draft(det_draft, ai_item)
     normalized = normalize_parsed_item(merged)
+    if ai_error_code:
+        normalized["warnings"].append(
+            build_warning(
+                "AI_UNAVAILABLE",
+                "ai",
+                f"IA configurada mas indisponível ({ai_error_code}) — item processado em modo determinístico.",
+                critical=False,
+            )
+        )
 
     history = list((item.normalization_metadata or {}).get("reprocess_history") or [])
     history.append({"reprocessed_at": timezone.now().isoformat(), "previous": previous_snapshot})

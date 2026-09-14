@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { planningApi } from "../../api/resources";
-import type { SowImport, SowParsedItem } from "../../api/types";
+import type { AiStatus, SowImport, SowParsedItem } from "../../api/types";
 import Icon from "../ui/Icon";
 import type { ReferenceData } from "../../pages/cadastros/registryConfig";
 
@@ -91,6 +91,7 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
   const [mode, setMode] = useState<"list" | "new" | "detail">("list");
   const [imports, setImports] = useState<SowImport[]>([]);
   const [loadingList, setLoadingList] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
 
   const [title, setTitle] = useState("");
   const [sourceType, setSourceType] = useState("TEXT");
@@ -118,6 +119,7 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
 
   useEffect(() => {
     loadImports();
+    planningApi.ai.status().then(setAiStatus).catch(() => setAiStatus(null));
   }, []);
 
   function resetNewForm() {
@@ -349,6 +351,16 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
           </button>
         </div>
 
+        {aiStatus && (
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            IA: {aiStatus.provider === "openrouter" ? "OpenRouter" : aiStatus.provider} · Modelo configurado:{" "}
+            {aiStatus.configured_model || "—"} · Status:{" "}
+            <span style={{ color: aiStatus.configured ? "var(--green)" : "var(--text-muted)" }}>
+              {aiStatus.configured ? "Configurado" : "Não configurado (modo determinístico)"}
+            </span>
+          </p>
+        )}
+
         {loadingList && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando…</p>}
 
         <div className="table-wrap">
@@ -457,7 +469,14 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
             Status: {STATUS_LABELS[activeImport.status] || activeImport.status} · Detectados:{" "}
             {activeImport.total_items_detected} · Aprovados: {activeImport.total_items_approved} · Rejeitados:{" "}
             {activeImport.total_items_rejected} · Warnings: {activeImport.total_warnings}
-            {activeImport.ai_provider && <> · IA: {activeImport.ai_provider} ({activeImport.ai_model})</>}
+            <br />
+            Modo:{" "}
+            <span style={{ color: activeImport.ai_mode === "HYBRID_AI" ? "var(--green)" : "var(--text-muted)" }}>
+              {activeImport.ai_mode === "HYBRID_AI" ? "Hybrid AI" : "Deterministic Only"}
+            </span>
+            {activeImport.ai_mode === "HYBRID_AI" && activeImport.ai_model && (
+              <> · Modelo utilizado: {activeImport.ai_model}</>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>

@@ -229,6 +229,13 @@ WHATSAPP_BOT_SECRET = os.getenv("WHATSAPP_BOT_SECRET", "")
 AI_PROVIDER = os.getenv("AI_PROVIDER", "openrouter")
 AI_API_KEY = os.getenv("AI_API_KEY", "")
 AI_MODEL = os.getenv("AI_MODEL", "")
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://openrouter.ai/api/v1")
+AI_TIMEOUT_SECONDS = os.getenv("AI_TIMEOUT_SECONDS", "60")
+AI_MAX_RETRIES = os.getenv("AI_MAX_RETRIES", "2")
+# Headers opcionais recomendados pelo OpenRouter (identificação da
+# aplicação chamadora) — nunca segredos, seguros para aparecer no .env.
+OPENROUTER_HTTP_REFERER = os.getenv("OPENROUTER_HTTP_REFERER", "")
+OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "Projetos Consultimer")
 
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG

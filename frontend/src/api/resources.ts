@@ -43,6 +43,8 @@ import type {
   SiteMapData,
   GeneratedTask,
   GeneratedTaskDependency,
+  AiStatus,
+  AiTestResult,
   ScopeItem,
   ScopeItemGenerateTasksResult,
   ScopeItemResolutionResult,
@@ -176,6 +178,19 @@ export const planningApi = {
       apiClient.post<SowParsedItem>(`/planning/sow-parsed-items/${id}/reject/`).then((r) => r.data),
     reprocess: (id: number) =>
       apiClient.post<SowParsedItem>(`/planning/sow-parsed-items/${id}/reprocess/`).then((r) => r.data),
+  },
+  ai: {
+    // Só reporta configuração (env vars) — nunca chama o provider.
+    status: () => apiClient.get<AiStatus>("/planning/ai/status/").then((r) => r.data),
+    // Executa 1 chamada mínima REAL ao provider configurado — usar com
+    // moderação (plano gratuito). Resolve mesmo quando a IA falha (503
+    // vira um AiTestResult com success:false, nunca uma exceção não
+    // tratada) para a tela poder mostrar o motivo.
+    test: () =>
+      apiClient
+        .post<AiTestResult>("/planning/ai/test/")
+        .then((r) => r.data)
+        .catch((err) => (err.response?.data as AiTestResult) || { success: false, detail: "Falha ao testar a IA." }),
   },
 };
 

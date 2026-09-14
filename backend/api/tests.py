@@ -1,7 +1,8 @@
+import json
 import os
 from datetime import datetime, timedelta
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -4878,6 +4879,16 @@ class SowImportTests(TestCase):
             username="sow_import_admin", email="sow_import_admin@example.com", password="test-password"
         )
         self.client_api.force_authenticate(user=self.admin)
+        # Estes testes exercitam o parser em modo determinístico "puro" (a
+        # não ser quando mockam a IA explicitamente) — forçar AI_API_KEY
+        # vazia aqui garante que a suíte nunca depende (nem gasta request
+        # real) do provider de IA, mesmo que o .env real do servidor onde
+        # os testes rodam tenha uma chave configurada (ver AiParserTests
+        # para os testes que exercitam a integração de IA, sempre
+        # mockados).
+        env_patcher = patch.dict(os.environ, {"AI_API_KEY": ""})
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
 
     def create_import(self, text, title="Teste de SOW"):
         response = self.client_api.post(
@@ -5158,3 +5169,236 @@ class SowImportTests(TestCase):
         self.assertEqual(response.data["sow_import"]["total_items_approved"], 3)
         self.assertEqual(ScopeItem.objects.filter(source_reference=data["code"]).count(), 3)
         self.assertEqual(GeneratedTask.objects.filter(scope_item__source_reference=data["code"]).count(), 0)
+
+
+def _mock_openrouter_response(status_code=200, model="mistralai/test-model:free", content='{"items": []}', error_message=None):
+    """Constrói um objeto que imita requests.Response o suficiente para os
+    testes de OpenRouterAiSowParser — nunca bate na rede de verdade."""
+    response = MagicMock()
+    response.status_code = status_code
+    response.ok = 200 <= status_code < 300
+    if error_message is not None:
+        response.json.return_value = {"error": {"message": error_message}}
+        response.text = error_message
+    else:
+        response.json.return_value = {
+            "model": model,
+            "choices": [{"message": {"content": content}}],
+            "usage": {"total_tokens": 42},
+        }
+        response.text = content
+    return response
+
+
+class AiParserTests(TestCase):
+    """Integração com o OpenRouter do parser de SOW (timeout, retry,
+    mapeamento de erros, resolved_model, endpoints técnicos, fallback do
+    pipeline) — SEMPRE com requests.post mockado; a suíte automática nunca
+    gasta uma chamada real de IA (ver pedido original, bloco 16)."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(
+            username="ai_parser_admin", email="ai_parser_admin@example.com", password="test-password"
+        )
+        self.client_api.force_authenticate(user=self.admin)
+
+    def _parser(self, **overrides):
+        from master_data.services.sow_parser.ai_parser import OpenRouterAiSowParser
+
+        kwargs = dict(api_key="test-secret-key-should-never-leak", model="openrouter/free", timeout=5, max_retries=2)
+        kwargs.update(overrides)
+        return OpenRouterAiSowParser(**kwargs)
+
+    # --- timeout / retry ---
+
+    def test_timeout_is_passed_to_requests_post(self):
+        parser = self._parser(timeout=7)
+        with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post:
+            mock_post.return_value = _mock_openrouter_response()
+            parser.test_connection()
+        self.assertEqual(mock_post.call_args.kwargs["timeout"], 7)
+
+    def test_retries_on_429_then_succeeds(self):
+        parser = self._parser()
+        responses = [
+            _mock_openrouter_response(status_code=429, error_message="rate limited"),
+            _mock_openrouter_response(status_code=429, error_message="rate limited"),
+            _mock_openrouter_response(status_code=200),
+        ]
+        with patch("master_data.services.sow_parser.ai_parser.requests.post", side_effect=responses) as mock_post, patch(
+            "master_data.services.sow_parser.ai_parser.time.sleep"
+        ):
+            result = parser.test_connection()
+        self.assertEqual(mock_post.call_count, 3)
+        self.assertEqual(result["retries"], 2)
+
+    def test_retries_on_500_then_succeeds(self):
+        parser = self._parser()
+        responses = [
+            _mock_openrouter_response(status_code=500, error_message="server error"),
+            _mock_openrouter_response(status_code=200),
+        ]
+        with patch("master_data.services.sow_parser.ai_parser.requests.post", side_effect=responses) as mock_post, patch(
+            "master_data.services.sow_parser.ai_parser.time.sleep"
+        ):
+            result = parser.test_connection()
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertEqual(result["retries"], 1)
+
+    def test_no_retry_on_401(self):
+        from master_data.services.sow_parser.ai_parser import AiSowParserError
+
+        parser = self._parser()
+        with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post, patch(
+            "master_data.services.sow_parser.ai_parser.time.sleep"
+        ) as mock_sleep:
+            mock_post.return_value = _mock_openrouter_response(status_code=401, error_message="invalid key")
+            with self.assertRaises(AiSowParserError) as ctx:
+                parser.test_connection()
+        self.assertEqual(mock_post.call_count, 1)
+        mock_sleep.assert_not_called()
+        self.assertEqual(ctx.exception.code, "OPENROUTER_AUTH_ERROR")
+
+    def test_no_retry_on_403(self):
+        from master_data.services.sow_parser.ai_parser import AiSowParserError
+
+        parser = self._parser()
+        with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post:
+            mock_post.return_value = _mock_openrouter_response(status_code=403, error_message="forbidden")
+            with self.assertRaises(AiSowParserError) as ctx:
+                parser.test_connection()
+        self.assertEqual(mock_post.call_count, 1)
+        self.assertEqual(ctx.exception.code, "OPENROUTER_PERMISSION_ERROR")
+
+    def test_max_retries_respected_then_raises_rate_limit(self):
+        from master_data.services.sow_parser.ai_parser import AiSowParserError
+
+        parser = self._parser(max_retries=2)
+        with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post, patch(
+            "master_data.services.sow_parser.ai_parser.time.sleep"
+        ):
+            mock_post.return_value = _mock_openrouter_response(status_code=429, error_message="rate limited")
+            with self.assertRaises(AiSowParserError) as ctx:
+                parser.test_connection()
+        self.assertEqual(mock_post.call_count, 3)  # 1 inicial + 2 retries
+        self.assertEqual(ctx.exception.code, "OPENROUTER_RATE_LIMIT")
+
+    def test_structured_output_falls_back_when_unsupported(self):
+        parser = self._parser()
+        responses = [
+            _mock_openrouter_response(status_code=400, error_message="response_format is not supported for this model"),
+            _mock_openrouter_response(status_code=200, content='{"ok": true}'),
+        ]
+        with patch("master_data.services.sow_parser.ai_parser.requests.post", side_effect=responses) as mock_post:
+            result = parser.test_connection()
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertTrue(result["success"])
+        second_call_body = mock_post.call_args_list[1].kwargs["json"]
+        self.assertNotIn("response_format", second_call_body)
+
+    def test_resolved_model_captured_from_response(self):
+        parser = self._parser(model="openrouter/free")
+        with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post:
+            mock_post.return_value = _mock_openrouter_response(model="mistralai/mistral-7b-instruct:free")
+            result = parser.test_connection()
+        self.assertEqual(result["configured_model"], "openrouter/free")
+        self.assertEqual(result["resolved_model"], "mistralai/mistral-7b-instruct:free")
+
+    def test_api_key_never_appears_in_exception_message(self):
+        from master_data.services.sow_parser.ai_parser import AiSowParserError
+
+        secret = "sk-or-v1-super-secret-should-never-leak"
+        parser = self._parser(api_key=secret)
+        with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post:
+            mock_post.return_value = _mock_openrouter_response(status_code=401, error_message="invalid key")
+            with self.assertRaises(AiSowParserError) as ctx:
+                parser.test_connection()
+        self.assertNotIn(secret, str(ctx.exception))
+
+    # --- endpoints técnicos ---
+
+    def test_ai_status_endpoint_never_calls_openrouter(self):
+        with patch.dict(os.environ, {"AI_API_KEY": "", "AI_MODEL": ""}, clear=False):
+            with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post:
+                response = self.client_api.get("/api/planning/ai/status/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(response.data["configured"])
+        mock_post.assert_not_called()
+
+    def test_ai_status_endpoint_reports_configured(self):
+        with patch.dict(
+            os.environ, {"AI_API_KEY": "test-key", "AI_MODEL": "openrouter/free", "AI_PROVIDER": "openrouter"}, clear=False
+        ):
+            response = self.client_api.get("/api/planning/ai/status/")
+        self.assertTrue(response.data["configured"])
+        self.assertEqual(response.data["configured_model"], "openrouter/free")
+        self.assertNotIn("test-key", str(response.data))
+
+    def test_ai_test_endpoint_success_with_mock(self):
+        with patch.dict(
+            os.environ, {"AI_API_KEY": "test-key", "AI_MODEL": "openrouter/free", "AI_PROVIDER": "openrouter"}, clear=False
+        ):
+            with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post:
+                mock_post.return_value = _mock_openrouter_response(model="resolved/model")
+                response = self.client_api.post("/api/planning/ai/test/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(response.data["resolved_model"], "resolved/model")
+        self.assertNotIn("test-key", str(response.data))
+
+    def test_ai_test_endpoint_failure_returns_503(self):
+        with patch.dict(
+            os.environ, {"AI_API_KEY": "test-key", "AI_MODEL": "openrouter/free", "AI_PROVIDER": "openrouter"}, clear=False
+        ):
+            with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post:
+                mock_post.return_value = _mock_openrouter_response(status_code=401, error_message="invalid key")
+                response = self.client_api.post("/api/planning/ai/test/")
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["error_code"], "OPENROUTER_AUTH_ERROR")
+
+    def test_ai_test_endpoint_not_configured(self):
+        with patch.dict(os.environ, {"AI_API_KEY": ""}, clear=False):
+            response = self.client_api.post("/api/planning/ai/test/")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data["error_code"], "OPENROUTER_NOT_CONFIGURED")
+
+    # --- pipeline hybrid / fallback ---
+
+    def test_sow_import_pipeline_hybrid_ai_mode_with_mock(self):
+        ai_payload = json.dumps({"items": [{"quantity": 10, "confidence_score": 0.9, "paths": [], "warnings": []}]})
+        with patch.dict(
+            os.environ, {"AI_API_KEY": "test-key", "AI_MODEL": "openrouter/free", "AI_PROVIDER": "openrouter"}, clear=False
+        ):
+            with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post:
+                mock_post.return_value = _mock_openrouter_response(model="resolved/model-x", content=ai_payload)
+                create_response = self.client_api.post(
+                    "/api/planning/sow-imports/",
+                    {"title": "Teste IA", "source_type": "TEXT", "source_text": "10x CAT6 UTP up to 60m"},
+                    format="json",
+                )
+                sow_import_id = create_response.data["id"]
+                process_response = self.client_api.post(f"/api/planning/sow-imports/{sow_import_id}/process/")
+        self.assertEqual(process_response.status_code, 200, process_response.data)
+        self.assertEqual(process_response.data["ai_mode"], "HYBRID_AI")
+        self.assertEqual(process_response.data["ai_model"], "resolved/model-x")
+
+    def test_sow_import_pipeline_falls_back_to_deterministic_on_ai_failure(self):
+        with patch.dict(
+            os.environ, {"AI_API_KEY": "test-key", "AI_MODEL": "openrouter/free", "AI_PROVIDER": "openrouter"}, clear=False
+        ):
+            with patch("master_data.services.sow_parser.ai_parser.requests.post") as mock_post:
+                mock_post.return_value = _mock_openrouter_response(status_code=500, error_message="upstream down")
+                create_response = self.client_api.post(
+                    "/api/planning/sow-imports/",
+                    {"title": "Teste IA falha", "source_type": "TEXT", "source_text": "10x CAT6 UTP up to 60m"},
+                    format="json",
+                )
+                sow_import_id = create_response.data["id"]
+                process_response = self.client_api.post(f"/api/planning/sow-imports/{sow_import_id}/process/")
+        self.assertEqual(process_response.status_code, 200, process_response.data)
+        self.assertEqual(process_response.data["ai_mode"], "DETERMINISTIC_ONLY")
+        items_response = self.client_api.get(f"/api/planning/sow-imports/{sow_import_id}/items/")
+        warning_codes = [w["code"] for w in items_response.data[0]["warnings"]]
+        self.assertIn("AI_UNAVAILABLE", warning_codes)
