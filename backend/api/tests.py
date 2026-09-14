@@ -4963,15 +4963,18 @@ class SowImportTests(TestCase):
     # --- TESTE 6 ---
     def test_ai_invented_code_is_rejected_by_backend(self):
         with patch("master_data.services.sow_parser.service.get_ai_sow_parser") as mock_get_parser:
-            mock_get_parser.return_value.parse.return_value = [
-                {
-                    "cable_family_code": "FIB-DOES-NOT-EXIST",
-                    "quantity": 5,
-                    "paths": [],
-                    "warnings": [],
-                    "confidence_score": 0.99,
-                }
-            ]
+            mock_get_parser.return_value.parse.return_value = (
+                [
+                    {
+                        "cable_family_code": "FIB-DOES-NOT-EXIST",
+                        "quantity": 5,
+                        "paths": [],
+                        "warnings": [],
+                        "confidence_score": 0.99,
+                    }
+                ],
+                {"resolved_model": "mock/model", "latency_ms": 0, "retries": 0, "usage": {}},
+            )
             data = self.create_import("5x algum cabo nao catalogado")
             self.process(data["id"])
         item = self.get_items(data["id"])[0]
@@ -4982,9 +4985,10 @@ class SowImportTests(TestCase):
     # --- TESTE 7 ---
     def test_parser_ai_quantity_conflict_generates_warning_and_keeps_deterministic_value(self):
         with patch("master_data.services.sow_parser.service.get_ai_sow_parser") as mock_get_parser:
-            mock_get_parser.return_value.parse.return_value = [
-                {"quantity": 12, "paths": [], "warnings": [], "confidence_score": 0.9}
-            ]
+            mock_get_parser.return_value.parse.return_value = (
+                [{"quantity": 12, "paths": [], "warnings": [], "confidence_score": 0.9}],
+                {"resolved_model": "mock/model", "latency_ms": 0, "retries": 0, "usage": {}},
+            )
             data = self.create_import("10x CAT6 UTP up to 60m")
             self.process(data["id"])
         item = self.get_items(data["id"])[0]
