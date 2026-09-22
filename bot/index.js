@@ -1,5 +1,6 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
 const qrcode = require("qrcode-terminal");
+const qrcodeImage = require("qrcode");
 const pino = require("pino");
 const axios = require("axios");
 const http = require("http");
@@ -410,6 +411,10 @@ async function runOperationsPrintBroadcast(sock, overridePhone) {
 }
 
 let currentSock = null;
+// Último QR Code emitido pelo WhatsApp e quando. Servido em /qr — o QR roda
+// a cada ~20s, então o log nunca chega a tempo para alguém escanear.
+let lastQr = null;
+let lastQrAt = 0;
 
 // Horários dos envios automáticos, em America/Sao_Paulo (convertidos para UTC
 // fixo -3h — o Brasil não tem mais horário de verão desde 2019, então não
@@ -437,6 +442,42 @@ const lastRunDateKey = {};
 http
   .createServer((req, res) => {
     const url = new URL(req.url, "http://localhost");
+
+    // Rotas do QR Code vêm ANTES da checagem de conexão de propósito: o QR só
+    // existe enquanto o bot NÃO está conectado — é exatamente quando se precisa
+    // dele.
+    if (url.pathname === "/qr" || url.pathname === "/qr.png") {
+      if (currentSock) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end("<h2>Bot já está conectado ao WhatsApp.</h2>");
+        return;
+      }
+      if (!lastQr) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end('<meta http-equiv="refresh" content="3"><h2>Aguardando o WhatsApp gerar o QR Code…</h2>');
+        return;
+      }
+      if (url.pathname === "/qr.png") {
+        qrcodeImage
+          .toBuffer(lastQr, { width: 400, margin: 2 })
+          .then((buf) => {
+            res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" });
+            res.end(buf);
+          })
+          .catch((err) => res.writeHead(500).end(`Erro ao gerar QR: ${err.message}\n`));
+        return;
+      }
+      const age = Math.round((Date.now() - lastQrAt) / 1000);
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(
+        '<meta http-equiv="refresh" content="5">' +
+          '<body style="font-family:sans-serif;text-align:center;padding:24px">' +
+          "<h2>Escaneie no WhatsApp: Aparelhos conectados &gt; Conectar um aparelho</h2>" +
+          `<img src="/qr.png?t=${Date.now()}" width="400" height="400">` +
+          `<p>QR gerado há ${age}s — a página se atualiza sozinha a cada 5s.</p></body>`
+      );
+      return;
+    }
 
     if (!currentSock) {
       res.writeHead(503).end("Bot não está conectado ao WhatsApp no momento.\n");
@@ -496,7 +537,12 @@ async function start() {
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
     if (qr) {
+      // Guardado em memória para o endpoint /qr — o QR expira em ~20s, então
+      // ler do log nunca funciona a tempo; pela URL sempre se vê o atual.
+      lastQr = qr;
+      lastQrAt = Date.now();
       console.log("Escaneie o QR Code abaixo com o WhatsApp (Aparelhos conectados > Conectar um aparelho):");
+      console.log("Ou abra http://127.0.0.1:3001/qr no navegador da máquina.");
       qrcode.generate(qr, { small: true });
     }
     if (connection === "close") {
