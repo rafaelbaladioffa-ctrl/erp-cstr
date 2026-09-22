@@ -9,6 +9,20 @@ from .models import BotSubscriber
 
 @admin.register(BotSubscriber)
 class BotSubscriberAdmin(PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
-    list_display = ("name", "phone", "receives_daily_tasks", "receives_project_updates", "receives_operations_print", "is_active")
-    list_filter = ("is_active", "receives_daily_tasks", "receives_project_updates", "receives_operations_print")
+    list_display = (
+        "name",
+        "phone",
+        "receives_daily_tasks",
+        "receives_project_updates",
+        "receives_daily_project_report",
+        "receives_operations_print",
+        "is_active",
+    )
+    list_filter = (
+        "is_active",
+        "receives_daily_tasks",
+        "receives_project_updates",
+        "receives_daily_project_report",
+        "receives_operations_print",
+    )
     search_fields = ("name", "phone")

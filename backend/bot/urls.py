@@ -28,4 +28,9 @@ urlpatterns = [
         views.BotOperationsPrintRecipientsView.as_view(),
         name="bot-broadcast-operations-print-recipients",
     ),
+    path(
+        "broadcasts/daily-project-report/",
+        views.BotDailyProjectReportBroadcastView.as_view(),
+        name="bot-broadcast-daily-project-report",
+    ),
 ]

@@ -269,6 +269,68 @@ function formatProjectDailyUpdate(p, date, workdayStart, workdayEnd) {
   return lines.join("\n");
 }
 
+function formatDailyProjectReport(p, date, workdayStart, workdayEnd) {
+  const activitiesBlock = p.activities.length
+    ? p.activities.map((a) => `* ${a}`).join("\n")
+    : "Nenhuma atividade concluída registrada nesta data.";
+  const occurrencesLine = p.occurrences && p.occurrences.length
+    ? `* Pendências/Bloqueios: ${p.occurrences.join("; ")}`
+    : "* Pendências/Bloqueios: Nenhum apontamento no período";
+
+  const lines = [
+    "ATUALIZAÇÃO DIÁRIA DE PROJETO",
+    `Projeto: ${p.project}`,
+    `PO: ${p.po || "Não informado"}`,
+    `SITE: ${p.site || "Não informado"}`,
+    `Responsável AWS: ${p.responsible_client || "Não informado"}`,
+    `Responsável CSTR: ${p.responsible_cstr || "Não informado"}`,
+    `Data: ${formatDate(date)}`,
+    "Equipe alocada:",
+    p.collaborators.length ? p.collaborators.join(" | ") : "Não informada",
+    `Período de execução: ${workdayStart} às ${workdayEnd}`,
+    `Avanço geral do projeto: ${p.completion_percent}%`,
+    "",
+    "Atividades concluídas no dia:",
+    "",
+    activitiesBlock,
+    "",
+    "Status",
+    "",
+    `* Certificação: ${p.certification_done ? "Finalizada" : "Pendente"}`,
+    `* Projeto: ${p.project_finished ? "Finalizado" : "Em andamento"}`,
+    `* Avanço acumulado: ${p.completion_percent}%`,
+    occurrencesLine,
+    "",
+    "Observações:",
+    p.summary || "Nenhuma observação.",
+  ];
+  return lines.join("\n");
+}
+
+async function runDailyProjectReportBroadcast(sock, overridePhone) {
+  const data = await botGet("/bot/broadcasts/daily-project-report/");
+  if (!data.projects.length) {
+    console.log(`Atualização diária de projeto (15h): nenhum projeto ativo, nada a enviar.`);
+    return;
+  }
+  const recipients = overridePhone ? [{ name: "Teste", phone: overridePhone }] : data.recipients;
+  console.log(`Atualização diária de projeto (15h): enviando ${data.projects.length} projeto(s) para ${recipients.length} destinatário(s).`);
+  for (const r of recipients) {
+    const jid = phoneToJid(r.phone);
+    if (!jid) {
+      console.error(`Atualização diária de projeto (15h): telefone inválido para ${r.name} (${r.phone}), pulando.`);
+      continue;
+    }
+    for (const p of data.projects) {
+      try {
+        await sock.sendMessage(jid, { text: formatDailyProjectReport(p, data.date, data.workday_start, data.workday_end) });
+      } catch (err) {
+        console.error(`Atualização diária de projeto (15h): erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
+      }
+    }
+  }
+}
+
 async function runProjectUpdatesBroadcast(sock) {
   const data = await botGet("/bot/broadcasts/project-updates/");
   if (!data.projects.length) {
@@ -354,6 +416,7 @@ let currentSock = null;
 // precisa do pacote tzdata, nem sempre presente em imagens slim).
 const SCHEDULED_BROADCASTS = [
   { key: "daily-tasks", hourUTC: 13, minuteUTC: 0, run: runDailyTasksBroadcast }, // 10h
+  { key: "daily-project-report", hourUTC: 18, minuteUTC: 0, run: runDailyProjectReportBroadcast }, // 15h
   { key: "allocation", hourUTC: 21, minuteUTC: 0, run: runAllocationBroadcast }, // 18h
   { key: "project-updates", hourUTC: 20, minuteUTC: 0, run: runProjectUpdatesBroadcast }, // 17h
   // Print da Operação do Dia — 6x ao dia (8h, 10h, 12h, 14h, 16h, 18h). Cada
@@ -396,8 +459,9 @@ http
       res.writeHead(404).end();
       return;
     }
+    const overridePhone = url.searchParams.get("to") || undefined;
     broadcast
-      .run(currentSock)
+      .run(currentSock, overridePhone)
       .then(() => res.writeHead(200).end("Envio disparado — confira os logs do bot.\n"))
       .catch((err) => res.writeHead(500).end(`Erro: ${err.message}\n`));
   })

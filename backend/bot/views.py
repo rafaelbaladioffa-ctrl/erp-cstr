@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from api.operations import build_board_data
 from core.models import Collaborator, Site
 from core.phone_utils import phones_match
-from projects.models import Project, ProjectTask
+from projects.models import Project, ProjectOccurrence, ProjectTask
 from updates.models import DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import WORKDAY_END, WORKDAY_START, compute_progress_defaults
 
@@ -489,5 +489,105 @@ class BotProjectUpdatesBroadcastView(APIView):
                 "workday_end": WORKDAY_END,
                 "projects": projects,
                 "recipients": _active_subscribers("receives_project_updates"),
+            }
+        )
+
+
+class BotDailyProjectReportBroadcastView(APIView):
+    """GET /api/bot/broadcasts/daily-project-report/?date=<AAAA-MM-DD, opcional>
+
+    Envio automático das 15h: relatório completo de TODOS os projetos com
+    status=in_progress ("Ativo" na interface, independente de terem alocação
+    registrada na data) — para os destinatários cadastrados com
+    receives_daily_project_report=True. Uma mensagem por projeto, no layout
+    "ATUALIZAÇÃO DIÁRIA DE PROJETO"."""
+
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        target_date, error = _parse_target_date(request, default_days_ahead=0)
+        if error:
+            return error
+
+        projects_qs = Project.objects.filter(
+            status=Project.STATUS_IN_PROGRESS, is_active=True
+        ).select_related("site", "responsible_client__person", "responsible_cstr__person").order_by("name")
+
+        project_ids = [p.id for p in projects_qs]
+        existing_updates = {
+            u.project_id: u
+            for u in ProjectDailyUpdate.objects.filter(
+                project_id__in=project_ids, date=target_date
+            ).prefetch_related("collaborators__person")
+        }
+
+        # Pendências/Bloqueios: ocorrências ainda não resolvidas (aberta ou em
+        # andamento) do projeto — sem data-corte, é um retrato do estado atual,
+        # não algo restrito ao dia do relatório.
+        open_occurrences = {}
+        for occurrence in ProjectOccurrence.objects.filter(
+            project_id__in=project_ids,
+            status__in=(ProjectOccurrence.STATUS_OPEN, ProjectOccurrence.STATUS_IN_PROGRESS),
+        ).order_by("-occurred_at", "-id"):
+            open_occurrences.setdefault(occurrence.project_id, []).append(occurrence.title)
+
+        status_labels = dict(ProjectTask.STATUS_CHOICES)
+        projects = []
+        for project in projects_qs:
+            defaults = compute_progress_defaults(project, target_date)
+            existing = existing_updates.get(project.id)
+
+            if existing:
+                collaborator_names = list(
+                    existing.collaborators.order_by("person__name").values_list("person__name", flat=True)
+                )
+                summary = existing.summary or None
+            else:
+                collaborator_names = list(
+                    Collaborator.objects.filter(pk__in=defaults["collaborator_ids"])
+                    .select_related("person")
+                    .order_by("person__name")
+                    .values_list("person__name", flat=True)
+                )
+                summary = None
+
+            # Mesmo critério de "executada hoje" usado em compute_progress_defaults,
+            # mas aqui só o nome da tarefa (sem sufixo de status) — o layout do
+            # bot já deixa implícito que é uma lista de tarefas concluídas.
+            all_tasks = list(project.project_tasks.select_related("task"))
+
+            def completed_today(pt):
+                if pt.status != ProjectTask.STATUS_COMPLETED:
+                    return False
+                reference = pt.actual_end or pt.updated_at
+                return bool(reference) and timezone.localtime(reference).date() == target_date
+
+            activities = [pt.display_name for pt in all_tasks if completed_today(pt)]
+
+            projects.append(
+                {
+                    "project": project.name,
+                    "po": project.po or None,
+                    "site": project.site.code or project.site.name if project.site_id else None,
+                    "responsible_client": project.responsible_client.person.name if project.responsible_client_id else None,
+                    "responsible_cstr": project.responsible_cstr.person.name if project.responsible_cstr_id else None,
+                    "collaborators": collaborator_names,
+                    "completion_percent": defaults["percent"],
+                    "activities": activities,
+                    "certification_done": project.certification_status == Project.CERTIFICATION_FINISHED,
+                    "project_finished": defaults["project_finished"],
+                    "occurrences": open_occurrences.get(project.id, []),
+                    "summary": summary,
+                }
+            )
+
+        return Response(
+            {
+                "date": target_date.isoformat(),
+                "workday_start": WORKDAY_START,
+                "workday_end": WORKDAY_END,
+                "projects": projects,
+                "recipients": _active_subscribers("receives_daily_project_report"),
             }
         )

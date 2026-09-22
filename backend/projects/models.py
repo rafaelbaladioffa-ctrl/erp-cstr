@@ -71,6 +71,20 @@ class Project(TimestampedModel):
         limit_choices_to=models.Q(kind=Responsible.KIND_CLIENT),
     )
     status = models.CharField("status", max_length=20, choices=STATUS_CHOICES, default=STATUS_PLANNING)
+
+    CERTIFICATION_PENDING = "pending"
+    CERTIFICATION_FINISHED = "finished"
+    CERTIFICATION_STATUS_CHOICES = (
+        (CERTIFICATION_PENDING, "Pendente"),
+        (CERTIFICATION_FINISHED, "Finalizada"),
+    )
+    # Status real de certificação do projeto — substitui a heurística antiga
+    # (procurar "certifica" no nome de tarefas concluídas) usada no relatório
+    # diário de WhatsApp; editado manualmente pela equipe responsável.
+    certification_status = models.CharField(
+        "status de certificação", max_length=20, choices=CERTIFICATION_STATUS_CHOICES, default=CERTIFICATION_PENDING
+    )
+
     planned_start = models.DateField("início previsto", null=True, blank=True)
     planned_end = models.DateField("término previsto", null=True, blank=True)
     actual_start = models.DateField("início real", null=True, blank=True)

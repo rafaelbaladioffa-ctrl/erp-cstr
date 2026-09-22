@@ -24,6 +24,11 @@ class BotSubscriber(PhoneNormalizedModel, TimestampedModel):
         default=True,
         help_text="Envio automático de uma imagem com o painel da Central de Operações (Operação do Dia).",
     )
+    receives_daily_project_report = models.BooleanField(
+        "recebe atualização diária de projeto (15h)",
+        default=True,
+        help_text="Envio automático às 15h com o relatório completo de cada projeto ativo (uma mensagem por projeto).",
+    )
     is_active = models.BooleanField("ativo", default=True)
 
     class Meta:

@@ -1421,6 +1421,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     responsible_cstr_name = serializers.SerializerMethodField()
     responsible_client_name = serializers.SerializerMethodField()
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    certification_status_display = serializers.CharField(source="get_certification_status_display", read_only=True)
     total_tasks = serializers.SerializerMethodField()
     completed_tasks = serializers.SerializerMethodField()
     worked_hours = serializers.SerializerMethodField()
@@ -1451,6 +1452,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             "notes",
             "status",
             "status_display",
+            "certification_status",
+            "certification_status_display",
             "planned_start",
             "planned_end",
             "actual_start",
