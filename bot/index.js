@@ -305,6 +305,7 @@ function formatDailyProjectReport(p, date) {
     `* Avanço atual: ${p.completion_percent}%`,
     deltaLine,
     "* Status: Em andamento",
+    `* Previsão de término: ${p.planned_end ? formatDate(p.planned_end) : "Não informada"}`,
     `* Certificação: ${p.certification_label}`,
     `* Projeto finalizado: ${p.project_finished ? "Sim" : "Não"}`,
     "",

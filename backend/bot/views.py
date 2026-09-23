@@ -570,6 +570,7 @@ class BotDailyProjectReportBroadcastView(APIView):
                     # None no primeiro envio de um projeto: ainda não existe
                     # retrato anterior, então não há delta honesto a mostrar.
                     "daily_delta": None if previous is None else percent - previous,
+                    "planned_end": project.planned_end.strftime("%Y-%m-%d") if project.planned_end else None,
                     "certification_label": "Concluída" if project.id in certified_ids else "Pendente",
                     "project_finished": defaults["project_finished"],
                     "occurrences": open_occurrences.get(project.id, []),
