@@ -1,6 +1,8 @@
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
+from bot.models import BotSubscriber
 from core.models import Company
 from projects.models import Project, ProjectOccurrence
 
@@ -86,3 +88,37 @@ class BotDailyProjectReportBroadcastViewTests(TestCase):
         response = self.call()
 
         self.assertEqual(response.data["projects"][0]["occurrences"], [])
+
+    def test_group_and_phone_recipients_are_both_listed(self):
+        Project.objects.create(company=self.company, name="Projeto", status=Project.STATUS_IN_PROGRESS)
+        BotSubscriber.objects.create(name="Gestor", phone="11999998888", receives_daily_project_report=True)
+        BotSubscriber.objects.create(
+            name="Grupo Obra", group_jid="120363111111111111@g.us", receives_daily_project_report=True
+        )
+        BotSubscriber.objects.create(
+            name="Não recebe", phone="11888887777", receives_daily_project_report=False
+        )
+
+        response = self.call()
+
+        recipients = {r["name"]: r for r in response.data["recipients"]}
+        self.assertEqual(set(recipients), {"Gestor", "Grupo Obra"})
+        self.assertEqual(recipients["Grupo Obra"]["group_jid"], "120363111111111111@g.us")
+        self.assertEqual(recipients["Gestor"]["group_jid"], "")
+
+
+class BotSubscriberValidationTests(TestCase):
+    """BotSubscriber.clean(): um destinatário é uma pessoa (telefone) OU um
+    grupo do WhatsApp (group_jid terminado em @g.us)."""
+
+    def test_requires_phone_or_group(self):
+        with self.assertRaises(ValidationError):
+            BotSubscriber(name="Sem destino").full_clean()
+
+    def test_rejects_group_jid_without_g_us_suffix(self):
+        with self.assertRaises(ValidationError):
+            BotSubscriber(name="Grupo", group_jid="120363111111111111").full_clean()
+
+    def test_accepts_group_without_phone(self):
+        subscriber = BotSubscriber(name="Grupo Obra", group_jid="120363111111111111@g.us")
+        subscriber.full_clean()  # não deve levantar

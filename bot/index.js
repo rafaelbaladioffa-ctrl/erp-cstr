@@ -152,6 +152,13 @@ function formatProjectUpdate(p) {
   return lines.join("\n");
 }
 
+// Destinatário pode ser uma pessoa (telefone) ou um grupo do WhatsApp
+// (group_jid, terminado em "@g.us" — ver BotSubscriber no backend).
+function recipientToJid(recipient) {
+  if (recipient && recipient.group_jid) return recipient.group_jid;
+  return phoneToJid(recipient && recipient.phone);
+}
+
 function phoneToJid(rawPhone) {
   const digits = (rawPhone || "").replace(/\D/g, "");
   if (digits.length >= 12) return `${digits}@s.whatsapp.net`;
@@ -211,7 +218,7 @@ async function sendToRecipients(sock, recipients, text, label) {
     return;
   }
   for (const r of recipients) {
-    const jid = phoneToJid(r.phone);
+    const jid = recipientToJid(r);
     if (!jid) {
       console.error(`${label}: telefone inválido para ${r.name} (${r.phone}), pulando.`);
       continue;
@@ -317,7 +324,7 @@ async function runDailyProjectReportBroadcast(sock, overridePhone) {
   const recipients = overridePhone ? [{ name: "Teste", phone: overridePhone }] : data.recipients;
   console.log(`Atualização diária de projeto (15h): enviando ${data.projects.length} projeto(s) para ${recipients.length} destinatário(s).`);
   for (const r of recipients) {
-    const jid = phoneToJid(r.phone);
+    const jid = recipientToJid(r);
     if (!jid) {
       console.error(`Atualização diária de projeto (15h): telefone inválido para ${r.name} (${r.phone}), pulando.`);
       continue;
@@ -340,7 +347,7 @@ async function runProjectUpdatesBroadcast(sock) {
   }
   console.log(`Atualização de projetos (17h): enviando ${data.projects.length} projeto(s) para ${data.recipients.length} destinatário(s).`);
   for (const r of data.recipients) {
-    const jid = phoneToJid(r.phone);
+    const jid = recipientToJid(r);
     if (!jid) {
       console.error(`Atualização de projetos (17h): telefone inválido para ${r.name} (${r.phone}), pulando.`);
       continue;
@@ -397,7 +404,7 @@ async function runOperationsPrintBroadcast(sock, overridePhone) {
 
   console.log(`${label}: enviando para ${recipients.length} destinatário(s).`);
   for (const r of recipients) {
-    const jid = phoneToJid(r.phone);
+    const jid = recipientToJid(r);
     if (!jid) {
       console.error(`${label}: telefone inválido para ${r.name} (${r.phone}), pulando.`);
       continue;
@@ -481,6 +488,21 @@ http
 
     if (!currentSock) {
       res.writeHead(503).end("Bot não está conectado ao WhatsApp no momento.\n");
+      return;
+    }
+
+    // Lista os grupos em que o bot é membro, com o JID de cada um — é assim
+    // que se descobre o valor pra preencher em BotSubscriber.group_jid (o
+    // WhatsApp não mostra esse identificador na interface).
+    if (url.pathname === "/groups") {
+      currentSock
+        .groupFetchAllParticipating()
+        .then((groups) => {
+          const list = Object.values(groups).map((g) => ({ jid: g.id, nome: g.subject }));
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify(list, null, 2));
+        })
+        .catch((err) => res.writeHead(500).end(`Erro ao listar grupos: ${err.message}\n`));
       return;
     }
 

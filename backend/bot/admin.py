@@ -12,6 +12,7 @@ class BotSubscriberAdmin(PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, Mode
     list_display = (
         "name",
         "phone",
+        "group_jid",
         "receives_daily_tasks",
         "receives_project_updates",
         "receives_daily_project_report",

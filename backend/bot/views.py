@@ -333,10 +333,12 @@ def _parse_target_date(request, default_days_ahead=0):
 
 
 def _active_subscribers(flag):
+    """Destinatários ativos de um tipo de envio. `group_jid` preenchido
+    significa grupo do WhatsApp — o bot usa ele no lugar do telefone."""
     return list(
         BotSubscriber.objects.filter(is_active=True, **{flag: True})
         .order_by("name")
-        .values("name", "phone")
+        .values("name", "phone", "group_jid")
     )
 
 
