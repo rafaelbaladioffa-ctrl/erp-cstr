@@ -489,12 +489,12 @@ const SCHEDULED_BROADCASTS = [
   // Print da Operação do Dia — 6x ao dia (8h, 10h, 12h, 14h, 16h, 18h). Cada
   // horário precisa de uma key própria: são disparos independentes no mesmo
   // dia, não um único envio diário como os de cima.
-  { key: "operations-print-08", hourUTC: 11, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
-  { key: "operations-print-10", hourUTC: 13, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
-  { key: "operations-print-12", hourUTC: 15, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
-  { key: "operations-print-14", hourUTC: 17, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
-  { key: "operations-print-16", hourUTC: 19, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
-  { key: "operations-print-18", hourUTC: 21, minuteUTC: 0, run: (sock) => runOperationsPrintBroadcast(sock) },
+  { key: "operations-print-08", hourUTC: 11, minuteUTC: 0, run: runOperationsPrintBroadcast },
+  { key: "operations-print-10", hourUTC: 13, minuteUTC: 0, run: runOperationsPrintBroadcast },
+  { key: "operations-print-12", hourUTC: 15, minuteUTC: 0, run: runOperationsPrintBroadcast },
+  { key: "operations-print-14", hourUTC: 17, minuteUTC: 0, run: runOperationsPrintBroadcast },
+  { key: "operations-print-16", hourUTC: 19, minuteUTC: 0, run: runOperationsPrintBroadcast },
+  { key: "operations-print-18", hourUTC: 21, minuteUTC: 0, run: runOperationsPrintBroadcast },
 ];
 const lastRunDateKey = {};
 
