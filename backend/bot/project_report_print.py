@@ -19,6 +19,14 @@ class ProjectReportPrintView(APIView):
             return error
 
         projects = build_daily_project_report_projects(target_date)
+        # Uso exclusivo dos testes de arte: preserva a ordem normal dos
+        # projetos ativos, exibindo somente os primeiros N quando solicitado.
+        limit_value = request.query_params.get("limit")
+        if limit_value:
+            try:
+                projects = projects[: max(1, int(limit_value))]
+            except (TypeError, ValueError):
+                pass
         for project in projects:
             project["risks_label"] = "; ".join(project["occurrences"]) or "Nenhum bloqueio relevante identificado no período"
             project["delta_label"] = (

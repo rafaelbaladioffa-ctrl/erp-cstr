@@ -339,7 +339,7 @@ async function runDailyProjectReportBroadcast(sock, overridePhone) {
   }
 }
 
-async function captureDailyProjectReportPrint(date) {
+async function captureDailyProjectReportPrint(date, projectLimit) {
   const browser = await puppeteer.launch({
     executablePath: CHROMIUM_PATH,
     headless: true,
@@ -348,8 +348,12 @@ async function captureDailyProjectReportPrint(date) {
   try {
     const page = await browser.newPage();
     await page.setExtraHTTPHeaders({ "X-Bot-Secret": API_SECRET });
-    await page.setViewport({ width: 1500, height: 1000, deviceScaleFactor: 1 });
-    await page.goto(`${API_URL}/bot/daily-project-report-print/?date=${encodeURIComponent(date)}`, { waitUntil: "networkidle0", timeout: 30000 });
+    // Largura vertical para a prévia do WhatsApp manter letras legíveis no celular.
+    // A captura full-page usa a largura do documento. Um viewport estreito
+    // evita que o JPEG inclua uma faixa vazia à direita da arte compacta.
+    await page.setViewport({ width: 780, height: 1200, deviceScaleFactor: 1 });
+    const limitQuery = projectLimit ? `&limit=${encodeURIComponent(projectLimit)}` : "";
+    await page.goto(`${API_URL}/bot/daily-project-report-print/?date=${encodeURIComponent(date)}${limitQuery}`, { waitUntil: "networkidle0", timeout: 30000 });
     const shot = await page.screenshot({ type: "jpeg", quality: 88, fullPage: true });
     return Buffer.isBuffer(shot) ? shot : Buffer.from(shot);
   } finally {
@@ -359,14 +363,14 @@ async function captureDailyProjectReportPrint(date) {
 
 // Disparo manual para aprovar apenas a arte no WhatsApp, sem reenviar os
 // relatórios de texto. O agendamento das 15h continua inalterado.
-async function runDailyProjectReportImageBroadcast(sock, overridePhone) {
+async function runDailyProjectReportImageBroadcast(sock, overridePhone, projectLimit) {
   const data = await botGet("/bot/broadcasts/daily-project-report/");
   if (!data.projects.length) {
     console.log("Imagem do relatório das 15h: nenhum projeto ativo, nada a enviar.");
     return;
   }
   const recipients = overridePhone ? [{ name: "Teste", phone: overridePhone }] : data.recipients;
-  const image = await captureDailyProjectReportPrint(data.date);
+  const image = await captureDailyProjectReportPrint(data.date, projectLimit);
   for (const r of recipients) {
     const jid = recipientToJid(r);
     if (!jid) continue;
@@ -563,7 +567,9 @@ http
 
     if (url.pathname === "/trigger-daily-project-report-image") {
       const overridePhone = url.searchParams.get("to") || undefined;
-      runDailyProjectReportImageBroadcast(currentSock, overridePhone)
+      const requestedLimit = Number.parseInt(url.searchParams.get("limit"), 10);
+      const projectLimit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? requestedLimit : undefined;
+      runDailyProjectReportImageBroadcast(currentSock, overridePhone, projectLimit)
         .then(() => res.writeHead(200).end("Imagem JPEG disparada — confira os logs do bot.\n"))
         .catch((err) => res.writeHead(500).end(`Erro: ${err.message}\n`));
       return;
