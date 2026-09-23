@@ -11,7 +11,7 @@ import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { PERMS, hasPerm } from "../utils/permissions";
 
-type TabKey = "active" | "history";
+type TabKey = "in_progress" | "paused" | "planning" | "completed";
 
 function formatHours(hours: number) {
   const totalMinutes = Math.round(hours * 60);
@@ -70,15 +70,14 @@ export default function ProjectsList() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab: TabKey = searchParams.get("tab") === "history" ? "history" : "active";
+  const tab: TabKey = (searchParams.get("tab") as TabKey) || "in_progress";
   function setTab(next: TabKey) {
-    setSearchParams(next === "history" ? { tab: "history" } : {}, { replace: true });
+    setSearchParams(next === "in_progress" ? {} : { tab: next }, { replace: true });
   }
   const [search, setSearch] = useState("");
   const [clientFilter, setClientFilter] = useState("");
   const [siteFilter, setSiteFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [formOpen, setFormOpen] = useState(false);
@@ -113,17 +112,24 @@ export default function ProjectsList() {
 
   useEffect(() => {
     setPage(1);
-  }, [tab, search, clientFilter, siteFilter, categoryFilter, statusFilter]);
+  }, [tab, search, clientFilter, siteFilter, categoryFilter]);
 
-  const scoped = useMemo(
-    () => projects.filter((p) => (tab === "active" ? p.status !== "completed" && p.status !== "canceled" : p.status === "completed" || p.status === "canceled")),
-    [projects, tab]
-  );
+  const scoped = useMemo(() => {
+    const statusMap: Record<TabKey, string | string[]> = {
+      in_progress: "in_progress",
+      paused: "paused",
+      planning: "planning",
+      completed: ["completed", "canceled"],
+    };
+    const target = statusMap[tab];
+    return projects.filter((p) =>
+      Array.isArray(target) ? target.includes(p.status) : p.status === target
+    );
+  }, [projects, tab]);
 
   const clientOptions = useMemo(() => Array.from(new Set(scoped.map((p) => p.client_name).filter(Boolean))) as string[], [scoped]);
   const siteOptions = useMemo(() => Array.from(new Set(scoped.map((p) => p.site_name).filter(Boolean))) as string[], [scoped]);
   const categoryOptions = useMemo(() => Array.from(new Set(scoped.map((p) => p.category_name).filter(Boolean))) as string[], [scoped]);
-  const statusOptions = useMemo(() => Array.from(new Map(scoped.map((p) => [p.status, p.status_display])).entries()), [scoped]);
 
   const filtered = useMemo(() => {
     return scoped.filter((p) => {
@@ -131,16 +137,16 @@ export default function ProjectsList() {
       if (clientFilter && p.client_name !== clientFilter) return false;
       if (siteFilter && p.site_name !== siteFilter) return false;
       if (categoryFilter && p.category_name !== categoryFilter) return false;
-      if (statusFilter && p.status !== statusFilter) return false;
       return true;
     });
-  }, [scoped, search, clientFilter, siteFilter, categoryFilter, statusFilter]);
+  }, [scoped, search, clientFilter, siteFilter, categoryFilter]);
 
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  const activeCount = projects.filter((p) => p.status !== "completed" && p.status !== "canceled").length;
   const inProgressCount = projects.filter((p) => p.status === "in_progress").length;
   const pausedCount = projects.filter((p) => p.status === "paused").length;
+  const planningCount = projects.filter((p) => p.status === "planning").length;
+  const completedCount = projects.filter((p) => p.status === "completed" || p.status === "canceled").length;
   const avgProgress = scoped.length ? Math.round(scoped.reduce((sum, p) => sum + p.progress_percent, 0) / scoped.length) : 0;
   const totalHours = scoped.reduce((sum, p) => sum + p.worked_hours, 0);
 
@@ -161,19 +167,25 @@ export default function ProjectsList() {
       />
 
       <div className="stat-grid">
-        <StatCard label="Projetos ativos" value={activeCount} hint={`${inProgressCount} em andamento`} />
-        <StatCard label="Progresso médio" value={`${avgProgress}%`} hint="do portfólio exibido" />
-        <StatCard label="Horas registradas" value={formatHours(totalHours)} hint="tempo acumulado" />
-        <StatCard label="Requer atenção" value={pausedCount} hint="projetos pausados" />
+        <StatCard label="Em andamento" value={inProgressCount} hint="projetos ativos" />
+        <StatCard label="Pausados" value={pausedCount} hint="aguardando retomada" />
+        <StatCard label="Planejamentos" value={planningCount} hint="em preparação" />
+        <StatCard label="Finalizados" value={completedCount} hint="concluídos ou cancelados" />
       </div>
 
       <div className="card">
         <div className="tabs" style={{ padding: "16px 20px 0", marginBottom: 0, borderBottom: "none" }}>
-          <button className={`tab-btn${tab === "active" ? " active" : ""}`} onClick={() => setTab("active")}>
+          <button className={`tab-btn${tab === "in_progress" ? " active" : ""}`} onClick={() => setTab("in_progress")}>
             Ativos
           </button>
-          <button className={`tab-btn${tab === "history" ? " active" : ""}`} onClick={() => setTab("history")}>
-            Históricos
+          <button className={`tab-btn${tab === "paused" ? " active" : ""}`} onClick={() => setTab("paused")}>
+            Pausados
+          </button>
+          <button className={`tab-btn${tab === "planning" ? " active" : ""}`} onClick={() => setTab("planning")}>
+            Planejamentos
+          </button>
+          <button className={`tab-btn${tab === "completed" ? " active" : ""}`} onClick={() => setTab("completed")}>
+            Finalizados
           </button>
         </div>
         <div style={{ borderBottom: "1px solid var(--border)" }} />
@@ -231,17 +243,6 @@ export default function ProjectsList() {
               {categoryOptions.map((c) => (
                 <option key={c} value={c}>
                   {c}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field-group">
-            <span className="field-label">Status</span>
-            <select className="select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">Todos</option>
-              {statusOptions.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
                 </option>
               ))}
             </select>
