@@ -40,8 +40,6 @@ export interface Project {
   notes: string;
   status: string;
   status_display: string;
-  certification_status: string;
-  certification_status_display: string;
   planned_start: string | null;
   planned_end: string | null;
   actual_start: string | null;

@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from api.operations import build_board_data
 from core.models import Collaborator, Site
 from core.phone_utils import phones_match
-from projects.models import Project, ProjectOccurrence, ProjectTask
+from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectProgressSnapshot, ProjectTask
 from updates.models import DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import WORKDAY_END, WORKDAY_START, compute_progress_defaults
 
@@ -534,38 +534,30 @@ class BotDailyProjectReportBroadcastView(APIView):
         ).order_by("-occurred_at", "-id"):
             open_occurrences.setdefault(occurrence.project_id, []).append(occurrence.title)
 
-        status_labels = dict(ProjectTask.STATUS_CHOICES)
+        # Certificação é derivada, não digitada: um projeto conta como
+        # certificado quando tem ao menos um anexo (o laudo/relatório de
+        # certificação é justamente o que se anexa ao projeto).
+        certified_ids = set(
+            ProjectAttachment.objects.filter(project_id__in=project_ids)
+            .values_list("project_id", flat=True)
+            .distinct()
+        )
+
+        # "Avanço no dia" = avanço de hoje menos o do retrato diário anterior.
+        # Busca o retrato mais recente ANTES da data alvo (e não o de ontem
+        # especificamente) para que fim de semana/feriado sem envio não zere a
+        # comparação — o delta passa a ser "desde a última vez que medimos".
+        previous_percent = {}
+        for snapshot in ProjectProgressSnapshot.objects.filter(
+            project_id__in=project_ids, date__lt=target_date
+        ).order_by("project_id", "-date"):
+            previous_percent.setdefault(snapshot.project_id, snapshot.percent)
+
         projects = []
         for project in projects_qs:
             defaults = compute_progress_defaults(project, target_date)
-            existing = existing_updates.get(project.id)
-
-            if existing:
-                collaborator_names = list(
-                    existing.collaborators.order_by("person__name").values_list("person__name", flat=True)
-                )
-                summary = existing.summary or None
-            else:
-                collaborator_names = list(
-                    Collaborator.objects.filter(pk__in=defaults["collaborator_ids"])
-                    .select_related("person")
-                    .order_by("person__name")
-                    .values_list("person__name", flat=True)
-                )
-                summary = None
-
-            # Mesmo critério de "executada hoje" usado em compute_progress_defaults,
-            # mas aqui só o nome da tarefa (sem sufixo de status) — o layout do
-            # bot já deixa implícito que é uma lista de tarefas concluídas.
-            all_tasks = list(project.project_tasks.select_related("task"))
-
-            def completed_today(pt):
-                if pt.status != ProjectTask.STATUS_COMPLETED:
-                    return False
-                reference = pt.actual_end or pt.updated_at
-                return bool(reference) and timezone.localtime(reference).date() == target_date
-
-            activities = [pt.display_name for pt in all_tasks if completed_today(pt)]
+            percent = defaults["percent"]
+            previous = previous_percent.get(project.id)
 
             projects.append(
                 {
@@ -574,21 +566,25 @@ class BotDailyProjectReportBroadcastView(APIView):
                     "site": project.site.code or project.site.name if project.site_id else None,
                     "responsible_client": project.responsible_client.person.name if project.responsible_client_id else None,
                     "responsible_cstr": project.responsible_cstr.person.name if project.responsible_cstr_id else None,
-                    "collaborators": collaborator_names,
-                    "completion_percent": defaults["percent"],
-                    "activities": activities,
-                    "certification_done": project.certification_status == Project.CERTIFICATION_FINISHED,
+                    "completion_percent": percent,
+                    # None no primeiro envio de um projeto: ainda não existe
+                    # retrato anterior, então não há delta honesto a mostrar.
+                    "daily_delta": None if previous is None else percent - previous,
+                    "certification_label": "Concluída" if project.id in certified_ids else "Pendente",
                     "project_finished": defaults["project_finished"],
                     "occurrences": open_occurrences.get(project.id, []),
-                    "summary": summary,
                 }
+            )
+
+            # Grava o retrato de hoje DEPOIS de calcular o delta. Rodar de novo
+            # no mesmo dia só atualiza o valor, sem afetar a comparação.
+            ProjectProgressSnapshot.objects.update_or_create(
+                project=project, date=target_date, defaults={"percent": percent}
             )
 
         return Response(
             {
                 "date": target_date.isoformat(),
-                "workday_start": WORKDAY_START,
-                "workday_end": WORKDAY_END,
                 "projects": projects,
                 "recipients": _active_subscribers("receives_daily_project_report"),
             }

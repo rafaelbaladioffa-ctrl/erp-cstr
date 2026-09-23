@@ -1,20 +1,28 @@
+from datetime import timedelta
+
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from bot.models import BotSubscriber
 from core.models import Company
-from projects.models import Project, ProjectOccurrence
+from projects.models import (
+    Project,
+    ProjectAttachment,
+    ProjectOccurrence,
+    ProjectProgressSnapshot,
+)
 
 
 @override_settings(WHATSAPP_BOT_SECRET="test-bot-secret")
 class BotDailyProjectReportBroadcastViewTests(TestCase):
     """GET /api/bot/broadcasts/daily-project-report/ — envio automático das
-    15h. Cobre os 3 ajustes feitos nesta sessão sobre a implementação
-    pré-existente (não commitada): (1) filtro por status=in_progress em vez
-    de só is_active; (2) Project.certification_status real em vez da
-    heurística por nome de tarefa; (3) Pendências/Bloqueios vindas de
-    ProjectOccurrence em aberto, com fallback pro texto padrão."""
+    15h. Cobre as regras que alimentam a mensagem: só projetos com
+    status=in_progress entram; certificação é derivada da existência de
+    anexo no projeto; Riscos/Bloqueios vêm das Ocorrências em aberto; e o
+    "avanço no dia" compara com o retrato diário anterior."""
 
     def setUp(self):
         self.client_api = APIClient()
@@ -48,25 +56,43 @@ class BotDailyProjectReportBroadcastViewTests(TestCase):
         names = [p["project"] for p in response.data["projects"]]
         self.assertEqual(names, [active.name])
 
-    def test_certification_status_reflects_real_field_not_heuristic(self):
-        pending = Project.objects.create(
-            company=self.company,
-            name="Projeto Certificação Pendente",
-            status=Project.STATUS_IN_PROGRESS,
-            certification_status=Project.CERTIFICATION_PENDING,
+    def test_certification_derives_from_project_attachment(self):
+        sem_anexo = Project.objects.create(
+            company=self.company, name="Projeto Sem Anexo", status=Project.STATUS_IN_PROGRESS
         )
-        finished = Project.objects.create(
-            company=self.company,
-            name="Projeto Certificação Finalizada",
-            status=Project.STATUS_IN_PROGRESS,
-            certification_status=Project.CERTIFICATION_FINISHED,
+        com_anexo = Project.objects.create(
+            company=self.company, name="Projeto Com Anexo", status=Project.STATUS_IN_PROGRESS
+        )
+        ProjectAttachment.objects.create(
+            project=com_anexo, file=SimpleUploadedFile("certificacao.pdf", b"conteudo")
         )
 
         response = self.call()
 
         by_name = {p["project"]: p for p in response.data["projects"]}
-        self.assertFalse(by_name[pending.name]["certification_done"])
-        self.assertTrue(by_name[finished.name]["certification_done"])
+        self.assertEqual(by_name[sem_anexo.name]["certification_label"], "Pendente")
+        self.assertEqual(by_name[com_anexo.name]["certification_label"], "Concluída")
+
+    def test_daily_delta_is_none_on_first_run_then_compares_to_snapshot(self):
+        project = Project.objects.create(
+            company=self.company, name="Projeto Delta", status=Project.STATUS_IN_PROGRESS
+        )
+
+        # 1º envio: não existe retrato anterior, então não há delta.
+        first = self.call()
+        self.assertIsNone(first.data["projects"][0]["daily_delta"])
+        snapshot = ProjectProgressSnapshot.objects.get(project=project)
+        self.assertEqual(snapshot.date, timezone.localdate())
+
+        # Simula o retrato de ontem com 10% a menos do que o avanço de hoje.
+        current = first.data["projects"][0]["completion_percent"]
+        ProjectProgressSnapshot.objects.create(
+            project=project, date=timezone.localdate() - timedelta(days=1), percent=max(current - 10, 0)
+        )
+
+        second = self.call()
+
+        self.assertEqual(second.data["projects"][0]["daily_delta"], current - max(current - 10, 0))
 
     def test_open_occurrences_used_as_pendencias(self):
         project = Project.objects.create(

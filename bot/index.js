@@ -277,40 +277,39 @@ function formatProjectDailyUpdate(p, date, workdayStart, workdayEnd) {
   return lines.join("\n");
 }
 
-function formatDailyProjectReport(p, date, workdayStart, workdayEnd) {
-  const activitiesBlock = p.activities.length
-    ? p.activities.map((a) => `* ${a}`).join("\n")
-    : "Nenhuma atividade concluída registrada nesta data.";
-  const occurrencesLine = p.occurrences && p.occurrences.length
-    ? `* Pendências/Bloqueios: ${p.occurrences.join("; ")}`
-    : "* Pendências/Bloqueios: Nenhum apontamento no período";
+function formatDailyProjectReport(p, date) {
+  // Sem retrato anterior (primeiro envio do projeto) não há delta honesto a
+  // mostrar — melhor omitir o número do que inventar um "+0%".
+  const deltaLine =
+    p.daily_delta === null || p.daily_delta === undefined
+      ? "* Avanço no dia: primeiro registro"
+      : `* Avanço no dia: ${p.daily_delta >= 0 ? "+" : ""}${p.daily_delta}%`;
+
+  // Riscos/Bloqueios vêm das Ocorrências em aberto do projeto.
+  const risksBlock =
+    p.occurrences && p.occurrences.length
+      ? p.occurrences.map((o) => `* ${o}`).join("\n")
+      : "Nenhum bloqueio relevante identificado no período";
 
   const lines = [
-    "ATUALIZAÇÃO DIÁRIA DE PROJETO",
+    "*ATUALIZAÇÃO DIÁRIA DE PROJETO*",
+    `Data: ${formatDate(date)}`,
+    "",
     `Projeto: ${p.project}`,
     `PO: ${p.po || "Não informado"}`,
-    `SITE: ${p.site || "Não informado"}`,
-    `Responsável AWS: ${p.responsible_client || "Não informado"}`,
+    `Site: ${p.site || "Não informado"}`,
     `Responsável CSTR: ${p.responsible_cstr || "Não informado"}`,
-    `Data: ${formatDate(date)}`,
-    "Equipe alocada:",
-    p.collaborators.length ? p.collaborators.join(" | ") : "Não informada",
-    `Período de execução: ${workdayStart} às ${workdayEnd}`,
-    `Avanço geral do projeto: ${p.completion_percent}%`,
+    `Responsável A100: ${p.responsible_client || ""}`,
     "",
-    "Atividades concluídas no dia:",
+    "📊 STATUS DO PROJETO",
+    `* Avanço atual: ${p.completion_percent}%`,
+    deltaLine,
+    "* Status: Em andamento",
+    `* Certificação: ${p.certification_label}`,
+    `* Projeto finalizado: ${p.project_finished ? "Sim" : "Não"}`,
     "",
-    activitiesBlock,
-    "",
-    "Status",
-    "",
-    `* Certificação: ${p.certification_done ? "Finalizada" : "Pendente"}`,
-    `* Projeto: ${p.project_finished ? "Finalizado" : "Em andamento"}`,
-    `* Avanço acumulado: ${p.completion_percent}%`,
-    occurrencesLine,
-    "",
-    "Observações:",
-    p.summary || "Nenhuma observação.",
+    "⚠️ Riscos / Bloqueios",
+    risksBlock,
   ];
   return lines.join("\n");
 }
@@ -331,7 +330,7 @@ async function runDailyProjectReportBroadcast(sock, overridePhone) {
     }
     for (const p of data.projects) {
       try {
-        await sock.sendMessage(jid, { text: formatDailyProjectReport(p, data.date, data.workday_start, data.workday_end) });
+        await sock.sendMessage(jid, { text: formatDailyProjectReport(p, data.date) });
       } catch (err) {
         console.error(`Atualização diária de projeto (15h): erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
       }

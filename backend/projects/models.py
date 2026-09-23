@@ -71,20 +71,6 @@ class Project(TimestampedModel):
         limit_choices_to=models.Q(kind=Responsible.KIND_CLIENT),
     )
     status = models.CharField("status", max_length=20, choices=STATUS_CHOICES, default=STATUS_PLANNING)
-
-    CERTIFICATION_PENDING = "pending"
-    CERTIFICATION_FINISHED = "finished"
-    CERTIFICATION_STATUS_CHOICES = (
-        (CERTIFICATION_PENDING, "Pendente"),
-        (CERTIFICATION_FINISHED, "Finalizada"),
-    )
-    # Status real de certificação do projeto — substitui a heurística antiga
-    # (procurar "certifica" no nome de tarefas concluídas) usada no relatório
-    # diário de WhatsApp; editado manualmente pela equipe responsável.
-    certification_status = models.CharField(
-        "status de certificação", max_length=20, choices=CERTIFICATION_STATUS_CHOICES, default=CERTIFICATION_PENDING
-    )
-
     planned_start = models.DateField("início previsto", null=True, blank=True)
     planned_end = models.DateField("término previsto", null=True, blank=True)
     actual_start = models.DateField("início real", null=True, blank=True)
@@ -529,3 +515,30 @@ class ProjectAttachment(TimestampedModel):
 
     def __str__(self):
         return f"{self.project} - {self.file.name.rsplit('/', 1)[-1]}"
+
+
+class ProjectProgressSnapshot(TimestampedModel):
+    """Percentual de avanço de um projeto num dia — gravado pelo envio
+    automático das 15h (ver bot.views.BotDailyProjectReportBroadcastView).
+
+    Existe só para responder "quanto andou HOJE": o avanço atual é sempre
+    calculado na hora a partir das ProjectTask, então sem um retrato diário
+    não há com o que comparar. Um registro por projeto por dia; rodar o
+    envio mais de uma vez no mesmo dia só atualiza o registro daquele dia."""
+
+    project = models.ForeignKey(
+        Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="progress_snapshots"
+    )
+    date = models.DateField("data")
+    percent = models.PositiveIntegerField("avanço (%)", default=0)
+
+    class Meta:
+        verbose_name = "Retrato de Avanço do Projeto"
+        verbose_name_plural = "Retratos de Avanço do Projeto"
+        ordering = ("-date", "project")
+        constraints = [
+            models.UniqueConstraint(fields=("project", "date"), name="unique_progress_snapshot_per_day"),
+        ]
+
+    def __str__(self):
+        return f"{self.project} - {self.date} - {self.percent}%"

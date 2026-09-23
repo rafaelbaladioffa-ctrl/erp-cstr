@@ -21,11 +21,6 @@ const STATUS_OPTIONS = [
   { value: "canceled", label: "Cancelado" },
 ];
 
-const CERTIFICATION_STATUS_OPTIONS = [
-  { value: "pending", label: "Pendente" },
-  { value: "finished", label: "Finalizada" },
-];
-
 type ApiErrors = Record<string, string[]>;
 
 export default function ProjectFormModal({
@@ -52,7 +47,6 @@ export default function ProjectFormModal({
       : {
           company: null, name: "", po: "", link_count: 0, has_rack_positions: false, client: null, site: null, category: null,
           project_type: null, responsible_cstr: null, responsible_client: null, status: "planning",
-          certification_status: "pending",
           planned_start: null, planned_end: null, description: "", notes: "", is_active: true,
         }
   );
@@ -100,7 +94,6 @@ export default function ProjectFormModal({
       },
       { name: "company", label: "Empresa", type: "select", required: true, options: companies.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
       { name: "status", label: "Status", type: "select", required: true, options: STATUS_OPTIONS },
-      { name: "certification_status", label: "Status de Certificação", type: "select", options: CERTIFICATION_STATUS_OPTIONS },
       { name: "client", label: "Cliente", type: "select", options: clients.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
       {
         name: "site",
