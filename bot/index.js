@@ -203,6 +203,7 @@ async function runAllocationBroadcast(sock) {
     }
     try {
       await sock.sendMessage(jid, { text: formatBroadcastMessage(t, data.date) });
+      await new Promise((resolve) => setTimeout(resolve, 800));
     } catch (err) {
       console.error(`Envio de alocação: erro ao enviar para ${t.collaborator_name}:`, err.message);
     }
@@ -225,6 +226,7 @@ async function sendToRecipients(sock, recipients, text, label) {
     }
     try {
       await sock.sendMessage(jid, { text });
+      await new Promise((resolve) => setTimeout(resolve, 800));
     } catch (err) {
       console.error(`${label}: erro ao enviar para ${r.name}:`, err.message);
     }
@@ -332,6 +334,8 @@ async function runDailyProjectReportBroadcast(sock, overridePhone) {
     for (const p of data.projects) {
       try {
         await sock.sendMessage(jid, { text: formatDailyProjectReport(p, data.date) });
+        // Delay de 800ms entre mensagens pra evitar rate limit do WhatsApp
+        await new Promise((resolve) => setTimeout(resolve, 800));
       } catch (err) {
         console.error(`Atualização diária de projeto (15h): erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
       }
@@ -380,6 +384,7 @@ async function runDailyProjectReportImageBroadcast(sock, overridePhone, projectL
         caption: `Status de Projetos AZ4 - ${formatDate(data.date)}`,
         mimetype: "image/jpeg",
       });
+      await new Promise((resolve) => setTimeout(resolve, 800));
     } catch (err) {
       console.error(`Imagem do relatório das 15h: erro ao enviar para ${r.name}:`, err.message);
     }
@@ -402,6 +407,7 @@ async function runProjectUpdatesBroadcast(sock) {
     for (const p of data.projects) {
       try {
         await sock.sendMessage(jid, { text: formatProjectDailyUpdate(p, data.date, data.workday_start, data.workday_end) });
+        await new Promise((resolve) => setTimeout(resolve, 800));
       } catch (err) {
         console.error(`Atualização de projetos (17h): erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
       }
@@ -458,6 +464,7 @@ async function runOperationsPrintBroadcast(sock, overridePhone) {
     }
     try {
       await sock.sendMessage(jid, { image, caption, mimetype: "image/png" });
+      await new Promise((resolve) => setTimeout(resolve, 800));
     } catch (err) {
       console.error(`${label}: erro ao enviar para ${r.name}:`, err.message);
     }
@@ -748,6 +755,7 @@ async function start() {
             const updates = await botGet("/bot/project-update/", { site_id: site.id });
             for (const update of updates) {
               await sock.sendMessage(jid, { text: formatProjectUpdate(update) });
+              await new Promise((resolve) => setTimeout(resolve, 500));
             }
             continue;
           }
