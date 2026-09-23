@@ -1,0 +1,91 @@
+{% load static %}
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body { width: 1460px; margin: 0; padding: 28px 32px 38px; color: #132331; background: #f8fbfc; font-family: Arial, sans-serif; }
+  .sheet { border: 1px solid #d6e0e6; border-radius: 10px; background: linear-gradient(115deg, #fff 0%, #f5fafc 100%); overflow: hidden; }
+  .header { min-height: 145px; padding: 26px 34px; display: flex; align-items: center; gap: 34px; border-bottom: 4px solid #ff4b12; }
+  .logo { width: 250px; max-height: 88px; object-fit: contain; object-position: left center; padding-right: 28px; border-right: 1px solid #b8c6cf; }
+  .headline { flex: 1; font-size: 43px; font-weight: 900; line-height: .97; letter-spacing: -.04em; }
+  .headline span { display: block; color: #ff4b12; }
+  .date { min-width: 235px; padding: 18px 23px; border-radius: 10px; background: #edf3f6; font-size: 24px; font-weight: 800; text-align: center; }
+  .date::before { content: "▣"; margin-right: 15px; font-size: 25px; }
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); margin: 22px 26px; padding: 14px 0; border-radius: 10px; background: linear-gradient(90deg, #f3f8fa, #edf4f7); }
+  .summary-item { min-height: 72px; padding: 8px 24px; border-right: 1px solid #ccd9e0; display: flex; align-items: center; gap: 14px; }
+  .summary-item:last-child { border: 0; }
+  .summary-icon { font-size: 35px; color: #152f3d; }
+  .summary-label { display: block; color: #4f6070; font-size: 17px; }
+  .summary-value { display: block; font-size: 38px; font-weight: 900; line-height: .9; }
+  .green { color: #087833; } .red { color: #f02919; } .orange { color: #ff4b12; }
+  .projects { padding: 0 18px 18px; }
+  .card { margin-top: 16px; padding: 20px 22px 16px; border: 1px solid #d7e3e8; border-radius: 9px; background: #fff; box-shadow: 0 2px 5px rgba(20, 53, 72, .04); }
+  .project-head { display: flex; align-items: center; gap: 16px; }
+  .project-icon { font-size: 43px; color: #ff4b12; }
+  .project-name { flex: 1; font-size: 25px; font-weight: 900; line-height: 1.1; }
+  .eyebrow { color: #536474; font-size: 16px; margin-bottom: 4px; }
+  .progress-wrap { width: 430px; padding-left: 22px; border-left: 1px solid #d7e3e8; }
+  .progress-label { color: #536474; font-size: 16px; }
+  .progress-line { display: flex; align-items: center; gap: 14px; }
+  .progress-track { height: 16px; flex: 1; overflow: hidden; border-radius: 99px; background: #e2eaf0; }
+  .progress-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ff7a16, #ff4b12); }
+  .progress-number { color: #ff4b12; font-size: 38px; font-weight: 900; }
+  .details { display: grid; grid-template-columns: 1.05fr .95fr 1.1fr 1.15fr; margin-top: 20px; border-top: 1px solid #d7e3e8; border-bottom: 1px solid #d7e3e8; }
+  .detail { min-height: 70px; padding: 14px 15px; border-right: 1px solid #d7e3e8; }
+  .detail:last-child { border: 0; }
+  .detail-label, .tile-label { display: block; color: #536474; font-size: 15px; }
+  .detail-value { display: block; margin-top: 5px; font-size: 18px; font-weight: 800; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 15px; }
+  .tile { min-height: 75px; padding: 12px 14px; border: 1px solid #d7e3e8; border-radius: 7px; background: linear-gradient(135deg, #f8fbfc, #eff5f7); }
+  .tile-value { display: block; margin-top: 5px; font-size: 18px; font-weight: 900; }
+  .risk { display: flex; gap: 13px; margin-top: 14px; padding: 12px 15px; border: 1px solid #d7e3e8; border-radius: 7px; background: #f7fafb; font-size: 16px; }
+  .risk strong { white-space: nowrap; color: #536474; }
+  .empty { padding: 46px; text-align: center; color: #536474; font-size: 22px; }
+  .footer { padding: 6px 0 14px; text-align: center; color: #718290; font-size: 13px; }
+</style>
+</head>
+<body>
+  <main class="sheet">
+    <header class="header">
+      <img class="logo" src="{% static 'core/img/consultimer-logo-light.png' %}" alt="Consultimer Group">
+      <div class="headline">ATUALIZAÇÃO <span>DE PROJETOS</span></div>
+      <div class="date">{{ date_label }}</div>
+    </header>
+
+    <section class="summary">
+      <div class="summary-item"><span class="summary-icon">▤</span><div><span class="summary-label">Projetos</span><span class="summary-value">{{ project_count }}</span></div></div>
+      <div class="summary-item"><span class="summary-icon">▶</span><div><span class="summary-label">Em andamento</span><span class="summary-value green">{{ project_count }}</span></div></div>
+      <div class="summary-item"><span class="summary-icon">⚠</span><div><span class="summary-label">Com bloqueio</span><span class="summary-value red">{{ blocked_count }}</span></div></div>
+      <div class="summary-item"><span class="summary-icon">▥</span><div><span class="summary-label">Avanço médio</span><span class="summary-value orange">{{ average_progress }}%</span></div></div>
+    </section>
+
+    <section class="projects">
+      {% for p in projects %}
+      <article class="card">
+        <div class="project-head">
+          <div class="project-icon">▤</div>
+          <div class="project-name"><div class="eyebrow">Projeto</div>{{ p.project }}</div>
+          <div class="progress-wrap"><div class="progress-label">Avanço atual</div><div class="progress-line"><div class="progress-track"><div class="progress-fill" style="width: {{ p.completion_percent }}%;"></div></div><span class="progress-number">{{ p.completion_percent }}%</span></div></div>
+        </div>
+        <div class="details">
+          <div class="detail"><span class="detail-label">PO</span><span class="detail-value">{{ p.po|default:"Não informada" }}</span></div>
+          <div class="detail"><span class="detail-label">Site</span><span class="detail-value">{{ p.site|default:"Não informado" }}</span></div>
+          <div class="detail"><span class="detail-label">Responsável CSTR</span><span class="detail-value">{{ p.responsible_cstr|default:"Não informado" }}</span></div>
+          <div class="detail"><span class="detail-label">Responsável A100</span><span class="detail-value">{{ p.responsible_client|default:"Não informado" }}</span></div>
+        </div>
+        <div class="tiles">
+          <div class="tile"><span class="tile-label">Avanço no dia</span><span class="tile-value">{{ p.delta_label }}</span></div>
+          <div class="tile"><span class="tile-label">Status</span><span class="tile-value green">Em andamento</span></div>
+          <div class="tile"><span class="tile-label">Certificação</span><span class="tile-value {% if p.is_certified %}green{% else %}orange{% endif %}">{{ p.certification_label }}</span></div>
+          <div class="tile"><span class="tile-label">Projeto finalizado</span><span class="tile-value {% if p.project_finished %}green{% else %}red{% endif %}">{% if p.project_finished %}Sim{% else %}Não{% endif %}</span></div>
+        </div>
+        <div class="risk"><strong>⚠ Riscos / Bloqueios</strong><span>{{ p.risks_label }}</span></div>
+      </article>
+      {% empty %}<div class="empty">Nenhum projeto em andamento para esta data.</div>{% endfor %}
+    </section>
+  </main>
+  <div class="footer">ERP Consultimer · resumo gerado automaticamente</div>
+</body>
+</html>

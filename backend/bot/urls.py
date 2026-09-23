@@ -2,9 +2,11 @@ from django.urls import path
 
 from . import views
 from .operations_print import OperationsPrintView
+from .project_report_print import ProjectReportPrintView
 
 urlpatterns = [
     path("operations-print/", OperationsPrintView.as_view(), name="bot-operations-print"),
+    path("daily-project-report-print/", ProjectReportPrintView.as_view(), name="bot-daily-project-report-print"),
     path("allocation/", views.BotAllocationView.as_view(), name="bot-allocation"),
     path("daily-broadcast/", views.BotDailyBroadcastView.as_view(), name="bot-daily-broadcast"),
     path("my-tasks/", views.BotMyTasksView.as_view(), name="bot-my-tasks"),

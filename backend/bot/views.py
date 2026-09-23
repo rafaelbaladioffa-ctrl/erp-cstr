@@ -495,14 +495,80 @@ class BotProjectUpdatesBroadcastView(APIView):
         )
 
 
-class BotDailyProjectReportBroadcastView(APIView):
-    """GET /api/bot/broadcasts/daily-project-report/?date=<AAAA-MM-DD, opcional>
+def build_daily_project_report_projects(target_date):
+    """Dados compartilhados entre o texto e a imagem do relatório das 15h.
 
-    Envio automático das 15h: relatório completo de TODOS os projetos com
-    status=in_progress ("Ativo" na interface, independente de terem alocação
-    registrada na data) — para os destinatários cadastrados com
-    receives_daily_project_report=True. Uma mensagem por projeto, no layout
-    "ATUALIZAÇÃO DIÁRIA DE PROJETO"."""
+    A imagem não depende de um layout fixo: esta função sempre calcula a
+    lista atual de projetos e as mesmas condicionais usadas no texto.
+    """
+    projects_qs = Project.objects.filter(
+            status=Project.STATUS_IN_PROGRESS, is_active=True
+        ).select_related("site", "responsible_client__person", "responsible_cstr__person").order_by("name")
+
+    project_ids = [p.id for p in projects_qs]
+
+        # Pendências/Bloqueios: ocorrências ainda não resolvidas (aberta ou em
+        # andamento) do projeto — sem data-corte, é um retrato do estado atual,
+        # não algo restrito ao dia do relatório.
+    open_occurrences = {}
+    for occurrence in ProjectOccurrence.objects.filter(
+        project_id__in=project_ids,
+        status__in=(ProjectOccurrence.STATUS_OPEN, ProjectOccurrence.STATUS_IN_PROGRESS),
+    ).order_by("-occurred_at", "-id"):
+        open_occurrences.setdefault(occurrence.project_id, []).append(occurrence.title)
+
+        # Certificação é derivada, não digitada: um projeto conta como
+        # certificado quando tem ao menos um anexo (o laudo/relatório de
+        # certificação é justamente o que se anexa ao projeto).
+    certified_ids = set(
+        ProjectAttachment.objects.filter(project_id__in=project_ids)
+        .values_list("project_id", flat=True)
+        .distinct()
+    )
+
+        # "Avanço no dia" = avanço de hoje menos o do retrato diário anterior.
+        # Busca o retrato mais recente ANTES da data alvo (e não o de ontem
+        # especificamente) para que fim de semana/feriado sem envio não zere a
+        # comparação — o delta passa a ser "desde a última vez que medimos".
+    previous_percent = {}
+    for snapshot in ProjectProgressSnapshot.objects.filter(
+        project_id__in=project_ids, date__lt=target_date
+    ).order_by("project_id", "-date"):
+        previous_percent.setdefault(snapshot.project_id, snapshot.percent)
+
+    projects = []
+    for project in projects_qs:
+        defaults = compute_progress_defaults(project, target_date)
+        percent = defaults["percent"]
+        previous = previous_percent.get(project.id)
+
+        projects.append(
+            {
+                "project": project.name,
+                "po": project.po or None,
+                "site": project.site.code or project.site.name if project.site_id else None,
+                "responsible_client": project.responsible_client.person.name if project.responsible_client_id else None,
+                "responsible_cstr": project.responsible_cstr.person.name if project.responsible_cstr_id else None,
+                "completion_percent": percent,
+                "daily_delta": None if previous is None else percent - previous,
+                "planned_end": project.planned_end.strftime("%Y-%m-%d") if project.planned_end else None,
+                "certification_label": "Concluída" if project.id in certified_ids else "Pendente",
+                "project_finished": defaults["project_finished"],
+                "occurrences": open_occurrences.get(project.id, []),
+            }
+        )
+
+        # Grava o retrato de hoje DEPOIS de calcular o delta. Rodar de novo
+        # no mesmo dia só atualiza o valor, sem afetar a comparação.
+        ProjectProgressSnapshot.objects.update_or_create(
+            project=project, date=target_date, defaults={"percent": percent}
+        )
+
+    return projects
+
+
+class BotDailyProjectReportBroadcastView(APIView):
+    """GET /api/bot/broadcasts/daily-project-report/?date=<AAAA-MM-DD, opcional>"""
 
     permission_classes = [BotSharedSecretPermission]
     authentication_classes = []
@@ -512,76 +578,7 @@ class BotDailyProjectReportBroadcastView(APIView):
         if error:
             return error
 
-        projects_qs = Project.objects.filter(
-            status=Project.STATUS_IN_PROGRESS, is_active=True
-        ).select_related("site", "responsible_client__person", "responsible_cstr__person").order_by("name")
-
-        project_ids = [p.id for p in projects_qs]
-        existing_updates = {
-            u.project_id: u
-            for u in ProjectDailyUpdate.objects.filter(
-                project_id__in=project_ids, date=target_date
-            ).prefetch_related("collaborators__person")
-        }
-
-        # Pendências/Bloqueios: ocorrências ainda não resolvidas (aberta ou em
-        # andamento) do projeto — sem data-corte, é um retrato do estado atual,
-        # não algo restrito ao dia do relatório.
-        open_occurrences = {}
-        for occurrence in ProjectOccurrence.objects.filter(
-            project_id__in=project_ids,
-            status__in=(ProjectOccurrence.STATUS_OPEN, ProjectOccurrence.STATUS_IN_PROGRESS),
-        ).order_by("-occurred_at", "-id"):
-            open_occurrences.setdefault(occurrence.project_id, []).append(occurrence.title)
-
-        # Certificação é derivada, não digitada: um projeto conta como
-        # certificado quando tem ao menos um anexo (o laudo/relatório de
-        # certificação é justamente o que se anexa ao projeto).
-        certified_ids = set(
-            ProjectAttachment.objects.filter(project_id__in=project_ids)
-            .values_list("project_id", flat=True)
-            .distinct()
-        )
-
-        # "Avanço no dia" = avanço de hoje menos o do retrato diário anterior.
-        # Busca o retrato mais recente ANTES da data alvo (e não o de ontem
-        # especificamente) para que fim de semana/feriado sem envio não zere a
-        # comparação — o delta passa a ser "desde a última vez que medimos".
-        previous_percent = {}
-        for snapshot in ProjectProgressSnapshot.objects.filter(
-            project_id__in=project_ids, date__lt=target_date
-        ).order_by("project_id", "-date"):
-            previous_percent.setdefault(snapshot.project_id, snapshot.percent)
-
-        projects = []
-        for project in projects_qs:
-            defaults = compute_progress_defaults(project, target_date)
-            percent = defaults["percent"]
-            previous = previous_percent.get(project.id)
-
-            projects.append(
-                {
-                    "project": project.name,
-                    "po": project.po or None,
-                    "site": project.site.code or project.site.name if project.site_id else None,
-                    "responsible_client": project.responsible_client.person.name if project.responsible_client_id else None,
-                    "responsible_cstr": project.responsible_cstr.person.name if project.responsible_cstr_id else None,
-                    "completion_percent": percent,
-                    # None no primeiro envio de um projeto: ainda não existe
-                    # retrato anterior, então não há delta honesto a mostrar.
-                    "daily_delta": None if previous is None else percent - previous,
-                    "planned_end": project.planned_end.strftime("%Y-%m-%d") if project.planned_end else None,
-                    "certification_label": "Concluída" if project.id in certified_ids else "Pendente",
-                    "project_finished": defaults["project_finished"],
-                    "occurrences": open_occurrences.get(project.id, []),
-                }
-            )
-
-            # Grava o retrato de hoje DEPOIS de calcular o delta. Rodar de novo
-            # no mesmo dia só atualiza o valor, sem afetar a comparação.
-            ProjectProgressSnapshot.objects.update_or_create(
-                project=project, date=target_date, defaults={"percent": percent}
-            )
+        projects = build_daily_project_report_projects(target_date)
 
         return Response(
             {

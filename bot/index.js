@@ -339,6 +339,49 @@ async function runDailyProjectReportBroadcast(sock, overridePhone) {
   }
 }
 
+async function captureDailyProjectReportPrint(date) {
+  const browser = await puppeteer.launch({
+    executablePath: CHROMIUM_PATH,
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-extensions", "--no-zygote"],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setExtraHTTPHeaders({ "X-Bot-Secret": API_SECRET });
+    await page.setViewport({ width: 1500, height: 1000, deviceScaleFactor: 1 });
+    await page.goto(`${API_URL}/bot/daily-project-report-print/?date=${encodeURIComponent(date)}`, { waitUntil: "networkidle0", timeout: 30000 });
+    const shot = await page.screenshot({ type: "jpeg", quality: 88, fullPage: true });
+    return Buffer.isBuffer(shot) ? shot : Buffer.from(shot);
+  } finally {
+    await browser.close();
+  }
+}
+
+// Disparo manual para aprovar apenas a arte no WhatsApp, sem reenviar os
+// relatórios de texto. O agendamento das 15h continua inalterado.
+async function runDailyProjectReportImageBroadcast(sock, overridePhone) {
+  const data = await botGet("/bot/broadcasts/daily-project-report/");
+  if (!data.projects.length) {
+    console.log("Imagem do relatório das 15h: nenhum projeto ativo, nada a enviar.");
+    return;
+  }
+  const recipients = overridePhone ? [{ name: "Teste", phone: overridePhone }] : data.recipients;
+  const image = await captureDailyProjectReportPrint(data.date);
+  for (const r of recipients) {
+    const jid = recipientToJid(r);
+    if (!jid) continue;
+    try {
+      await sock.sendMessage(jid, {
+        image,
+        caption: `Status de Projetos AZ4 - ${formatDate(data.date)}`,
+        mimetype: "image/jpeg",
+      });
+    } catch (err) {
+      console.error(`Imagem do relatório das 15h: erro ao enviar para ${r.name}:`, err.message);
+    }
+  }
+}
+
 async function runProjectUpdatesBroadcast(sock) {
   const data = await botGet("/bot/broadcasts/project-updates/");
   if (!data.projects.length) {
@@ -429,6 +472,7 @@ let lastQrAt = 0;
 const SCHEDULED_BROADCASTS = [
   { key: "daily-tasks", hourUTC: 13, minuteUTC: 0, run: runDailyTasksBroadcast }, // 10h
   { key: "daily-project-report", hourUTC: 18, minuteUTC: 0, run: runDailyProjectReportBroadcast }, // 15h
+  { key: "daily-project-report-image", hourUTC: 18, minuteUTC: 1, run: runDailyProjectReportImageBroadcast }, // 15h01
   { key: "allocation", hourUTC: 21, minuteUTC: 0, run: runAllocationBroadcast }, // 18h
   { key: "project-updates", hourUTC: 20, minuteUTC: 0, run: runProjectUpdatesBroadcast }, // 17h
   // Print da Operação do Dia — 6x ao dia (8h, 10h, 12h, 14h, 16h, 18h). Cada
@@ -517,6 +561,14 @@ http
       return;
     }
 
+    if (url.pathname === "/trigger-daily-project-report-image") {
+      const overridePhone = url.searchParams.get("to") || undefined;
+      runDailyProjectReportImageBroadcast(currentSock, overridePhone)
+        .then(() => res.writeHead(200).end("Imagem JPEG disparada — confira os logs do bot.\n"))
+        .catch((err) => res.writeHead(500).end(`Erro: ${err.message}\n`));
+      return;
+    }
+
     const broadcast = SCHEDULED_BROADCASTS.find((b) => url.pathname === `/trigger-${b.key}`);
     if (!broadcast) {
       res.writeHead(404).end();
@@ -528,7 +580,7 @@ http
       .then(() => res.writeHead(200).end("Envio disparado — confira os logs do bot.\n"))
       .catch((err) => res.writeHead(500).end(`Erro: ${err.message}\n`));
   })
-  .listen(3001, "127.0.0.1");
+  .listen(3001, "0.0.0.0");
 
 setInterval(() => {
   if (!currentSock) return;
