@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsBoard as OperationsBoardData, OperationsBoardTechnician, StatusEvent, TimelineBlock } from "../api/types";
 import TechnicianAbsenceFormModal from "../components/projects/TechnicianAbsenceFormModal";
@@ -54,7 +54,8 @@ export default function OperationsBoard() {
   const [selectedTask, setSelectedTask] = useState<number | null>(null);
   const [selectedTechs, setSelectedTechs] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
-  const [expandedBar, setExpandedBar] = useState<string | null>(null);
+  const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number } | null>(null);
+  const todPopupRef = useRef<HTMLDivElement>(null);
   const [poolOpen, setPoolOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
   const [othersOpen, setOthersOpen] = useState(false);
@@ -91,6 +92,12 @@ export default function OperationsBoard() {
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setTodPopup(null); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, []);
 
   function toggleTech(techId: number, available: boolean) {
@@ -513,15 +520,36 @@ export default function OperationsBoard() {
                   </div>
                 </div>
 
+                {todPopup && (
+                  <div
+                    ref={todPopupRef}
+                    className="tl-popup"
+                    style={{ top: todPopup.top, left: Math.min(todPopup.left, window.innerWidth - 280) }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="tl-popup-color" style={{ background: todPopup.color }} />
+                    <div className="tl-popup-body">
+                      <div className="tl-popup-label">{todPopup.label}</div>
+                      <div className="tl-popup-time">
+                        {formatTime(todPopup.start.toISOString())}
+                        {todPopup.end ? ` – ${formatTime(todPopup.end.toISOString())}` : " – em andamento"}
+                      </div>
+                    </div>
+                    <button className="tl-popup-close" onClick={() => setTodPopup(null)} aria-label="Fechar">×</button>
+                  </div>
+                )}
                 {techRows.map(({ tech, lanedSegments, laneCount, doneCount, pendingCount }, rowIdx) => {
                   const badge = techStatusBadge(tech);
-                  const rowHeight = laneCount <= 1 ? 92 : 30 + laneCount * 46;
+                  const rowHeight = laneCount <= 1 ? 100 : 36 + laneCount * 52;
+                  const barH = laneCount <= 1 ? 28 : 22;
+                  const barT = (lane: number) => laneCount <= 1 ? 12 : 8 + lane * 52;
                   const notStarted = notStartedBars({ tech, lanedSegments, laneCount, doneCount, pendingCount });
                   return (
                     <div
                       key={tech.id}
                       className={`tod-row ${pairRowClass(techRows, rowIdx)}`}
                       style={{ minHeight: rowHeight }}
+                      onClick={() => setTodPopup(null)}
                     >
                       <div className="tod-row-info">
                         <div className="tod-row-name-line">
@@ -552,17 +580,22 @@ export default function OperationsBoard() {
                             const left = pct(segment.start, base);
                             const rightPct = segment.end ? pct(segment.end, base) : nowPct;
                             const width = Math.max(1, rightPct - left);
-                            const top = laneCount <= 1 ? 8 : 6 + lane * 46;
-                            const height = laneCount <= 1 ? 14 : 10;
                             const barKey = `${tech.id}-seg-${idx}`;
-                            const isExpanded = expandedBar === barKey;
                             return (
                               <div
                                 key={idx}
-                                className={`tod-bar${isExpanded ? " expanded" : ""}`}
+                                className={`tod-bar${todPopup?.key === barKey ? " expanded" : ""}`}
                                 title={segment.label}
-                                onClick={() => setExpandedBar((prev) => (prev === barKey ? null : barKey))}
-                                style={{ left: `${left}%`, width: `${width}%`, top, height, background: segment.color }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setTodPopup((prev) =>
+                                    prev?.key === barKey
+                                      ? null
+                                      : { key: barKey, label: segment.label, start: segment.start, end: segment.end ?? null, color: segment.color, top: rect.bottom + 6, left: rect.left }
+                                  );
+                                }}
+                                style={{ left: `${left}%`, width: `${width}%`, top: barT(lane), height: barH, background: segment.color }}
                               >
                                 <span className="tod-bar-label">{segment.label}</span>
                               </div>
@@ -570,18 +603,25 @@ export default function OperationsBoard() {
                           })}
                           {notStarted.map((bar) => {
                             const barKey = `${tech.id}-ns-${bar.key}`;
-                            const isExpanded = expandedBar === barKey;
                             return (
                               <div
                                 key={bar.key}
-                                className={`tod-bar tod-bar-notstarted${isExpanded ? " expanded" : ""}`}
+                                className={`tod-bar tod-bar-notstarted${todPopup?.key === barKey ? " expanded" : ""}`}
                                 title={bar.label}
-                                onClick={() => setExpandedBar((prev) => (prev === barKey ? null : barKey))}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setTodPopup((prev) =>
+                                    prev?.key === barKey
+                                      ? null
+                                      : { key: barKey, label: bar.label, start: bar.start, end: bar.end, color: "transparent", top: rect.bottom + 6, left: rect.left }
+                                  );
+                                }}
                                 style={{
                                   left: `${pct(bar.start, base)}%`,
                                   width: `${Math.max(1, pct(bar.end, base) - pct(bar.start, base))}%`,
-                                  top: laneCount <= 1 ? 8 : 6 + bar.lane * 46,
-                                  height: laneCount <= 1 ? 14 : 10,
+                                  top: barT(bar.lane),
+                                  height: barH,
                                 }}
                               >
                                 <span className="tod-bar-label">{bar.label}</span>
