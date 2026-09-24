@@ -1970,6 +1970,12 @@ select.input[multiple] {
   opacity: 0.55;
 }
 
+.ops-tech-row.drag-over {
+  background: var(--blue-soft);
+  box-shadow: inset 3px 0 0 var(--blue);
+  transition: background 0.1s ease, box-shadow 0.1s ease;
+}
+
 .ops-avatar {
   width: 32px;
   height: 32px;
@@ -2450,12 +2456,72 @@ select.input[multiple] {
 
 .tl-bar-label {
   color: #fff;
-  font-size: 10.5px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  letter-spacing: 0.01em;
+}
+
+.tl-popup {
+  position: fixed;
+  z-index: 200;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 39, 64, 0.18);
+  padding: 12px 14px;
+  min-width: 220px;
+  max-width: 320px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  pointer-events: all;
+}
+
+.tl-popup-color {
+  width: 4px;
+  min-height: 36px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.tl-popup-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tl-popup-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.tl-popup-time {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.tl-popup-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 0 0 4px;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.tl-popup-close:hover {
+  color: var(--text);
 }
 
 .tl-bar.expanded .tl-bar-label {

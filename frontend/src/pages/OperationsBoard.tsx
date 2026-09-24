@@ -59,6 +59,8 @@ export default function OperationsBoard() {
   const [techOpen, setTechOpen] = useState(false);
   const [othersOpen, setOthersOpen] = useState(false);
   const [absenceTech, setAbsenceTech] = useState<{ id: number; name: string } | null>(null);
+  const [dragTaskId, setDragTaskId] = useState<number | null>(null);
+  const [dragOverTechId, setDragOverTechId] = useState<number | null>(null);
 
   useEffect(() => {
     sitesApi.list().then((data) => {
@@ -266,13 +268,37 @@ export default function OperationsBoard() {
                   const dispatchable = !tech.on_leave && tech.presence_status !== "not_started" && tech.presence_status !== "off_duty";
                   const selectable = selectedTask != null && dispatchable;
                   const isSelected = selectedTechs.includes(tech.id);
+                  const droppable = !tech.on_leave && dragTaskId != null;
                   return (
                     <div
                       key={tech.id}
                       className={`ops-tech-row${selectable ? " selectable" : ""}${isSelected ? " selected" : ""}${
                         tech.on_leave || tech.presence_status === "off_duty" || tech.presence_status === "not_started" ? " dim" : ""
-                      }`}
+                      }${dragOverTechId === tech.id ? " drag-over" : ""}`}
                       onClick={() => toggleTech(tech.id, selectable)}
+                      onDragOver={(e) => {
+                        if (!droppable) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        setDragOverTechId(tech.id);
+                      }}
+                      onDragLeave={(e) => {
+                        if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setDragOverTechId(null);
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        setDragOverTechId(null);
+                        if (dragTaskId == null || tech.on_leave) return;
+                        const techIds = tech.pair_partner ? [tech.id, tech.pair_partner.id] : [tech.id];
+                        setDispatching(true);
+                        try {
+                          await operationsApi.dispatch(dragTaskId, techIds);
+                          setDragTaskId(null);
+                          if (siteId != null) loadAll(siteId);
+                        } finally {
+                          setDispatching(false);
+                        }
+                      }}
                     >
                       <div className="ops-avatar">
                         {initials(tech.name)}
@@ -386,8 +412,19 @@ export default function OperationsBoard() {
                         {pool.map((task) => (
                           <tr
                             key={task.id}
+                            draggable={true}
+                            onDragStart={(e) => {
+                              setDragTaskId(task.id);
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("taskId", String(task.id));
+                            }}
+                            onDragEnd={() => { setDragTaskId(null); setDragOverTechId(null); }}
                             onClick={() => selectTask(task.id)}
-                            style={{ cursor: "pointer", background: selectedTask === task.id ? "var(--orange-soft)" : undefined }}
+                            style={{
+                              cursor: "grab",
+                              background: selectedTask === task.id ? "var(--orange-soft)" : dragTaskId === task.id ? "var(--bg)" : undefined,
+                              opacity: dragTaskId === task.id ? 0.5 : 1,
+                            }}
                           >
                             <td style={{ fontWeight: 700 }}>{task.name}</td>
                             <td>

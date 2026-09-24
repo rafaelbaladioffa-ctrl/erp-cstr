@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsTimeline } from "../api/types";
 import Icon from "../components/ui/Icon";
@@ -18,6 +18,16 @@ import {
   pct,
   reorderRowsByPair,
 } from "../utils/timeline";
+
+type BarPopup = {
+  key: string;
+  label: string;
+  start: Date;
+  end: Date | null;
+  color: string;
+  top: number;
+  left: number;
+};
 
 function formatDateBR(iso: string) {
   const [y, m, d] = iso.split("-");
@@ -46,7 +56,8 @@ export default function TimelineOperacional() {
   const [data, setData] = useState<OperationsTimeline | null>(null);
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(() => new Date());
-  const [expandedBar, setExpandedBar] = useState<string | null>(null);
+  const [popup, setPopup] = useState<BarPopup | null>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     sitesApi.list().then((res) => setSites(res.results));
@@ -63,6 +74,12 @@ export default function TimelineOperacional() {
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPopup(null); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, []);
 
   const technicians = data?.technicians || [];
@@ -84,9 +101,9 @@ export default function TimelineOperacional() {
         };
       })
   );
-  const trackHeight = (count: number) => (count <= 1 ? 52 : 10 + count * 30);
-  const barTop = (index: number, count: number) => (count <= 1 ? 8 : 6 + index * 30);
-  const barHeight = (count: number) => (count <= 1 ? 36 : 26);
+  const trackHeight = (count: number) => (count <= 1 ? 68 : 14 + count * 38);
+  const barTop = (index: number, count: number) => (count <= 1 ? 12 : 8 + index * 38);
+  const barHeight = (count: number) => (count <= 1 ? 44 : 30);
 
   return (
     <div>
@@ -206,7 +223,25 @@ export default function TimelineOperacional() {
             </div>
           </div>
 
-          <div className="tl-grid-wrap">
+          <div className="tl-grid-wrap" onClick={() => setPopup(null)}>
+            {popup && (
+              <div
+                ref={popupRef}
+                className="tl-popup"
+                style={{ top: popup.top, left: Math.min(popup.left, window.innerWidth - 280) }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="tl-popup-color" style={{ background: popup.color }} />
+                <div className="tl-popup-body">
+                  <div className="tl-popup-label">{popup.label}</div>
+                  <div className="tl-popup-time">
+                    {formatTime(popup.start.toISOString())}
+                    {popup.end ? ` – ${formatTime(popup.end.toISOString())}` : " – em andamento"}
+                  </div>
+                </div>
+                <button className="tl-popup-close" onClick={() => setPopup(null)} aria-label="Fechar">×</button>
+              </div>
+            )}
             <div className="tl-labels">
               <div className="tl-ruler" />
               {techRows.map(({ tech, laneCount, doneCount }, rowIdx) => (
@@ -272,33 +307,32 @@ export default function TimelineOperacional() {
                         const rightPct = segment.end ? pct(segment.end, base) : nowPct ?? 100;
                         const width = Math.max(0.4, rightPct - left);
                         const barKey = `${tech.id}-${idx}`;
-                        const isExpanded = expandedBar === barKey;
+                        const isActive = popup?.key === barKey;
                         return (
-                          <span key={idx}>
-                            {isExpanded && (
-                              <span
-                                className="tl-bar-time"
-                                style={{ left: `${left}%`, top: barTop(lane, laneCount), height: barHeight(laneCount) }}
-                              >
-                                {formatTime(segment.start.toISOString())}
-                              </span>
-                            )}
-                            <div
-                              className={`tl-bar${isExpanded ? " expanded" : ""}`}
-                              title={segment.label}
-                              onClick={() => setExpandedBar((prev) => (prev === barKey ? null : barKey))}
-                              style={{
-                                left: `${left}%`,
-                                width: `${width}%`,
-                                top: barTop(lane, laneCount),
-                                height: barHeight(laneCount),
-                                background: segment.color,
-                              }}
-                            >
-                              {segment.live && <span className="tl-live-dot" />}
-                              <span className="tl-bar-label">{segment.label}</span>
-                            </div>
-                          </span>
+                          <div
+                            key={idx}
+                            className={`tl-bar${isActive ? " expanded" : ""}`}
+                            title={segment.label}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setPopup((prev) =>
+                                prev?.key === barKey
+                                  ? null
+                                  : { key: barKey, label: segment.label, start: segment.start, end: segment.end ?? null, color: segment.color, top: rect.bottom + 6, left: rect.left }
+                              );
+                            }}
+                            style={{
+                              left: `${left}%`,
+                              width: `${width}%`,
+                              top: barTop(lane, laneCount),
+                              height: barHeight(laneCount),
+                              background: segment.color,
+                            }}
+                          >
+                            {segment.live && <span className="tl-live-dot" />}
+                            <span className="tl-bar-label">{segment.label}</span>
+                          </div>
                         );
                       })}
                     </div>
