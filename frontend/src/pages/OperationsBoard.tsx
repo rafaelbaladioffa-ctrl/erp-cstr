@@ -520,24 +520,6 @@ export default function OperationsBoard() {
                   </div>
                 </div>
 
-                {todPopup && (
-                  <div
-                    ref={todPopupRef}
-                    className="tl-popup"
-                    style={{ top: todPopup.top, left: Math.min(todPopup.left, window.innerWidth - 280) }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="tl-popup-color" style={{ background: todPopup.color }} />
-                    <div className="tl-popup-body">
-                      <div className="tl-popup-label">{todPopup.label}</div>
-                      <div className="tl-popup-time">
-                        {formatTime(todPopup.start.toISOString())}
-                        {todPopup.end ? ` – ${formatTime(todPopup.end.toISOString())}` : " – em andamento"}
-                      </div>
-                    </div>
-                    <button className="tl-popup-close" onClick={() => setTodPopup(null)} aria-label="Fechar">×</button>
-                  </div>
-                )}
                 {techRows.map(({ tech, lanedSegments, laneCount, doneCount, pendingCount }, rowIdx) => {
                   const badge = techStatusBadge(tech);
                   const rowHeight = laneCount <= 1 ? 100 : 36 + laneCount * 52;
@@ -730,6 +712,27 @@ export default function OperationsBoard() {
             </div>
           </div>
           <div className="tod-footer-hint">Clique em uma atividade para ver detalhes completos.</div>
+        </>
+      )}
+      {todPopup && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 199 }} onClick={() => setTodPopup(null)} />
+          <div
+            ref={todPopupRef}
+            className="tl-popup"
+            style={{ top: todPopup.top, left: Math.min(todPopup.left, window.innerWidth - 280) }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="tl-popup-color" style={{ background: todPopup.color }} />
+            <div className="tl-popup-body">
+              <div className="tl-popup-label">{todPopup.label}</div>
+              <div className="tl-popup-time">
+                {formatTime(todPopup.start.toISOString())}
+                {todPopup.end ? ` – ${formatTime(todPopup.end.toISOString())}` : " – em andamento"}
+              </div>
+            </div>
+            <button className="tl-popup-close" onClick={() => setTodPopup(null)} aria-label="Fechar">×</button>
+          </div>
         </>
       )}
       {absenceTech && (

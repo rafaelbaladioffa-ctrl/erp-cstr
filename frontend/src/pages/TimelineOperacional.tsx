@@ -223,25 +223,7 @@ export default function TimelineOperacional() {
             </div>
           </div>
 
-          <div className="tl-grid-wrap" onClick={() => setPopup(null)}>
-            {popup && (
-              <div
-                ref={popupRef}
-                className="tl-popup"
-                style={{ top: popup.top, left: Math.min(popup.left, window.innerWidth - 280) }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="tl-popup-color" style={{ background: popup.color }} />
-                <div className="tl-popup-body">
-                  <div className="tl-popup-label">{popup.label}</div>
-                  <div className="tl-popup-time">
-                    {formatTime(popup.start.toISOString())}
-                    {popup.end ? ` – ${formatTime(popup.end.toISOString())}` : " – em andamento"}
-                  </div>
-                </div>
-                <button className="tl-popup-close" onClick={() => setPopup(null)} aria-label="Fechar">×</button>
-              </div>
-            )}
+          <div className="tl-grid-wrap">
             <div className="tl-labels">
               <div className="tl-ruler" />
               {techRows.map(({ tech, laneCount, doneCount }, rowIdx) => (
@@ -349,6 +331,27 @@ export default function TimelineOperacional() {
             </div>
           )}
         </div>
+      )}
+      {popup && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 199 }} onClick={() => setPopup(null)} />
+          <div
+            ref={popupRef}
+            className="tl-popup"
+            style={{ top: popup.top, left: Math.min(popup.left, window.innerWidth - 280) }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="tl-popup-color" style={{ background: popup.color }} />
+            <div className="tl-popup-body">
+              <div className="tl-popup-label">{popup.label}</div>
+              <div className="tl-popup-time">
+                {formatTime(popup.start.toISOString())}
+                {popup.end ? ` – ${formatTime(popup.end.toISOString())}` : " – em andamento"}
+              </div>
+            </div>
+            <button className="tl-popup-close" onClick={() => setPopup(null)} aria-label="Fechar">×</button>
+          </div>
+        </>
       )}
     </div>
   );
