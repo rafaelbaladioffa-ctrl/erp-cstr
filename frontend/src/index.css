@@ -2457,7 +2457,7 @@ select.input[multiple] {
 .tl-bar-label {
   color: #fff;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
