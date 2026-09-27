@@ -546,11 +546,18 @@ export default function ProjectsList() {
                 selectedId={selectedProject?.id ?? null}
                 onSelect={setSelectedProject}
                 onStatusChange={(projectId, newStatus) => {
+                  const STATUS_DISPLAY: Record<string, string> = {
+                    in_progress: "Ativo",
+                    paused: "Pausado",
+                    planning: "Planejamento",
+                    completed: "Finalizado",
+                    canceled: "Cancelado",
+                  };
                   const current = projects.find((p) => p.id === projectId);
                   if (!current || current.status === newStatus) return;
-                  // optimistic update
-                  setProjects((prev) => prev.map((p) => p.id === projectId ? { ...p, status: newStatus, status_display: newStatus } : p));
-                  if (selectedProject?.id === projectId) setSelectedProject((prev) => prev ? { ...prev, status: newStatus } : prev);
+                  const display = STATUS_DISPLAY[newStatus] ?? newStatus;
+                  setProjects((prev) => prev.map((p) => p.id === projectId ? { ...p, status: newStatus, status_display: display } : p));
+                  if (selectedProject?.id === projectId) setSelectedProject((prev) => prev ? { ...prev, status: newStatus, status_display: display } : prev);
                   projectsApi.update(projectId, { status: newStatus } as Partial<Project>).catch(() => reload());
                 }}
               />
