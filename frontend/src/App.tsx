@@ -30,7 +30,7 @@ function RequireSuperuser({ children }: { children: ReactNode }) {
 
 function HomeRedirect() {
   const { user } = useAuth();
-  if (hasPerm(user, PERMS.viewProject)) return <Navigate to="/projetos" replace />;
+  if (hasPerm(user, PERMS.viewProject)) return <Navigate to="/dashboard" replace />;
   if (hasPerm(user, PERMS.viewDailyUpdate)) return <Navigate to="/atualizacoes-diarias" replace />;
   if (hasPerm(user, PERMS.viewProjectUpdate)) return <Navigate to="/atualizacoes-projeto" replace />;
   if (hasPerm(user, PERMS.viewMyTasks)) return <Navigate to="/minhas-tarefas" replace />;

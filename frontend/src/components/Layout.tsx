@@ -246,9 +246,9 @@ export default function Layout() {
         <button className="mobile-menu-btn" aria-label="Abrir menu" onClick={() => setMobileMenuOpen(true)}>
           <Icon name="menu" style={{ fontSize: 22 }} />
         </button>
-        <div className="shellbar-brand">
+        <Link to="/dashboard" className="shellbar-brand" style={{ textDecoration: "none" }}>
           <img src="/consultimer-logo-branco.png" alt="Consultimer" className="shellbar-brand-logo" />
-        </div>
+        </Link>
 
         <div className="shellbar-search" ref={searchRef} style={{ position: "relative" }}>
           <Icon name="search" style={{ fontSize: 17 }} />
