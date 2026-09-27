@@ -196,7 +196,7 @@ export default function Dashboard() {
       .forEach((p) => {
         const diff = daysDiff(p.planned_end ?? null);
         const days = diff !== null ? Math.abs(diff) : 0;
-        list.push({ id: p.id, name: p.code || p.name, meta: `Prazo vencido há ${days} dia(s) · ${p.client || "—"}`, level: "red" });
+        list.push({ id: p.id, name: p.name, meta: `${p.code} · Prazo vencido há ${days} dia(s) · ${p.client || "—"}`, level: "red" });
       });
 
     // Near deadline (within 7 days, not overdue)
@@ -210,7 +210,7 @@ export default function Dashboard() {
       .forEach((p) => {
         const diff = daysDiff(p.planned_end ?? null);
         const label = diff === 0 ? "Vence hoje" : `Vence em ${diff} dia(s)`;
-        list.push({ id: p.id, name: p.code || p.name, meta: `${label} · ${p.client || "—"}`, level: "orange" });
+        list.push({ id: p.id, name: p.name, meta: `${p.code} · ${label} · ${p.client || "—"}`, level: "orange" });
       });
 
     if (list.length === 0 && !loading) {
@@ -269,7 +269,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main 2-col layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16, alignItems: "flex-start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 16, alignItems: "flex-start" }}>
 
         {/* Alertas */}
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
