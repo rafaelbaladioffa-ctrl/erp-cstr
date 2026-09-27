@@ -95,6 +95,21 @@ export default function MasterDataPage() {
 
   const [activeKey, setActiveKey] = useState<string | null>(focusEntity || "sow-wizard");
 
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const key = `erp_masterdata_collapsed_${user?.id ?? "anon"}`;
+      return JSON.parse(localStorage.getItem(key) || "{}");
+    } catch { return {}; }
+  });
+
+  function toggleGroup(catKey: string) {
+    setCollapsedGroups((prev) => {
+      const next = { ...prev, [catKey]: !prev[catKey] };
+      try { localStorage.setItem(`erp_masterdata_collapsed_${user?.id ?? "anon"}`, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
   useEffect(() => {
     if (focusEntity) setActiveKey(focusEntity);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -127,54 +142,68 @@ export default function MasterDataPage() {
 
       {hasAnyEntity && (
         <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
-          <div className="card" style={{ width: 220, flexShrink: 0, padding: 8 }}>
-            {categories.map((cat) => (
-              <div key={cat.key} style={{ marginBottom: 6 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "8px 10px 4px",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "var(--text-faint)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  <Icon name={cat.icon} style={{ fontSize: 14 }} />
-                  {cat.label}
-                </div>
-                {cat.entities.length === 0 && (
-                  <div style={{ padding: "2px 10px 6px", fontSize: 12, color: "var(--text-faint)" }}>Em breve</div>
-                )}
-                {cat.entities.map((entity) => (
+          <div className="card" style={{ width: 220, flexShrink: 0, padding: "8px 0" }}>
+            {categories.map((cat) => {
+              const open = !collapsedGroups[cat.key];
+              return (
+                <div key={cat.key} style={{ marginBottom: 2 }}>
                   <button
-                    key={entity.key}
-                    onClick={() => setActiveKey(entity.key)}
+                    type="button"
+                    onClick={() => toggleGroup(cat.key)}
+                    aria-expanded={open}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 8,
+                      justifyContent: "space-between",
                       width: "100%",
-                      padding: "8px 10px",
+                      padding: "8px 12px 4px",
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: "var(--text)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.07em",
+                      background: "transparent",
                       border: 0,
-                      borderRadius: 8,
                       cursor: "pointer",
-                      fontSize: 13.5,
-                      fontWeight: activeKey === entity.key ? 700 : 500,
-                      color: activeKey === entity.key ? "var(--orange)" : "var(--text)",
-                      background: activeKey === entity.key ? "var(--orange-soft)" : "transparent",
-                      textAlign: "left",
                     }}
                   >
-                    <Icon name={entity.icon} style={{ fontSize: 16 }} />
-                    {entity.label}
+                    <span>{cat.label}</span>
+                    <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 16 }} />
                   </button>
-                ))}
-              </div>
-            ))}
+                  {open && cat.entities.length === 0 && (
+                    <div style={{ padding: "2px 12px 6px", fontSize: 12, color: "var(--text-faint)" }}>Em breve</div>
+                  )}
+                  {open && cat.entities.map((entity) => {
+                    const isActive = activeKey === entity.key;
+                    return (
+                      <button
+                        key={entity.key}
+                        onClick={() => setActiveKey(entity.key)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          width: "100%",
+                          padding: "7px 12px",
+                          border: 0,
+                          borderLeft: isActive ? "2.5px solid var(--orange)" : "2.5px solid transparent",
+                          borderRadius: 0,
+                          cursor: "pointer",
+                          fontSize: 13.5,
+                          fontWeight: isActive ? 500 : 400,
+                          color: isActive ? "var(--orange)" : "var(--text-muted)",
+                          background: isActive ? "var(--orange-soft)" : "transparent",
+                          textAlign: "left",
+                        }}
+                      >
+                        <Icon name={entity.icon} style={{ fontSize: 16, color: isActive ? "var(--orange)" : "var(--text-faint)" }} />
+                        {entity.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
