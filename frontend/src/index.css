@@ -69,32 +69,32 @@
 }
 
 :root {
-  --navy: #0f2740;
-  --navy-soft: #173753;
+  --navy: #1a2030;
+  --navy-soft: #232b40;
   --orange: #f16023;
-  --orange-soft: #fff1e9;
+  --orange-soft: #fff3ee;
   --teal: #0f766e;
   --teal-soft: #e2f4f1;
-  --border: #e2e8f0;
-  --bg: #f8fafc;
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --text-faint: #94a3b8;
+  --border: #e8edf2;
+  --bg: #f5f7fa;
+  --text: #111820;
+  --text-muted: #6b7a90;
+  --text-faint: #9aa3b2;
   --white: #ffffff;
   --blue: #2563eb;
-  --blue-soft: #eff4ff;
+  --blue-soft: #eef3ff;
   --green: #16a34a;
-  --green-soft: #e9f9ef;
+  --green-soft: #eafaf1;
   --amber: #d97706;
-  --amber-soft: #fef3e2;
+  --amber-soft: #fef6e4;
   --purple: #7c3aed;
-  --purple-soft: #f1e8fe;
+  --purple-soft: #f3effe;
   --red: #dc2626;
-  --red-soft: #fdeaea;
-  --radius: 6px;
-  --radius-sm: 4px;
-  --shadow-card: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
-  --shadow-lift: 0 2px 8px rgba(15, 39, 64, 0.08);
+  --red-soft: #fef0f0;
+  --radius: 8px;
+  --radius-sm: 5px;
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-lift: 0 4px 12px rgba(15, 23, 42, 0.08), 0 1px 4px rgba(15, 23, 42, 0.05);
 }
 
 [data-theme="dark"] {
@@ -161,10 +161,18 @@
   background: #1f2330;
 }
 
+[data-theme="dark"] .sidebar {
+  background: var(--bg);
+}
+
+[data-theme="dark"] .sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
 [data-theme="dark"] .sidebar-link.active {
-  background: rgba(244, 112, 56, 0.14);
-  color: var(--orange);
-  border-left-color: var(--orange);
+  background: var(--white);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 [data-theme="dark"] .sidebar-link.active .material-symbols-outlined {
@@ -490,7 +498,7 @@ textarea {
 .sidebar {
   width: 232px;
   flex-shrink: 0;
-  background: var(--white);
+  background: var(--bg);
   color: var(--text);
   border-right: 1px solid var(--border);
   display: flex;
@@ -521,11 +529,11 @@ textarea {
 
 .sidebar-group-title {
   font-size: 10px;
-  font-weight: 800;
-  color: var(--text);
+  font-weight: 700;
+  color: var(--text-faint);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  margin: 12px 16px 3px;
+  letter-spacing: 0.08em;
+  margin: 14px 16px 4px;
 }
 
 .sidebar-group-toggle {
@@ -552,25 +560,27 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 16px;
-  border-left: 2.5px solid transparent;
+  padding: 7px 12px;
+  margin: 1px 8px;
+  border-radius: 7px;
+  border-left: none;
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 13px;
-  font-weight: 400;
-  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: background 0.1s ease, color 0.1s ease;
 }
 
 .sidebar-link:hover {
-  background: var(--bg);
+  background: rgba(15, 23, 42, 0.05);
   color: var(--text);
 }
 
 .sidebar-link.active {
-  background: var(--orange-soft);
-  border-left-color: var(--orange);
-  color: var(--orange);
-  font-weight: 500;
+  background: var(--white);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
 .sidebar-link .material-symbols-outlined {
@@ -630,10 +640,10 @@ textarea {
 
 .sidebar-logout {
   width: 100%;
-  background: var(--white);
+  background: transparent;
   border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 4px;
+  color: var(--text-muted);
+  border-radius: 7px;
   padding: 8px 12px;
   cursor: pointer;
   font-size: 12px;
@@ -646,7 +656,8 @@ textarea {
 }
 
 .sidebar-logout:hover {
-  background: var(--bg);
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--text);
 }
 
 .app-main {
@@ -693,12 +704,12 @@ textarea {
 /* ---------- Page header ---------- */
 
 .page-eyebrow {
-  font-size: 11px;
-  font-weight: 800;
-  color: var(--orange);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-faint);
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  margin: 0 0 6px;
+  margin: 0 0 5px;
 }
 
 .page-header {
@@ -710,9 +721,9 @@ textarea {
 }
 
 .page-title {
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text);
   margin: 0 0 4px;
 }
@@ -729,10 +740,10 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border-radius: 10px;
-  padding: 10px 16px;
-  font-size: 13.5px;
-  font-weight: 700;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
   text-decoration: none;
@@ -748,12 +759,12 @@ textarea {
 .btn-primary {
   background: var(--orange);
   color: #fff;
-  box-shadow: 0 1px 2px rgba(217, 84, 28, 0.15), 0 6px 14px -6px rgba(217, 84, 28, 0.45);
+  box-shadow: 0 1px 4px rgba(217, 84, 28, 0.2);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: #d9541c;
-  box-shadow: 0 1px 2px rgba(217, 84, 28, 0.18), 0 10px 18px -6px rgba(217, 84, 28, 0.5);
+  box-shadow: 0 2px 8px rgba(217, 84, 28, 0.28);
 }
 
 .btn-secondary {
@@ -786,7 +797,7 @@ textarea {
 .card {
   background: var(--white);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 10px;
   box-shadow: var(--shadow-card);
 }
 
@@ -800,8 +811,8 @@ textarea {
 .stat-card {
   background: var(--white);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 18px;
+  border-radius: 10px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -810,19 +821,20 @@ textarea {
 }
 
 .stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 500;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
   margin-bottom: 8px;
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--text);
-  line-height: 1.1;
+  line-height: 1;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -860,14 +872,14 @@ textarea {
 }
 
 .tab-btn {
-  padding: 10px 4px;
-  margin-right: 22px;
+  padding: 9px 4px;
+  margin-right: 20px;
   border: none;
   background: transparent;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  font-weight: 700;
-  font-size: 13.5px;
+  font-weight: 600;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -888,9 +900,10 @@ textarea {
 }
 
 .toolbar-title {
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 14.5px;
+  font-weight: 700;
   color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .toolbar-subtitle {
@@ -973,22 +986,23 @@ textarea {
 
 .table thead th {
   text-align: left;
-  padding: 12px 16px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
+  padding: 11px 16px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-faint);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .table tbody td {
-  padding: 14px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   color: var(--text);
   vertical-align: middle;
+  font-size: 13px;
 }
 
 .table tbody tr:last-child td {
@@ -1012,9 +1026,9 @@ textarea {
   align-items: center;
   gap: 4px;
   font-size: 10.5px;
-  font-weight: 700;
+  font-weight: 600;
   padding: 3px 9px;
-  border-radius: 3px;
+  border-radius: 5px;
   white-space: nowrap;
 }
 
@@ -1022,7 +1036,7 @@ textarea {
 
 .progress-track {
   width: 90px;
-  height: 6px;
+  height: 4px;
   border-radius: 999px;
   background: var(--border);
   overflow: hidden;
@@ -1084,7 +1098,7 @@ textarea {
 .form-card {
   background: var(--white);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 10px;
   padding: 20px;
   margin-bottom: 20px;
 }
@@ -1903,7 +1917,7 @@ select.input[multiple] {
 .ops-pool-card {
   background: var(--white);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -1941,9 +1955,10 @@ select.input[multiple] {
 }
 
 .ops-card-title {
-  font-size: 13.5px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .ops-card-hint {
