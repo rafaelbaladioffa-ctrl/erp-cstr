@@ -164,7 +164,7 @@ function KanbanCard({ project, onClick }: { project: Project; onClick: () => voi
   const barColor =
     project.status === "completed" ? "var(--success)" :
     overdue ? "var(--danger)" :
-    project.progress_percent >= 60 ? "var(--orange)" : "var(--primary)";
+    "var(--primary)";
 
   return (
     <div
@@ -522,7 +522,7 @@ export default function ProjectsList() {
                     const barColor =
                       p.status === "completed" ? "var(--success)" :
                       diff !== null && diff < 0 ? "var(--danger)" :
-                      p.progress_percent >= 60 ? "var(--orange)" : "var(--primary)";
+                      "var(--primary)";
                     return (
                       <tr
                         key={p.id}
