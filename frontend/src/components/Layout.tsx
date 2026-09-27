@@ -136,8 +136,6 @@ export default function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem(`erp_sidebar_mini_${user?.id ?? "anon"}`) === "1"; } catch { return false; }
   });
-  const [itemMenu, setItemMenu] = useState<{ item: NavItem; x: number; y: number } | null>(null);
-  const itemMenuRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -174,7 +172,6 @@ export default function Layout() {
       if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) setSettingsOpen(false);
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
-      if (itemMenuRef.current && !itemMenuRef.current.contains(e.target as Node)) setItemMenu(null);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -188,22 +185,6 @@ export default function Layout() {
     });
   }, [user?.id]);
 
-  function handleSidebarItemClick(e: React.MouseEvent, item: NavItem) {
-    e.preventDefault();
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setItemMenu({ item, x: rect.right + 6, y: rect.top });
-  }
-
-  function doNavigate(item: NavItem) {
-    navigate(item.to);
-    setItemMenu(null);
-  }
-
-  function doOpenTab(item: NavItem) {
-    navigate(item.to);
-    openTab({ id: item.to, label: item.label, path: item.to, icon: item.icon });
-    setItemMenu(null);
-  }
 
   useEffect(() => {
     const term = searchQuery.trim();
@@ -475,26 +456,6 @@ export default function Layout() {
 
       <TabBar />
 
-      {itemMenu && (
-        <div
-          ref={itemMenuRef}
-          className="sidebar-item-menu"
-          style={{ top: itemMenu.y, left: itemMenu.x }}
-        >
-          <div className="sidebar-item-menu-label">
-            <Icon name={itemMenu.item.icon} style={{ fontSize: 15 }} />
-            {itemMenu.item.label}
-          </div>
-          <button className="sidebar-item-menu-btn" onClick={() => doNavigate(itemMenu.item)}>
-            <Icon name="open_in_browser" style={{ fontSize: 15 }} />
-            Abrir página
-          </button>
-          <button className="sidebar-item-menu-btn" onClick={() => doOpenTab(itemMenu.item)}>
-            <Icon name="tab" style={{ fontSize: 15 }} />
-            Abrir em guia
-          </button>
-        </div>
-      )}
 
       <div className="app-below-shell">
         {mobileMenuOpen && <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />}
@@ -529,16 +490,30 @@ export default function Layout() {
                 )}
                 {(open || sidebarCollapsed) &&
                   group.items.map((item) => (
-                    <a
+                    <Link
                       key={item.to}
-                      href={item.to}
+                      to={item.to}
                       className={`sidebar-link${isItemActive(item, location.pathname, location.search) ? " active" : ""}`}
                       title={sidebarCollapsed ? item.label : undefined}
-                      onClick={(e) => handleSidebarItemClick(e, item)}
                     >
                       <Icon name={item.icon} />
-                      {!sidebarCollapsed && item.label}
-                    </a>
+                      {!sidebarCollapsed && <span className="sidebar-link-label">{item.label}</span>}
+                      {!sidebarCollapsed && (
+                        <button
+                          className="sidebar-link-tab-btn"
+                          aria-label={`Abrir ${item.label} em guia`}
+                          title="Abrir em guia"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openTab({ id: item.to, label: item.label, path: item.to, icon: item.icon });
+                            navigate(item.to);
+                          }}
+                        >
+                          <Icon name="add" style={{ fontSize: 13 }} />
+                        </button>
+                      )}
+                    </Link>
                   ))}
               </div>
             );
