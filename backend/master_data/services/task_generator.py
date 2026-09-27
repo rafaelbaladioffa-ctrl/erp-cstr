@@ -19,9 +19,19 @@ path.code, path=<Path>), com a MESMA quantidade em cada uma (não divide
 automaticamente — ver spec). Um step não repeatable NUNCA expande,
 independente de expansion_mode."""
 
-from decimal import Decimal
+from decimal import ROUND_UP, Decimal
 
 from django.db import transaction
+
+_FIVE = Decimal("5")
+
+
+def _round_up_to_5(value):
+    """Arredonda metragem para cima no múltiplo de 5 mais próximo.
+    Ex: 32 → 35, 35 → 35, 41 → 45."""
+    if value is None:
+        return value
+    return (Decimal(value) / _FIVE).to_integral_value(rounding=ROUND_UP) * _FIVE
 
 
 class TaskGenerationError(Exception):
@@ -43,7 +53,7 @@ def _resolve_quantity(scope_item, quantity_source, warnings):
     if quantity_source in _QUANTITY_FROM_SCOPE_ITEM_QUANTITY:
         return Decimal(scope_item.quantity)
     if quantity_source in _QUANTITY_FROM_SCOPE_ITEM_LENGTH:
-        return scope_item.length_m
+        return _round_up_to_5(scope_item.length_m)
     if quantity_source in _QUANTITY_FIXED_ONE:
         return Decimal(1)
     if quantity_source in _QUANTITY_NULL:
