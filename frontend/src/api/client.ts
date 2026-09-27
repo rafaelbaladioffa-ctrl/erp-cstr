@@ -89,6 +89,11 @@ async function refreshAccessToken(): Promise<string | null> {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
+    if (error.response?.status === 403) {
+      return Promise.reject(
+        Object.assign(error, { _isForbidden: true, message: "Você não tem permissão para realizar esta ação." })
+      );
+    }
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
