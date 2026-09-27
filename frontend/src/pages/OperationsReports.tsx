@@ -201,7 +201,7 @@ export default function OperationsReportsPage() {
           <div className="ops-pool-card" style={{ marginBottom: 16 }}>
             <div className="ops-card-head">
               <div className="ops-card-title">Tempo por Tipo de Atividade — Histórico</div>
-              <div className="ops-card-hint">{activities.length} tipos de atividade</div>
+              <div className="ops-card-hint">{activities.length} atividades do catálogo padronizado</div>
             </div>
             <div className="table-wrap">
               <table className="table">

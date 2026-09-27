@@ -433,10 +433,6 @@ class OperationsReportsView(APIView):
 
         for task in tasks_qs:
             hours = task.worked_hours
-            key = task.task_id or f"custom:{task.custom_name}"
-            activity = activity_stats.setdefault(key, {"name": task.display_name, "executions": 0, "hours": []})
-            activity["executions"] += 1
-            activity["hours"].append(hours)
 
             for assignment in task.assignments.all():
                 collaborator = assignment.collaborator
@@ -446,6 +442,15 @@ class OperationsReportsView(APIView):
                 )
                 entry["worked_hours"] += hours
                 entry["completed_count"] += 1
+
+            # Contabiliza tempo por atividade apenas para tarefas vinculadas
+            # ao catálogo (task_id preenchido). Tarefas customizadas ou geradas
+            # automaticamente sem vínculo ao catálogo são excluídas propositalmente.
+            if task.task_id is None:
+                continue
+            activity = activity_stats.setdefault(task.task_id, {"name": task.display_name, "executions": 0, "hours": []})
+            activity["executions"] += 1
+            activity["hours"].append(hours)
 
         # Jornada é fixa (STANDARD_WORKDAY_HOURS por dia efetivamente
         # trabalhado), não a duração real entre check-in e check-out — o
