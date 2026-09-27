@@ -799,6 +799,9 @@ textarea {
 }
 .gtab:hover { color: var(--text); background: var(--bg); }
 .gtab-active { color: var(--text); border-bottom-color: var(--orange); font-weight: 600; }
+.gtab-dragover { border-left: 2px solid var(--orange); background: var(--orange-soft); }
+.gtab[draggable] { cursor: grab; }
+.gtab[draggable]:active { cursor: grabbing; }
 .gtab-label { max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
 .gtab-close {
   display: none;

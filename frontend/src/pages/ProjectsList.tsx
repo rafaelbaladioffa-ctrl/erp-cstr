@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { projectsApi } from "../api/resources";
 import type { Project } from "../api/types";
 import ProjectFormModal from "../components/projects/ProjectFormModal";
@@ -9,6 +9,7 @@ import Pagination from "../components/ui/Pagination";
 import StatCard from "../components/ui/StatCard";
 import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
+import { useTabs } from "../context/TabsContext";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 type TabKey = "in_progress" | "paused" | "planning" | "completed";
@@ -77,11 +78,12 @@ function DeadlineLabel({ planned_end }: { planned_end: string | null }) {
 }
 
 // ── Detail panel shown beside the list ──────────────────────────────────────
-function DetailPanel({ project, canChange, onEdit, onClose }: {
+function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab }: {
   project: Project;
   canChange: boolean;
   onEdit: (p: Project) => void;
   onClose: () => void;
+  onOpenTab: (p: Project) => void;
 }) {
   const diff = daysDiff(project.planned_end);
   const progressColor =
@@ -147,6 +149,9 @@ function DetailPanel({ project, canChange, onEdit, onClose }: {
         <Link to={`/projetos/${project.id}`} className="btn btn-primary btn-sm" style={{ textAlign: "center", textDecoration: "none" }}>
           Abrir projeto
         </Link>
+        <button className="btn btn-outline btn-sm" onClick={() => onOpenTab(project)}>
+          <Icon name="tab" style={{ fontSize: 14 }} /> Abrir em guia
+        </button>
         {canChange && (
           <button className="btn btn-outline btn-sm" onClick={() => onEdit(project)}>
             <Icon name="edit" style={{ fontSize: 14 }} /> Editar
@@ -313,8 +318,16 @@ function KanbanView({
 // ── Main component ───────────────────────────────────────────────────────────
 export default function ProjectsList() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { openTab } = useTabs();
   const canAdd = hasPerm(user, PERMS.addProject);
   const canChange = hasPerm(user, PERMS.changeProject);
+
+  function handleOpenProjectTab(p: Project) {
+    const path = `/projetos/${p.id}`;
+    openTab({ id: path, label: p.name || p.code || `Projeto ${p.id}`, path, icon: "folder" });
+    navigate(path);
+  }
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -569,6 +582,7 @@ export default function ProjectsList() {
                   canChange={canChange}
                   onEdit={openEdit}
                   onClose={() => setSelectedProject(null)}
+                  onOpenTab={handleOpenProjectTab}
                 />
               </div>
             )}
@@ -671,6 +685,7 @@ export default function ProjectsList() {
                   canChange={canChange}
                   onEdit={openEdit}
                   onClose={() => setSelectedProject(null)}
+                  onOpenTab={handleOpenProjectTab}
                 />
               </div>
             )}

@@ -14,6 +14,7 @@ interface TabsContextValue {
   openTab: (tab: AppTab) => void;
   closeTab: (id: string) => void;
   clearTabs: () => void;
+  reorderTabs: (fromId: string, toId: string) => void;
 }
 
 const TabsContext = createContext<TabsContextValue>({
@@ -21,6 +22,7 @@ const TabsContext = createContext<TabsContextValue>({
   openTab: () => {},
   closeTab: () => {},
   clearTabs: () => {},
+  reorderTabs: () => {},
 });
 
 export function useTabs() {
@@ -70,6 +72,18 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     setTabs((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const reorderTabs = useCallback((fromId: string, toId: string) => {
+    setTabs((prev) => {
+      const fromIdx = prev.findIndex((t) => t.id === fromId);
+      const toIdx = prev.findIndex((t) => t.id === toId);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  }, []);
+
   const clearTabs = useCallback(() => {
     setTabs([]);
     if (user?.id) {
@@ -78,7 +92,7 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
   }, [user?.id]);
 
   return (
-    <TabsContext.Provider value={{ tabs, openTab, closeTab, clearTabs }}>
+    <TabsContext.Provider value={{ tabs, openTab, closeTab, clearTabs, reorderTabs }}>
       {children}
     </TabsContext.Provider>
   );

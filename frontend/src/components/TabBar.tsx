@@ -1,11 +1,14 @@
+import { useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTabs } from "../context/TabsContext";
 import Icon from "./ui/Icon";
 
 export default function TabBar() {
-  const { tabs, closeTab } = useTabs();
+  const { tabs, closeTab, reorderTabs } = useTabs();
   const location = useLocation();
   const navigate = useNavigate();
+  const dragId = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   if (tabs.length === 0) return null;
 
@@ -15,12 +18,36 @@ export default function TabBar() {
     <div className="global-tab-bar">
       {tabs.map((tab) => {
         const active = tab.path === currentPath;
+        const isDragOver = dragOverId === tab.id && dragId.current !== tab.id;
         return (
           <div
             key={tab.id}
-            className={`gtab${active ? " gtab-active" : ""}`}
+            className={`gtab${active ? " gtab-active" : ""}${isDragOver ? " gtab-dragover" : ""}`}
+            draggable
             onClick={() => navigate(tab.path)}
             title={tab.label}
+            onDragStart={(e) => {
+              dragId.current = tab.id;
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dragId.current !== tab.id) setDragOverId(tab.id);
+            }}
+            onDragLeave={() => setDragOverId(null)}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragId.current && dragId.current !== tab.id) {
+                reorderTabs(dragId.current, tab.id);
+              }
+              dragId.current = null;
+              setDragOverId(null);
+            }}
+            onDragEnd={() => {
+              dragId.current = null;
+              setDragOverId(null);
+            }}
           >
             <Icon name={tab.icon} style={{ fontSize: 14 }} />
             <span className="gtab-label">{tab.label}</span>
