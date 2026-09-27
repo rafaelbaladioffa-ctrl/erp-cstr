@@ -173,10 +173,7 @@ function KanbanCard({
     overdue ? "var(--red)" :
     undefined;
 
-  const isFinished = project.status === "completed" || project.status === "canceled";
-  let borderColor = "var(--border)";
-  if (selected) borderColor = "var(--orange)";
-  else if (overdue && !isFinished) borderColor = "var(--red)";
+  const borderColor = selected ? "var(--orange)" : "var(--border)";
 
   return (
     <div
