@@ -16,6 +16,7 @@ from core.access_scope import (
     scope_client_queryset,
     scope_project_queryset,
     scope_site_queryset,
+    user_can_access_project,
 )
 from core.csv_io import MAX_CSV_UPLOAD_BYTES, build_csv_content, import_csv_rows
 from core.models import (
@@ -388,6 +389,7 @@ class GlobalSearchView(APIView):
 class ClientViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Client.objects.filter(is_active=True).order_by("legal_name")
     serializer_class = ClientSerializer
+    permission_classes = [ViewAwareModelPermissions]
 
     def get_queryset(self):
         return scope_client_queryset(super().get_queryset(), self.request.user)
@@ -396,6 +398,7 @@ class ClientViewSet(viewsets.ReadOnlyModelViewSet):
 class SiteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Site.objects.filter(is_active=True).order_by("name")
     serializer_class = SiteSerializer
+    permission_classes = [ViewAwareModelPermissions]
 
     def get_queryset(self):
         return scope_site_queryset(super().get_queryset(), self.request.user)
@@ -407,6 +410,7 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = Collaborator.objects.filter(is_active=True).select_related("person").order_by("person__name")
     serializer_class = CollaboratorSerializer
+    permission_classes = [ViewAwareModelPermissions]
 
     def get_queryset(self):
         return deny_if_client_scoped(super().get_queryset(), self.request.user)
@@ -1844,7 +1848,7 @@ class ProjectPlanView(APIView):
         if not project_id:
             return Response({"detail": "Informe o parâmetro project."}, status=400)
         project = Project.objects.filter(pk=project_id).first()
-        if project is None:
+        if project is None or not user_can_access_project(request.user, project):
             return Response({"detail": "Projeto não encontrado."}, status=404)
 
         scope_items_qs = ScopeItem.objects.filter(active=True)
@@ -1935,7 +1939,7 @@ class ProjectPlanCreateTasksView(APIView):
         if not project_id:
             return Response({"detail": "Informe project."}, status=400)
         project = Project.objects.filter(pk=project_id).first()
-        if project is None:
+        if project is None or not user_can_access_project(request.user, project):
             return Response({"detail": "Projeto não encontrado."}, status=404)
 
         scope_items_qs = ScopeItem.objects.filter(active=True, rule_resolution_status="RESOLVED")
