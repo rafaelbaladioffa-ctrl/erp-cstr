@@ -158,7 +158,14 @@ function DetailPanel({ project, canChange, onEdit, onClose }: {
 }
 
 // ── Kanban card ──────────────────────────────────────────────────────────────
-function KanbanCard({ project, onClick }: { project: Project; onClick: () => void }) {
+function KanbanCard({
+  project, selected, onClick, onDragStart,
+}: {
+  project: Project;
+  selected: boolean;
+  onClick: () => void;
+  onDragStart: (e: React.DragEvent) => void;
+}) {
   const diff = daysDiff(project.planned_end);
   const overdue = diff !== null && diff < 0;
   const overrideColor =
@@ -166,20 +173,28 @@ function KanbanCard({ project, onClick }: { project: Project; onClick: () => voi
     overdue ? "var(--red)" :
     undefined;
 
+  let borderColor = "var(--border)";
+  if (selected) borderColor = "var(--orange)";
+  else if (overdue) borderColor = "var(--red)";
+
   return (
     <div
+      draggable
+      onDragStart={onDragStart}
       onClick={onClick}
       style={{
-        background: "var(--white)",
-        border: `1px solid ${overdue ? "var(--red)" : "var(--border)"}`,
+        background: "var(--surface)",
+        border: `1.5px solid ${borderColor}`,
         borderRadius: 8,
         padding: "11px 12px",
         marginBottom: 8,
-        cursor: "pointer",
+        cursor: "grab",
         transition: "box-shadow 0.12s",
+        boxShadow: selected ? "0 0 0 2px var(--orange-soft)" : undefined,
+        opacity: 1,
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)")}
-      onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "")}
+      onMouseEnter={(e) => { if (!selected) (e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)"); }}
+      onMouseLeave={(e) => { if (!selected) (e.currentTarget.style.boxShadow = ""); }}
     >
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", lineHeight: 1.35, marginBottom: 3 }}>{project.name}</div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
@@ -205,26 +220,50 @@ function KanbanCard({ project, onClick }: { project: Project; onClick: () => voi
 }
 
 // ── Kanban board ─────────────────────────────────────────────────────────────
-const KANBAN_COLS: { key: string | string[]; label: string; statusKey: string; color: string }[] = [
-  { key: "in_progress", label: "Em andamento", statusKey: "in_progress", color: "#185fa5" },
-  { key: "paused", label: "Pausados", statusKey: "paused", color: "#854f0b" },
-  { key: "planning", label: "Planejamento", statusKey: "planning", color: "#534ab7" },
-  { key: ["completed", "canceled"], label: "Finalizados", statusKey: "completed", color: "#3b6d11" },
+const KANBAN_COLS: { key: string | string[]; label: string; statusKey: string; color: string; dropStatus: string }[] = [
+  { key: "in_progress", label: "Em andamento", statusKey: "in_progress", color: "#185fa5", dropStatus: "in_progress" },
+  { key: "paused", label: "Pausados", statusKey: "paused", color: "#854f0b", dropStatus: "paused" },
+  { key: "planning", label: "Planejamento", statusKey: "planning", color: "#534ab7", dropStatus: "planning" },
+  { key: ["completed", "canceled"], label: "Finalizados", statusKey: "completed", color: "#3b6d11", dropStatus: "completed" },
 ];
 
-function KanbanView({ projects, onSelect }: { projects: Project[]; onSelect: (p: Project) => void }) {
+function KanbanView({
+  projects, selectedId, onSelect, onStatusChange,
+}: {
+  projects: Project[];
+  selectedId: number | null;
+  onSelect: (p: Project) => void;
+  onStatusChange: (projectId: number, newStatus: string) => void;
+}) {
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const dragIdRef = useRef<number | null>(null);
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, minHeight: 300 }}>
       {KANBAN_COLS.map((col, ci) => {
         const colProjects = projects.filter((p) =>
           Array.isArray(col.key) ? col.key.includes(p.status) : p.status === col.key
         );
+        const isOver = dragOverCol === col.dropStatus;
         return (
           <div
             key={ci}
+            onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.dropStatus); }}
+            onDragLeave={() => setDragOverCol(null)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOverCol(null);
+              if (dragIdRef.current !== null) {
+                onStatusChange(dragIdRef.current, col.dropStatus);
+                dragIdRef.current = null;
+              }
+            }}
             style={{
               borderRight: ci < 3 ? "1px solid var(--border)" : "none",
               padding: "14px 12px",
+              background: isOver ? "var(--orange-soft)" : undefined,
+              transition: "background 0.1s",
+              minHeight: 80,
             }}
           >
             <div style={{
@@ -246,10 +285,25 @@ function KanbanView({ projects, onSelect }: { projects: Project[]; onSelect: (p:
               </span>
             </div>
             {colProjects.length === 0 && (
-              <div style={{ fontSize: 12, color: "var(--text-faint)", textAlign: "center", padding: "20px 0" }}>Nenhum projeto</div>
+              <div style={{
+                fontSize: 12, color: "var(--text-faint)", textAlign: "center", padding: "20px 0",
+                border: isOver ? "2px dashed var(--orange)" : "2px dashed transparent",
+                borderRadius: 8, transition: "border-color 0.1s",
+              }}>
+                {isOver ? "Soltar aqui" : "Nenhum projeto"}
+              </div>
             )}
             {colProjects.map((p) => (
-              <KanbanCard key={p.id} project={p} onClick={() => onSelect(p)} />
+              <KanbanCard
+                key={p.id}
+                project={p}
+                selected={selectedId === p.id}
+                onClick={() => onSelect(p)}
+                onDragStart={(e) => {
+                  dragIdRef.current = p.id;
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+              />
             ))}
           </div>
         );
@@ -489,7 +543,19 @@ export default function ProjectsList() {
           /* ── KANBAN VIEW ── */
           <div style={{ display: "flex", alignItems: "flex-start" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <KanbanView projects={kanbanBase} onSelect={setSelectedProject} />
+              <KanbanView
+                projects={kanbanBase}
+                selectedId={selectedProject?.id ?? null}
+                onSelect={setSelectedProject}
+                onStatusChange={(projectId, newStatus) => {
+                  const current = projects.find((p) => p.id === projectId);
+                  if (!current || current.status === newStatus) return;
+                  // optimistic update
+                  setProjects((prev) => prev.map((p) => p.id === projectId ? { ...p, status: newStatus, status_display: newStatus } : p));
+                  if (selectedProject?.id === projectId) setSelectedProject((prev) => prev ? { ...prev, status: newStatus } : prev);
+                  projectsApi.update(projectId, { status: newStatus } as Partial<Project>).catch(() => reload());
+                }}
+              />
             </div>
             {selectedProject && (
               <div ref={panelRef}>
