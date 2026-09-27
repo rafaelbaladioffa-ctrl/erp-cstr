@@ -115,8 +115,8 @@ function DetailPanel({ project, canChange, onEdit, onClose }: {
       <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--border)", textAlign: "center" }}>
         <div style={{ fontSize: 36, fontWeight: 700, color: progressColor, lineHeight: 1 }}>{project.progress_percent}%</div>
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, marginBottom: 10 }}>progresso geral</div>
-        <div style={{ height: 6, borderRadius: 3, background: "var(--border)" }}>
-          <div style={{ height: 6, borderRadius: 3, background: progressColor, width: `${project.progress_percent}%` }} />
+        <div className="progress-track">
+          <div className="progress-fill" style={{ width: `${project.progress_percent}%`, background: progressColor }} />
         </div>
       </div>
 
@@ -161,10 +161,10 @@ function DetailPanel({ project, canChange, onEdit, onClose }: {
 function KanbanCard({ project, onClick }: { project: Project; onClick: () => void }) {
   const diff = daysDiff(project.planned_end);
   const overdue = diff !== null && diff < 0;
-  const barColor =
+  const overrideColor =
     project.status === "completed" ? "var(--success)" :
     overdue ? "var(--danger)" :
-    "var(--primary)";
+    undefined;
 
   return (
     <div
@@ -185,8 +185,11 @@ function KanbanCard({ project, onClick }: { project: Project; onClick: () => voi
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
         {project.client_name || "—"} · {project.site_name || "—"}
       </div>
-      <div style={{ height: 4, borderRadius: 2, background: "var(--border)", marginBottom: 6 }}>
-        <div style={{ height: 4, borderRadius: 2, background: barColor, width: `${project.progress_percent}%` }} />
+      <div className="progress-track" style={{ marginBottom: 6 }}>
+        <div
+          className="progress-fill"
+          style={{ width: `${project.progress_percent}%`, ...(overrideColor ? { background: overrideColor } : {}) }}
+        />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{project.completed_tasks}/{project.total_tasks} tarefas</span>
@@ -519,10 +522,10 @@ export default function ProjectsList() {
                   {paged.map((p) => {
                     const isSelected = selectedProject?.id === p.id;
                     const diff = daysDiff(p.planned_end);
-                    const barColor =
+                    const overrideColor =
                       p.status === "completed" ? "var(--success)" :
                       diff !== null && diff < 0 ? "var(--danger)" :
-                      "var(--primary)";
+                      undefined;
                     return (
                       <tr
                         key={p.id}
@@ -548,8 +551,11 @@ export default function ProjectsList() {
                         </td>
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div style={{ flex: 1, height: 5, borderRadius: 3, background: "var(--border)" }}>
-                              <div style={{ height: 5, borderRadius: 3, background: barColor, width: `${p.progress_percent}%` }} />
+                            <div className="progress-track" style={{ flex: 1 }}>
+                              <div
+                                className="progress-fill"
+                                style={{ width: `${p.progress_percent}%`, ...(overrideColor ? { background: overrideColor } : {}) }}
+                              />
                             </div>
                             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", minWidth: 32, textAlign: "right" }}>
                               {p.progress_percent}%
