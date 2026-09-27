@@ -5,6 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import RequirePermission from "./components/RequirePermission";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AuditLog from "./pages/AuditLog";
+import ResetPassword from "./pages/ResetPassword";
 import CadastrosPage from "./pages/cadastros/CadastrosPage";
 import Dashboard from "./pages/Dashboard";
 import DailyUpdates from "./pages/DailyUpdates";
@@ -51,6 +52,7 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/redefinir-senha/:uid/:token" element={<ResetPassword />} />
         <Route
           element={
             <ProtectedRoute>

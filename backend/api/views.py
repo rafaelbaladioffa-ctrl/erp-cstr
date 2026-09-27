@@ -2463,4 +2463,91 @@ class AuditLogViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets
                 | models.Q(actor__username__icontains=search)
                 | models.Q(actor__email__icontains=search)
             )
+
+
+class PasswordResetRequestView(APIView):
+    """Solicita reset de senha: envia e-mail com link de redefinição."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        import secrets
+
+        from django.contrib.auth.tokens import default_token_generator
+        from django.core.mail import send_mail
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        from users.models import User
+
+        email = (request.data.get("email") or "").strip().lower()
+        if not email:
+            return Response({"detail": "Informe o e-mail."}, status=400)
+
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            # Resposta idêntica para não vazar existência de e-mails
+            return Response({"detail": "Se o e-mail estiver cadastrado, você receberá as instruções em breve."})
+
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        frontend_url = request.build_absolute_uri("/").rstrip("/")
+        reset_link = f"{frontend_url}/redefinir-senha/{uid}/{token}/"
+
+        send_mail(
+            subject="Redefinição de senha — ERP CSTR",
+            message=(
+                f"Olá, {user.get_full_name() or user.username}!\n\n"
+                f"Recebemos uma solicitação para redefinir a senha da sua conta.\n\n"
+                f"Clique no link abaixo para criar uma nova senha:\n{reset_link}\n\n"
+                f"O link expira em 24 horas. Se você não solicitou, ignore este e-mail.\n\n"
+                f"Equipe Consultimer"
+            ),
+            from_email=None,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+        return Response({"detail": "Se o e-mail estiver cadastrado, você receberá as instruções em breve."})
+
+
+class PasswordResetConfirmView(APIView):
+    """Confirma reset de senha com uid/token e define nova senha."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from django.contrib.auth.password_validation import validate_password
+        from django.contrib.auth.tokens import default_token_generator
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from django.utils.encoding import force_str
+        from django.utils.http import urlsafe_base64_decode
+
+        from users.models import User
+
+        uid = request.data.get("uid") or ""
+        token = request.data.get("token") or ""
+        new_password = request.data.get("new_password") or ""
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=user_id)
+        except Exception:
+            return Response({"detail": "Link inválido ou expirado."}, status=400)
+
+        if not default_token_generator.check_token(user, token):
+            return Response({"detail": "Link inválido ou expirado."}, status=400)
+
+        if not new_password:
+            return Response({"detail": "Informe a nova senha."}, status=400)
+
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as exc:
+            return Response({"detail": " ".join(exc.messages)}, status=400)
+
+        user.set_password(new_password)
+        user.must_change_password = False
+        user.save(update_fields=["password", "must_change_password"])
+        return Response({"detail": "Senha redefinida com sucesso."})
         return queryset

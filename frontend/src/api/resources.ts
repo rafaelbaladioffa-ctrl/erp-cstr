@@ -311,6 +311,13 @@ export const meApi = {
     apiClient.post<{ detail: string }>("/me/change-password/", { old_password, new_password }).then((r) => r.data),
 };
 
+export const passwordResetApi = {
+  request: (email: string) =>
+    apiClient.post<{ detail: string }>("/password-reset/request/", { email }).then((r) => r.data),
+  confirm: (uid: string, token: string, new_password: string) =>
+    apiClient.post<{ detail: string }>("/password-reset/confirm/", { uid, token, new_password }).then((r) => r.data),
+};
+
 export interface GlobalSearchResult {
   projects: { id: number; code: string; name: string; po: string; client: string; site: string }[];
   sites: { id: number; code: string; name: string; client: string; city: string }[];

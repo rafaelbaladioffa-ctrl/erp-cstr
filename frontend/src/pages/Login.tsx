@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { savedUsername } from "../api/client";
+import { passwordResetApi } from "../api/resources";
 import { useAuth } from "../context/AuthContext";
 
 const NODES = [
@@ -31,6 +32,9 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMsg, setForgotMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -135,11 +139,42 @@ export default function Login() {
         </div>
 
         {showForgot && (
-          <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, background: "#fff4ef", border: "1px solid #f5c8b4" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#b84320", marginBottom: 3 }}>Recuperação de senha</div>
-            <div style={{ fontSize: 12, color: "#7a4030", lineHeight: 1.55 }}>
-              Entre em contato com o administrador do sistema para redefinir sua senha.
-            </div>
+          <div style={{ marginTop: 10, padding: "14px", borderRadius: 10, background: "#f6f8fa", border: "1px solid #d8e0e8" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0d1f30", marginBottom: 10 }}>Recuperar senha</div>
+            {forgotMsg ? (
+              <div style={{ fontSize: 12.5, color: forgotMsg.ok ? "#1a6b3a" : "#c0392b", lineHeight: 1.55 }}>{forgotMsg.text}</div>
+            ) : (
+              <>
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>E-mail cadastrado</label>
+                <input
+                  type="email"
+                  className="input"
+                  placeholder="seu@email.com"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  style={{ width: "100%", marginBottom: 10, background: "#fff", border: "1px solid #d8e0e8" }}
+                />
+                <button
+                  type="button"
+                  disabled={forgotLoading}
+                  onClick={async () => {
+                    if (!forgotEmail.trim()) return;
+                    setForgotLoading(true);
+                    try {
+                      const res = await passwordResetApi.request(forgotEmail.trim());
+                      setForgotMsg({ ok: true, text: res.detail });
+                    } catch {
+                      setForgotMsg({ ok: false, text: "Erro ao enviar. Tente novamente." });
+                    } finally {
+                      setForgotLoading(false);
+                    }
+                  }}
+                  style={{ width: "100%", height: 36, borderRadius: 8, background: "#e05b2b", color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: forgotLoading ? "not-allowed" : "pointer" }}
+                >
+                  {forgotLoading ? "Enviando..." : "Enviar instruções"}
+                </button>
+              </>
+            )}
           </div>
         )}
 
