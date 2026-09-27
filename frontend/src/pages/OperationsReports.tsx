@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsReports } from "../api/types";
 import PageHeader from "../components/ui/PageHeader";
+import Pagination from "../components/ui/Pagination";
 import StatCard from "../components/ui/StatCard";
 
 function todayISO() {
@@ -32,6 +33,8 @@ export default function OperationsReportsPage() {
   const [dateTo, setDateTo] = useState(() => todayISO());
   const [data, setData] = useState<OperationsReports | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activitiesPage, setActivitiesPage] = useState(1);
+  const [activitiesPageSize, setActivitiesPageSize] = useState(10);
 
   useEffect(() => {
     sitesApi.list().then((res) => setSites(res.results));
@@ -45,9 +48,17 @@ export default function OperationsReportsPage() {
       .finally(() => setLoading(false));
   }, [siteId, dateFrom, dateTo]);
 
+  useEffect(() => {
+    setActivitiesPage(1);
+  }, [siteId, dateFrom, dateTo]);
+
   const stats = data?.stats;
   const technicians = data?.technicians || [];
   const activities = data?.activities || [];
+  const activitiesSlice = activities.slice(
+    (activitiesPage - 1) * activitiesPageSize,
+    activitiesPage * activitiesPageSize
+  );
   const todayTechnicians = data?.today_technicians || [];
   const unproductiveByReason = data?.unproductive_by_reason || [];
   const logEntries = data?.log_entries || [];
@@ -214,7 +225,7 @@ export default function OperationsReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activities.map((a, idx) => (
+                  {activitiesSlice.map((a, idx) => (
                     <tr key={idx}>
                       <td style={{ fontWeight: 700 }}>{a.name}</td>
                       <td>{a.executions}</td>
@@ -225,6 +236,15 @@ export default function OperationsReportsPage() {
                 </tbody>
               </table>
               {activities.length === 0 && <div className="table-empty">Nenhuma atividade concluída no período.</div>}
+              {activities.length > 0 && (
+                <Pagination
+                  page={activitiesPage}
+                  pageSize={activitiesPageSize}
+                  total={activities.length}
+                  onPageChange={setActivitiesPage}
+                  onPageSizeChange={(size) => { setActivitiesPageSize(size); setActivitiesPage(1); }}
+                />
+              )}
             </div>
           </div>
 
