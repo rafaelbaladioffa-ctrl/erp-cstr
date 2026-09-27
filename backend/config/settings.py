@@ -222,6 +222,11 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "atualizacoes@consultimer.c
 # Segredo compartilhado usado pelo bot do WhatsApp para chamar a API sem
 # fazer login normal (ver api/views.BotSharedSecretPermission).
 WHATSAPP_BOT_SECRET = os.getenv("WHATSAPP_BOT_SECRET", "")
+if not WHATSAPP_BOT_SECRET and not DEBUG:
+    raise RuntimeError(
+        "WHATSAPP_BOT_SECRET não foi definida. Configure essa variável de ambiente antes de subir em produção "
+        "(DJANGO_DEBUG=0)."
+    )
 
 # Provider de IA usado pelo parser de SOW (Planejamento > Importar SOW —
 # ver master_data/services/sow_parser/ai_parser.py). Lido diretamente via
@@ -246,6 +251,11 @@ CSRF_COOKIE_SECURE = not DEBUG
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+# HSTS: instrui browsers a nunca usar HTTP para este domínio.
+# max-age=31536000 = 1 ano. Ativo apenas em produção (DEBUG=False).
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 
 # --- Sessão do Django Admin: mesmo comportamento de login do frontend ---------
 # Nunca fica logado ao reabrir o navegador (cookie de sessão, não persistente).
