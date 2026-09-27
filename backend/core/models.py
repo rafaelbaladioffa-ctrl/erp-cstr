@@ -579,7 +579,7 @@ def _send_web_push(subscription, payload):
     import os
 
     try:
-        from pywebpush import WebPusher, WebPushException
+        from pywebpush import webpush, WebPushException
     except ImportError:
         return False
 
@@ -589,12 +589,11 @@ def _send_web_push(subscription, payload):
         return False
 
     try:
-        WebPusher(
-            {
+        webpush(
+            subscription_info={
                 "endpoint": subscription.endpoint,
                 "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
-            }
-        ).send(
+            },
             data=json.dumps(payload),
             vapid_private_key=vapid_private,
             vapid_claims={"sub": vapid_email},
