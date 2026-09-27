@@ -526,9 +526,9 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
   // ===========================================================================
 
   return (
-    <div className="card">
+    <div className="card" style={{ padding: 20 }}>
       {/* Cabeçalho */}
-      <div className="toolbar" style={{ marginBottom: 8, padding: "0 20px" }}>
+      <div className="toolbar" style={{ marginBottom: 8 }}>
         <div>
           <div className="toolbar-title">Novo Escopo de Projeto</div>
           <div className="toolbar-subtitle">
@@ -543,18 +543,16 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
         )}
       </div>
 
-      <div style={{ padding: "0 20px" }}>
-        <StepBar current={step} />
-      </div>
+      <StepBar current={step} />
 
       {/* Mensagens globais */}
       {actionError && (
-        <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 10, padding: "8px 12px", background: "var(--red-soft, #fff0f0)", borderRadius: 6, margin: "0 20px 10px" }}>
+        <div style={{ color: "var(--red)", fontSize: 13, marginBottom: 10, padding: "8px 12px", background: "var(--red-soft, #fff0f0)", borderRadius: 6 }}>
           {actionError}
         </div>
       )}
       {actionMessage && (
-        <div style={{ color: "var(--green)", fontSize: 13, marginBottom: 10, padding: "8px 12px", background: "var(--green-soft, #f0fff4)", borderRadius: 6, margin: "0 20px 10px" }}>
+        <div style={{ color: "var(--green)", fontSize: 13, marginBottom: 10, padding: "8px 12px", background: "var(--green-soft, #f0fff4)", borderRadius: 6 }}>
           ✓ {actionMessage}
         </div>
       )}
@@ -563,7 +561,7 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
           PASSO 1 — IMPORTAR SOW
       ===================================================================== */}
       {step === 1 && (
-        <div style={{ padding: "0 20px 20px" }}>
+        <div>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
             Cole o texto do SOW ou envie um arquivo. O parser vai propor os Itens de Escopo na próxima etapa para você revisar.
           </p>
@@ -616,7 +614,7 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
           PASSO 2 — REVISAR ITENS PARSEADOS
       ===================================================================== */}
       {step === 2 && activeImport && (
-        <div style={{ padding: "0 20px 20px" }}>
+        <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
               {approvedCount} aprovado(s) · {pendingCount} pendente(s) de revisão de {items.length} itens detectados.
@@ -639,7 +637,20 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
               <table className="table">
                 <thead>
                   <tr>
-                    <th></th>
+                    <th>
+                      <input
+                        type="checkbox"
+                        title="Selecionar todos os pendentes"
+                        checked={
+                          items.filter((i) => i.review_status === "PENDING" || i.review_status === "NEEDS_REVIEW").length > 0 &&
+                          items.filter((i) => i.review_status === "PENDING" || i.review_status === "NEEDS_REVIEW").every((i) => selectedIds.has(i.id))
+                        }
+                        onChange={(e) => {
+                          if (e.target.checked) selectAll();
+                          else setSelectedIds(new Set());
+                        }}
+                      />
+                    </th>
                     <th>Seq.</th>
                     <th>Texto Original</th>
                     <th>Família</th>
@@ -788,7 +799,7 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
           PASSO 3 — RESOLVER TEMPLATES
       ===================================================================== */}
       {step === 3 && activeImport && (
-        <div style={{ padding: "0 20px 20px" }}>
+        <div>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
             O motor de regras vai identificar qual Template de Tarefa corresponde a cada Item de Escopo. Itens sem match precisarão de revisão manual nos Cadastros Mestres antes de prosseguir.
           </p>
@@ -839,7 +850,7 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
           PASSO 4 — GERAR TAREFAS
       ===================================================================== */}
       {step === 4 && activeImport && (
-        <div style={{ padding: "0 20px 20px" }}>
+        <div>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
             Gere as Tarefas Operacionais a partir dos Itens de Escopo com template resolvido. Cada tarefa fica com status <em>Pendente</em> até ser atribuída no próximo passo.
           </p>
@@ -890,7 +901,7 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
           PASSO 5 — ENVIAR AO PROJETO
       ===================================================================== */}
       {step === 5 && activeImport && (
-        <div style={{ padding: "0 20px 20px" }}>
+        <div>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
             Selecione o projeto de destino e crie as tarefas. Depois atribua a equipe técnica responsável.
           </p>
