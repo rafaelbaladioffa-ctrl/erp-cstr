@@ -95,17 +95,21 @@ export default function MasterDataPage() {
 
   const [activeKey, setActiveKey] = useState<string | null>(focusEntity || "sow-wizard");
 
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!user?.id) return;
     try {
-      const key = `erp_masterdata_collapsed_${user?.id ?? "anon"}`;
-      return JSON.parse(localStorage.getItem(key) || "{}");
-    } catch { return {}; }
-  });
+      const saved = localStorage.getItem(`erp_masterdata_collapsed_${user.id}`);
+      setCollapsedGroups(saved ? JSON.parse(saved) : {});
+    } catch { setCollapsedGroups({}); }
+  }, [user?.id]);
 
   function toggleGroup(catKey: string) {
+    if (!user?.id) return;
     setCollapsedGroups((prev) => {
       const next = { ...prev, [catKey]: !prev[catKey] };
-      try { localStorage.setItem(`erp_masterdata_collapsed_${user?.id ?? "anon"}`, JSON.stringify(next)); } catch {}
+      try { localStorage.setItem(`erp_masterdata_collapsed_${user.id}`, JSON.stringify(next)); } catch {}
       return next;
     });
   }
