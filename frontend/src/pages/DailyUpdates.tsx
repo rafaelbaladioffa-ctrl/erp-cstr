@@ -32,7 +32,8 @@ export default function DailyUpdates() {
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateFrom, setDateFrom] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [allocationRows, setAllocationRows] = useState<AllocationRow[]>([emptyRow()]);
   const [feedback, setFeedback] = useState("");
   const [createError, setCreateError] = useState("");
@@ -76,21 +77,44 @@ export default function DailyUpdates() {
     setAllocationRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
 
+  function getDatesInRange(from: string, to: string): string[] {
+    const dates: string[] = [];
+    const current = new Date(from + "T00:00:00");
+    const end = new Date(to + "T00:00:00");
+    while (current <= end) {
+      dates.push(current.toISOString().slice(0, 10));
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  }
+
   async function handleCreate() {
     const validRows = allocationRows.filter((row) => row.projectId && row.collaboratorIds.length > 0);
     if (validRows.length === 0) {
       setCreateError("Adicione ao menos um projeto com técnico(s) selecionado(s).");
       return;
     }
+    if (!dateFrom || !dateTo || dateFrom > dateTo) {
+      setCreateError("Selecione um período válido (data inicial ≤ data final).");
+      return;
+    }
+    const dates = getDatesInRange(dateFrom, dateTo);
     setSavingCreate(true);
     setCreateError("");
     try {
-      await dailyUpdatesApi.create({
-        allocation_date: date,
-        allocations: validRows.map((row) => ({ project: Number(row.projectId), collaborator_ids: row.collaboratorIds })),
-      } as never);
+      await Promise.all(
+        dates.map((d) =>
+          dailyUpdatesApi.create({
+            allocation_date: d,
+            allocations: validRows.map((row) => ({ project: Number(row.projectId), collaborator_ids: row.collaboratorIds })),
+          } as never)
+        )
+      );
       setCreating(false);
       setAllocationRows([emptyRow()]);
+      const today = new Date().toISOString().slice(0, 10);
+      setDateFrom(today);
+      setDateTo(today);
       reload(range);
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: Record<string, unknown> } };
@@ -183,8 +207,36 @@ export default function DailyUpdates() {
 
       {creating && canCreate && (
         <div className="form-card">
-          <label className="form-label">Data da alocação</label>
-          <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} style={{ marginBottom: 16 }} />
+          <div style={{ display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
+            <div className="field-group" style={{ flex: 1, minWidth: 160 }}>
+              <label className="form-label">Data inicial</label>
+              <input
+                type="date"
+                className="input"
+                value={dateFrom}
+                onChange={(e) => {
+                  setDateFrom(e.target.value);
+                  if (e.target.value > dateTo) setDateTo(e.target.value);
+                }}
+              />
+            </div>
+            <div className="field-group" style={{ flex: 1, minWidth: 160 }}>
+              <label className="form-label">Data final</label>
+              <input
+                type="date"
+                className="input"
+                value={dateTo}
+                min={dateFrom}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+          </div>
+          {dateFrom !== dateTo && (
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+              <Icon name="info" style={{ fontSize: 14, verticalAlign: "middle", marginRight: 4 }} />
+              Será criado um registro para cada dia do período ({getDatesInRange(dateFrom, dateTo).length} dias).
+            </p>
+          )}
 
           {allocationRows.map((row, index) => (
             <div
@@ -255,7 +307,11 @@ export default function DailyUpdates() {
 
           <div>
             <button className="btn btn-primary" onClick={handleCreate} disabled={savingCreate}>
-              {savingCreate ? "Salvando..." : "Salvar"}
+              {savingCreate
+                ? "Salvando..."
+                : dateFrom === dateTo
+                ? "Salvar"
+                : `Salvar (${getDatesInRange(dateFrom, dateTo).length} dias)`}
             </button>
           </div>
         </div>
