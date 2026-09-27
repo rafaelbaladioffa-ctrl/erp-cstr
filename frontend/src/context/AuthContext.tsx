@@ -7,7 +7,7 @@ interface AuthContextValue {
   user: Me | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -75,8 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me);
   }
 
-  function logout() {
-    apiLogout();
+  async function logout() {
+    await apiLogout();
     setUser(null);
   }
 

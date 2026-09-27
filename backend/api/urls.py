@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from . import views
-from .auth_views import ThrottledTokenObtainPairView, ThrottledTokenRefreshView
+from .auth_views import LogoutView, ThrottledTokenObtainPairView, ThrottledTokenRefreshView
 from .dashboard import ProjectsPerformanceView, TechnicalPerformanceView
 from .operations import OperationsBoardView, OperationsReportsView, OperationsTimelineView
 
@@ -59,6 +59,7 @@ router.register("planning/sow-parsed-items", views.SowParsedItemViewSet, basenam
 urlpatterns = [
     path("token/", ThrottledTokenObtainPairView.as_view(), name="token-obtain-pair"),
     path("token/refresh/", ThrottledTokenRefreshView.as_view(), name="token-refresh"),
+    path("token/logout/", LogoutView.as_view(), name="token-logout"),
     path("me/", views.MeView.as_view(), name="me"),
     path("user-options/", views.UserOptionsView.as_view(), name="user-options"),
     path("me/change-password/", views.ChangePasswordView.as_view(), name="change-password"),

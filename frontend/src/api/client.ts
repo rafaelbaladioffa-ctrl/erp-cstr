@@ -126,6 +126,17 @@ export async function login(username: string, password: string) {
   return data;
 }
 
-export function logout() {
+export async function logout() {
+  const refresh = tokenStorage.getRefresh();
+  // Invalida o refresh token no servidor antes de limpar o storage local.
+  // Falha silenciosa intencional: se a rede estiver caída ou o token já
+  // expirou, o logout local acontece de qualquer forma.
+  if (refresh) {
+    try {
+      await axios.post(`${API_URL}/token/logout/`, { refresh });
+    } catch {
+      // silently ignored — logout local prossegue normalmente
+    }
+  }
   tokenStorage.clear();
 }

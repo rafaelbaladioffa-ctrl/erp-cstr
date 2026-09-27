@@ -1,5 +1,5 @@
 from rest_framework.throttling import ScopedRateThrottle
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenBlacklistView, TokenObtainPairView, TokenRefreshView
 
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):
@@ -19,3 +19,10 @@ class ThrottledTokenRefreshView(TokenRefreshView):
 
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
+
+
+class LogoutView(TokenBlacklistView):
+    """Invalida o refresh token no servidor (adiciona à blacklist do
+    simplejwt). O access token ainda é válido até expirar (8h), mas sem o
+    refresh o atacante não consegue renovar a sessão. O frontend também
+    apaga os tokens do sessionStorage no mesmo fluxo de logout."""
