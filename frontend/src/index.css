@@ -502,12 +502,16 @@ textarea {
 .sidebar-group-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   width: 100%;
   background: none;
   border: none;
   cursor: pointer;
   font-family: inherit;
+}
+
+.sidebar-group-toggle:hover {
+  color: var(--text);
 }
 
 .sidebar-group-toggle .material-symbols-outlined {
