@@ -126,6 +126,11 @@
 
 [data-theme="dark"] .table thead th {
   background: #13151c;
+  border-bottom-color: #252835;
+}
+
+[data-theme="dark"] .table tbody td {
+  border-bottom-color: #22252f;
 }
 
 [data-theme="dark"] .table tbody tr:hover {
@@ -957,7 +962,7 @@ textarea {
 
 .table tbody td {
   padding: 14px 16px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border);
   color: var(--text);
   vertical-align: middle;
 }
