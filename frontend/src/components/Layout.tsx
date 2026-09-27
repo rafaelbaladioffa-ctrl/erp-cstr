@@ -16,10 +16,9 @@ interface NavItem {
   superuserOnly?: boolean;
 }
 
-const NAV_GROUPS: { title: string; icon: string; items: NavItem[] }[] = [
+const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Central de Operações",
-    icon: "alt_route",
     items: [
       { to: "/operacao-do-dia", label: "Operação do Dia", icon: "alt_route", permission: PERMS.viewOperationsBoard },
       { to: "/timeline-operacional", label: "Timeline Operacional", icon: "schedule", permission: PERMS.viewOperationsBoard },
@@ -28,7 +27,6 @@ const NAV_GROUPS: { title: string; icon: string; items: NavItem[] }[] = [
   },
   {
     title: "Projeto",
-    icon: "folder",
     items: [
       { to: "/projetos", label: "Projetos Ativos", icon: "folder", permission: PERMS.viewProject },
       { to: "/projetos?tab=history", label: "Histórico de Projetos", icon: "history_edu", permission: PERMS.viewProject },
@@ -36,7 +34,6 @@ const NAV_GROUPS: { title: string; icon: string; items: NavItem[] }[] = [
   },
   {
     title: "Atualizações",
-    icon: "notifications",
     items: [
       { to: "/atualizacoes-diarias", label: "Atualizações Diárias", icon: "event_note", permission: PERMS.viewDailyUpdate },
       { to: "/atualizacoes-projeto", label: "Atualizações de Projetos", icon: "description", permission: PERMS.viewProjectUpdate },
@@ -44,7 +41,6 @@ const NAV_GROUPS: { title: string; icon: string; items: NavItem[] }[] = [
   },
   {
     title: "Sistema",
-    icon: "dashboard",
     items: [
       { to: "/dashboard", label: "Dashboard", icon: "dashboard", permissions: [PERMS.viewProject, PERMS.viewCollaborator] },
       { to: "/cadastros", label: "Cadastros Gerais", icon: "inventory_2", permissions: CADASTROS_PERMS },
@@ -53,12 +49,10 @@ const NAV_GROUPS: { title: string; icon: string; items: NavItem[] }[] = [
   },
   {
     title: "Técnico",
-    icon: "engineering",
     items: [{ to: "/minhas-tarefas", label: "Minhas Tarefas", icon: "checklist", permission: PERMS.viewMyTasks }],
   },
   {
     title: "Segurança",
-    icon: "shield",
     items: [{ to: "/auditoria", label: "Log", icon: "history", superuserOnly: true }],
   },
 ];
@@ -447,9 +441,8 @@ export default function Layout() {
                   onClick={() => toggleGroup(group.title)}
                   aria-expanded={open}
                 >
-                  <Icon name={group.icon} style={{ fontSize: 15, flexShrink: 0 }} />
                   <span>{group.title}</span>
-                  <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 16, marginLeft: "auto" }} />
+                  <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 16 }} />
                 </button>
                 {open &&
                   group.items.map((item) => (
