@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RequirePermission from "./components/RequirePermission";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { TabsProvider } from "./context/TabsContext";
 import AuditLog from "./pages/AuditLog";
 import ResetPassword from "./pages/ResetPassword";
 import CadastrosPage from "./pages/cadastros/CadastrosPage";
@@ -50,6 +51,7 @@ function RequireAnyPermission({ permissions, children }: { permissions: string[]
 export default function App() {
   return (
     <AuthProvider>
+      <TabsProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/redefinir-senha/:uid/:token" element={<ResetPassword />} />
@@ -168,6 +170,7 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </TabsProvider>
     </AuthProvider>
   );
 }

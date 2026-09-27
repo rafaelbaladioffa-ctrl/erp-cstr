@@ -667,6 +667,62 @@ textarea {
   flex-direction: column;
 }
 
+/* ── Global Tab Bar ───────────────────────────────────────────── */
+.global-tab-bar {
+  flex-shrink: 0;
+  height: 34px;
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  padding: 0 8px;
+  gap: 2px;
+}
+.global-tab-bar::-webkit-scrollbar { display: none; }
+
+.gtab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px 0 10px;
+  height: 100%;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color .15s, border-color .15s;
+  position: relative;
+}
+.gtab:hover { color: var(--text); background: var(--bg); }
+.gtab-active { color: var(--text); border-bottom-color: var(--orange); font-weight: 600; }
+.gtab-label { max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+.gtab-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+.gtab:hover .gtab-close { display: flex; }
+.gtab-close:hover { background: var(--border); color: var(--text); }
+
+[data-theme="dark"] .global-tab-bar { background: var(--white); border-bottom-color: var(--border); }
+[data-theme="dark"] .gtab:hover { background: rgba(255,255,255,0.04); }
+
 .crumbbar {
   height: 36px;
   flex-shrink: 0;

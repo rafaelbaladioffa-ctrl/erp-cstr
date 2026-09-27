@@ -3,9 +3,11 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { notificationsApi, searchApi, type GlobalSearchResult } from "../api/resources";
 import type { Notification } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useTabs } from "../context/TabsContext";
 import { CADASTROS_PERMS, MASTER_DATA_PERMS, PERMS, hasAnyPerm, hasPerm } from "../utils/permissions";
 import { registerPushNotifications } from "../utils/pushNotifications";
 import AccountModal from "./AccountModal";
+import TabBar from "./TabBar";
 import Icon from "./ui/Icon";
 
 interface NavItem {
@@ -103,6 +105,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const { openTab } = useTabs();
   const breadcrumb = currentBreadcrumb(location.pathname, location.search);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
@@ -225,10 +228,13 @@ export default function Layout() {
   const hasResults = searchResults.projects.length > 0 || searchResults.sites.length > 0 || searchResults.tasks.length > 0;
   const term = searchQuery.trim();
 
-  function goTo(path: string) {
+  function goTo(path: string, tabLabel?: string, tabIcon?: string) {
     navigate(path);
     setSearchOpen(false);
     setSearchQuery("");
+    if (tabLabel) {
+      openTab({ id: path, label: tabLabel, path, icon: tabIcon || "folder" });
+    }
   }
 
   function openNotification(notification: Notification) {
@@ -280,7 +286,7 @@ export default function Layout() {
                 <div className="search-dropdown-group">
                   <div className="search-dropdown-title">Projetos</div>
                   {searchResults.projects.map((p) => (
-                    <button key={`p-${p.id}`} className="search-dropdown-item" onClick={() => goTo(`/projetos/${p.id}`)}>
+                    <button key={`p-${p.id}`} className="search-dropdown-item" onClick={() => goTo(`/projetos/${p.id}`, p.name || p.code, "folder")}>
                       <Icon name="folder" style={{ fontSize: 17 }} />
                       <div>
                         <div className="search-dropdown-item-title">
@@ -431,6 +437,8 @@ export default function Layout() {
 
       {accountOpen && <AccountModal onClose={() => setAccountOpen(false)} />}
 
+      <TabBar />
+
       <div className="app-below-shell">
         {mobileMenuOpen && <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />}
         <aside className={`sidebar${mobileMenuOpen ? " sidebar-open" : ""}`}>
@@ -470,6 +478,7 @@ export default function Layout() {
                       key={item.to}
                       to={item.to}
                       className={`sidebar-link${isItemActive(item, location.pathname, location.search) ? " active" : ""}`}
+                      onClick={() => openTab({ id: item.to, label: item.label, path: item.to, icon: item.icon })}
                     >
                       <Icon name={item.icon} />
                       {item.label}
