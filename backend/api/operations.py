@@ -443,12 +443,14 @@ class OperationsReportsView(APIView):
                 entry["worked_hours"] += hours
                 entry["completed_count"] += 1
 
-            # Contabiliza tempo por atividade apenas para tarefas vinculadas
-            # ao catálogo (task_id preenchido). Tarefas customizadas ou geradas
-            # automaticamente sem vínculo ao catálogo são excluídas propositalmente.
-            if task.task_id is None:
+            # Contabiliza tempo por atividade apenas para tarefas geradas
+            # pelo cadastro mestre (origin=SOW_TEMPLATE), que têm nomes
+            # específicos com tipo de cabo, metragem etc. Tarefas manuais
+            # e de catálogo genérico são excluídas propositalmente.
+            if task.origin != ProjectTask.ORIGIN_SOW_TEMPLATE:
                 continue
-            activity = activity_stats.setdefault(task.task_id, {"name": task.display_name, "executions": 0, "hours": []})
+            key = task.custom_name or task.display_name
+            activity = activity_stats.setdefault(key, {"name": key, "executions": 0, "hours": []})
             activity["executions"] += 1
             activity["hours"].append(hours)
 
