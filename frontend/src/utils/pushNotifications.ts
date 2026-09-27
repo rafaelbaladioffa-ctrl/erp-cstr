@@ -11,7 +11,7 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
 
 async function getVapidPublicKey(): Promise<string | null> {
   try {
-    const res = await apiClient.get<{ vapid_public_key: string }>("/api/push/vapid-public-key/");
+    const res = await apiClient.get<{ vapid_public_key: string }>("/push/vapid-public-key/");
     return res.data.vapid_public_key || null;
   } catch {
     return null;
@@ -20,7 +20,7 @@ async function getVapidPublicKey(): Promise<string | null> {
 
 async function saveSubscription(sub: PushSubscription): Promise<void> {
   const json = sub.toJSON();
-  await apiClient.post("/api/push-subscriptions/", {
+  await apiClient.post("/push-subscriptions/", {
     endpoint: sub.endpoint,
     p256dh: json.keys?.p256dh ?? "",
     auth: json.keys?.auth ?? "",
@@ -28,7 +28,7 @@ async function saveSubscription(sub: PushSubscription): Promise<void> {
 }
 
 export async function removeSubscription(sub: PushSubscription): Promise<void> {
-  await apiClient.delete("/api/push-subscriptions/1/", {
+  await apiClient.delete("/push-subscriptions/1/", {
     data: { endpoint: sub.endpoint },
   });
   await sub.unsubscribe();
