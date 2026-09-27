@@ -68,11 +68,11 @@ function DeadlineLabel({ planned_end }: { planned_end: string | null }) {
   const diff = daysDiff(planned_end);
   if (diff === null) return <span style={{ color: "var(--text-faint)", fontSize: 11 }}>Sem prazo</span>;
   if (diff < 0)
-    return <span style={{ color: "var(--danger)", fontSize: 11, fontWeight: 600 }}>{Math.abs(diff)}d em atraso</span>;
+    return <span style={{ color: "var(--red)", fontSize: 11, fontWeight: 600 }}>{Math.abs(diff)}d em atraso</span>;
   if (diff === 0)
-    return <span style={{ color: "var(--warning)", fontSize: 11, fontWeight: 600 }}>Vence hoje</span>;
+    return <span style={{ color: "var(--orange)", fontSize: 11, fontWeight: 600 }}>Vence hoje</span>;
   if (diff <= 14)
-    return <span style={{ color: "var(--warning)", fontSize: 11 }}>{diff}d restantes</span>;
+    return <span style={{ color: "var(--orange)", fontSize: 11 }}>{diff}d restantes</span>;
   return <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{diff}d restantes</span>;
 }
 
@@ -85,8 +85,8 @@ function DetailPanel({ project, canChange, onEdit, onClose }: {
 }) {
   const diff = daysDiff(project.planned_end);
   const progressColor =
-    project.progress_percent >= 80 ? "var(--success)" :
-    project.progress_percent >= 40 ? "var(--orange)" : "var(--danger)";
+    project.progress_percent >= 80 ? "var(--green)" :
+    project.progress_percent >= 40 ? "var(--blue)" : "var(--red)";
 
   return (
     <div style={{
@@ -162,8 +162,8 @@ function KanbanCard({ project, onClick }: { project: Project; onClick: () => voi
   const diff = daysDiff(project.planned_end);
   const overdue = diff !== null && diff < 0;
   const overrideColor =
-    project.status === "completed" ? "var(--success)" :
-    overdue ? "var(--danger)" :
+    project.status === "completed" ? "var(--green)" :
+    overdue ? "var(--red)" :
     undefined;
 
   return (
@@ -171,7 +171,7 @@ function KanbanCard({ project, onClick }: { project: Project; onClick: () => voi
       onClick={onClick}
       style={{
         background: "var(--white)",
-        border: `1px solid ${overdue ? "var(--danger)" : "var(--border)"}`,
+        border: `1px solid ${overdue ? "var(--red)" : "var(--border)"}`,
         borderRadius: 8,
         padding: "11px 12px",
         marginBottom: 8,
@@ -416,7 +416,7 @@ export default function ProjectsList() {
                 onClick={() => setViewMode("list")}
                 style={{
                   padding: "5px 10px", border: "none", cursor: "pointer",
-                  background: viewMode === "list" ? "var(--primary)" : "transparent",
+                  background: viewMode === "list" ? "var(--orange)" : "transparent",
                   color: viewMode === "list" ? "#fff" : "var(--text-muted)",
                   borderRight: "1px solid var(--border)",
                   display: "flex", alignItems: "center",
@@ -429,7 +429,7 @@ export default function ProjectsList() {
                 onClick={() => { setViewMode("kanban"); setSelectedProject(null); }}
                 style={{
                   padding: "5px 10px", border: "none", cursor: "pointer",
-                  background: viewMode === "kanban" ? "var(--primary)" : "transparent",
+                  background: viewMode === "kanban" ? "var(--orange)" : "transparent",
                   color: viewMode === "kanban" ? "#fff" : "var(--text-muted)",
                   display: "flex", alignItems: "center",
                 }}
@@ -523,8 +523,8 @@ export default function ProjectsList() {
                     const isSelected = selectedProject?.id === p.id;
                     const diff = daysDiff(p.planned_end);
                     const overrideColor =
-                      p.status === "completed" ? "var(--success)" :
-                      diff !== null && diff < 0 ? "var(--danger)" :
+                      p.status === "completed" ? "var(--green)" :
+                      diff !== null && diff < 0 ? "var(--red)" :
                       undefined;
                     return (
                       <tr
