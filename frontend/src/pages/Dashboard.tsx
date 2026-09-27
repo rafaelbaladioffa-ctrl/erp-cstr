@@ -269,7 +269,71 @@ export default function Dashboard() {
       </div>
 
       {/* Main 2-col layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 16, alignItems: "flex-start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 3fr", gap: 16, alignItems: "flex-start" }}>
+
+        {/* Atalhos */}
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Icon name="grid_view" style={{ fontSize: 16, color: "var(--text-muted)" }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Acesso rápido</span>
+            </div>
+            <button
+              onClick={() => setEditorOpen(true)}
+              title="Personalizar atalhos"
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex", alignItems: "center", gap: 4 }}
+            >
+              <Icon name="tune" style={{ fontSize: 16 }} />
+            </button>
+          </div>
+
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${cols}, 1fr)`,
+            padding: 12,
+            gap: 8,
+          }}>
+            {activeShortcuts.map((s) => (
+              <Link
+                key={s.id}
+                to={s.path}
+                style={{ textDecoration: "none" }}
+              >
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8, padding: "12px 10px",
+                    display: "flex", flexDirection: "column", alignItems: "center",
+                    gap: 6, cursor: "pointer", transition: "all 0.12s",
+                    textAlign: "center",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--orange)"; (e.currentTarget as HTMLDivElement).style.background = "var(--orange-soft)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLDivElement).style.background = "var(--surface)"; }}
+                >
+                  <Icon name={s.icon} style={{ fontSize: 22, color: "var(--orange)" }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", lineHeight: 1.2 }}>{s.label}</div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>{s.sub}</div>
+                </div>
+              </Link>
+            ))}
+
+            {/* Add shortcut placeholder */}
+            {activeShortcuts.length < MAX_SHORTCUTS && (
+              <div
+                onClick={() => setEditorOpen(true)}
+                style={{
+                  border: "1px dashed var(--border)", borderRadius: 8, padding: "12px 10px",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                  cursor: "pointer", opacity: 0.5, textAlign: "center",
+                }}
+              >
+                <Icon name="add" style={{ fontSize: 22, color: "var(--text-muted)" }} />
+                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Adicionar</div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Alertas */}
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -334,70 +398,6 @@ export default function Dashboard() {
               })}
             </div>
           )}
-        </div>
-
-        {/* Atalhos */}
-        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Icon name="grid_view" style={{ fontSize: 16, color: "var(--text-muted)" }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Acesso rápido</span>
-            </div>
-            <button
-              onClick={() => setEditorOpen(true)}
-              title="Personalizar atalhos"
-              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex", alignItems: "center", gap: 4 }}
-            >
-              <Icon name="tune" style={{ fontSize: 16 }} />
-            </button>
-          </div>
-
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${cols}, 1fr)`,
-            padding: 12,
-            gap: 8,
-          }}>
-            {activeShortcuts.map((s) => (
-              <Link
-                key={s.id}
-                to={s.path}
-                style={{ textDecoration: "none" }}
-              >
-                <div
-                  style={{
-                    background: "var(--surface)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8, padding: "12px 10px",
-                    display: "flex", flexDirection: "column", alignItems: "center",
-                    gap: 6, cursor: "pointer", transition: "all 0.12s",
-                    textAlign: "center",
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--orange)"; (e.currentTarget as HTMLDivElement).style.background = "var(--orange-soft)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLDivElement).style.background = "var(--surface)"; }}
-                >
-                  <Icon name={s.icon} style={{ fontSize: 22, color: "var(--orange)" }} />
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", lineHeight: 1.2 }}>{s.label}</div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>{s.sub}</div>
-                </div>
-              </Link>
-            ))}
-
-            {/* Add shortcut placeholder */}
-            {activeShortcuts.length < MAX_SHORTCUTS && (
-              <div
-                onClick={() => setEditorOpen(true)}
-                style={{
-                  border: "1px dashed var(--border)", borderRadius: 8, padding: "12px 10px",
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                  cursor: "pointer", opacity: 0.5, textAlign: "center",
-                }}
-              >
-                <Icon name="add" style={{ fontSize: 22, color: "var(--text-muted)" }} />
-                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Adicionar</div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
