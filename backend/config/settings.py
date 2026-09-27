@@ -74,6 +74,10 @@ AUTHENTICATION_BACKENDS = [
 # de /admin/ (que já redireciona com o "next" certo automaticamente).
 LOGIN_REDIRECT_URL = "/admin/"
 
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_EMAIL = os.getenv("VAPID_EMAIL", "mailto:admin@example.com")
+
 ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {

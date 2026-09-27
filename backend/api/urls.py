@@ -13,6 +13,7 @@ router.register("rack-positions", views.RackPositionViewSet, basename="rack-posi
 router.register("project-occurrences", views.ProjectOccurrenceViewSet, basename="project-occurrence")
 router.register("project-attachments", views.ProjectAttachmentViewSet, basename="project-attachment")
 router.register("notifications", views.NotificationViewSet, basename="notification")
+router.register("push-subscriptions", views.PushSubscriptionViewSet, basename="push-subscription")
 router.register("clients", views.ClientViewSet, basename="client")
 router.register("sites", views.SiteViewSet, basename="site")
 router.register("collaborators", views.CollaboratorViewSet, basename="collaborator")
@@ -75,6 +76,7 @@ urlpatterns = [
     path("operations/board/", OperationsBoardView.as_view(), name="operations-board"),
     path("operations/timeline/", OperationsTimelineView.as_view(), name="operations-timeline"),
     path("operations/reports/", OperationsReportsView.as_view(), name="operations-reports"),
+    path("push/vapid-public-key/", views.VapidPublicKeyView.as_view(), name="vapid-public-key"),
     path("bot/", include("bot.urls")),
     path("", include(router.urls)),
 ]

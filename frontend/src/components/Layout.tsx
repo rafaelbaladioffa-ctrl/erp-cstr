@@ -4,6 +4,7 @@ import { notificationsApi, searchApi, type GlobalSearchResult } from "../api/res
 import type { Notification } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { CADASTROS_PERMS, MASTER_DATA_PERMS, PERMS, hasAnyPerm, hasPerm } from "../utils/permissions";
+import { registerPushNotifications } from "../utils/pushNotifications";
 import AccountModal from "./AccountModal";
 import Icon from "./ui/Icon";
 
@@ -121,6 +122,9 @@ export default function Layout() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission>(() =>
+    typeof Notification !== "undefined" ? Notification.permission : "default"
+  );
   const settingsRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -327,6 +331,22 @@ export default function Layout() {
         </div>
 
         <div className="shellbar-spacer" />
+        {pushPermission !== "granted" && pushPermission !== "denied" && (
+          <button
+            className="shellbar-icon-btn"
+            aria-label="Ativar notificações"
+            title="Ativar notificações no celular"
+            onClick={async () => {
+              const ok = await registerPushNotifications();
+              setPushPermission(Notification.permission);
+              if (!ok && Notification.permission === "denied") {
+                alert("Notificações bloqueadas. Libere nas configurações do navegador.");
+              }
+            }}
+          >
+            <Icon name="add_alert" style={{ fontSize: 18 }} />
+          </button>
+        )}
         <div ref={notifRef} style={{ position: "relative" }}>
           <button className="shellbar-icon-btn" aria-label="Notificações" onClick={() => setNotifOpen((v) => !v)} style={{ position: "relative" }}>
             <Icon name="notifications" style={{ fontSize: 18 }} />

@@ -551,12 +551,69 @@ class Notification(TimestampedModel):
         return f"{self.user} - {self.title}"
 
 
+class PushSubscription(models.Model):
+    """Assinatura de Web Push de um usuário num dispositivo/browser específico.
+    Um usuário pode ter múltiplas assinaturas (celular, desktop, etc.).
+    A unicidade é pelo endpoint, que identifica o dispositivo no serviço de push."""
+
+    user = models.ForeignKey(
+        "users.User", verbose_name="usuário", on_delete=models.CASCADE, related_name="push_subscriptions"
+    )
+    endpoint = models.TextField("endpoint", unique=True)
+    p256dh = models.TextField("chave p256dh")
+    auth = models.TextField("auth")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "assinatura push"
+        verbose_name_plural = "assinaturas push"
+
+    def __str__(self):
+        return f"{self.user} — {self.endpoint[:60]}"
+
+
+def _send_web_push(subscription, payload):
+    """Envia push para uma assinatura. Retorna True em sucesso, False em erro
+    recuperável, e apaga a assinatura em caso de 410 (dispositivo cancelou)."""
+    import json
+    import os
+
+    try:
+        from pywebpush import WebPusher, WebPushException
+    except ImportError:
+        return False
+
+    vapid_private = os.getenv("VAPID_PRIVATE_KEY")
+    vapid_email = os.getenv("VAPID_EMAIL", "mailto:admin@example.com")
+    if not vapid_private:
+        return False
+
+    try:
+        WebPusher(
+            {
+                "endpoint": subscription.endpoint,
+                "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
+            }
+        ).send(
+            data=json.dumps(payload),
+            vapid_private_key=vapid_private,
+            vapid_claims={"sub": vapid_email},
+        )
+        return True
+    except WebPushException as exc:
+        if exc.response is not None and exc.response.status_code == 410:
+            subscription.delete()
+        return False
+    except Exception:
+        return False
+
+
 def notify_user(user, *, title, message="", url="", project_id=None, project_code=""):
-    """Cria uma Notification para `user` se ele existir (usuários vinculados
-    a Pessoa podem não ter conta de login)."""
+    """Cria uma Notification para `user` e dispara Web Push para todos os
+    dispositivos registrados, se existirem."""
     if not user:
         return None
-    return Notification.objects.create(
+    notification = Notification.objects.create(
         user=user,
         title=title,
         message=message,
@@ -564,5 +621,9 @@ def notify_user(user, *, title, message="", url="", project_id=None, project_cod
         project_id=project_id,
         project_code=project_code,
     )
+    payload = {"title": title, "body": message, "url": url}
+    for sub in PushSubscription.objects.filter(user=user):
+        _send_web_push(sub, payload)
+    return notification
 
 

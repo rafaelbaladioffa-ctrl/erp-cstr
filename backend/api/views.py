@@ -26,6 +26,7 @@ from core.models import (
     JobTitle,
     Notification,
     ProjectType,
+    PushSubscription,
     Responsible,
     Site,
     Task,
@@ -747,6 +748,46 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     def mark_all_read(self, request):
         self.get_queryset().filter(is_read=False).update(is_read=True)
         return Response({"detail": "ok"})
+
+
+class VapidPublicKeyView(APIView):
+    """GET /api/push/vapid-public-key/ — retorna a chave pública VAPID para o frontend assinar."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.conf import settings
+        return Response({"vapid_public_key": settings.VAPID_PUBLIC_KEY})
+
+
+class PushSubscriptionViewSet(mixins.CreateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    """POST /api/push-subscriptions/ — salva assinatura do browser.
+    DELETE /api/push-subscriptions/<endpoint_hash>/ — remove ao cancelar.
+    O endpoint é único por dispositivo; upsert por endpoint para suportar
+    renovação automática de assinatura pelo browser."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return PushSubscription.objects.filter(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        from core.models import PushSubscription as PS
+        endpoint = request.data.get("endpoint", "").strip()
+        p256dh = request.data.get("p256dh", "").strip()
+        auth = request.data.get("auth", "").strip()
+        if not endpoint or not p256dh or not auth:
+            return Response({"detail": "endpoint, p256dh e auth são obrigatórios."}, status=400)
+        obj, _ = PS.objects.update_or_create(
+            endpoint=endpoint,
+            defaults={"user": request.user, "p256dh": p256dh, "auth": auth},
+        )
+        return Response({"id": obj.pk}, status=201)
+
+    def destroy(self, request, *args, **kwargs):
+        from core.models import PushSubscription as PS
+        endpoint = request.data.get("endpoint", "").strip()
+        PS.objects.filter(user=request.user, endpoint=endpoint).delete()
+        return Response(status=204)
 
 
 class ProjectOccurrenceViewSet(viewsets.ModelViewSet):
