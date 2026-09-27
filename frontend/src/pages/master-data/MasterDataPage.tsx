@@ -145,8 +145,8 @@ export default function MasterDataPage() {
       )}
 
       {hasAnyEntity && (
-        <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
-          <div className="card" style={{ width: 220, flexShrink: 0, padding: "8px 0" }}>
+        <div className="master-data-layout" style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+          <div className="master-data-nav card" style={{ width: 220, flexShrink: 0, padding: "8px 0" }}>
             {categories.map((cat) => {
               const open = !collapsedGroups[cat.key];
               return (

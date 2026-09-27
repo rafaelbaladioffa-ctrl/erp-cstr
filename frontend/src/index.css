@@ -3237,3 +3237,164 @@ select.input[multiple] {
     font-size: 11.5px;
   }
 }
+
+/* ================================================================
+   MOBILE RESPONSIVO — ajustes por módulo (max-width: 860px / 480px)
+   ================================================================ */
+
+/* ---------- Dashboard ---------- */
+@media (max-width: 860px) {
+  .dashboard-main-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ---------- Projetos (lista + kanban + detalhe) ---------- */
+@media (max-width: 860px) {
+  /* Painel lateral de detalhe fica abaixo da lista/kanban */
+  .projects-layout {
+    flex-direction: column !important;
+  }
+
+  .projects-detail-panel {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Kanban: rola na horizontal (cada coluna mantém largura mínima) */
+  .kanban-scroll-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .kanban-grid {
+    grid-template-columns: repeat(4, minmax(200px, 1fr)) !important;
+    width: max-content;
+    min-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .kanban-grid {
+    grid-template-columns: repeat(4, minmax(160px, 1fr)) !important;
+  }
+}
+
+/* ---------- Detalhe do Projeto ---------- */
+@media (max-width: 860px) {
+  /* Aba de visão geral: grid de 4 stats → 2 colunas */
+  .project-stats-4col {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Sidebar do detalhe (tabs laterais) → abas no topo */
+  .project-detail-layout {
+    flex-direction: column !important;
+  }
+
+  .project-detail-sidebar {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-direction: row !important;
+    overflow-x: auto;
+    flex-wrap: wrap;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+
+  .project-detail-sidebar button {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .project-stats-4col {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ---------- Atualizações Diárias ---------- */
+@media (max-width: 860px) {
+  .daily-updates-layout {
+    flex-direction: column !important;
+  }
+
+  .daily-updates-sidebar {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-height: 260px;
+    overflow-y: auto;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+/* ---------- Cadastros Mestres ---------- */
+@media (max-width: 860px) {
+  .master-data-layout {
+    flex-direction: column !important;
+  }
+
+  .master-data-nav {
+    width: 100% !important;
+    flex-shrink: 1 !important;
+  }
+}
+
+/* ---------- Cadastros Gerais ---------- */
+@media (max-width: 860px) {
+  .cadastros-layout {
+    flex-direction: column !important;
+  }
+
+  .cadastros-sidebar {
+    width: 100% !important;
+    flex-shrink: 1 !important;
+  }
+}
+
+/* ---------- Log de Auditoria ---------- */
+@media (max-width: 860px) {
+  .audit-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* ---------- Tabelas genéricas: garantir scroll horizontal ---------- */
+@media (max-width: 860px) {
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Impede que a tabela encolha demais e sobreponha colunas */
+  .table {
+    min-width: 520px;
+  }
+}
+
+/* ---------- Modais: largura total no mobile ---------- */
+@media (max-width: 600px) {
+  .modal-box,
+  [class*="modal"] > div,
+  [style*="width: 420"],
+  [style*="width: 480"],
+  [style*="width: 560"],
+  [style*="width: 640"] {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+}
+
+/* ---------- Formulários dinâmicos já cobertos no @860 acima ---------- */
+/* (dynamic-form-grid, project-overview-grid, panel-field-grid → 1 col no 480) */
+
+/* ---------- Botões de ação: texto oculto em telas muito estreitas ---------- */
+@media (max-width: 400px) {
+  .btn-label-hide {
+    display: none;
+  }
+}

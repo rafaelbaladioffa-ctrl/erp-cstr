@@ -237,7 +237,7 @@ function KanbanView({
   const dragIdRef = useRef<number | null>(null);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, minHeight: 300 }}>
+    <div className="kanban-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, minHeight: 300 }}>
       {KANBAN_COLS.map((col, ci) => {
         const colProjects = projects.filter((p) =>
           Array.isArray(col.key) ? col.key.includes(p.status) : p.status === col.key
@@ -539,8 +539,8 @@ export default function ProjectsList() {
           <p style={{ padding: 20, color: "var(--text-muted)" }}>Carregando...</p>
         ) : viewMode === "kanban" ? (
           /* ── KANBAN VIEW ── */
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="projects-layout" style={{ display: "flex", alignItems: "flex-start" }}>
+            <div className="kanban-scroll-wrap" style={{ flex: 1, minWidth: 0 }}>
               <KanbanView
                 projects={kanbanBase}
                 selectedId={selectedProject?.id ?? null}
@@ -563,7 +563,7 @@ export default function ProjectsList() {
               />
             </div>
             {selectedProject && (
-              <div ref={panelRef}>
+              <div className="projects-detail-panel" ref={panelRef}>
                 <DetailPanel
                   project={selectedProject}
                   canChange={canChange}
@@ -575,7 +575,7 @@ export default function ProjectsList() {
           </div>
         ) : (
           /* ── LIST VIEW ── */
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
+          <div className="projects-layout" style={{ display: "flex", alignItems: "flex-start" }}>
             <div style={{ flex: 1, minWidth: 0, overflowX: "auto" }}>
               <table className="table" style={{ minWidth: 700 }}>
                 <thead>
@@ -665,7 +665,7 @@ export default function ProjectsList() {
             </div>
 
             {selectedProject && (
-              <div ref={panelRef}>
+              <div className="projects-detail-panel" ref={panelRef}>
                 <DetailPanel
                   project={selectedProject}
                   canChange={canChange}

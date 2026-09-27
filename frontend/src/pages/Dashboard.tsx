@@ -269,7 +269,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main 2-col layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 3fr", gap: 16, alignItems: "flex-start" }}>
+      <div className="dashboard-main-grid" style={{ display: "grid", gridTemplateColumns: "2fr 3fr", gap: 16, alignItems: "flex-start" }}>
 
         {/* Atalhos */}
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>

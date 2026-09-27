@@ -455,7 +455,7 @@ export default function ProjectDetail() {
       </div>
 
       {/* ── layout principal: conteúdo + sidebar de navegação ── */}
-      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+      <div className="project-detail-layout" style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
 
         {/* área de conteúdo */}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -862,7 +862,7 @@ export default function ProjectDetail() {
         </div>
 
         {/* ── sidebar de navegação ── */}
-        <div style={{ width: 260, flexShrink: 0 }}>
+        <div className="project-detail-sidebar" style={{ width: 260, flexShrink: 0 }}>
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ padding: "10px 14px", fontSize: 10, fontWeight: 800, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: "1px solid var(--border)" }}>
               Seções
@@ -1081,7 +1081,7 @@ function OverviewSection({
   return (
     <>
       {/* KPIs */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
+      <div className="project-stats-4col" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: "var(--orange)" }}>{project.progress_percent}%</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>Progresso geral</div>
