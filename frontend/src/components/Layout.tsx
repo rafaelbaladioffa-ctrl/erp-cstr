@@ -559,12 +559,7 @@ export default function Layout() {
                 <Icon name="logout" style={{ fontSize: 16 }} />
                 Sair
               </button>
-              <button
-                className="sidebar-collapse-btn"
-                aria-label="Recolher menu"
-                onClick={toggleSidebarCollapsed}
-              >
-                <Icon name="chevron_left" style={{ fontSize: 18 }} />
+              <button className="sidebar-collapse-link" onClick={toggleSidebarCollapsed}>
                 Recolher
               </button>
             </div>
