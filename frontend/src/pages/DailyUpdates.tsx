@@ -17,10 +17,13 @@ function tomorrowIso() {
 interface AllocationRow {
   projectId: number | "";
   collaboratorIds: number[];
+  dateFrom: string;
+  dateTo: string;
 }
 
 function emptyRow(): AllocationRow {
-  return { projectId: "", collaboratorIds: [] };
+  const today = new Date().toISOString().slice(0, 10);
+  return { projectId: "", collaboratorIds: [], dateFrom: today, dateTo: today };
 }
 
 export default function DailyUpdates() {
@@ -32,8 +35,6 @@ export default function DailyUpdates() {
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [dateFrom, setDateFrom] = useState(() => new Date().toISOString().slice(0, 10));
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [allocationRows, setAllocationRows] = useState<AllocationRow[]>([emptyRow()]);
   const [feedback, setFeedback] = useState("");
   const [createError, setCreateError] = useState("");
@@ -94,27 +95,32 @@ export default function DailyUpdates() {
       setCreateError("Adicione ao menos um projeto com técnico(s) selecionado(s).");
       return;
     }
-    if (!dateFrom || !dateTo || dateFrom > dateTo) {
-      setCreateError("Selecione um período válido (data inicial ≤ data final).");
+    const invalidPeriod = validRows.find((row) => !row.dateFrom || !row.dateTo || row.dateFrom > row.dateTo);
+    if (invalidPeriod) {
+      setCreateError("Um ou mais projetos têm período inválido (data inicial > data final).");
       return;
     }
-    const dates = getDatesInRange(dateFrom, dateTo);
     setSavingCreate(true);
     setCreateError("");
     try {
-      await Promise.all(
-        dates.map((d) =>
-          dailyUpdatesApi.create({
-            allocation_date: d,
-            allocations: validRows.map((row) => ({ project: Number(row.projectId), collaborator_ids: row.collaboratorIds })),
-          } as never)
-        )
-      );
+      // Para cada projeto, agrupa os técnicos por dia do intervalo e envia
+      // registros separados por data. Registros do mesmo dia de projetos
+      // diferentes são enviados em paralelo.
+      const allRequests: Promise<unknown>[] = [];
+      for (const row of validRows) {
+        const dates = getDatesInRange(row.dateFrom, row.dateTo);
+        for (const d of dates) {
+          allRequests.push(
+            dailyUpdatesApi.create({
+              allocation_date: d,
+              allocations: [{ project: Number(row.projectId), collaborator_ids: row.collaboratorIds }],
+            } as never)
+          );
+        }
+      }
+      await Promise.all(allRequests);
       setCreating(false);
       setAllocationRows([emptyRow()]);
-      const today = new Date().toISOString().slice(0, 10);
-      setDateFrom(today);
-      setDateTo(today);
       reload(range);
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: Record<string, unknown> } };
@@ -207,37 +213,6 @@ export default function DailyUpdates() {
 
       {creating && canCreate && (
         <div className="form-card">
-          <div style={{ display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-            <div className="field-group" style={{ flex: 1, minWidth: 160 }}>
-              <label className="form-label">Data inicial</label>
-              <input
-                type="date"
-                className="input"
-                value={dateFrom}
-                onChange={(e) => {
-                  setDateFrom(e.target.value);
-                  if (e.target.value > dateTo) setDateTo(e.target.value);
-                }}
-              />
-            </div>
-            <div className="field-group" style={{ flex: 1, minWidth: 160 }}>
-              <label className="form-label">Data final</label>
-              <input
-                type="date"
-                className="input"
-                value={dateTo}
-                min={dateFrom}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
-          </div>
-          {dateFrom !== dateTo && (
-            <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-              <Icon name="info" style={{ fontSize: 14, verticalAlign: "middle", marginRight: 4 }} />
-              Será criado um registro para cada dia do período ({getDatesInRange(dateFrom, dateTo).length} dias).
-            </p>
-          )}
-
           {allocationRows.map((row, index) => (
             <div
               key={index}
@@ -279,7 +254,38 @@ export default function DailyUpdates() {
                 ))}
               </select>
 
-              <label className="form-label">Técnicos</label>
+              <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                <div className="field-group" style={{ flex: 1, minWidth: 140 }}>
+                  <label className="form-label">Data inicial</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={row.dateFrom}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateAllocationRow(index, { dateFrom: val, dateTo: val > row.dateTo ? val : row.dateTo });
+                    }}
+                  />
+                </div>
+                <div className="field-group" style={{ flex: 1, minWidth: 140 }}>
+                  <label className="form-label">Data final</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={row.dateTo}
+                    min={row.dateFrom}
+                    onChange={(e) => updateAllocationRow(index, { dateTo: e.target.value })}
+                  />
+                </div>
+              </div>
+              {row.dateFrom !== row.dateTo && row.dateFrom <= row.dateTo && (
+                <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0 4px" }}>
+                  <Icon name="info" style={{ fontSize: 13, verticalAlign: "middle", marginRight: 4 }} />
+                  {getDatesInRange(row.dateFrom, row.dateTo).length} dias
+                </p>
+              )}
+
+              <label className="form-label" style={{ marginTop: 10 }}>Técnicos</label>
               <select
                 multiple
                 className="input"
@@ -307,11 +313,7 @@ export default function DailyUpdates() {
 
           <div>
             <button className="btn btn-primary" onClick={handleCreate} disabled={savingCreate}>
-              {savingCreate
-                ? "Salvando..."
-                : dateFrom === dateTo
-                ? "Salvar"
-                : `Salvar (${getDatesInRange(dateFrom, dateTo).length} dias)`}
+              {savingCreate ? "Salvando..." : "Salvar"}
             </button>
           </div>
         </div>
