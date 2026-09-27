@@ -547,22 +547,24 @@ export default function Layout() {
           <div className="sidebar-spacer" />
 
           {!sidebarCollapsed && (
-            <div className="sidebar-footer">
-              <div className="sidebar-footer-user">
-                <div className="sidebar-footer-avatar">{initials}</div>
-                <div>
-                  <div className="sidebar-user">{displayName}</div>
-                  <div className="sidebar-org">{role} &middot; Consultimer Group</div>
-                </div>
-              </div>
-              <button className="sidebar-logout" onClick={logout}>
-                <Icon name="logout" style={{ fontSize: 16 }} />
-                Sair
-              </button>
+            <>
               <button className="sidebar-collapse-link" onClick={toggleSidebarCollapsed}>
                 Recolher
               </button>
-            </div>
+              <div className="sidebar-footer">
+                <div className="sidebar-footer-user">
+                  <div className="sidebar-footer-avatar">{initials}</div>
+                  <div>
+                    <div className="sidebar-user">{displayName}</div>
+                    <div className="sidebar-org">{role} &middot; Consultimer Group</div>
+                  </div>
+                </div>
+                <button className="sidebar-logout" onClick={logout}>
+                  <Icon name="logout" style={{ fontSize: 16 }} />
+                  Sair
+                </button>
+              </div>
+            </>
           )}
           {sidebarCollapsed && (
             <div className="sidebar-footer-mini">

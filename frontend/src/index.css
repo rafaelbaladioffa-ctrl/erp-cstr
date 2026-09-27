@@ -672,8 +672,7 @@ textarea {
   font-family: inherit;
   color: var(--text-faint);
   text-align: left;
-  padding: 0 0 8px;
-  margin-top: 2px;
+  padding: 4px 16px 6px;
   transition: color .15s;
 }
 .sidebar-collapse-link:hover { color: var(--text-muted); }
