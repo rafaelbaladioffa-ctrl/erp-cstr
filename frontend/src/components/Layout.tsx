@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { notificationsApi, searchApi, type GlobalSearchResult } from "../api/resources";
 import type { Notification } from "../api/types";
@@ -102,10 +102,15 @@ function getStoredTheme(): Theme {
 const EMPTY_RESULTS: GlobalSearchResult = { projects: [], sites: [], tasks: [] };
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout: authLogout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const { openTab } = useTabs();
+  const { openTab, clearTabs } = useTabs();
+
+  function logout() {
+    clearTabs();
+    authLogout();
+  }
   const breadcrumb = currentBreadcrumb(location.pathname, location.search);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
@@ -128,6 +133,11 @@ export default function Layout() {
   const [pushPermission, setPushPermission] = useState<NotificationPermission>(() =>
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem(`erp_sidebar_mini_${user?.id ?? "anon"}`) === "1"; } catch { return false; }
+  });
+  const [itemMenu, setItemMenu] = useState<{ item: NavItem; x: number; y: number } | null>(null);
+  const itemMenuRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -164,10 +174,36 @@ export default function Layout() {
       if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) setSettingsOpen(false);
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
+      if (itemMenuRef.current && !itemMenuRef.current.contains(e.target as Node)) setItemMenu(null);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(`erp_sidebar_mini_${user?.id ?? "anon"}`, next ? "1" : "0"); } catch {}
+      return next;
+    });
+  }, [user?.id]);
+
+  function handleSidebarItemClick(e: React.MouseEvent, item: NavItem) {
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setItemMenu({ item, x: rect.right + 6, y: rect.top });
+  }
+
+  function doNavigate(item: NavItem) {
+    navigate(item.to);
+    setItemMenu(null);
+  }
+
+  function doOpenTab(item: NavItem) {
+    navigate(item.to);
+    openTab({ id: item.to, label: item.label, path: item.to, icon: item.icon });
+    setItemMenu(null);
+  }
 
   useEffect(() => {
     const term = searchQuery.trim();
@@ -439,9 +475,30 @@ export default function Layout() {
 
       <TabBar />
 
+      {itemMenu && (
+        <div
+          ref={itemMenuRef}
+          className="sidebar-item-menu"
+          style={{ top: itemMenu.y, left: itemMenu.x }}
+        >
+          <div className="sidebar-item-menu-label">
+            <Icon name={itemMenu.item.icon} style={{ fontSize: 15 }} />
+            {itemMenu.item.label}
+          </div>
+          <button className="sidebar-item-menu-btn" onClick={() => doNavigate(itemMenu.item)}>
+            <Icon name="open_in_browser" style={{ fontSize: 15 }} />
+            Abrir página
+          </button>
+          <button className="sidebar-item-menu-btn" onClick={() => doOpenTab(itemMenu.item)}>
+            <Icon name="tab" style={{ fontSize: 15 }} />
+            Abrir em guia
+          </button>
+        </div>
+      )}
+
       <div className="app-below-shell">
         {mobileMenuOpen && <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />}
-        <aside className={`sidebar${mobileMenuOpen ? " sidebar-open" : ""}`}>
+        <aside className={`sidebar${mobileMenuOpen ? " sidebar-open" : ""}${sidebarCollapsed ? " sidebar-mini" : ""}`}>
           <div className="sidebar-mobile-head">
             <span>Menu</span>
             <button className="sidebar-close-btn" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}>
@@ -449,40 +506,47 @@ export default function Layout() {
             </button>
           </div>
 
-          {!hasAnyModule && (
+          <button
+            className="sidebar-collapse-btn"
+            aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+            onClick={toggleSidebarCollapsed}
+          >
+            <Icon name={sidebarCollapsed ? "chevron_right" : "chevron_left"} style={{ fontSize: 18 }} />
+          </button>
+
+          {!sidebarCollapsed && !hasAnyModule && (
             <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "0 10px" }}>
               Seu usuário não tem acesso a nenhum módulo.
             </p>
-          )}
-
-          {hasAnyModule && groups.length === 0 && (
-            <p style={{ fontSize: 12.5, color: "var(--text-faint)", padding: "0 14px" }}>Nenhum item encontrado.</p>
           )}
 
           {groups.map((group, idx) => {
             const open = isGroupOpen(group.title);
             return (
               <div key={group.title || idx} className="sidebar-group">
-                <button
-                  type="button"
-                  className="sidebar-group-title sidebar-group-toggle"
-                  onClick={() => toggleGroup(group.title)}
-                  aria-expanded={open}
-                >
-                  <span>{group.title}</span>
-                  <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 16 }} />
-                </button>
-                {open &&
+                {!sidebarCollapsed && (
+                  <button
+                    type="button"
+                    className="sidebar-group-title sidebar-group-toggle"
+                    onClick={() => toggleGroup(group.title)}
+                    aria-expanded={open}
+                  >
+                    <span>{group.title}</span>
+                    <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 16 }} />
+                  </button>
+                )}
+                {(open || sidebarCollapsed) &&
                   group.items.map((item) => (
-                    <Link
+                    <a
                       key={item.to}
-                      to={item.to}
+                      href={item.to}
                       className={`sidebar-link${isItemActive(item, location.pathname, location.search) ? " active" : ""}`}
-                      onClick={() => openTab({ id: item.to, label: item.label, path: item.to, icon: item.icon })}
+                      title={sidebarCollapsed ? item.label : undefined}
+                      onClick={(e) => handleSidebarItemClick(e, item)}
                     >
                       <Icon name={item.icon} />
-                      {item.label}
-                    </Link>
+                      {!sidebarCollapsed && item.label}
+                    </a>
                   ))}
               </div>
             );
@@ -490,19 +554,26 @@ export default function Layout() {
 
           <div className="sidebar-spacer" />
 
-          <div className="sidebar-footer">
-            <div className="sidebar-footer-user">
-              <div className="sidebar-footer-avatar">{initials}</div>
-              <div>
-                <div className="sidebar-user">{displayName}</div>
-                <div className="sidebar-org">{role} &middot; Consultimer Group</div>
+          {!sidebarCollapsed && (
+            <div className="sidebar-footer">
+              <div className="sidebar-footer-user">
+                <div className="sidebar-footer-avatar">{initials}</div>
+                <div>
+                  <div className="sidebar-user">{displayName}</div>
+                  <div className="sidebar-org">{role} &middot; Consultimer Group</div>
+                </div>
               </div>
+              <button className="sidebar-logout" onClick={logout}>
+                <Icon name="logout" style={{ fontSize: 16 }} />
+                Sair
+              </button>
             </div>
-            <button className="sidebar-logout" onClick={logout}>
+          )}
+          {sidebarCollapsed && (
+            <button className="sidebar-logout sidebar-logout-mini" onClick={logout} title="Sair">
               <Icon name="logout" style={{ fontSize: 16 }} />
-              Sair
             </button>
-          </div>
+          )}
         </aside>
 
         <div className="app-main">

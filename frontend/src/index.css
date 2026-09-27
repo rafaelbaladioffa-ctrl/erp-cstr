@@ -660,6 +660,97 @@ textarea {
   color: var(--text);
 }
 
+/* Sidebar collapse toggle */
+.sidebar-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--white);
+  color: var(--text-muted);
+  cursor: pointer;
+  align-self: flex-end;
+  margin: 4px 10px 6px auto;
+  flex-shrink: 0;
+  transition: color .15s, background .15s;
+}
+.sidebar-collapse-btn:hover { background: var(--bg); color: var(--text); }
+
+/* Sidebar mini (collapsed) */
+.sidebar-mini {
+  width: 52px;
+  padding: 8px 0;
+  overflow: visible;
+}
+.sidebar-mini .sidebar-collapse-btn { margin: 4px auto 6px; }
+.sidebar-mini .sidebar-group { margin: 0; }
+.sidebar-mini .sidebar-link {
+  padding: 8px 0;
+  margin: 1px 4px;
+  justify-content: center;
+  gap: 0;
+}
+.sidebar-mini .sidebar-link .material-symbols-outlined { font-size: 19px; }
+.sidebar-mini .sidebar-spacer { flex: 1; }
+.sidebar-logout-mini {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+}
+.sidebar-logout-mini:hover { background: var(--bg); color: var(--text); }
+
+/* Sidebar item action menu */
+.sidebar-item-menu {
+  position: fixed;
+  z-index: 2000;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lift);
+  padding: 6px;
+  min-width: 190px;
+}
+.sidebar-item-menu-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.sidebar-item-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 7px;
+  text-align: left;
+  transition: background .12s, color .12s;
+}
+.sidebar-item-menu-btn:hover { background: var(--bg); color: var(--text); }
+
 .app-main {
   flex: 1;
   min-width: 0;

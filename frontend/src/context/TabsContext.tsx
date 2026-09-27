@@ -13,12 +13,14 @@ interface TabsContextValue {
   tabs: AppTab[];
   openTab: (tab: AppTab) => void;
   closeTab: (id: string) => void;
+  clearTabs: () => void;
 }
 
 const TabsContext = createContext<TabsContextValue>({
   tabs: [],
   openTab: () => {},
   closeTab: () => {},
+  clearTabs: () => {},
 });
 
 export function useTabs() {
@@ -68,8 +70,15 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     setTabs((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const clearTabs = useCallback(() => {
+    setTabs([]);
+    if (user?.id) {
+      try { localStorage.removeItem(storageKey(user.id)); } catch {}
+    }
+  }, [user?.id]);
+
   return (
-    <TabsContext.Provider value={{ tabs, openTab, closeTab }}>
+    <TabsContext.Provider value={{ tabs, openTab, closeTab, clearTabs }}>
       {children}
     </TabsContext.Provider>
   );
