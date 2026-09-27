@@ -4,6 +4,7 @@ import { masterDataApi } from "../../api/resources";
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
 import ProjectPlanPanel from "../../components/master-data/ProjectPlanPanel";
 import SowImportPanel from "../../components/master-data/SowImportPanel";
+import SowWizardPanel from "../../components/master-data/SowWizardPanel";
 import TaskRuleSimulatorPanel from "../../components/master-data/TaskRuleSimulatorPanel";
 import Icon from "../../components/ui/Icon";
 import PageHeader from "../../components/ui/PageHeader";
@@ -92,8 +93,7 @@ export default function MasterDataPage() {
     [user]
   );
 
-  const firstEntityKey = categories.find((c) => c.entities.length > 0)?.entities[0]?.key ?? null;
-  const [activeKey, setActiveKey] = useState<string | null>(focusEntity || firstEntityKey);
+  const [activeKey, setActiveKey] = useState<string | null>(focusEntity || "sow-wizard");
 
   useEffect(() => {
     if (focusEntity) setActiveKey(focusEntity);
@@ -180,7 +180,9 @@ export default function MasterDataPage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             {activeEntity ? (
               isToolConfig(activeEntity) ? (
-                activeEntity.key === "sow-import" ? (
+                activeEntity.key === "sow-wizard" ? (
+                  <SowWizardPanel key={activeEntity.key} refs={refs} />
+                ) : activeEntity.key === "sow-import" ? (
                   <SowImportPanel key={activeEntity.key} refs={refs} />
                 ) : activeEntity.key === "project-plan" ? (
                   <ProjectPlanPanel key={activeEntity.key} />

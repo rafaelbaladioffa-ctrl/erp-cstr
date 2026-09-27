@@ -1372,6 +1372,14 @@ const sowImportTool: ToolConfig = {
   perms: { view: PERMS.viewSowImport },
 };
 
+const sowWizardTool: ToolConfig = {
+  kind: "tool",
+  key: "sow-wizard",
+  label: "Fluxo Guiado",
+  icon: "play_circle",
+  perms: { view: PERMS.viewSowImport },
+};
+
 const projectPlanTool: ToolConfig = {
   kind: "tool",
   key: "project-plan",
@@ -1415,6 +1423,6 @@ export const MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
     key: "planejamento",
     label: "Planejamento",
     icon: "insights",
-    entities: [scopeItemEntity, generatedTaskEntity, sowImportTool, projectPlanTool],
+    entities: [sowWizardTool, scopeItemEntity, generatedTaskEntity, sowImportTool, projectPlanTool],
   },
 ];
