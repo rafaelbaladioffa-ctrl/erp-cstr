@@ -30,6 +30,7 @@ export default function Login() {
   const [remember, setRemember] = useState(() => Boolean(savedUsername.get()));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -99,8 +100,7 @@ export default function Login() {
           <img src="/consultimer-logo-light.png" alt="Consultimer" style={{ height: 34 }} />
         </div>
 
-        <div style={{ fontSize: 18, fontWeight: 800, color: "#0d1f30", marginBottom: 4 }}>Acesse o sistema</div>
-        <div style={{ fontSize: 13, color: "#7a8a96", marginBottom: 24 }}>Gestão de obras em data centers hyperscale</div>
+        <div style={{ fontSize: 18, fontWeight: 800, color: "#0d1f30", marginBottom: 20 }}>Acesse o sistema</div>
 
         <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>Usuário</label>
         <input
@@ -125,7 +125,23 @@ export default function Login() {
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} style={{ accentColor: "#e05b2b" }} />
             Salvar usuário
           </label>
+          <button
+            type="button"
+            onClick={() => setShowForgot((v) => !v)}
+            style={{ background: "none", border: "none", fontSize: 12.5, color: "#e05b2b", cursor: "pointer", padding: 0 }}
+          >
+            Esqueci minha senha
+          </button>
         </div>
+
+        {showForgot && (
+          <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, background: "#fff4ef", border: "1px solid #f5c8b4" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#b84320", marginBottom: 3 }}>Recuperação de senha</div>
+            <div style={{ fontSize: 12, color: "#7a4030", lineHeight: 1.55 }}>
+              Entre em contato com o administrador do sistema para redefinir sua senha.
+            </div>
+          </div>
+        )}
 
         {error && <p style={{ color: "#c0392b", fontSize: 13, marginTop: 8 }}>{error}</p>}
 
