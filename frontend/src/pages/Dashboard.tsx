@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { dashboardApi } from "../api/resources";
 import type { ProjectsPerformanceData, TechnicalPerformanceData } from "../api/types";
@@ -187,7 +187,7 @@ export default function Dashboard() {
   // Build alert list from projects data
   const alerts = useMemo(() => {
     if (!projectsData) return [];
-    const list: { name: string; meta: string; level: "red" | "orange" | "blue" }[] = [];
+    const list: { id: number | null; name: string; meta: string; level: "red" | "orange" | "blue" }[] = [];
 
     // Overdue projects
     projectsData.projects
@@ -196,7 +196,7 @@ export default function Dashboard() {
       .forEach((p) => {
         const diff = daysDiff(p.planned_end ?? null);
         const days = diff !== null ? Math.abs(diff) : 0;
-        list.push({ name: p.code || p.name, meta: `Prazo vencido há ${days} dia(s) · ${p.client || "—"}`, level: "red" });
+        list.push({ id: p.id, name: p.code || p.name, meta: `Prazo vencido há ${days} dia(s) · ${p.client || "—"}`, level: "red" });
       });
 
     // Near deadline (within 7 days, not overdue)
@@ -206,18 +206,18 @@ export default function Dashboard() {
         const diff = daysDiff(p.planned_end ?? null);
         return diff !== null && diff <= 7;
       })
-      .slice(0, 2)
+      .slice(0, 4)
       .forEach((p) => {
         const diff = daysDiff(p.planned_end ?? null);
         const label = diff === 0 ? "Vence hoje" : `Vence em ${diff} dia(s)`;
-        list.push({ name: p.code || p.name, meta: `${label} · ${p.client || "—"}`, level: "orange" });
+        list.push({ id: p.id, name: p.code || p.name, meta: `${label} · ${p.client || "—"}`, level: "orange" });
       });
 
     if (list.length === 0 && !loading) {
-      list.push({ name: "Nenhum alerta no momento", meta: "Todos os prazos estão em dia", level: "blue" });
+      list.push({ id: null, name: "Nenhum alerta no momento", meta: "Todos os prazos estão em dia", level: "blue" });
     }
 
-    return list.slice(0, 5);
+    return list.slice(0, 6);
   }, [projectsData, loading]);
 
   // KPI values
@@ -230,7 +230,7 @@ export default function Dashboard() {
   }, [projectsData, technical]);
 
   const firstName = user?.full_name?.split(" ")[0] || user?.username || "você";
-  const cols = activeShortcuts.length <= 4 ? 2 : 3;
+  const cols = 3;
 
   if (!canViewProjects && !canViewTechnical) {
     return <p style={{ padding: 32, color: "var(--text-muted)" }}>Você não tem permissão para acessar esta página.</p>;
@@ -269,7 +269,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main 2-col layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16, alignItems: "flex-start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16, alignItems: "flex-start" }}>
 
         {/* Alertas */}
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -296,14 +296,8 @@ export default function Dashboard() {
               {alerts.map((a, i) => {
                 const color = a.level === "red" ? "var(--red)" : a.level === "orange" ? "var(--orange)" : "var(--blue)";
                 const bgColor = a.level === "red" ? "var(--red-soft)" : a.level === "orange" ? "var(--orange-soft)" : "var(--blue-soft)";
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 18px",
-                      borderBottom: i < alerts.length - 1 ? "1px solid var(--border)" : "none",
-                    }}
-                  >
+                const inner = (
+                  <>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0, marginTop: 5 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{a.name}</div>
@@ -314,7 +308,28 @@ export default function Dashboard() {
                         {a.level === "red" ? "Atrasado" : "Urgente"}
                       </span>
                     )}
-                  </div>
+                    {a.id !== null && (
+                      <Icon name="chevron_right" style={{ fontSize: 16, color: "var(--text-faint)", flexShrink: 0 }} />
+                    )}
+                  </>
+                );
+                const rowStyle: React.CSSProperties = {
+                  display: "flex", alignItems: "center", gap: 12, padding: "12px 18px",
+                  borderBottom: i < alerts.length - 1 ? "1px solid var(--border)" : "none",
+                  textDecoration: "none",
+                };
+                return a.id !== null ? (
+                  <Link
+                    key={i}
+                    to={`/projetos/${a.id}`}
+                    style={rowStyle}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                  >
+                    {inner}
+                  </Link>
+                ) : (
+                  <div key={i} style={rowStyle}>{inner}</div>
                 );
               })}
             </div>
