@@ -664,20 +664,28 @@ textarea {
 .sidebar-collapse-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  gap: 6px;
+  width: 100%;
+  border-radius: 7px;
   border: 1px solid var(--border);
-  background: var(--white);
-  color: var(--text-muted);
+  background: transparent;
+  color: var(--text-faint);
   cursor: pointer;
-  align-self: flex-end;
-  margin: 4px 10px 6px auto;
-  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  padding: 7px 10px;
+  margin-top: 6px;
   transition: color .15s, background .15s;
 }
-.sidebar-collapse-btn:hover { background: var(--bg); color: var(--text); }
+.sidebar-collapse-btn:hover { background: var(--bg); color: var(--text-muted); }
+.sidebar-footer-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 10px;
+}
 
 /* Sidebar mini (collapsed) */
 .sidebar-mini {
@@ -685,7 +693,6 @@ textarea {
   padding: 8px 0;
   overflow: visible;
 }
-.sidebar-mini .sidebar-collapse-btn { margin: 4px auto 6px; }
 .sidebar-mini .sidebar-group { margin: 0; }
 .sidebar-mini .sidebar-link {
   padding: 8px 0;

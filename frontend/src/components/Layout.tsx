@@ -506,14 +506,6 @@ export default function Layout() {
             </button>
           </div>
 
-          <button
-            className="sidebar-collapse-btn"
-            aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-            onClick={toggleSidebarCollapsed}
-          >
-            <Icon name={sidebarCollapsed ? "chevron_right" : "chevron_left"} style={{ fontSize: 18 }} />
-          </button>
-
           {!sidebarCollapsed && !hasAnyModule && (
             <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "0 10px" }}>
               Seu usuário não tem acesso a nenhum módulo.
@@ -567,12 +559,30 @@ export default function Layout() {
                 <Icon name="logout" style={{ fontSize: 16 }} />
                 Sair
               </button>
+              <button
+                className="sidebar-collapse-btn"
+                aria-label="Recolher menu"
+                onClick={toggleSidebarCollapsed}
+              >
+                <Icon name="chevron_left" style={{ fontSize: 18 }} />
+                Recolher
+              </button>
             </div>
           )}
           {sidebarCollapsed && (
-            <button className="sidebar-logout sidebar-logout-mini" onClick={logout} title="Sair">
-              <Icon name="logout" style={{ fontSize: 16 }} />
-            </button>
+            <div className="sidebar-footer-mini">
+              <button className="sidebar-logout sidebar-logout-mini" onClick={logout} title="Sair">
+                <Icon name="logout" style={{ fontSize: 16 }} />
+              </button>
+              <button
+                className="sidebar-logout sidebar-logout-mini"
+                aria-label="Expandir menu"
+                onClick={toggleSidebarCollapsed}
+                title="Expandir menu"
+              >
+                <Icon name="chevron_right" style={{ fontSize: 18 }} />
+              </button>
+            </div>
           )}
         </aside>
 
