@@ -104,7 +104,12 @@ export default function Layout() {
   const navigate = useNavigate();
   const breadcrumb = currentBreadcrumb(location.pathname, location.search);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const key = `erp_sidebar_collapsed_${user?.id ?? "anon"}`;
+      return JSON.parse(localStorage.getItem(key) || "{}");
+    } catch { return {}; }
+  });
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -197,7 +202,11 @@ export default function Layout() {
   }
 
   function toggleGroup(title: string) {
-    setCollapsedGroups((prev) => ({ ...prev, [title]: !prev[title] }));
+    setCollapsedGroups((prev) => {
+      const next = { ...prev, [title]: !prev[title] };
+      try { localStorage.setItem(`erp_sidebar_collapsed_${user?.id ?? "anon"}`, JSON.stringify(next)); } catch {}
+      return next;
+    });
   }
 
   const hasAnyModule = NAV_GROUPS.some((group) =>
