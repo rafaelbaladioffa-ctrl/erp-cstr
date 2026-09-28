@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { collaboratorsApi, masterDataApi, planningApi, projectsApi, projectTasksApi } from "../../api/resources";
 import type { Collaborator, Project, ProjectTask, SowImport, SowParsedItem } from "../../api/types";
 import type { ReferenceData } from "../../pages/cadastros/registryConfig";
@@ -159,7 +159,8 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
   const [step, setStep] = useState(1);
 
   // Passo 1 — Importar SOW
-  const [title, setTitle] = useState("");
+  const [searchParams] = useSearchParams();
+  const [title, setTitle] = useState(() => searchParams.get("sowTitle") || "");
   const [sourceType, setSourceType] = useState("TEXT");
   const [sourceText, setSourceText] = useState("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);

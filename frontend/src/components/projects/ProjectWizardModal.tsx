@@ -273,7 +273,8 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
             style={{ width: "100%", justifyContent: "center" }}
             onClick={() => {
               onClose();
-              navigate(`/cadastros-mestres?focusEntity=sow-wizard`);
+              const sowTitle = savedProject.po || savedProject.name;
+              navigate(`/cadastros-mestres?focusEntity=sow-wizard&sowTitle=${encodeURIComponent(sowTitle)}`);
             }}
           >
             <Icon name="upload_file" style={{ fontSize: 15, marginRight: 6 }} />
