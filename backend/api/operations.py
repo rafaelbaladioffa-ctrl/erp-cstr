@@ -434,14 +434,15 @@ class OperationsReportsView(APIView):
         activity_stats = {}
 
         # Fase 1: coletar intervalos e horas por técnico.
-        # Duas regras combinadas para evitar inflação:
-        # (a) Tarefas com actual_start/actual_end: os intervalos são mergeados
-        #     depois, evitando contar duas vezes quando o técnico trabalha em N
-        #     tarefas simultaneamente (10 tarefas paralelas = apenas 1 período
-        #     de trabalho, não 10).
-        # (b) Tarefas sem timestamps reais (fallback para duração planejada):
-        #     divide as horas pelo número de técnicos co-atribuídos, evitando
-        #     que 3 técnicos em 1 tarefa de 8h resulte em 24h contabilizadas.
+        #
+        # Regra de negócio acordada:
+        # - 4 técnicos × 1h numa tarefa = cada técnico trabalhou 1h (relógio).
+        #   Para utilização individual NÃO dividimos por num_assignees.
+        # - A mesma tarefa representa 4 man-hours de esforço total, que vai
+        #   para as métricas de atividade/projeto (hours × num_assignees).
+        # - Tarefas paralelas do MESMO técnico: os intervalos são mergeados
+        #   na Fase 2 para evitar dupla contagem (10 tarefas das 9h–10h = 1h,
+        #   não 10h).
         tech_data = {}
         for task in tasks_qs:
             hours = task.worked_hours
@@ -454,23 +455,30 @@ class OperationsReportsView(APIView):
                     {"collaborator": collaborator, "intervals": [], "flat_hours": 0.0, "completed_count": 0},
                 )
                 if task.actual_start and task.actual_end:
+                    # Merge de intervalos cuida de tarefas paralelas do mesmo técnico.
                     entry["intervals"].append((task.actual_start, task.actual_end))
                 else:
-                    entry["flat_hours"] += hours / num_assignees
+                    # Sem timestamp real: soma direto por técnico (cada um
+                    # trabalhou 'hours' horas no relógio).
+                    entry["flat_hours"] += hours
                 entry["completed_count"] += 1
 
             # Contabiliza tempo por atividade apenas para tarefas geradas
             # pelo cadastro mestre (origin=SOW_TEMPLATE), que têm nomes
             # específicos com tipo de cabo, metragem etc. Tarefas manuais
             # e de catálogo genérico são excluídas propositalmente.
+            # Man-hours = horas da tarefa × número de técnicos atribuídos.
             if task.origin != ProjectTask.ORIGIN_SOW_TEMPLATE:
                 continue
             key = task.custom_name or task.display_name
             activity = activity_stats.setdefault(key, {"name": key, "executions": 0, "hours": []})
             activity["executions"] += 1
-            activity["hours"].append(hours)
+            activity["hours"].append(hours * num_assignees)
 
         # Fase 2: merge de intervalos sobrepostos → horas reais por técnico.
+        # Garante que tarefas paralelas (mesmo técnico em dois work-orders
+        # simultâneos) não inflam as horas — o período efetivo é contado
+        # uma única vez.
         tech_stats = {}
         for coll_id, data in tech_data.items():
             coll = data["collaborator"]

@@ -10,7 +10,7 @@ from datetime import date
 from django.utils import timezone
 
 from core.models import Collaborator
-from .models import Project, ProjectTask, merged_worked_hours
+from .models import Project, ProjectTask
 
 
 def parse_date(value):
@@ -132,16 +132,17 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
 
             completed_tasks = [t for t in completed_tasks if _in_range(t)]
 
-        # Merge de intervalos sobrepostos (tarefas paralelas = 1 período, não N×)
-        # + divisão por co-atribuídos em tarefas sem timestamp real.
+        # Horas por técnico: cada um trabalhou 'worked_hours' horas no relógio,
+        # independente de quantos colegas compartilhavam a mesma tarefa.
+        # Merge de intervalos evita dupla contagem quando o técnico tinha
+        # tarefas paralelas (10 tarefas das 9h–10h = 1h efetiva, não 10h).
         intervals = []
         flat_hours = 0.0
         for task in completed_tasks:
-            num_assignees = task.assignments.count() or 1
             if task.actual_start and task.actual_end:
                 intervals.append((task.actual_start, task.actual_end))
             else:
-                flat_hours += task.worked_hours / num_assignees
+                flat_hours += task.worked_hours
         intervals.sort(key=lambda iv: iv[0])
         merged_intervals = []
         for start, end in intervals:
