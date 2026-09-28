@@ -242,32 +242,48 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
 
   if (savedProject) {
     return (
-      <Modal title="Projeto criado!" onClose={onClose} width={560}>
-        <div style={{ textAlign: "center", padding: "8px 0 24px" }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
-          <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{savedProject.code}</div>
-          <div style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 28 }}>{savedProject.name}</div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
-            <button
-              className="btn btn-outline"
-              onClick={() => navigate(`/projetos/${savedProject.id}`)}
-            >
-              <Icon name="open_in_new" style={{ fontSize: 16, marginRight: 6 }} />
-              Ir para o projeto
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                onClose();
-                navigate(`/cadastros-mestres?focusEntity=sow-wizard`);
-              }}
-            >
-              <Icon name="upload_file" style={{ fontSize: 16, marginRight: 6 }} />
-              Importar SOW
-            </button>
+      <Modal title="Novo projeto" onClose={onClose} width={480}>
+        <div style={{ padding: "4px 0 8px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--orange)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
+            Projeto registrado
           </div>
-          <button className="btn btn-outline" style={{ marginTop: 10 }} onClick={onClose}>
-            Fechar
+          <div style={{ fontSize: 21, fontWeight: 700, letterSpacing: "-.02em", color: "var(--text)" }}>
+            {savedProject.code}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 3, marginBottom: 20 }}>
+            {savedProject.name}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, color: "var(--text-faint)", fontSize: 11 }}>
+            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            Próximos passos
+            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+          </div>
+
+          <button
+            className="btn btn-outline"
+            style={{ width: "100%", justifyContent: "center", marginBottom: 8 }}
+            onClick={() => navigate(`/projetos/${savedProject.id}`)}
+          >
+            <Icon name="open_in_new" style={{ fontSize: 15, marginRight: 6 }} />
+            Ir para o projeto
+          </button>
+          <button
+            className="btn btn-primary"
+            style={{ width: "100%", justifyContent: "center" }}
+            onClick={() => {
+              onClose();
+              navigate(`/cadastros-mestres?focusEntity=sow-wizard`);
+            }}
+          >
+            <Icon name="upload_file" style={{ fontSize: 15, marginRight: 6 }} />
+            Importar SOW
+          </button>
+          <div style={{ fontSize: 11, color: "var(--text-faint)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
+            Importe a SOW para cadastrar atividades e tarefas automaticamente
+          </div>
+          <button className="btn btn-ghost" style={{ width: "100%", marginTop: 6, justifyContent: "center", fontSize: 12 }} onClick={onClose}>
+            Fechar sem importar
           </button>
         </div>
       </Modal>
