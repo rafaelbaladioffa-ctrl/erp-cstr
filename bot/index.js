@@ -216,6 +216,11 @@ async function runAllocationBroadcast(sock) {
       continue;
     }
     try {
+      // Assinar presença antes de enviar ajuda o WhatsApp a re-estabelecer
+      // a sessão E2E quando o contato ficou inativo por alguns dias,
+      // reduzindo o "Aguardando mensagem" no aparelho do técnico.
+      await sock.presenceSubscribe(jid).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 500));
       await sock.sendMessage(jid, { text: formatBroadcastMessage(t, data.date) });
       await new Promise((resolve) => setTimeout(resolve, 800));
     } catch (err) {
