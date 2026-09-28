@@ -181,9 +181,7 @@ def build_board_data(site_id, date=None):
         for t in pool
     ]
 
-    active_qs = ProjectTask.objects.filter(
-        actual_start__date__lte=today
-    ).filter(Q(actual_end__isnull=True) | Q(actual_end__date__gte=today))
+    active_qs = ProjectTask.objects.filter(status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
     completed_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_COMPLETED, actual_end__date=today)
     if site_id:
         active_qs = active_qs.filter(project__site_id=site_id)
