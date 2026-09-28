@@ -4018,75 +4018,37 @@ select.input[multiple] {
   }
 }
 
-/* ============================================================
-   DASHBOARD GRID — drag-and-drop + resize sections
-   ============================================================ */
-.dash-grid {
+/* ── Grid 2×2 dos 4 cards compactos ────────────────────────── */
+.reports-four-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 12px;
+  align-items: start;
+}
+
+/* Altura limitada com scroll interno */
+.rpt-compact-card {
+  max-height: 340px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 0;
 }
-.dash-section {
-  position: relative;
+.rpt-compact-card .log-feed,
+.rpt-compact-card .rpt-ranking,
+.rpt-compact-card .reason-bars,
+.rpt-compact-card > div:last-child {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
-.dash-section-inner {
-  position: relative;
-  border-radius: 10px;
-  overflow: hidden;
-  transition: box-shadow .15s, opacity .15s;
-  margin-bottom: 16px;
-  overflow: visible;
+/* Garante que rpt-today-row respeita o scroll */
+.rpt-compact-card .rpt-today-row {
+  min-height: unset;
 }
-.dash-section-inner.dash-dragging {
-  opacity: .45;
-  box-shadow: 0 0 0 2px var(--orange);
+
+@media (max-width: 860px) {
+  .reports-four-grid {
+    grid-template-columns: 1fr;
+  }
 }
-.dash-section-inner.dash-drop-target {
-  box-shadow: 0 0 0 2.5px var(--orange);
-  border-radius: 10px;
-}
-/* Drag handle bar */
-.dash-drag-handle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  height: 22px;
-  padding: 0 6px;
-  cursor: grab;
-  user-select: none;
-  border-radius: 10px 10px 0 0;
-  background: transparent;
-  transition: background .12s;
-}
-.dash-drag-handle:active { cursor: grabbing; }
-.dash-drag-handle:hover { background: var(--surface-2); }
-.dash-drag-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: var(--text-faint);
-  opacity: 0;
-  transition: opacity .15s;
-}
-.dash-drag-handle:hover .dash-drag-label { opacity: 1; }
-/* Content */
-.dash-section-content { }
-/* Resize handle */
-.dash-resize-handle {
-  height: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: row-resize;
-  opacity: 0;
-  transition: opacity .15s;
-}
-.dash-section-inner:hover .dash-resize-handle { opacity: 1; }
-.dash-resize-grip {
-  width: 32px;
-  height: 3px;
-  background: var(--border);
-  border-radius: 2px;
-}
-.dash-resize-handle:hover .dash-resize-grip { background: var(--orange); }
