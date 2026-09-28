@@ -491,6 +491,10 @@ async function runOperationsPrintBroadcast(sock, overridePhone) {
 }
 
 let currentSock = null;
+// Separado de currentSock: só vira true 45s após a conexão abrir, tempo
+// suficiente para as "init queries" do Baileys (chaves E2E, sync de estado)
+// completarem. Broadcasts e triggers manuais só disparam quando true.
+let botReady = false;
 // Último QR Code emitido pelo WhatsApp e quando. Servido em /qr — o QR roda
 // a cada ~20s, então o log nunca chega a tempo para alguém escanear.
 let lastQr = null;
@@ -560,8 +564,8 @@ http
       return;
     }
 
-    if (!currentSock) {
-      res.writeHead(503).end("Bot não está conectado ao WhatsApp no momento.\n");
+    if (!currentSock || !botReady) {
+      res.writeHead(503).end("Bot ainda está inicializando — aguarde alguns instantes.\n");
       return;
     }
 
@@ -615,7 +619,7 @@ http
   .listen(3001, "0.0.0.0");
 
 setInterval(() => {
-  if (!currentSock) return;
+  if (!currentSock || !botReady) return;
   const now = new Date();
   const dateKey = now.toISOString().slice(0, 10);
   for (const b of SCHEDULED_BROADCASTS) {
@@ -658,8 +662,13 @@ async function start() {
       console.log("Conexão com o WhatsApp fechada.", shouldReconnect ? "Reconectando..." : "Sessão deslogada — apague o volume de auth e escaneie o QR de novo.");
       if (shouldReconnect) start();
     } else if (connection === "open") {
-      console.log("Bot conectado ao WhatsApp com sucesso.");
       currentSock = sock;
+      botReady = false;
+      console.log("Bot conectado ao WhatsApp. Aguardando 45s para inicialização das chaves E2E...");
+      setTimeout(() => {
+        botReady = true;
+        console.log("Bot pronto para enviar mensagens.");
+      }, 45000);
     }
   });
 
