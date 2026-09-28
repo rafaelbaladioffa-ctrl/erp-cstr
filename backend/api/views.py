@@ -2463,6 +2463,7 @@ class AuditLogViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets
                 | models.Q(actor__username__icontains=search)
                 | models.Q(actor__email__icontains=search)
             )
+        return queryset
 
 
 class PasswordResetRequestView(APIView):
