@@ -362,7 +362,7 @@ export default function ProjectsList() {
   function openCreate() { setWizardOpen(true); }
   function openEdit(project: Project) { setEditingProject(project); setFormOpen(true); }
   function handleSaved() { setFormOpen(false); reload(); }
-  function handleWizardSaved() { setWizardOpen(false); reload(); }
+  function handleWizardSaved() { reload(); }
 
   useEffect(() => { setPage(1); }, [tab, search, clientFilter, siteFilter, categoryFilter]);
 
