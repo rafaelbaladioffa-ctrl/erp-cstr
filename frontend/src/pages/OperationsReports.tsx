@@ -237,7 +237,70 @@ export default function OperationsReportsPage() {
 
           {/* ② Grid 2×2: Log / Desempenho Hoje / Ranking / Improdutivas */}
           <div className="reports-four-grid" style={{ marginBottom: 16 }}>
-            {/* Log Automático */}
+            {/* Ranking de utilização — linha 1 col 1 */}
+            <div className="ops-pool-card rpt-compact-card">
+              <div className="ops-card-head">
+                <div className="ops-card-title">Ranking de Utilização — Período</div>
+                <div className="ops-card-hint">Técnicos com jornada cadastrada</div>
+              </div>
+              {rankedTechs.length > 0 ? (
+                <>
+                  <div className="rpt-ranking">
+                    {rankedTechs.map((t, i) => {
+                      const pct = t.utilization_pct!;
+                      const ac = avatarColor(t.id);
+                      return (
+                        <div key={t.id} className="rpt-rank-row">
+                          <span className="rpt-rank-num">{i + 1}</span>
+                          <div className="rpt-avatar" style={{ background: ac.bg, color: ac.color }}>{initials(t.name)}</div>
+                          <span className="rpt-rank-name">{t.name.split(" ")[0]} {t.name.split(" ").slice(-1)[0]}</span>
+                          <div className="rpt-rank-bar-wrap">
+                            <div className="rpt-rank-bar">
+                              <div className="rpt-rank-fill" style={{ width: `${(pct / maxUtilPct) * 100}%`, background: utilColor(pct) }} />
+                            </div>
+                          </div>
+                          <span className="rpt-rank-pct" style={{ color: utilTextColor(pct) }}>{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="rpt-rank-legend">
+                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--red)" }} />Sobrecarga (&gt;300%)</div>
+                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--amber)" }} />Elevado (100–300%)</div>
+                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--green)" }} />Normal (&lt;100%)</div>
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">Nenhum técnico com jornada no período.</div>
+              )}
+            </div>
+
+            {/* Horas Improdutivas — linha 1 col 2 */}
+            <div className="ops-pool-card rpt-compact-card">
+              <div className="ops-card-head">
+                <div className="ops-card-title">Horas Improdutivas — Mês</div>
+                <div className="ops-card-hint">Status classificados como improdutivos, mês corrente</div>
+              </div>
+              <div className="reason-bars">
+                {unproductiveByReason.map((r) => (
+                  <div key={r.status} className="reason-bar-row">
+                    <div className="reason-bar-label">{r.status_display}</div>
+                    <div className="reason-bar-track">
+                      <div className="reason-bar-fill" style={{ width: `${(r.hours / maxReasonHours) * 100}%` }} />
+                    </div>
+                    <div className="reason-bar-value">{formatHours(r.hours)}</div>
+                  </div>
+                ))}
+                {unproductiveByReason.length === 0 && <div className="empty-state">Nenhuma hora improdutiva registrada no mês.</div>}
+              </div>
+              {totalUnproductiveHours > 40 && (
+                <div className="rpt-improd-alert">
+                  ⚠ {formatHours(totalUnproductiveHours)} de técnicos sem atividade alocada — revisar distribuição de tarefas
+                </div>
+              )}
+            </div>
+
+            {/* Log Automático — linha 2 col 1 */}
             <div className="ops-pool-card rpt-compact-card">
               <div className="ops-card-head">
                 <div>
@@ -364,69 +427,6 @@ export default function OperationsReportsPage() {
 
               {todayTechnicians.length === 0 && (
                 <div className="table-empty" style={{ padding: 20 }}>Nenhuma atividade hoje.</div>
-              )}
-            </div>
-
-            {/* Ranking de utilização */}
-            <div className="ops-pool-card rpt-compact-card">
-              <div className="ops-card-head">
-                <div className="ops-card-title">Ranking de Utilização — Período</div>
-                <div className="ops-card-hint">Técnicos com jornada cadastrada</div>
-              </div>
-              {rankedTechs.length > 0 ? (
-                <>
-                  <div className="rpt-ranking">
-                    {rankedTechs.map((t, i) => {
-                      const pct = t.utilization_pct!;
-                      const ac = avatarColor(t.id);
-                      return (
-                        <div key={t.id} className="rpt-rank-row">
-                          <span className="rpt-rank-num">{i + 1}</span>
-                          <div className="rpt-avatar" style={{ background: ac.bg, color: ac.color }}>{initials(t.name)}</div>
-                          <span className="rpt-rank-name">{t.name.split(" ")[0]} {t.name.split(" ").slice(-1)[0]}</span>
-                          <div className="rpt-rank-bar-wrap">
-                            <div className="rpt-rank-bar">
-                              <div className="rpt-rank-fill" style={{ width: `${(pct / maxUtilPct) * 100}%`, background: utilColor(pct) }} />
-                            </div>
-                          </div>
-                          <span className="rpt-rank-pct" style={{ color: utilTextColor(pct) }}>{pct}%</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="rpt-rank-legend">
-                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--red)" }} />Sobrecarga (&gt;300%)</div>
-                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--amber)" }} />Elevado (100–300%)</div>
-                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--green)" }} />Normal (&lt;100%)</div>
-                  </div>
-                </>
-              ) : (
-                <div className="empty-state">Nenhum técnico com jornada no período.</div>
-              )}
-            </div>
-
-            {/* Horas Improdutivas por Motivo */}
-            <div className="ops-pool-card rpt-compact-card">
-              <div className="ops-card-head">
-                <div className="ops-card-title">Horas Improdutivas — Mês</div>
-                <div className="ops-card-hint">Status classificados como improdutivos, mês corrente</div>
-              </div>
-              <div className="reason-bars">
-                {unproductiveByReason.map((r) => (
-                  <div key={r.status} className="reason-bar-row">
-                    <div className="reason-bar-label">{r.status_display}</div>
-                    <div className="reason-bar-track">
-                      <div className="reason-bar-fill" style={{ width: `${(r.hours / maxReasonHours) * 100}%` }} />
-                    </div>
-                    <div className="reason-bar-value">{formatHours(r.hours)}</div>
-                  </div>
-                ))}
-                {unproductiveByReason.length === 0 && <div className="empty-state">Nenhuma hora improdutiva registrada no mês.</div>}
-              </div>
-              {totalUnproductiveHours > 40 && (
-                <div className="rpt-improd-alert">
-                  ⚠ {formatHours(totalUnproductiveHours)} de técnicos sem atividade alocada — revisar distribuição de tarefas
-                </div>
               )}
             </div>
 
