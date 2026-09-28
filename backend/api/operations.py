@@ -435,17 +435,49 @@ class OperationsReportsView(APIView):
         tech_stats = {}
         activity_stats = {}
 
+        # Fase 1: coletar intervalos e horas por técnico.
+        # Duas regras combinadas para evitar inflação:
+        # (a) Tarefas com actual_start/actual_end: os intervalos são mergeados
+        #     depois, evitando contar duas vezes quando o técnico trabalha em N
+        #     tarefas simultaneamente (10 tarefas paralelas = apenas 1 período
+        #     de trabalho, não 10).
+        # (b) Tarefas sem timestamps reais (fallback para duração planejada):
+        #     divide as horas pelo número de técnicos co-atribuídos, evitando
+        #     que 3 técnicos em 1 tarefa de 8h resulte em 24h contabilizadas.
+        tech_data = {}
         for task in tasks_qs:
-            hours = task.worked_hours
-
-            for assignment in task.assignments.all():
+            task_assignments = list(task.assignments.all())
+            num_assignees = len(task_assignments) or 1
+            for assignment in task_assignments:
                 collaborator = assignment.collaborator
-                entry = tech_stats.setdefault(
+                entry = tech_data.setdefault(
                     collaborator.id,
-                    {"name": collaborator.person.name, "site_name": _site_label(collaborator), "worked_hours": 0.0, "completed_count": 0},
+                    {"collaborator": collaborator, "intervals": [], "flat_hours": 0.0, "completed_count": 0},
                 )
-                entry["worked_hours"] += hours
+                if task.actual_start and task.actual_end:
+                    entry["intervals"].append((task.actual_start, task.actual_end))
+                else:
+                    entry["flat_hours"] += task.worked_hours / num_assignees
                 entry["completed_count"] += 1
+
+        # Fase 2: merge de intervalos sobrepostos → horas reais por técnico.
+        tech_stats = {}
+        for coll_id, data in tech_data.items():
+            coll = data["collaborator"]
+            intervals = sorted(data["intervals"], key=lambda iv: iv[0])
+            merged_intervals = []
+            for start, end in intervals:
+                if merged_intervals and start <= merged_intervals[-1][1]:
+                    merged_intervals[-1] = (merged_intervals[-1][0], max(merged_intervals[-1][1], end))
+                else:
+                    merged_intervals.append((start, end))
+            interval_hours = sum((e - s).total_seconds() for s, e in merged_intervals) / 3600
+            tech_stats[coll_id] = {
+                "name": coll.person.name,
+                "site_name": _site_label(coll),
+                "worked_hours": round(interval_hours + data["flat_hours"], 2),
+                "completed_count": data["completed_count"],
+            }
 
             # Contabiliza tempo por atividade apenas para tarefas geradas
             # pelo cadastro mestre (origin=SOW_TEMPLATE), que têm nomes

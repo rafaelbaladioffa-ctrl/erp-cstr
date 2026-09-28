@@ -10,7 +10,7 @@ from datetime import date
 from django.utils import timezone
 
 from core.models import Collaborator
-from .models import Project, ProjectTask
+from .models import Project, ProjectTask, merged_worked_hours
 
 
 def parse_date(value):
@@ -107,7 +107,11 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
     collaborators = Collaborator.objects.filter(is_active=True).select_related("person", "person__company", "job_title")
     if company_id:
         collaborators = collaborators.filter(person__company_id=company_id)
-    collaborators = collaborators.prefetch_related("project_tasks", "project_tasks__rack_positions")
+    collaborators = collaborators.prefetch_related(
+        "project_tasks",
+        "project_tasks__rack_positions",
+        "project_tasks__assignments",
+    )
 
     rows = []
     for collaborator in collaborators:
@@ -128,7 +132,25 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
 
             completed_tasks = [t for t in completed_tasks if _in_range(t)]
 
-        hours_worked = sum(t.worked_hours for t in completed_tasks)
+        # Merge de intervalos sobrepostos (tarefas paralelas = 1 período, não N×)
+        # + divisão por co-atribuídos em tarefas sem timestamp real.
+        intervals = []
+        flat_hours = 0.0
+        for task in completed_tasks:
+            num_assignees = task.assignments.count() or 1
+            if task.actual_start and task.actual_end:
+                intervals.append((task.actual_start, task.actual_end))
+            else:
+                flat_hours += task.worked_hours / num_assignees
+        intervals.sort(key=lambda iv: iv[0])
+        merged_intervals = []
+        for start, end in intervals:
+            if merged_intervals and start <= merged_intervals[-1][1]:
+                merged_intervals[-1] = (merged_intervals[-1][0], max(merged_intervals[-1][1], end))
+            else:
+                merged_intervals.append((start, end))
+        interval_hours = sum((e - s).total_seconds() for s, e in merged_intervals) / 3600
+        hours_worked = round(interval_hours + flat_hours, 2)
         links_executed = sum(rp.links for t in completed_tasks for rp in t.rack_positions.all())
 
         rows.append(
