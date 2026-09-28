@@ -444,6 +444,7 @@ class OperationsReportsView(APIView):
         #     que 3 técnicos em 1 tarefa de 8h resulte em 24h contabilizadas.
         tech_data = {}
         for task in tasks_qs:
+            hours = task.worked_hours
             task_assignments = list(task.assignments.all())
             num_assignees = len(task_assignments) or 1
             for assignment in task_assignments:
@@ -455,8 +456,19 @@ class OperationsReportsView(APIView):
                 if task.actual_start and task.actual_end:
                     entry["intervals"].append((task.actual_start, task.actual_end))
                 else:
-                    entry["flat_hours"] += task.worked_hours / num_assignees
+                    entry["flat_hours"] += hours / num_assignees
                 entry["completed_count"] += 1
+
+            # Contabiliza tempo por atividade apenas para tarefas geradas
+            # pelo cadastro mestre (origin=SOW_TEMPLATE), que têm nomes
+            # específicos com tipo de cabo, metragem etc. Tarefas manuais
+            # e de catálogo genérico são excluídas propositalmente.
+            if task.origin != ProjectTask.ORIGIN_SOW_TEMPLATE:
+                continue
+            key = task.custom_name or task.display_name
+            activity = activity_stats.setdefault(key, {"name": key, "executions": 0, "hours": []})
+            activity["executions"] += 1
+            activity["hours"].append(hours)
 
         # Fase 2: merge de intervalos sobrepostos → horas reais por técnico.
         tech_stats = {}
@@ -476,17 +488,6 @@ class OperationsReportsView(APIView):
                 "worked_hours": round(interval_hours + data["flat_hours"], 2),
                 "completed_count": data["completed_count"],
             }
-
-            # Contabiliza tempo por atividade apenas para tarefas geradas
-            # pelo cadastro mestre (origin=SOW_TEMPLATE), que têm nomes
-            # específicos com tipo de cabo, metragem etc. Tarefas manuais
-            # e de catálogo genérico são excluídas propositalmente.
-            if task.origin != ProjectTask.ORIGIN_SOW_TEMPLATE:
-                continue
-            key = task.custom_name or task.display_name
-            activity = activity_stats.setdefault(key, {"name": key, "executions": 0, "hours": []})
-            activity["executions"] += 1
-            activity["hours"].append(hours)
 
         # Jornada é fixa (STANDARD_WORKDAY_HOURS por dia efetivamente
         # trabalhado), não a duração real entre check-in e check-out — o
