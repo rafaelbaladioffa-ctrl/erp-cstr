@@ -2885,6 +2885,449 @@ select.input[multiple] {
   margin-bottom: 16px;
 }
 
+/* ---------- Relatórios: KPI cards melhorados ---------- */
+
+.rpt-kpi-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow-card);
+}
+
+.rpt-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.rpt-kpi-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.rpt-kpi-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.rpt-kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.03em;
+  line-height: 1.1;
+}
+
+.rpt-kpi-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.rpt-kpi-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .4s ease;
+}
+
+.rpt-kpi-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+/* ---------- Relatórios: Log com filtros e tags ---------- */
+
+.log-filter-row {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.log-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.log-filter-chip:hover {
+  border-color: var(--text-faint);
+  color: var(--text);
+}
+
+.log-filter-chip.active {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: white;
+}
+
+.log-filter-count {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(0,0,0,.12);
+  border-radius: 10px;
+  padding: 0 5px;
+}
+
+.log-filter-chip.active .log-filter-count {
+  background: rgba(255,255,255,.25);
+}
+
+.log-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 3px;
+  vertical-align: middle;
+}
+
+.log-tag-concluiu { background: var(--green-soft); color: var(--green); }
+.log-tag-despacho { background: var(--blue-soft); color: var(--blue); }
+.log-tag-inicio   { background: var(--amber-soft); color: var(--amber); }
+.log-tag-status   { background: var(--bg); color: var(--text-faint); border: 1px solid var(--border); }
+
+.log-legend {
+  display: flex;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.log-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.log-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ---------- Relatórios: Desempenho hoje com mini timeline ---------- */
+
+.rpt-today-row {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rpt-today-row:last-child {
+  border-bottom: none;
+}
+
+.rpt-today-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.rpt-today-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.rpt-today-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.rpt-today-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 1px;
+}
+
+.rpt-today-util {
+  margin-left: auto;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: right;
+}
+
+.rpt-today-util-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.rpt-today-timeline {
+  margin-bottom: 8px;
+}
+
+.rpt-today-bar {
+  height: 10px;
+  background: var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  display: flex;
+}
+
+.rpt-today-metrics {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.rpt-today-metric {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.rpt-today-metric-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.rpt-today-metric-val {
+  font-weight: 600;
+  color: var(--text);
+  margin-left: 2px;
+}
+
+/* ---------- Relatórios: Tabela histórico com avatares e util colorida ---------- */
+
+.rpt-tech-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rpt-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.rpt-sites {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.rpt-site-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.rpt-util-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rpt-util-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 60px;
+  max-width: 100px;
+}
+
+.rpt-util-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .4s ease;
+}
+
+.rpt-no-journey {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* ---------- Relatórios: Ranking de utilização ---------- */
+
+.rpt-ranking {
+  display: flex;
+  flex-direction: column;
+}
+
+.rpt-rank-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rpt-rank-row:last-child {
+  border-bottom: none;
+}
+
+.rpt-rank-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-faint);
+  min-width: 14px;
+}
+
+.rpt-rank-name {
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 110px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rpt-rank-bar-wrap {
+  flex: 1;
+}
+
+.rpt-rank-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.rpt-rank-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .4s ease;
+}
+
+.rpt-rank-pct {
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 42px;
+  text-align: right;
+}
+
+.rpt-rank-legend {
+  display: flex;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.rpt-rank-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.rpt-rank-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ---------- Relatórios: Alerta horas improdutivas ---------- */
+
+.rpt-improd-alert {
+  margin: 0 16px 12px;
+  padding: 8px 12px;
+  background: var(--red-soft);
+  border: 1px solid var(--red);
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--red);
+}
+
+/* ---------- Relatórios: Tabela tipo atividade com barra ---------- */
+
+.rpt-time-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rpt-time-bar {
+  width: 70px;
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.rpt-time-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--blue);
+}
+
+.rpt-best-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
 @keyframes tl-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
   50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
