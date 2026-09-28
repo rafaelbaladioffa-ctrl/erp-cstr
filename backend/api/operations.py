@@ -106,11 +106,11 @@ def _queue_data(collaborator):
     ]
 
 
-def build_board_data(site_id):
+def build_board_data(site_id, date=None):
     """Monta os mesmos dados de OperationsBoardView.get() — extraído à parte
     pra ser reaproveitado pela view de "print" (bot do WhatsApp), sem
     duplicar a lógica."""
-    today = timezone.localdate()
+    today = date or timezone.localdate()
     collaborators_qs = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
     if site_id:
         collaborators_qs = collaborators_qs.filter(sites=site_id)
@@ -154,7 +154,7 @@ def build_board_data(site_id):
             }
         )
 
-    # Só entra no pool do dia quem tem início AGENDADO pra hoje — sem
+    # Só entra no pool do dia quem tem início AGENDADO pra data — sem
     # isso, todo o backlog não iniciado (mesmo tarefas agendadas pra
     # daqui semanas) aparecia junto, inflando a lista.
     pool_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_NOT_STARTED, planned_start__date=today)
@@ -181,7 +181,9 @@ def build_board_data(site_id):
         for t in pool
     ]
 
-    active_qs = ProjectTask.objects.filter(status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
+    active_qs = ProjectTask.objects.filter(
+        actual_start__date__lte=today
+    ).filter(Q(actual_end__isnull=True) | Q(actual_end__date__gte=today))
     completed_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_COMPLETED, actual_end__date=today)
     if site_id:
         active_qs = active_qs.filter(project__site_id=site_id)
@@ -216,7 +218,9 @@ class OperationsBoardView(APIView):
         site_id = request.query_params.get("site")
         if site_id == "all":
             site_id = None
-        return Response(build_board_data(site_id))
+        date_str = request.query_params.get("date")
+        date = parse_date(date_str) if date_str else None
+        return Response(build_board_data(site_id, date=date))
 
 
 def build_timeline_data(site_id, date):

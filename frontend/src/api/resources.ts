@@ -490,8 +490,8 @@ export const presenceApi = {
 };
 
 export const operationsApi = {
-  board: (siteId: number | "all") =>
-    apiClient.get<OperationsBoard>("/operations/board/", { params: { site: String(siteId) } }).then((r) => r.data),
+  board: (siteId: number | "all", date?: string) =>
+    apiClient.get<OperationsBoard>("/operations/board/", { params: { site: String(siteId), ...(date ? { date } : {}) } }).then((r) => r.data),
   dispatch: (taskId: number, collaboratorIds: number[]) =>
     apiClient
       .post<ProjectTask>(`/project-tasks/${taskId}/dispatch/`, { collaborator_ids: collaboratorIds })

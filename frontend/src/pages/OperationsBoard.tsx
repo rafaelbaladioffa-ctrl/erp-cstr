@@ -62,6 +62,9 @@ export default function OperationsBoard() {
   const [absenceTech, setAbsenceTech] = useState<{ id: number; name: string } | null>(null);
   const [dragTaskId, setDragTaskId] = useState<number | null>(null);
   const [dragOverTechId, setDragOverTechId] = useState<number | null>(null);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const isToday = selectedDate === todayStr;
 
   useEffect(() => {
     sitesApi.list().then((data) => {
@@ -69,11 +72,12 @@ export default function OperationsBoard() {
     });
   }, []);
 
-  function loadAll(site: number | "all") {
+  function loadAll(site: number | "all", date?: string) {
     setLoading(true);
+    const dateParam = date && date !== todayStr ? date : undefined;
     Promise.all([
-      operationsApi.board(site).then(setBoard),
-      operationsApi.timeline(site).then((data) => {
+      operationsApi.board(site, dateParam).then(setBoard),
+      operationsApi.timeline(site, dateParam).then((data) => {
         const map: Record<number, { blocks: TimelineBlock[]; statusEvents: StatusEvent[] }> = {};
         for (const t of data.technicians) map[t.id] = { blocks: t.blocks, statusEvents: t.status_events };
         setTimelineByTech(map);
@@ -83,11 +87,14 @@ export default function OperationsBoard() {
 
   useEffect(() => {
     if (siteId == null) return;
-    loadAll(siteId);
-    const timer = setInterval(() => loadAll(siteId), 20000);
-    return () => clearInterval(timer);
+    loadAll(siteId, selectedDate);
+    // Auto-refresh apenas no dia atual
+    if (selectedDate === todayStr) {
+      const timer = setInterval(() => loadAll(siteId, selectedDate), 20000);
+      return () => clearInterval(timer);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siteId]);
+  }, [siteId, selectedDate]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
@@ -125,7 +132,7 @@ export default function OperationsBoard() {
       await operationsApi.dispatch(selectedTask, selectedTechs);
       setSelectedTask(null);
       setSelectedTechs([]);
-      if (siteId != null) loadAll(siteId);
+      if (siteId != null) loadAll(siteId, selectedDate);
     } finally {
       setDispatching(false);
     }
@@ -136,7 +143,7 @@ export default function OperationsBoard() {
     setUndispatchingId(taskId);
     try {
       await operationsApi.undispatch(taskId);
-      if (siteId != null) loadAll(siteId);
+      if (siteId != null) loadAll(siteId, selectedDate);
     } finally {
       setUndispatchingId(null);
     }
@@ -145,8 +152,8 @@ export default function OperationsBoard() {
   const technicians = board?.technicians || [];
   const pool = board?.pool || [];
   const stats = board?.stats;
-  const nowDate = new Date(now);
-  const base = nowDate;
+  const nowDate = isToday ? new Date(now) : new Date(selectedDate + "T18:00:00");
+  const base = isToday ? nowDate : new Date(selectedDate + "T07:00:00");
   const nowPct = pct(nowDate, base);
   // Um técnico pode ter mais de uma tarefa "aberta" ao mesmo tempo (pausou
   // uma, iniciou outra) — as barras dela empilham verticalmente na mesma
@@ -213,20 +220,61 @@ export default function OperationsBoard() {
       <PageHeader
         eyebrow="Central de Operações"
         title="Operação do Dia"
-        subtitle="Pool de atividades, técnicos e timeline em tempo real"
+        subtitle={isToday ? "Pool de atividades, técnicos e timeline em tempo real" : `Visualizando ${new Date(selectedDate + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}`}
         actions={
-          <select
-            className="select"
-            value={siteId ?? ""}
-            onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}
-          >
-            <option value="all">Todos os sites</option>
-            {sites.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ padding: "4px 8px" }}
+                onClick={() => {
+                  const d = new Date(selectedDate + "T12:00:00");
+                  d.setDate(d.getDate() - 1);
+                  setSelectedDate(d.toISOString().slice(0, 10));
+                }}
+              >
+                <Icon name="chevron_left" style={{ fontSize: 16 }} />
+              </button>
+              <input
+                type="date"
+                className="select"
+                style={{ width: 140 }}
+                value={selectedDate}
+                max={todayStr}
+                onChange={(e) => setSelectedDate(e.target.value || todayStr)}
+              />
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ padding: "4px 8px" }}
+                disabled={isToday}
+                onClick={() => {
+                  const d = new Date(selectedDate + "T12:00:00");
+                  d.setDate(d.getDate() + 1);
+                  const next = d.toISOString().slice(0, 10);
+                  setSelectedDate(next > todayStr ? todayStr : next);
+                }}
+              >
+                <Icon name="chevron_right" style={{ fontSize: 16 }} />
+              </button>
+              {!isToday && (
+                <button className="btn btn-outline btn-sm" onClick={() => setSelectedDate(todayStr)}>
+                  Hoje
+                </button>
+              )}
+            </div>
+            <select
+              className="select"
+              value={siteId ?? ""}
+              onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}
+            >
+              <option value="all">Todos os sites</option>
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
         }
       />
 
