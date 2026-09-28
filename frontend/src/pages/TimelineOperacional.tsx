@@ -44,6 +44,16 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const AVATAR_COLORS = [
+  { bg: "var(--blue-soft)", color: "var(--blue)" },
+  { bg: "var(--purple-soft)", color: "var(--purple)" },
+  { bg: "var(--amber-soft)", color: "var(--amber)" },
+  { bg: "var(--green-soft)", color: "var(--green)" },
+  { bg: "var(--teal-soft)", color: "var(--teal)" },
+  { bg: "var(--red-soft)", color: "var(--red)" },
+];
+function avatarColor(id: number) { return AVATAR_COLORS[id % AVATAR_COLORS.length]; }
+
 type ViewMode = "day" | "week" | "month";
 
 export default function TimelineOperacional() {
@@ -101,9 +111,9 @@ export default function TimelineOperacional() {
         };
       })
   );
-  const trackHeight = (count: number) => (count <= 1 ? 68 : 14 + count * 38);
-  const barTop = (index: number, count: number) => (count <= 1 ? 12 : 8 + index * 38);
-  const barHeight = (count: number) => (count <= 1 ? 44 : 30);
+  const trackHeight = (count: number) => (count <= 1 ? 48 : 10 + count * 22);
+  const barTop = (index: number, count: number) => (count <= 1 ? 18 : 6 + index * 22);
+  const barHeight = (_count: number) => 10;
 
   return (
     <div>
@@ -226,10 +236,12 @@ export default function TimelineOperacional() {
           <div className="tl-grid-wrap">
             <div className="tl-labels">
               <div className="tl-ruler" />
-              {techRows.map(({ tech, laneCount, doneCount }, rowIdx) => (
+              {techRows.map(({ tech, laneCount, doneCount }, rowIdx) => {
+                const ac = avatarColor(tech.id);
+                return (
                 <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
                   <div className="tl-row-label">
-                    <div className="tl-avatar">{initials(tech.name)}</div>
+                    <div className="tl-avatar" style={{ background: ac.bg, color: ac.color }}>{initials(tech.name)}</div>
                     <div>
                       <div className="tl-row-name">
                         {tech.name}
@@ -241,7 +253,8 @@ export default function TimelineOperacional() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <div className="tl-body">
               <div className="tl-ruler">

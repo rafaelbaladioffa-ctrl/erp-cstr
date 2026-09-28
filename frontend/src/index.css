@@ -2574,34 +2574,31 @@ select.input[multiple] {
 }
 
 .tl-avatar {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: var(--navy);
-  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10.5px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 700;
   flex-shrink: 0;
 }
 
 .tl-row-name {
-  font-size: 12.5px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text);
 }
 
 .tl-row-site {
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-faint);
 }
 
 .tl-row-overview {
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: 11px;
   color: var(--text-faint);
   margin-top: 1px;
   white-space: nowrap;
@@ -2614,42 +2611,35 @@ select.input[multiple] {
 
 .tl-bar {
   position: absolute;
-  top: 8px;
-  height: 36px;
-  min-width: 10px;
-  border-radius: 999px;
+  min-width: 4px;
+  border-radius: 5px;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
-  padding: 0 10px;
   overflow: hidden;
   white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(15, 39, 64, 0.15);
   cursor: pointer;
-  transition: min-width 0.15s ease, box-shadow 0.15s ease;
+  transition: filter 0.12s ease, box-shadow 0.12s ease;
 }
 
 .tl-bar:hover {
-  box-shadow: 0 2px 6px rgba(15, 39, 64, 0.3);
+  filter: brightness(1.08);
+  box-shadow: 0 2px 6px rgba(15, 39, 64, 0.25);
 }
 
 .tl-bar.expanded {
-  min-width: 150px;
-  padding: 0 14px;
-  justify-content: flex-start;
   z-index: 6;
-  box-shadow: 0 4px 14px rgba(15, 39, 64, 0.35);
+  box-shadow: 0 3px 10px rgba(15, 39, 64, 0.3);
 }
 
 .tl-bar-label {
   color: #fff;
-  font-size: 12px;
-  font-weight: 400;
+  font-size: 11px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  padding: 0 6px;
   letter-spacing: 0.01em;
 }
 
