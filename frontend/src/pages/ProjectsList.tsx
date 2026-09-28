@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { projectsApi } from "../api/resources";
 import type { Project } from "../api/types";
 import ProjectFormModal from "../components/projects/ProjectFormModal";
+import ProjectWizardModal from "../components/projects/ProjectWizardModal";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
@@ -341,6 +342,7 @@ export default function ProjectsList() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -357,9 +359,10 @@ export default function ProjectsList() {
 
   useEffect(() => { reload(); }, []);
 
-  function openCreate() { setEditingProject(null); setFormOpen(true); }
+  function openCreate() { setWizardOpen(true); }
   function openEdit(project: Project) { setEditingProject(project); setFormOpen(true); }
   function handleSaved() { setFormOpen(false); reload(); }
+  function handleWizardSaved() { setWizardOpen(false); reload(); }
 
   useEffect(() => { setPage(1); }, [tab, search, clientFilter, siteFilter, categoryFilter]);
 
@@ -697,7 +700,10 @@ export default function ProjectsList() {
         )}
       </div>
 
-      {formOpen && (editingProject ? canChange : canAdd) && (
+      {wizardOpen && canAdd && (
+        <ProjectWizardModal onClose={() => setWizardOpen(false)} onSaved={handleWizardSaved} />
+      )}
+      {formOpen && editingProject && canChange && (
         <ProjectFormModal project={editingProject} onClose={() => setFormOpen(false)} onSaved={handleSaved} />
       )}
     </div>
