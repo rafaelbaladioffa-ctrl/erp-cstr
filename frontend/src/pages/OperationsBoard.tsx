@@ -235,14 +235,19 @@ export default function OperationsBoard() {
               >
                 <Icon name="chevron_left" style={{ fontSize: 16 }} />
               </button>
-              <input
-                type="date"
-                className="select"
-                style={{ width: 140 }}
-                value={selectedDate}
-                max={todayStr}
-                onChange={(e) => setSelectedDate(e.target.value || todayStr)}
-              />
+              <label style={{ position: "relative", cursor: "pointer" }}>
+                <div className="btn btn-outline btn-sm" style={{ display: "flex", alignItems: "center", gap: 6, pointerEvents: "none", minWidth: 130, justifyContent: "center" }}>
+                  <Icon name="calendar_today" style={{ fontSize: 14 }} />
+                  <span>{new Date(selectedDate + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
+                </div>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  max={todayStr}
+                  onChange={(e) => setSelectedDate(e.target.value || todayStr)}
+                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%" }}
+                />
+              </label>
               <button
                 className="btn btn-outline btn-sm"
                 style={{ padding: "4px 8px" }}
