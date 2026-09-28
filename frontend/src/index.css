@@ -4052,3 +4052,10 @@ select.input[multiple] {
     grid-template-columns: 1fr;
   }
 }
+
+/* Scroll interno para cards compactos com lista de técnicos */
+.rpt-compact-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}

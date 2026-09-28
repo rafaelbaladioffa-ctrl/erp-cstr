@@ -366,6 +366,7 @@ export default function OperationsReportsPage() {
                 <div className="ops-card-hint">{todayTechnicians.length} técnico(s) com atividade hoje</div>
               </div>
 
+              <div className="rpt-compact-scroll">
               {todayTechnicians.map((t) => {
                 const total = t.journey_hours > 0 ? t.journey_hours : t.active_hours + t.available_hours + t.break_hours;
                 const safeTotal = total || 1;
@@ -428,6 +429,7 @@ export default function OperationsReportsPage() {
               {todayTechnicians.length === 0 && (
                 <div className="table-empty" style={{ padding: 20 }}>Nenhuma atividade hoje.</div>
               )}
+              </div>{/* /rpt-compact-scroll */}
             </div>
 
           </div>{/* /reports-four-grid */}
