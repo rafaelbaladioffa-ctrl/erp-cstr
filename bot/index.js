@@ -166,6 +166,20 @@ function phoneToJid(rawPhone) {
   return null; // número curto/inválido demais para confiar
 }
 
+// Resolve o JID real do número via WhatsApp (evita "Aguardando mensagem" causado
+// por números de 8 dígitos sem o "9" obrigatório ou outros problemas de formato).
+// Retorna null se o número não estiver no WhatsApp ou a consulta falhar.
+async function resolvePhoneJid(sock, rawPhone) {
+  const candidateJid = phoneToJid(rawPhone);
+  if (!candidateJid) return null;
+  try {
+    const [result] = await sock.onWhatsApp(candidateJid.replace("@s.whatsapp.net", ""));
+    return result?.exists ? result.jid : null;
+  } catch {
+    return candidateJid; // fallback: tenta com o JID construído localmente
+  }
+}
+
 // now.toLocaleDateString/toLocaleTimeString("pt-BR", ...) formata só o
 // IDIOMA — o fuso usado continua sendo o do sistema operacional do
 // container, que aqui não é America/Sao_Paulo (por padrão os containers
@@ -196,9 +210,9 @@ async function runAllocationBroadcast(sock) {
   }
   console.log(`Envio de alocação: enviando de ${data.date} para ${data.technicians.length} técnico(s).`);
   for (const t of data.technicians) {
-    const jid = phoneToJid(t.phone);
+    const jid = await resolvePhoneJid(sock, t.phone);
     if (!jid) {
-      console.error(`Envio de alocação: telefone inválido para ${t.collaborator_name} (${t.phone}), pulando.`);
+      console.error(`Envio de alocação: telefone inválido ou não encontrado no WhatsApp para ${t.collaborator_name} (${t.phone}), pulando.`);
       continue;
     }
     try {
