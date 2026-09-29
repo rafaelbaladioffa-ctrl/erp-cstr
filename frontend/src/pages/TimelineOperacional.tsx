@@ -1,33 +1,59 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
-import type { OperationsTimeline } from "../api/types";
+import type { OperationsTimeline, TimelineTechnician } from "../api/types";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
-import {
-  BUSY_COLOR,
-  DONE_COLOR,
-  HOURS,
-  PRESENCE_COLOR,
-  WINDOW_END_HOUR,
-  WINDOW_START_HOUR,
-  assignLanes,
-  buildTechSegments,
-  formatTime,
-  initials,
-  pairRowClass,
-  pct,
-  reorderRowsByPair,
-} from "../utils/timeline";
+import { WINDOW_MINUTES, initials } from "../utils/timeline";
 
-type BarPopup = {
-  key: string;
-  label: string;
-  start: Date;
-  end: Date | null;
-  color: string;
-  top: number;
-  left: number;
-};
+const AVATAR_COLORS = [
+  { bg: "var(--blue-soft)", color: "var(--blue)" },
+  { bg: "var(--purple-soft)", color: "var(--purple)" },
+  { bg: "var(--amber-soft)", color: "var(--amber)" },
+  { bg: "var(--green-soft)", color: "var(--green)" },
+  { bg: "var(--teal-soft)", color: "var(--teal)" },
+  { bg: "var(--red-soft)", color: "var(--red)" },
+];
+function avatarColor(id: number) { return AVATAR_COLORS[id % AVATAR_COLORS.length]; }
+
+const BREAK_STATUSES = ["lunch", "personal", "site_blocked", "awaiting_release", "on_leave"];
+
+function computeTechHours(tech: TimelineTechnician, now: Date, isToday: boolean) {
+  let activeMs = 0;
+  for (const b of tech.blocks) {
+    const start = b.actual_start ? new Date(b.actual_start).getTime() : null;
+    const end = b.actual_end
+      ? new Date(b.actual_end).getTime()
+      : b.status !== "completed" && isToday ? now.getTime() : null;
+    if (start && end) activeMs += Math.max(0, end - start);
+  }
+  const sorted = [...tech.status_events].sort(
+    (a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime()
+  );
+  let breakMs = 0;
+  let availableMs = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const ev = sorted[i];
+    if (ev.status === "not_started" || ev.status === "off_duty") continue;
+    const startMs = new Date(ev.changed_at).getTime();
+    const endMs = i + 1 < sorted.length ? new Date(sorted[i + 1].changed_at).getTime() : now.getTime();
+    const dur = Math.max(0, endMs - startMs);
+    if (BREAK_STATUSES.includes(ev.status)) breakMs += dur;
+    else if (ev.status === "available") availableMs += dur;
+  }
+  return {
+    activeHours: activeMs / 3600000,
+    breakHours: breakMs / 3600000,
+    availableHours: availableMs / 3600000,
+    doneCount: tech.blocks.filter((b) => b.status === "completed").length,
+  };
+}
+
+function formatHours(h: number) {
+  if (h < 0.01) return "0h";
+  const hInt = Math.floor(h);
+  const m = Math.round((h - hInt) * 60);
+  return m > 0 ? `${hInt}h${String(m).padStart(2, "0")}` : `${hInt}h`;
+}
 
 function formatDateBR(iso: string) {
   const [y, m, d] = iso.split("-");
@@ -44,76 +70,31 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-const AVATAR_COLORS = [
-  { bg: "var(--blue-soft)", color: "var(--blue)" },
-  { bg: "var(--purple-soft)", color: "var(--purple)" },
-  { bg: "var(--amber-soft)", color: "var(--amber)" },
-  { bg: "var(--green-soft)", color: "var(--green)" },
-  { bg: "var(--teal-soft)", color: "var(--teal)" },
-  { bg: "var(--red-soft)", color: "var(--red)" },
-];
-function avatarColor(id: number) { return AVATAR_COLORS[id % AVATAR_COLORS.length]; }
-
-type ViewMode = "day" | "week" | "month";
-
 export default function TimelineOperacional() {
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState<number | "all">("all");
   const [selectedTechIds, setSelectedTechIds] = useState<number[]>([]);
   const [date, setDate] = useState(() => todayISO());
-  const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [data, setData] = useState<OperationsTimeline | null>(null);
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(() => new Date());
-  const [popup, setPopup] = useState<BarPopup | null>(null);
-  const popupRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    sitesApi.list().then((res) => setSites(res.results));
-  }, []);
-
+  useEffect(() => { sitesApi.list().then((res) => setSites(res.results)); }, []);
   useEffect(() => {
     setLoading(true);
-    operationsApi
-      .timeline(siteId, date)
-      .then(setData)
-      .finally(() => setLoading(false));
+    operationsApi.timeline(siteId, date).then(setData).finally(() => setLoading(false));
   }, [siteId, date]);
-
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPopup(null); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    const t = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(t);
   }, []);
 
   const technicians = data?.technicians || [];
   const isToday = data?.is_today ?? date === todayISO();
-  const base = data?.date ? new Date(`${data.date}T00:00:00`) : new Date();
-  const nowPct = isToday ? pct(now, base) : null;
-
-  const techRows = reorderRowsByPair(
-    technicians
-      .filter((tech) => selectedTechIds.length === 0 || selectedTechIds.includes(tech.id))
-      .map((tech) => {
-        const segments = buildTechSegments(tech.blocks, tech.status_events, now, isToday);
-        const lanedSegments = assignLanes(segments);
-        return {
-          tech,
-          lanedSegments,
-          laneCount: lanedSegments[0]?.laneCount ?? 1,
-          doneCount: tech.blocks.filter((b) => b.status === "completed").length,
-        };
-      })
+  const filtered = technicians.filter(
+    (t) => selectedTechIds.length === 0 || selectedTechIds.includes(t.id)
   );
-  const trackHeight = (count: number) => (count <= 1 ? 48 : 10 + count * 22);
-  const barTop = (index: number, count: number) => (count <= 1 ? 18 : 6 + index * 22);
-  const barHeight = (_count: number) => 10;
 
   return (
     <div>
@@ -130,18 +111,6 @@ export default function TimelineOperacional() {
           </button>
           <button className="btn btn-outline btn-sm" onClick={() => setDate(todayISO())}>
             Hoje
-          </button>
-        </div>
-
-        <div className="tl-view-toggle">
-          <button className={`tl-view-btn${viewMode === "day" ? " active" : ""}`} onClick={() => setViewMode("day")}>
-            Dia
-          </button>
-          <button className="tl-view-btn" disabled title="Em breve">
-            Semana
-          </button>
-          <button className="tl-view-btn" disabled title="Em breve">
-            Mês
           </button>
         </div>
 
@@ -193,178 +162,64 @@ export default function TimelineOperacional() {
       {loading && !data ? (
         <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
       ) : (
-        <div className="tl-card">
-          <div className="tl-legend-row">
-            <div className="legend-item">
-              <span className="legend-swatch" style={{ background: DONE_COLOR }} />
-              Concluída
-            </div>
-            <div className="legend-item">
-              <span className="legend-swatch" style={{ background: BUSY_COLOR.in_progress }} />
-              Em execução
-            </div>
-            <div className="legend-item">
-              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.available }} />
-              Disponível
-            </div>
-            <div className="legend-item">
-              <span className="legend-swatch" style={{ background: BUSY_COLOR.paused }} />
-              Pausa
-            </div>
-            <div className="legend-item">
-              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.lunch }} />
-              Horário de Almoço
-            </div>
-            <div className="legend-item">
-              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.personal }} />
-              Particular
-            </div>
-            <div className="legend-item">
-              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.site_blocked }} />
-              Sem Acesso ao Site
-            </div>
-            <div className="legend-item">
-              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.awaiting_release }} />
-              Aguardando Liberações
-            </div>
-            <div className="legend-item">
-              <span className="legend-swatch" style={{ background: "var(--text-faint)" }} />
-              Não iniciado / Fim de Expediente
-            </div>
+        <div className="ops-pool-card" style={{ padding: 0 }}>
+          <div className="ops-card-head" style={{ padding: "12px 16px" }}>
+            <div className="ops-card-title">Desempenho por Técnico</div>
+            <div className="ops-card-hint">{filtered.length} técnico(s)</div>
           </div>
 
-          <div className="tl-grid-wrap">
-            <div className="tl-labels">
-              <div className="tl-ruler" />
-              {techRows.map(({ tech, laneCount, doneCount }, rowIdx) => {
-                const ac = avatarColor(tech.id);
-                return (
-                <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
-                  <div className="tl-row-label">
-                    <div className="tl-avatar" style={{ background: ac.bg, color: ac.color }}>{initials(tech.name)}</div>
-                    <div>
-                      <div className="tl-row-name">
-                        {tech.name}
-                        {siteId === "all" && <span className="tl-row-site"> · {tech.site_name}</span>}
-                      </div>
-                      <div className="tl-row-overview">
-                        {doneCount} finalizada{doneCount === 1 ? "" : "s"}
-                      </div>
+          {filtered.length === 0 ? (
+            <div className="empty-state" style={{ padding: 32 }}>
+              {technicians.length === 0
+                ? `Nenhum técnico para ${formatDateBR(date)}.`
+                : "Nenhum técnico no filtro."}
+            </div>
+          ) : filtered.map((tech) => {
+            const ac = avatarColor(tech.id);
+            const { activeHours, breakHours, availableHours, doneCount } = computeTechHours(tech, now, isToday);
+            const safeTotal = Math.max(activeHours + breakHours + availableHours, WINDOW_MINUTES / 60, 0.01);
+            const activePct = Math.min(100, (activeHours / safeTotal) * 100);
+            const breakPct = Math.min(100 - activePct, (breakHours / safeTotal) * 100);
+            const avPct = Math.min(100 - activePct - breakPct, (availableHours / safeTotal) * 100);
+            return (
+              <div key={tech.id} className="rpt-today-row">
+                <div className="rpt-today-header">
+                  <div className="rpt-today-avatar" style={{ background: ac.bg, color: ac.color }}>{initials(tech.name)}</div>
+                  <div>
+                    <div className="rpt-today-name">{tech.name}</div>
+                    <div className="rpt-today-sub">
+                      {tech.site_name}{doneCount > 0 && ` · ${doneCount} tarefa${doneCount === 1 ? "" : "s"} finalizada${doneCount === 1 ? "" : "s"}`}
                     </div>
                   </div>
                 </div>
-                );
-              })}
-            </div>
-            <div className="tl-body">
-              <div className="tl-ruler">
-                {HOURS.map((h) => (
-                  <span
-                    key={h}
-                    className="tl-ruler-tick"
-                    style={{ left: `${((h - WINDOW_START_HOUR) / (WINDOW_END_HOUR - WINDOW_START_HOUR)) * 100}%` }}
-                  >
-                    {String(h).padStart(2, "0")}
-                  </span>
-                ))}
-              </div>
-              <div className="tl-gridlines">
-                {HOURS.slice(1, -1).map((h) => (
-                  <div
-                    key={h}
-                    className="tl-gridline"
-                    style={{ left: `${((h - WINDOW_START_HOUR) / (WINDOW_END_HOUR - WINDOW_START_HOUR)) * 100}%` }}
-                  />
-                ))}
-                {nowPct != null && (
-                  <div className="tl-now-line" style={{ left: `${nowPct}%` }}>
-                    <div className="tl-now-tag">agora {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
-                    <div className="tl-now-dot" />
+                <div className="rpt-today-timeline">
+                  <div className="rpt-today-bar">
+                    <div style={{ width: `${activePct}%`, background: "var(--green)", height: "100%", borderRadius: 2 }} title={`Tarefas: ${formatHours(activeHours)}`} />
+                    <div style={{ width: `${breakPct}%`, background: "var(--amber)", height: "100%", opacity: 0.7 }} title={`Intervalos: ${formatHours(breakHours)}`} />
+                    <div style={{ width: `${avPct}%`, background: "var(--blue)", height: "100%", opacity: 0.5 }} title={`Disponível: ${formatHours(availableHours)}`} />
                   </div>
-                )}
-              </div>
-
-              {techRows.map(({ tech, lanedSegments, laneCount }, rowIdx) => {
-                if (lanedSegments.length === 0) {
-                  return (
-                    <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(0) }}>
-                      <div className="tl-row-track">
-                        <div className="tl-idle-note">Sem atividade neste dia</div>
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
-                    <div className="tl-row-track">
-                      {lanedSegments.map(({ segment, lane }, idx) => {
-                        const left = pct(segment.start, base);
-                        const rightPct = segment.end ? pct(segment.end, base) : nowPct ?? 100;
-                        const width = Math.max(0.4, rightPct - left);
-                        const barKey = `${tech.id}-${idx}`;
-                        const isActive = popup?.key === barKey;
-                        return (
-                          <div
-                            key={idx}
-                            className={`tl-bar${isActive ? " expanded" : ""}`}
-                            title={segment.label}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setPopup((prev) =>
-                                prev?.key === barKey
-                                  ? null
-                                  : { key: barKey, label: segment.label, start: segment.start, end: segment.end ?? null, color: segment.color, top: rect.bottom + 6, left: rect.left }
-                              );
-                            }}
-                            style={{
-                              left: `${left}%`,
-                              width: `${width}%`,
-                              top: barTop(lane, laneCount),
-                              height: barHeight(laneCount),
-                              background: segment.color,
-                            }}
-                          >
-                            {segment.live && <span className="tl-live-dot" />}
-                            <span className="tl-bar-label">{segment.label}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                </div>
+                <div className="rpt-today-metrics">
+                  <div className="rpt-today-metric">
+                    <span className="rpt-today-metric-dot" style={{ background: "var(--green)" }} />
+                    <span className="rpt-today-metric-label">Tarefas</span>
+                    <span className="rpt-today-metric-val">{formatHours(activeHours)}</span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-          {techRows.length === 0 && (
-            <div className="empty-state">
-              {technicians.length === 0
-                ? `Nenhum técnico encontrado para ${formatDateBR(date)}.`
-                : "Nenhum dos técnicos selecionados está disponível neste filtro."}
-            </div>
-          )}
+                  <div className="rpt-today-metric">
+                    <span className="rpt-today-metric-dot" style={{ background: "var(--amber)", opacity: 0.8 }} />
+                    <span className="rpt-today-metric-label">Intervalos</span>
+                    <span className="rpt-today-metric-val">{formatHours(breakHours)}</span>
+                  </div>
+                  <div className="rpt-today-metric">
+                    <span className="rpt-today-metric-dot" style={{ background: "var(--blue)", opacity: 0.6 }} />
+                    <span className="rpt-today-metric-label">Disponível</span>
+                    <span className="rpt-today-metric-val">{formatHours(availableHours)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      )}
-      {popup && (
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 199 }} onClick={() => setPopup(null)} />
-          <div
-            ref={popupRef}
-            className="tl-popup"
-            style={{ top: popup.top, left: Math.min(popup.left, window.innerWidth - 280) }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="tl-popup-color" style={{ background: popup.color }} />
-            <div className="tl-popup-body">
-              <div className="tl-popup-label">{popup.label}</div>
-              <div className="tl-popup-time">
-                {formatTime(popup.start.toISOString())}
-                {popup.end ? ` – ${formatTime(popup.end.toISOString())}` : " – em andamento"}
-              </div>
-            </div>
-            <button className="tl-popup-close" onClick={() => setPopup(null)} aria-label="Fechar">×</button>
-          </div>
-        </>
       )}
     </div>
   );

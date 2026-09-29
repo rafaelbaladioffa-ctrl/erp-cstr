@@ -193,12 +193,15 @@ def build_board_data(site_id, date=None):
     technicians_absent = sum(
         1 for t in technicians if t["presence_status"] == TechnicianDailyPresence.STATUS_NOT_STARTED
     )
+    technicians_on_site = sum(
+        1 for t in technicians if t["presence_status"] == TechnicianDailyPresence.STATUS_IN_PROGRESS
+    )
     stats = {
         "planned": planned_count,
         "active": active_count,
         "completed": completed_today_count,
         "pending": pending_count,
-        "technicians_on_site": len(technicians),
+        "technicians_on_site": technicians_on_site,
         "technicians_absent": technicians_absent,
         "progress_pct": round((completed_today_count / planned_count) * 100) if planned_count else 0,
     }
