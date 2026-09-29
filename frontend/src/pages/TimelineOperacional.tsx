@@ -101,9 +101,9 @@ export default function TimelineOperacional() {
         };
       })
   );
-  const trackHeight = (count: number) => (count <= 1 ? 52 : 10 + count * 30);
-  const barTop = (index: number, count: number) => (count <= 1 ? 8 : 6 + index * 30);
-  const barHeight = (count: number) => (count <= 1 ? 28 : 22);
+  const trackHeight = (count: number) => (count <= 1 ? 44 : 10 + count * 30);
+  const barTop = (index: number, _count: number) => 6 + index * 30;
+  const barHeight = (_count: number) => 22;
 
   return (
     <div>
