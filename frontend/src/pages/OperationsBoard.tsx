@@ -575,9 +575,9 @@ export default function OperationsBoard() {
 
                 {techRows.map(({ tech, lanedSegments, laneCount, doneCount, pendingCount }, rowIdx) => {
                   const badge = techStatusBadge(tech);
-                  const rowHeight = laneCount <= 1 ? 100 : 36 + laneCount * 52;
-                  const barH = laneCount <= 1 ? 28 : 22;
-                  const barT = (lane: number) => laneCount <= 1 ? 12 : 8 + lane * 52;
+                  const rowHeight = laneCount <= 1 ? 88 : 36 + laneCount * 52;
+                  const barH = 22;
+                  const barT = (lane: number) => 8 + lane * 52;
                   const notStarted = notStartedBars({ tech, lanedSegments, laneCount, doneCount, pendingCount });
                   return (
                     <div
