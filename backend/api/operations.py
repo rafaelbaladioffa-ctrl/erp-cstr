@@ -464,11 +464,15 @@ class OperationsReportsView(APIView):
                         "untracked_count": 0,
                     },
                 )
-                if has_tracking:
-                    # Merge de intervalos cuida de tarefas paralelas do mesmo técnico.
+                # Usa o intervalo do PRÓPRIO técnico quando disponível (novo rastreamento
+                # por assignment), garantindo que cada um conta a partir de quando ELE
+                # iniciou — não de quando o primeiro colega despachado iniciou.
+                # Fallback: intervalo da tarefa (dados históricos sem rastreamento por assignment).
+                if assignment.assignment_start and assignment.assignment_end:
+                    entry["intervals"].append((assignment.assignment_start, assignment.assignment_end))
+                elif has_tracking:
                     entry["intervals"].append((task.actual_start, task.actual_end))
                 else:
-                    # Sem apontamento real: não contribui para horas (hours=0.0).
                     entry["untracked_count"] += 1
                 entry["completed_count"] += 1
 

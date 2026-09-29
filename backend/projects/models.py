@@ -393,13 +393,19 @@ class ProjectTask(TimestampedModel):
 
     @property
     def real_man_hours(self):
-        """Homem-hora real: horas de relógio × número de técnicos atribuídos.
-        Métrica principal para faturamento por homem×hora.
+        """Homem-hora real: soma de actual_hours por técnico quando disponível,
+        senão fallback para worked_hours × num_assignees (tarefas sem
+        rastreamento por assignment — dados históricos).
         Requer prefetch_related('assignments') para evitar N+1."""
+        assignments = list(self.assignments.all())
+        # Preferência: somar horas individuais por técnico (rastreamento por assignment).
+        assignment_hours = [float(a.actual_hours) for a in assignments if a.actual_hours is not None]
+        if assignment_hours:
+            return round(sum(assignment_hours), 2)
+        # Fallback: tarefa com apontamento real mas sem rastreamento por assignment.
         if not self.has_real_time_tracking:
             return 0.0
-        # len() em vez de .count() aproveita o prefetch_related quando disponível.
-        assignee_count = len(self.assignments.all()) or 1
+        assignee_count = len(assignments) or 1
         return round(self.worked_hours * assignee_count, 2)
 
 
@@ -422,6 +428,17 @@ class ProjectTaskAssignment(TimestampedModel):
     )
     queue_order = models.PositiveIntegerField("posição na fila", default=0)
 
+    # Rastreamento de tempo por técnico — cada assignment tem seu próprio
+    # intervalo: contabiliza a partir de quando ESTE técnico iniciou/concluiu,
+    # independente do que outros técnicos da mesma tarefa fizeram.
+    assignment_start = models.DateTimeField("início do técnico", null=True, blank=True)
+    assignment_end = models.DateTimeField("fim do técnico", null=True, blank=True)
+    paused_at = models.DateTimeField("pausado em", null=True, blank=True)
+    paused_seconds = models.FloatField("segundos pausado", default=0)
+    actual_hours = models.DecimalField(
+        "horas reais do técnico", max_digits=8, decimal_places=2, null=True, blank=True
+    )
+
     class Meta:
         verbose_name = "Despacho de Tarefa"
         verbose_name_plural = "Despachos de Tarefa"
@@ -429,6 +446,43 @@ class ProjectTaskAssignment(TimestampedModel):
         constraints = [
             models.UniqueConstraint(fields=("project_task", "collaborator"), name="unique_assignment_per_task_collaborator")
         ]
+
+    def record_start(self, now):
+        """Registra o início deste técnico na tarefa."""
+        fields = []
+        if not self.assignment_start:
+            self.assignment_start = now
+            fields.append("assignment_start")
+        if self.paused_at:
+            self.paused_seconds = (self.paused_seconds or 0) + (now - self.paused_at).total_seconds()
+            self.paused_at = None
+            fields.extend(["paused_seconds", "paused_at"])
+        if fields:
+            self.save(update_fields=fields)
+
+    def record_pause(self, now):
+        """Registra a pausa deste técnico."""
+        if not self.paused_at and self.assignment_start:
+            self.paused_at = now
+            self.save(update_fields=["paused_at"])
+
+    def record_complete(self, end_time):
+        """Registra a conclusão deste técnico e calcula actual_hours."""
+        fields = []
+        if self.paused_at:
+            self.paused_seconds = (self.paused_seconds or 0) + (end_time - self.paused_at).total_seconds()
+            self.paused_at = None
+            fields.extend(["paused_seconds", "paused_at"])
+        if not self.assignment_end:
+            self.assignment_end = end_time
+            fields.append("assignment_end")
+        if self.assignment_start and self.assignment_end:
+            total_s = (self.assignment_end - self.assignment_start).total_seconds()
+            total_s -= self.paused_seconds or 0
+            self.actual_hours = round(max(total_s, 0) / 3600, 2)
+            fields.append("actual_hours")
+        if fields:
+            self.save(update_fields=list(set(fields)))
 
     def __str__(self):
         return f"{self.project_task} → {self.collaborator}"

@@ -124,6 +124,7 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
         "project_tasks",
         "project_tasks__rack_positions",
         "project_tasks__assignments",
+        "project_tasks__assignments__collaborator",
     )
 
     rows = []
@@ -151,12 +152,21 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
         intervals = []
         flat_hours = 0.0
         untracked_count = 0
+        # task_assignments já prefetchado via 'project_tasks__assignments'
         for task in completed_tasks:
-            if task.has_real_time_tracking:
+            # Tenta usar o intervalo do próprio assignment do técnico
+            # (rastreamento por assignment — evita contar tempo de colegas).
+            own_assignment = next(
+                (a for a in task.assignments.all() if a.collaborator_id == collaborator.pk),
+                None,
+            )
+            if own_assignment and own_assignment.assignment_start and own_assignment.assignment_end:
+                intervals.append((own_assignment.assignment_start, own_assignment.assignment_end))
+            elif task.has_real_time_tracking:
+                # Fallback: dados históricos sem rastreamento por assignment.
                 intervals.append((task.actual_start, task.actual_end))
             else:
                 untracked_count += 1
-                # worked_hours já retorna 0.0 para tarefas sem apontamento real
         intervals.sort(key=lambda iv: iv[0])
         merged_intervals = []
         for start, end in intervals:

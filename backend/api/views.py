@@ -2300,11 +2300,37 @@ class MyTaskViewSet(
         return self.queryset.filter(collaborators=collaborator).order_by("planned_start", "order", "id")
 
     def update(self, request, *args, **kwargs):
+        prev_status = self.get_object().status
         response = super().update(request, *args, **kwargs)
         instance = self.get_object()
+        self._update_assignment_timing(request, instance, prev_status)
         self._sync_presence_with_task(request, instance)
         response.data = ProjectTaskSerializer(instance, context=self.get_serializer_context()).data
         return response
+
+    def _update_assignment_timing(self, request, task, prev_status):
+        """Espelha a transição de status no assignment do técnico atual, para
+        que cada técnico tenha seu próprio intervalo de horas — independente
+        de quando os colegas iniciaram/pausaram a mesma tarefa."""
+        from projects.models import ProjectTaskAssignment
+
+        collaborator = get_collaborator_role(request.user)
+        if not collaborator:
+            return
+        try:
+            assignment = task.assignments.get(collaborator=collaborator)
+        except ProjectTaskAssignment.DoesNotExist:
+            return
+
+        now = timezone.now()
+        new_status = task.status
+
+        if new_status == ProjectTask.STATUS_IN_PROGRESS and prev_status != ProjectTask.STATUS_IN_PROGRESS:
+            assignment.record_start(now)
+        elif new_status == ProjectTask.STATUS_PAUSED and prev_status == ProjectTask.STATUS_IN_PROGRESS:
+            assignment.record_pause(now)
+        elif new_status == ProjectTask.STATUS_COMPLETED and prev_status != ProjectTask.STATUS_COMPLETED:
+            assignment.record_complete(task.actual_end or now)
 
     def _sync_presence_with_task(self, request, task):
         """Iniciar uma atividade põe o técnico automaticamente 'Em Execução';
@@ -2394,6 +2420,13 @@ class TechnicianPresenceViewSet(viewsets.GenericViewSet):
             return Response({"detail": "Status inválido."}, status=400)
         return self._apply_status(request, status_value)
 
+    # Statuses que indicam que o técnico perdeu acesso ao site — qualquer
+    # tarefa em execução deve ser pausada automaticamente.
+    _BLOCKING_STATUSES = (
+        TechnicianDailyPresence.STATUS_SITE_BLOCKED,
+        TechnicianDailyPresence.STATUS_AWAITING_RELEASE,
+    )
+
     def _apply_status(self, request, status_value):
         presence = self._get_or_create_today(request)
         if presence is None:
@@ -2409,7 +2442,28 @@ class TechnicianPresenceViewSet(viewsets.GenericViewSet):
         TechnicianStatusEvent.objects.create(
             collaborator=presence.collaborator, date=presence.date, status=status_value, changed_at=now
         )
+        if status_value in self._BLOCKING_STATUSES:
+            self._pause_active_tasks(presence.collaborator, now)
         return Response(TechnicianDailyPresenceSerializer(presence).data)
+
+    def _pause_active_tasks(self, collaborator, now):
+        """Pausa todas as tarefas IN_PROGRESS do técnico e registra a pausa
+        no assignment individual — chamado quando o técnico perde acesso ao
+        site para que o período bloqueado não conte como horas trabalhadas."""
+        active = (
+            collaborator.task_assignments
+            .select_related("project_task")
+            .filter(project_task__status=ProjectTask.STATUS_IN_PROGRESS)
+        )
+        for assignment in active:
+            task = assignment.project_task
+            # Pausa a tarefa no nível global (para exibição no board).
+            if not task.paused_at:
+                task.paused_at = now
+                task.status = ProjectTask.STATUS_PAUSED
+                task.save(update_fields=("status", "paused_at", "updated_at"))
+            # Pausa o assignment individual (contabiliza o período correto).
+            assignment.record_pause(now)
 
 
 class TechnicianAbsenceViewSet(viewsets.ModelViewSet):
