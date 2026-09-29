@@ -1424,6 +1424,9 @@ class ProjectSerializer(serializers.ModelSerializer):
     total_tasks = serializers.SerializerMethodField()
     completed_tasks = serializers.SerializerMethodField()
     worked_hours = serializers.SerializerMethodField()
+    real_man_hours = serializers.SerializerMethodField()
+    untracked_tasks_count = serializers.SerializerMethodField()
+    tracking_rate = serializers.SerializerMethodField()
     progress_percent = serializers.SerializerMethodField()
 
     class Meta:
@@ -1459,6 +1462,9 @@ class ProjectSerializer(serializers.ModelSerializer):
             "total_tasks",
             "completed_tasks",
             "worked_hours",
+            "real_man_hours",
+            "untracked_tasks_count",
+            "tracking_rate",
             "progress_percent",
         )
 
@@ -1478,7 +1484,9 @@ class ProjectSerializer(serializers.ModelSerializer):
         return str(obj.responsible_client) if obj.responsible_client_id else None
 
     def _tasks(self, obj):
-        return list(obj.project_tasks.all())
+        if not hasattr(obj, "_serializer_tasks_cache"):
+            obj._serializer_tasks_cache = list(obj.project_tasks.prefetch_related("assignments").all())
+        return obj._serializer_tasks_cache
 
     def get_total_tasks(self, obj):
         return len(self._tasks(obj))
@@ -1488,6 +1496,23 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     def get_worked_hours(self, obj):
         return merged_worked_hours(self._tasks(obj))
+
+    def get_real_man_hours(self, obj):
+        return round(sum(t.real_man_hours for t in self._tasks(obj)), 2)
+
+    def get_untracked_tasks_count(self, obj):
+        return sum(
+            1 for t in self._tasks(obj)
+            if t.status == "completed" and not t.has_real_time_tracking
+        )
+
+    def get_tracking_rate(self, obj):
+        tasks = self._tasks(obj)
+        completed = [t for t in tasks if t.status == "completed"]
+        if not completed:
+            return 0
+        tracked = sum(1 for t in completed if t.has_real_time_tracking)
+        return round((tracked / len(completed)) * 100)
 
     def get_progress_percent(self, obj):
         tasks = self._tasks(obj)

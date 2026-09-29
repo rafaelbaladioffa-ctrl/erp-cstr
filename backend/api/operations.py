@@ -449,21 +449,27 @@ class OperationsReportsView(APIView):
         tech_data = {}
         for task in tasks_qs:
             hours = task.worked_hours
+            has_tracking = task.has_real_time_tracking
             task_assignments = list(task.assignments.all())
             num_assignees = len(task_assignments) or 1
             for assignment in task_assignments:
                 collaborator = assignment.collaborator
                 entry = tech_data.setdefault(
                     collaborator.id,
-                    {"collaborator": collaborator, "intervals": [], "flat_hours": 0.0, "completed_count": 0},
+                    {
+                        "collaborator": collaborator,
+                        "intervals": [],
+                        "flat_hours": 0.0,
+                        "completed_count": 0,
+                        "untracked_count": 0,
+                    },
                 )
-                if task.actual_start and task.actual_end:
+                if has_tracking:
                     # Merge de intervalos cuida de tarefas paralelas do mesmo técnico.
                     entry["intervals"].append((task.actual_start, task.actual_end))
                 else:
-                    # Sem timestamp real: soma direto por técnico (cada um
-                    # trabalhou 'hours' horas no relógio).
-                    entry["flat_hours"] += hours
+                    # Sem apontamento real: não contribui para horas (hours=0.0).
+                    entry["untracked_count"] += 1
                 entry["completed_count"] += 1
 
             # Contabiliza tempo por atividade apenas para tarefas geradas
@@ -474,9 +480,14 @@ class OperationsReportsView(APIView):
             if task.origin != ProjectTask.ORIGIN_SOW_TEMPLATE:
                 continue
             key = task.custom_name or task.display_name
-            activity = activity_stats.setdefault(key, {"name": key, "executions": 0, "hours": []})
+            activity = activity_stats.setdefault(
+                key, {"name": key, "executions": 0, "hours": [], "ignored_count": 0}
+            )
             activity["executions"] += 1
-            activity["hours"].append(hours * num_assignees)
+            if has_tracking:
+                activity["hours"].append(hours * num_assignees)
+            else:
+                activity["ignored_count"] += 1
 
         # Fase 2: merge de intervalos sobrepostos → horas reais por técnico.
         # Garante que tarefas paralelas (mesmo técnico em dois work-orders
@@ -498,6 +509,7 @@ class OperationsReportsView(APIView):
                 "site_name": _site_label(coll),
                 "worked_hours": round(interval_hours + data["flat_hours"], 2),
                 "completed_count": data["completed_count"],
+                "untracked_count": data["untracked_count"],
             }
 
         # Jornada é fixa (STANDARD_WORKDAY_HOURS por dia efetivamente
@@ -527,6 +539,7 @@ class OperationsReportsView(APIView):
                     "site_name": entry["site_name"],
                     "worked_hours": round(entry["worked_hours"], 2),
                     "completed_count": entry["completed_count"],
+                    "untracked_count": entry["untracked_count"],
                     "journey_hours": round(journey, 2),
                     "utilization_pct": utilization_pct,
                 }
@@ -542,6 +555,7 @@ class OperationsReportsView(APIView):
                     "executions": activity["executions"],
                     "avg_hours": round(sum(hrs) / len(hrs), 2) if hrs else 0,
                     "best_hours": round(min(hrs), 2) if hrs else 0,
+                    "ignored_count": activity["ignored_count"],
                 }
             )
         activities.sort(key=lambda a: -a["executions"])

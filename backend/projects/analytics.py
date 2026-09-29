@@ -23,7 +23,9 @@ def parse_date(value):
 
 
 def build_projects_performance(*, company_id=None, client_id=None, status=None, date_from=None, date_to=None):
-    queryset = Project.objects.select_related("company", "client").prefetch_related("project_tasks")
+    queryset = Project.objects.select_related("company", "client").prefetch_related(
+        "project_tasks", "project_tasks__assignments"
+    )
 
     if company_id:
         queryset = queryset.filter(company_id=company_id)
@@ -39,6 +41,7 @@ def build_projects_performance(*, company_id=None, client_id=None, status=None, 
     today = timezone.localdate()
     by_status = {}
     total_worked_hours = 0.0
+    total_real_man_hours = 0.0
     total_links = 0
     progress_values = []
     overdue_projects = 0
@@ -47,12 +50,18 @@ def build_projects_performance(*, company_id=None, client_id=None, status=None, 
     for project in queryset:
         tasks = list(project.project_tasks.all())
         total_tasks = len(tasks)
-        completed_tasks = len([t for t in tasks if t.status == ProjectTask.STATUS_COMPLETED])
+        completed_tasks_list = [t for t in tasks if t.status == ProjectTask.STATUS_COMPLETED]
+        completed_tasks = len(completed_tasks_list)
         worked_hours = sum(t.worked_hours for t in tasks)
+        real_man_hours = sum(t.real_man_hours for t in tasks)
+        tracked_completed = sum(1 for t in completed_tasks_list if t.has_real_time_tracking)
+        untracked_completed = completed_tasks - tracked_completed
+        tracking_rate = round((tracked_completed / completed_tasks) * 100) if completed_tasks else 0
         progress = round((completed_tasks / total_tasks) * 100) if total_tasks else 0
 
         by_status[project.status] = by_status.get(project.status, 0) + 1
         total_worked_hours += worked_hours
+        total_real_man_hours += real_man_hours
         total_links += project.link_count
         progress_values.append(progress)
         is_overdue = (
@@ -76,6 +85,9 @@ def build_projects_performance(*, company_id=None, client_id=None, status=None, 
                 "completed_tasks": completed_tasks,
                 "progress_percent": progress,
                 "worked_hours": round(worked_hours, 2),
+                "real_man_hours": round(real_man_hours, 2),
+                "untracked_tasks_count": untracked_completed,
+                "tracking_rate": tracking_rate,
                 "link_count": project.link_count,
                 "planned_end": project.planned_end,
                 "is_overdue": is_overdue,
@@ -95,6 +107,7 @@ def build_projects_performance(*, company_id=None, client_id=None, status=None, 
             "overdue_projects": overdue_projects,
             "avg_progress_percent": round(sum(progress_values) / len(progress_values)) if progress_values else 0,
             "total_worked_hours": round(total_worked_hours, 2),
+            "total_real_man_hours": round(total_real_man_hours, 2),
             "total_links": total_links,
         },
         "by_status": by_status_list,
@@ -132,17 +145,18 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
 
             completed_tasks = [t for t in completed_tasks if _in_range(t)]
 
-        # Horas por técnico: cada um trabalhou 'worked_hours' horas no relógio,
-        # independente de quantos colegas compartilhavam a mesma tarefa.
+        # Horas por técnico: apenas tarefas com apontamento real completo.
         # Merge de intervalos evita dupla contagem quando o técnico tinha
         # tarefas paralelas (10 tarefas das 9h–10h = 1h efetiva, não 10h).
         intervals = []
         flat_hours = 0.0
+        untracked_count = 0
         for task in completed_tasks:
-            if task.actual_start and task.actual_end:
+            if task.has_real_time_tracking:
                 intervals.append((task.actual_start, task.actual_end))
             else:
-                flat_hours += task.worked_hours
+                untracked_count += 1
+                # worked_hours já retorna 0.0 para tarefas sem apontamento real
         intervals.sort(key=lambda iv: iv[0])
         merged_intervals = []
         for start, end in intervals:
@@ -163,6 +177,7 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
                 "company": str(collaborator.person.company) if collaborator.person.company_id else None,
                 "tasks_total": tasks_total,
                 "tasks_completed": len(completed_tasks),
+                "tasks_untracked": untracked_count,
                 "hours_worked": round(hours_worked, 2),
                 "links_executed": links_executed,
             }
@@ -173,6 +188,7 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
     summary = {
         "total_collaborators": len(rows),
         "total_tasks_completed": sum(row["tasks_completed"] for row in rows),
+        "total_tasks_untracked": sum(row["tasks_untracked"] for row in rows),
         "total_hours_worked": round(sum(row["hours_worked"] for row in rows), 2),
         "total_links_executed": sum(row["links_executed"] for row in rows),
     }

@@ -368,15 +368,39 @@ class ProjectTask(TimestampedModel):
         super().save(*args, **kwargs)
 
     @property
-    def worked_hours(self):
-        """Horas trabalhadas para exibição: usa `actual_hours` quando
-        registrado; se a tarefa foi concluída sem apontamento real, cai
-        para a duração prevista (planned_start/planned_end) como estimativa."""
-        if self.actual_hours is not None:
-            return float(self.actual_hours)
-        if self.status == self.STATUS_COMPLETED and self.planned_start and self.planned_end:
+    def has_real_time_tracking(self):
+        """True quando a tarefa tem apontamento real completo: início, fim e
+        horas calculadas. Tarefas concluídas pelo admin sem apontamento
+        retornam False e não alimentam métricas de horas reais."""
+        return bool(self.actual_start and self.actual_end and self.actual_hours is not None)
+
+    @property
+    def planned_hours(self):
+        """Duração prevista em horas, calculada a partir das datas planejadas.
+        Representa planejamento — nunca deve ser usado como hora real."""
+        if self.planned_start and self.planned_end:
             return round(max((self.planned_end - self.planned_start).total_seconds(), 0) / 3600, 2)
         return 0.0
+
+    @property
+    def worked_hours(self):
+        """Horas reais de relógio medidas por apontamento.
+        Retorna 0.0 se não houver apontamento real completo — a duração
+        planejada não é mais usada como fallback."""
+        if self.has_real_time_tracking:
+            return float(self.actual_hours)
+        return 0.0
+
+    @property
+    def real_man_hours(self):
+        """Homem-hora real: horas de relógio × número de técnicos atribuídos.
+        Métrica principal para faturamento por homem×hora.
+        Requer prefetch_related('assignments') para evitar N+1."""
+        if not self.has_real_time_tracking:
+            return 0.0
+        # len() em vez de .count() aproveita o prefetch_related quando disponível.
+        assignee_count = len(self.assignments.all()) or 1
+        return round(self.worked_hours * assignee_count, 2)
 
 
 class ProjectTaskAssignment(TimestampedModel):
@@ -423,10 +447,10 @@ def merged_worked_hours(tasks):
     intervals = []
     flat_hours = 0.0
     for task in tasks:
-        if task.actual_start and task.actual_end:
+        if task.actual_start and task.actual_end and task.actual_hours is not None:
             intervals.append((task.actual_start, task.actual_end))
         else:
-            flat_hours += task.worked_hours
+            flat_hours += task.worked_hours  # 0.0 para tarefas sem apontamento real
 
     intervals.sort(key=lambda interval: interval[0])
     merged = []
