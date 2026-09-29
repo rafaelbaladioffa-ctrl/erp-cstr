@@ -239,31 +239,40 @@ def build_timeline_data(site_id, date):
 
     technicians = []
     for collaborator in collaborators_qs:
-        tasks = (
-            ProjectTask.objects.filter(collaborators=collaborator)
+        # Busca via assignments para usar os timestamps do PRÓPRIO técnico
+        # (assignment_start/assignment_end) quando disponíveis, evitando mostrar
+        # barras no período em que outro técnico estava executando mas este não.
+        assignments = (
+            ProjectTaskAssignment.objects.filter(collaborator=collaborator)
+            .select_related("project_task", "project_task__project", "project_task__task")
             .filter(
-                Q(actual_start__date=date)
-                | Q(planned_start__date=date)
-                | Q(status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
+                Q(assignment_start__date=date)
+                | Q(project_task__actual_start__date=date)
+                | Q(project_task__planned_start__date=date)
+                | Q(project_task__status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
             )
-            .select_related("project", "task")
-            .distinct()
-            .order_by("planned_start", "actual_start")
+            .order_by("project_task__planned_start", "project_task__actual_start")
         )
-        blocks = [
-            {
+        seen_task_ids = set()
+        blocks = []
+        for a in assignments:
+            t = a.project_task
+            if t.id in seen_task_ids:
+                continue
+            seen_task_ids.add(t.id)
+            # Usa timestamps do assignment quando disponíveis (rastreamento individual).
+            # Fallback para task-level para dados históricos.
+            blocks.append({
                 "id": t.id,
                 "name": t.display_name,
                 "project_name": t.project.name,
                 "status": t.status,
                 "planned_start": t.planned_start,
                 "planned_end": t.planned_end,
-                "actual_start": t.actual_start,
-                "actual_end": t.actual_end,
+                "actual_start": a.assignment_start or t.actual_start,
+                "actual_end": a.assignment_end or t.actual_end,
                 "estimated_hours": t.estimated_hours,
-            }
-            for t in tasks
-        ]
+            })
         technicians.append(
             {
                 "id": collaborator.id,
@@ -349,23 +358,31 @@ def _log_entries(collaborator_ids, date, limit=60):
     for a in dispatches:
         entries.append({"at": a.dispatched_at, "name": a.collaborator.person.name, "text": f"foi despachado → {a.project_task.display_name}"})
 
-    tasks = (
-        ProjectTask.objects.filter(assignments__collaborator_id__in=collaborator_ids)
-        .filter(Q(actual_start__date=date) | Q(actual_end__date=date))
+    # Usa timestamps do assignment individual (assignment_start/assignment_end)
+    # quando disponíveis, para refletir quando ESTE técnico iniciou/concluiu —
+    # não quando qualquer outro técnico da mesma tarefa agiu.
+    log_assignments = (
+        ProjectTaskAssignment.objects.filter(collaborator_id__in=collaborator_ids)
+        .filter(
+            Q(assignment_start__date=date)
+            | Q(assignment_end__date=date)
+            | Q(project_task__actual_start__date=date)
+            | Q(project_task__actual_end__date=date)
+        )
+        .select_related("project_task__task", "project_task__project", "collaborator__person")
         .distinct()
-        .prefetch_related("assignments__collaborator__person")
     )
     completion_marks = {}
-    for t in tasks:
-        for a in t.assignments.all():
-            if a.collaborator_id not in collaborator_ids:
-                continue
-            name = a.collaborator.person.name
-            if t.actual_start and t.actual_start.date() == date:
-                entries.append({"at": t.actual_start, "name": name, "text": f"iniciou atividade → {t.display_name}"})
-            if t.actual_end and t.actual_end.date() == date:
-                entries.append({"at": t.actual_end, "name": name, "text": f"concluiu atividade → {t.display_name}"})
-                completion_marks.setdefault(a.collaborator_id, []).append(t.actual_end)
+    for a in log_assignments:
+        t = a.project_task
+        name = a.collaborator.person.name
+        start_ts = a.assignment_start or t.actual_start
+        end_ts = a.assignment_end or t.actual_end
+        if start_ts and start_ts.date() == date:
+            entries.append({"at": start_ts, "name": name, "text": f"iniciou atividade → {t.display_name}"})
+        if end_ts and end_ts.date() == date:
+            entries.append({"at": end_ts, "name": name, "text": f"concluiu atividade → {t.display_name}"})
+            completion_marks.setdefault(a.collaborator_id, []).append(end_ts)
 
     events = (
         TechnicianStatusEvent.objects.filter(collaborator_id__in=collaborator_ids, date=date)
