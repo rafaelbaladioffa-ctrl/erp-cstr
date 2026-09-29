@@ -190,11 +190,15 @@ def build_board_data(site_id, date=None):
     active_count = active_qs.count()
     completed_today_count = completed_qs.count()
     planned_count = pending_count + active_count + completed_today_count
-    technicians_absent = sum(
-        1 for t in technicians if t["presence_status"] == TechnicianDailyPresence.STATUS_NOT_STARTED
-    )
     technicians_on_site = sum(
-        1 for t in technicians if t["presence_status"] == TechnicianDailyPresence.STATUS_IN_PROGRESS
+        1 for t in technicians
+        if t["presence_status"] != TechnicianDailyPresence.STATUS_NOT_STARTED
+        and not t["on_leave"]
+    )
+    technicians_absent = sum(
+        1 for t in technicians
+        if t["presence_status"] == TechnicianDailyPresence.STATUS_NOT_STARTED
+        and not t["on_leave"]
     )
     stats = {
         "planned": planned_count,
