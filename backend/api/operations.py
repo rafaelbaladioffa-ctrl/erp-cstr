@@ -642,6 +642,9 @@ class OperationsReportsView(APIView):
             breaks = durations.get(TechnicianDailyPresence.STATUS_LUNCH, 0.0) + durations.get(
                 TechnicianDailyPresence.STATUS_PERSONAL, 0.0
             )
+            unproductive = durations.get(TechnicianDailyPresence.STATUS_SITE_BLOCKED, 0.0) + durations.get(
+                TechnicianDailyPresence.STATUS_AWAITING_RELEASE, 0.0
+            )
             today_technicians.append(
                 {
                     "id": collaborator_id,
@@ -651,6 +654,7 @@ class OperationsReportsView(APIView):
                     "active_hours": round(active, 2),
                     "available_hours": round(available, 2),
                     "break_hours": round(breaks, 2),
+                    "unproductive_hours": round(unproductive, 2),
                     "utilization_pct": round((active / journey) * 100) if journey > 0 else None,
                 }
             )

@@ -368,11 +368,12 @@ export default function OperationsReportsPage() {
 
               <div className="rpt-compact-scroll">
               {todayTechnicians.map((t) => {
-                const total = t.journey_hours > 0 ? t.journey_hours : t.active_hours + t.available_hours + t.break_hours;
+                const total = t.journey_hours > 0 ? t.journey_hours : t.active_hours + t.available_hours + t.break_hours + (t.unproductive_hours ?? 0);
                 const safeTotal = total || 1;
                 const activePct = Math.min(100, (t.active_hours / safeTotal) * 100);
                 const breakPct = Math.min(100 - activePct, (t.break_hours / safeTotal) * 100);
-                const avPct = Math.min(100 - activePct - breakPct, (t.available_hours / safeTotal) * 100);
+                const unprodPct = Math.min(100 - activePct - breakPct, ((t.unproductive_hours ?? 0) / safeTotal) * 100);
+                const avPct = Math.min(100 - activePct - breakPct - unprodPct, (t.available_hours / safeTotal) * 100);
                 const ac = avatarColor(t.id);
                 return (
                   <div key={t.id} className="rpt-today-row">
@@ -400,6 +401,7 @@ export default function OperationsReportsPage() {
                       <div className="rpt-today-bar">
                         <div style={{ width: `${activePct}%`, background: "var(--green)", height: "100%", borderRadius: 2 }} title={`Em atividades: ${formatHours(t.active_hours)}`} />
                         <div style={{ width: `${breakPct}%`, background: "var(--amber)", height: "100%", opacity: 0.7 }} title={`Intervalos: ${formatHours(t.break_hours)}`} />
+                        <div style={{ width: `${unprodPct}%`, background: "var(--red)", height: "100%", opacity: 0.75 }} title={`Improdutivo: ${formatHours(t.unproductive_hours ?? 0)}`} />
                         <div style={{ width: `${avPct}%`, background: "var(--blue)", height: "100%", opacity: 0.5 }} title={`Disponível: ${formatHours(t.available_hours)}`} />
                       </div>
                     </div>
@@ -415,6 +417,11 @@ export default function OperationsReportsPage() {
                         <span className="rpt-today-metric-dot" style={{ background: "var(--amber)", opacity: 0.8 }} />
                         <span className="rpt-today-metric-label">Intervalos</span>
                         <span className="rpt-today-metric-val">{formatHours(t.break_hours)}</span>
+                      </div>
+                      <div className="rpt-today-metric">
+                        <span className="rpt-today-metric-dot" style={{ background: "var(--red)", opacity: 0.75 }} />
+                        <span className="rpt-today-metric-label">Improdutivo</span>
+                        <span className="rpt-today-metric-val">{formatHours(t.unproductive_hours ?? 0)}</span>
                       </div>
                       <div className="rpt-today-metric">
                         <span className="rpt-today-metric-dot" style={{ background: "var(--blue)", opacity: 0.6 }} />

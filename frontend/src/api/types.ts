@@ -974,6 +974,7 @@ export interface ReportsTechnicianToday {
   active_hours: number;
   available_hours: number;
   break_hours: number;
+  unproductive_hours: number;
   utilization_pct: number | null;
 }
 
