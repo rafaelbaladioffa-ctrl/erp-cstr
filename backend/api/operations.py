@@ -245,6 +245,7 @@ def build_timeline_data(site_id, date):
         assignments = (
             ProjectTaskAssignment.objects.filter(collaborator=collaborator)
             .select_related("project_task", "project_task__project", "project_task__task")
+            .prefetch_related("project_task__assignments")
             .filter(
                 Q(assignment_start__date=date)
                 | Q(project_task__actual_start__date=date)
@@ -260,8 +261,13 @@ def build_timeline_data(site_id, date):
             if t.id in seen_task_ids:
                 continue
             seen_task_ids.add(t.id)
-            # Usa timestamps do assignment quando disponíveis (rastreamento individual).
-            # Fallback para task-level para dados históricos.
+            # Quando o assignment tem timestamps próprios, usa eles (rastreamento individual).
+            # Fallback para task-level APENAS quando o técnico é o único designado —
+            # se há múltiplos designados sem rastreamento por assignment, não usar os
+            # timestamps da tarefa (que representam o intervalo total, não o deste técnico).
+            is_sole_assignee = t.assignments.count() <= 1
+            actual_start = a.assignment_start or (t.actual_start if is_sole_assignee else None)
+            actual_end = a.assignment_end or (t.actual_end if is_sole_assignee else None)
             blocks.append({
                 "id": t.id,
                 "name": t.display_name,
@@ -269,8 +275,8 @@ def build_timeline_data(site_id, date):
                 "status": t.status,
                 "planned_start": t.planned_start,
                 "planned_end": t.planned_end,
-                "actual_start": a.assignment_start or t.actual_start,
-                "actual_end": a.assignment_end or t.actual_end,
+                "actual_start": actual_start,
+                "actual_end": actual_end,
                 "estimated_hours": t.estimated_hours,
             })
         technicians.append(

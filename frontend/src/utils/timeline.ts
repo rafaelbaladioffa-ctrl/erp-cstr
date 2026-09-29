@@ -96,6 +96,23 @@ function subtractIntervals(base: Interval, cuts: Interval[]): Interval[] {
   return pieces.filter((p) => p.end - p.start >= 60000);
 }
 
+const BLOCKING_STATUSES = new Set(["site_blocked", "awaiting_release"]);
+
+/** Extrai os intervalos de tempo em que o técnico estava bloqueado (sem
+ * acesso ao site ou aguardando liberações) a partir do histórico de eventos
+ * de presença já ordenado. */
+function getBlockedIntervals(sortedEvents: StatusEventLike[], nowMs: number): Interval[] {
+  const result: Interval[] = [];
+  for (let i = 0; i < sortedEvents.length; i++) {
+    if (!BLOCKING_STATUSES.has(sortedEvents[i].status)) continue;
+    const startMs = new Date(sortedEvents[i].changed_at).getTime();
+    const endMs =
+      i + 1 < sortedEvents.length ? new Date(sortedEvents[i + 1].changed_at).getTime() : nowMs;
+    if (endMs > startMs) result.push({ start: startMs, end: endMs });
+  }
+  return result;
+}
+
 /** Monta as barras do dia de um técnico combinando três fontes: as tarefas
  * já CONCLUÍDAS naquele dia, as tarefas ABERTAS agora (executando/pausada —
  * pode ter mais de uma, ver stacking em assignLanes), e o HISTÓRICO de
@@ -104,6 +121,11 @@ function subtractIntervals(base: Interval, cuts: Interval[]): Interval[] {
  * cobertos por uma tarefa naquele intervalo. Isso substitui a aproximação
  * antiga (só a barra do status ATUAL) por uma timeline fiel a cada mudança
  * que realmente aconteceu no dia.
+ *
+ * Tarefas concluídas são recortadas pelos intervalos de bloqueio do técnico
+ * (SITE_BLOCKED / AWAITING_RELEASE): se o técnico ficou sem acesso durante
+ * parte de uma tarefa, esse trecho não aparece como barra azul — aparece
+ * como a barra de presença vermelha correspondente.
  *
  * `isLive`: true = timeline ao vivo (barras abertas vão até "agora" de
  * verdade e pulsam); false = dia fechado no histórico (barras abertas —
@@ -122,13 +144,41 @@ export function buildTechSegments(
     (a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime()
   );
   const lastStatus = sortedEvents.length > 0 ? sortedEvents[sortedEvents.length - 1].status : null;
+  const blockedIntervals = getBlockedIntervals(sortedEvents, nowMs);
 
   for (const b of blocks) {
     if (b.status === "completed" && b.actual_start && b.actual_end) {
-      const start = new Date(b.actual_start);
-      const end = new Date(b.actual_end);
-      segments.push({ color: DONE_COLOR, label: b.name, start, end, live: false });
-      taskIntervals.push({ start: start.getTime(), end: end.getTime() });
+      const startMs = new Date(b.actual_start).getTime();
+      const endMs = new Date(b.actual_end).getTime();
+      const taskInterval = { start: startMs, end: endMs };
+
+      // Recorta a barra nos períodos em que o técnico estava bloqueado —
+      // esses trechos ficam visíveis como barra de presença (vermelha).
+      const effectivePieces =
+        blockedIntervals.length > 0
+          ? subtractIntervals(taskInterval, blockedIntervals)
+          : [taskInterval];
+
+      for (const piece of effectivePieces) {
+        segments.push({
+          color: DONE_COLOR,
+          label: b.name,
+          start: new Date(piece.start),
+          end: new Date(piece.end),
+          live: false,
+        });
+        taskIntervals.push(piece);
+      }
+      // Registra o intervalo bloqueado que sobrepõe essa tarefa como
+      // "ocupado" pra evitar que a barra de presença duplique ali.
+      for (const blocked of blockedIntervals) {
+        if (blocked.end > startMs && blocked.start < endMs) {
+          taskIntervals.push({
+            start: Math.max(blocked.start, startMs),
+            end: Math.min(blocked.end, endMs),
+          });
+        }
+      }
     } else if ((b.status === "in_progress" || b.status === "paused") && b.actual_start) {
       const start = new Date(b.actual_start);
       taskIntervals.push({ start: start.getTime(), end: nowMs });
