@@ -4,6 +4,7 @@ import { notificationsApi, searchApi, type GlobalSearchResult } from "../api/res
 import type { Notification } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useTabs } from "../context/TabsContext";
+import { type Locale, LOCALE_LABELS, useI18n } from "../i18n";
 import { CADASTROS_PERMS, MASTER_DATA_PERMS, PERMS, hasAnyPerm, hasPerm } from "../utils/permissions";
 import { registerPushNotifications } from "../utils/pushNotifications";
 import AccountModal from "./AccountModal";
@@ -19,69 +20,72 @@ interface NavItem {
   superuserOnly?: boolean;
 }
 
-const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
-  {
-    title: "Central de Operações",
-    items: [
-      { to: "/operacao-do-dia", label: "Operação do Dia", icon: "alt_route", permission: PERMS.viewOperationsBoard },
-      { to: "/timeline-operacional", label: "Timeline Operacional", icon: "schedule", permission: PERMS.viewOperationsBoard },
-      { to: "/relatorios-indicadores", label: "Relatórios e Indicadores", icon: "bar_chart", permission: PERMS.viewOperationsBoard },
-    ],
-  },
-  {
-    title: "Projeto",
-    items: [
-      { to: "/projetos", label: "Projetos Ativos", icon: "folder", permission: PERMS.viewProject },
-      { to: "/projetos?tab=history", label: "Histórico de Projetos", icon: "history_edu", permission: PERMS.viewProject },
-    ],
-  },
-  {
-    title: "Atualizações",
-    items: [
-      { to: "/atualizacoes-diarias", label: "Atualizações Diárias", icon: "event_note", permission: PERMS.viewDailyUpdate },
-      { to: "/atualizacoes-projeto", label: "Atualizações de Projetos", icon: "description", permission: PERMS.viewProjectUpdate },
-    ],
-  },
-  {
-    title: "Sistema",
-    items: [
-      { to: "/dashboard", label: "Dashboard", icon: "dashboard", permissions: [PERMS.viewProject, PERMS.viewCollaborator] },
-      { to: "/cadastros", label: "Cadastros Gerais", icon: "inventory_2", permissions: CADASTROS_PERMS },
-      { to: "/cadastros-mestres", label: "Cadastros Mestres", icon: "schema", permissions: MASTER_DATA_PERMS },
-    ],
-  },
-  {
-    title: "Técnico",
-    items: [{ to: "/minhas-tarefas", label: "Minhas Tarefas", icon: "checklist", permission: PERMS.viewMyTasks }],
-  },
-  {
-    title: "Segurança",
-    items: [{ to: "/auditoria", label: "Log", icon: "history", superuserOnly: true }],
-  },
-];
+import type { Translations } from "../i18n/translations";
 
-const AREA_LABELS: Record<string, { area: string; page: string }> = {
-  "/operacao-do-dia": { area: "Central de Operações", page: "Operação do Dia" },
-  "/timeline-operacional": { area: "Central de Operações", page: "Timeline Operacional" },
-  "/relatorios-indicadores": { area: "Central de Operações", page: "Relatórios e Indicadores" },
-  "/dashboard": { area: "Sistema", page: "Dashboard" },
-  "/atualizacoes-diarias": { area: "Atualizações", page: "Atualizações Diárias" },
-  "/atualizacoes-projeto": { area: "Atualizações", page: "Atualizações de Projetos" },
-  "/cadastros": { area: "Sistema", page: "Cadastros Gerais" },
-  "/cadastros-mestres": { area: "Sistema", page: "Cadastros Mestres" },
-  "/minhas-tarefas": { area: "Técnico", page: "Minhas Tarefas" },
-  "/auditoria": { area: "Segurança", page: "Log" },
-};
+function buildNavGroups(t: Translations): { title: string; items: NavItem[] }[] {
+  return [
+    {
+      title: t.nav.centralOperacoes,
+      items: [
+        { to: "/operacao-do-dia", label: t.nav.operacaoDoDia, icon: "alt_route", permission: PERMS.viewOperationsBoard },
+        { to: "/timeline-operacional", label: t.nav.timelineOperacional, icon: "schedule", permission: PERMS.viewOperationsBoard },
+        { to: "/relatorios-indicadores", label: t.nav.relatoriosIndicadores, icon: "bar_chart", permission: PERMS.viewOperationsBoard },
+      ],
+    },
+    {
+      title: t.nav.projeto,
+      items: [
+        { to: "/projetos", label: t.nav.projetosAtivos, icon: "folder", permission: PERMS.viewProject },
+        { to: "/projetos?tab=history", label: t.nav.historicoProjestos, icon: "history_edu", permission: PERMS.viewProject },
+      ],
+    },
+    {
+      title: t.nav.atualizacoes,
+      items: [
+        { to: "/atualizacoes-diarias", label: t.nav.atualizacoesDiarias, icon: "event_note", permission: PERMS.viewDailyUpdate },
+        { to: "/atualizacoes-projeto", label: t.nav.atualizacoesProjetos, icon: "description", permission: PERMS.viewProjectUpdate },
+      ],
+    },
+    {
+      title: t.nav.sistema,
+      items: [
+        { to: "/dashboard", label: t.nav.dashboard, icon: "dashboard", permissions: [PERMS.viewProject, PERMS.viewCollaborator] },
+        { to: "/cadastros", label: t.nav.cadastrosGerais, icon: "inventory_2", permissions: CADASTROS_PERMS },
+        { to: "/cadastros-mestres", label: t.nav.cadastrosMestres, icon: "schema", permissions: MASTER_DATA_PERMS },
+      ],
+    },
+    {
+      title: t.nav.tecnico,
+      items: [{ to: "/minhas-tarefas", label: t.nav.minhasTarefas, icon: "checklist", permission: PERMS.viewMyTasks }],
+    },
+    {
+      title: t.nav.seguranca,
+      items: [{ to: "/auditoria", label: t.nav.log, icon: "history", superuserOnly: true }],
+    },
+  ];
+}
 
-function currentBreadcrumb(pathname: string, search: string) {
+function currentBreadcrumb(pathname: string, search: string, t: Translations) {
+  const areaLabels: Record<string, { area: string; page: string }> = {
+    "/operacao-do-dia": { area: t.nav.centralOperacoes, page: t.nav.operacaoDoDia },
+    "/timeline-operacional": { area: t.nav.centralOperacoes, page: t.nav.timelineOperacional },
+    "/relatorios-indicadores": { area: t.nav.centralOperacoes, page: t.nav.relatoriosIndicadores },
+    "/dashboard": { area: t.nav.sistema, page: t.nav.dashboard },
+    "/atualizacoes-diarias": { area: t.nav.atualizacoes, page: t.nav.atualizacoesDiarias },
+    "/atualizacoes-projeto": { area: t.nav.atualizacoes, page: t.nav.atualizacoesProjetos },
+    "/cadastros": { area: t.nav.sistema, page: t.nav.cadastrosGerais },
+    "/cadastros-mestres": { area: t.nav.sistema, page: t.nav.cadastrosMestres },
+    "/minhas-tarefas": { area: t.nav.tecnico, page: t.nav.minhasTarefas },
+    "/auditoria": { area: t.nav.seguranca, page: t.nav.log },
+  };
   if (pathname === "/projetos") {
     const tab = new URLSearchParams(search).get("tab");
-    return { area: "Projeto", page: tab === "history" ? "Histórico de Projetos" : "Projetos Ativos" };
+    return { area: t.nav.projeto, page: tab === "history" ? t.nav.historicoProjestos : t.nav.projetosAtivos };
   }
-  const match = Object.keys(AREA_LABELS).find((key) => pathname.startsWith(key));
-  if (match) return AREA_LABELS[match];
-  if (pathname.startsWith("/projetos/")) return { area: "Projeto", page: "Detalhe do Projeto" };
-  return { area: "ERP CSTR", page: "" };
+  const match = Object.keys(areaLabels).find((key) => pathname.startsWith(key));
+  if (match) return areaLabels[match];
+  if (pathname.startsWith("/projetos/")) return { area: t.nav.projeto, page: t.breadcrumb.detalhe };
+  return { area: t.breadcrumb.erp, page: "" };
 }
 
 function isItemActive(item: NavItem, pathname: string, search: string): boolean {
@@ -106,12 +110,13 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { openTab, clearTabs } = useTabs();
+  const { t, locale, setLocale } = useI18n();
 
   function logout() {
     clearTabs();
     authLogout();
   }
-  const breadcrumb = currentBreadcrumb(location.pathname, location.search);
+  const breadcrumb = currentBreadcrumb(location.pathname, location.search, t);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
     try {
@@ -212,14 +217,14 @@ export default function Layout() {
   }, [searchQuery]);
 
   const groups = useMemo(() => {
-    return NAV_GROUPS.map((group) => ({
+    return buildNavGroups(t).map((group) => ({
       ...group,
       items: group.items.filter((item) => {
         if (item.superuserOnly) return !!user?.is_superuser;
         return item.permissions ? hasAnyPerm(user, item.permissions) : hasPerm(user, item.permission!);
       }),
     })).filter((group) => group.items.length > 0);
-  }, [user]);
+  }, [user, t]);
 
   function isGroupOpen(title: string) {
     return !collapsedGroups[title];
@@ -233,7 +238,7 @@ export default function Layout() {
     });
   }
 
-  const hasAnyModule = NAV_GROUPS.some((group) =>
+  const hasAnyModule = buildNavGroups(t).some((group) =>
     group.items.some((item) => (item.superuserOnly ? user?.is_superuser : item.permissions ? hasAnyPerm(user, item.permissions) : hasPerm(user, item.permission!)))
   );
 
@@ -412,22 +417,35 @@ export default function Layout() {
           </button>
           {settingsOpen && (
             <div className="settings-dropdown">
-              <div className="settings-dropdown-title">Tema</div>
+              <div className="settings-dropdown-title">{t.settings.tema}</div>
               <div className="settings-theme-toggle">
                 <button
                   className={theme === "light" ? "active" : ""}
                   onClick={() => setTheme("light")}
                 >
                   <Icon name="light_mode" style={{ fontSize: 16 }} />
-                  Claro
+                  {t.settings.claro}
                 </button>
                 <button
                   className={theme === "dark" ? "active" : ""}
                   onClick={() => setTheme("dark")}
                 >
                   <Icon name="dark_mode" style={{ fontSize: 16 }} />
-                  Escuro
+                  {t.settings.escuro}
                 </button>
+              </div>
+              <div className="settings-dropdown-sep" />
+              <div className="settings-dropdown-title">{t.settings.idioma}</div>
+              <div className="settings-locale-select">
+                {(Object.keys(LOCALE_LABELS) as Locale[]).map((loc) => (
+                  <button
+                    key={loc}
+                    className={locale === loc ? "active" : ""}
+                    onClick={() => setLocale(loc)}
+                  >
+                    {LOCALE_LABELS[loc]}
+                  </button>
+                ))}
               </div>
               <div className="settings-dropdown-sep" />
               <button
@@ -438,11 +456,11 @@ export default function Layout() {
                 }}
               >
                 <Icon name="account_circle" style={{ fontSize: 18 }} />
-                Minha Conta
+                {t.settings.minhaConta}
               </button>
               <button className="settings-dropdown-item" onClick={logout}>
                 <Icon name="logout" style={{ fontSize: 18 }} />
-                Sair
+                {t.settings.sair}
               </button>
             </div>
           )}

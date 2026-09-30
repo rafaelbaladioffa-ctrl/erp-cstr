@@ -401,6 +401,33 @@ textarea {
   margin: 12px 0;
 }
 
+.settings-locale-select {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.settings-locale-select button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.settings-locale-select button:hover {
+  background: var(--surface-2);
+}
+.settings-locale-select button.active {
+  background: var(--orange-soft);
+  color: var(--orange);
+  font-weight: 600;
+}
+
 .settings-dropdown-item {
   width: 100%;
   display: flex;
