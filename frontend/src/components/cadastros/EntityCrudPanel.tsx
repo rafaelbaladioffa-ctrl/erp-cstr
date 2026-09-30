@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { masterDataApi, sitesMapApi } from "../../api/resources";
+import { useI18n } from "../../i18n";
 import type {
   CableAlias,
   CableSpec,
@@ -47,6 +48,7 @@ export default function EntityCrudPanel({
   initialSearch?: string;
 }) {
   const { user } = useAuth();
+  const { t } = useI18n();
   const canAdd = hasPerm(user, entity.perms.add) && !entity.disableCreate;
   const canChange = hasPerm(user, entity.perms.change);
   const canDelete = hasPerm(user, entity.perms.delete);
@@ -120,7 +122,7 @@ export default function EntityCrudPanel({
         // (incorretamente) que a nova entidade estava usando o dataset
         // errado.
         setRows([]);
-        setLoadError(`Não foi possível carregar ${entity.label.toLowerCase()}. Tente novamente.`);
+        setLoadError(t.crud.erroCarregar(entity.label.toLowerCase()));
       })
       .finally(() => setLoading(false));
   }
@@ -142,7 +144,7 @@ export default function EntityCrudPanel({
       reload();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      alert(axiosErr.response?.data?.detail || "Não foi possível regeocodificar este site.");
+      alert(axiosErr.response?.data?.detail || t.crud.erroCarregar("este site"));
     } finally {
       setRegeocodingId(null);
     }
@@ -279,7 +281,7 @@ export default function EntityCrudPanel({
       reload();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      setScopeResolutionError(axiosErr.response?.data?.detail || "Não foi possível resolver o template. Tente novamente.");
+      setScopeResolutionError(axiosErr.response?.data?.detail || t.crud.erroCarregar("o template"));
       setScopeResolution(null);
     } finally {
       setScopeResolving(false);
@@ -303,7 +305,7 @@ export default function EntityCrudPanel({
       reload();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      setGenerateTasksError(axiosErr.response?.data?.detail || "Não foi possível gerar as tarefas. Tente novamente.");
+      setGenerateTasksError(axiosErr.response?.data?.detail || t.crud.erroCarregar("as tarefas"));
       setGenerateTasksResult(null);
     } finally {
       setGeneratingTasks(false);
@@ -313,7 +315,7 @@ export default function EntityCrudPanel({
   async function handleDelete(row: Record<string, unknown>) {
     if (!canDelete) return;
     const label = entity.rowLabel(row as never);
-    if (!window.confirm(`Excluir "${label}"? Esta ação não pode ser desfeita.`)) return;
+    if (!window.confirm(t.crud.excluirConfirm(label))) return;
     await entity.api.remove(row.id as number);
     reload();
   }
@@ -322,9 +324,7 @@ export default function EntityCrudPanel({
     if (!canChange) return;
     const label = entity.rowLabel(row as never);
     const isActive = !!row[statusField];
-    const question = isActive
-      ? `Inativar "${label}"? O registro deixa de aparecer como ativo, mas continua disponível para consultas históricas.`
-      : `Reativar "${label}"?`;
+    const question = isActive ? t.crud.inativarConfirm(label) : t.crud.reativarConfirm(label);
     if (!window.confirm(question)) return;
     await entity.api.update(row.id as number, { [statusField]: !isActive } as never);
     reload();
@@ -348,13 +348,13 @@ export default function EntityCrudPanel({
     try {
       const result = await masterDataApi.scopeItems.generateTasks(row.id as number);
       window.alert(
-        `Tarefas — Criadas: ${result.created_count} · Já existentes: ${result.existing_count}\n` +
-          `Dependências — Criadas: ${result.created_dependencies.length} · Já existentes: ${result.existing_dependencies.length}`
+        t.crud.tarefasCriadasExistentes(result.created_count, result.existing_count) + "\n" +
+          t.crud.dependenciasCriadasExistentes(result.created_dependencies.length, result.existing_dependencies.length)
       );
       reload();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      window.alert(axiosErr.response?.data?.detail || "Não foi possível gerar tarefas para este item.");
+      window.alert(axiosErr.response?.data?.detail || t.crud.erroCarregar("as tarefas"));
     }
   }
 
@@ -404,7 +404,7 @@ export default function EntityCrudPanel({
           }}
         >
           <Icon name="arrow_back" style={{ fontSize: 16 }} />
-          Voltar
+          {t.common.voltar}
         </button>
       )}
 
@@ -412,23 +412,23 @@ export default function EntityCrudPanel({
         <div className="toolbar">
           <div>
             <div className="toolbar-title">{entity.label}</div>
-            <div className="toolbar-subtitle">{filtered.length} registro(s) encontrado(s)</div>
+            <div className="toolbar-subtitle">{t.crud.registrosEncontrados(filtered.length)}</div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {entity.key === "sites" && (
               <Link to="/sites/mapa" className="btn btn-outline">
                 <Icon name="map" style={{ fontSize: 16 }} />
-                Ver Mapa
+                {t.crud.verMapa}
               </Link>
             )}
             <button className="btn btn-outline" onClick={handleExportCsv}>
               <Icon name="download" style={{ fontSize: 16 }} />
-              Exportar CSV
+              {t.crud.exportarCsv}
             </button>
             {canAdd && (
               <button className="btn btn-outline" onClick={() => setCsvImportOpen(true)}>
                 <Icon name="upload" style={{ fontSize: 16 }} />
-                Importar CSV
+                {t.crud.importarCsv}
               </button>
             )}
             {canAdd && entity.bulkCreate && (
@@ -440,7 +440,7 @@ export default function EntityCrudPanel({
             {canChange && entity.key === "scope-items" && (
               <button className="btn btn-outline" onClick={handleBulkGenerateTasks} disabled={bulkGeneratingTasks}>
                 <Icon name="playlist_add_check" style={{ fontSize: 16 }} />
-                {bulkGeneratingTasks ? "Gerando…" : "Gerar Tarefas dos Itens Prontos"}
+                {bulkGeneratingTasks ? t.crud.gerando : t.crud.gerarTarefasItens}
               </button>
             )}
             {canAdd && (
@@ -457,7 +457,7 @@ export default function EntityCrudPanel({
             <Icon name="search" />
             <input
               className="input"
-              placeholder={`Buscar em ${entity.label.toLowerCase()}...`}
+              placeholder={t.crud.buscarEm(entity.label)}
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -491,7 +491,7 @@ export default function EntityCrudPanel({
         )}
 
         {loading ? (
-          <p style={{ padding: 20, color: "var(--text-muted)" }}>Carregando...</p>
+          <p style={{ padding: 20, color: "var(--text-muted)" }}>{t.common.carregando}</p>
         ) : (
           <div className="table-wrap">
             <table className="table">
@@ -500,8 +500,8 @@ export default function EntityCrudPanel({
                   {entity.columns.map((col) => (
                     <th key={col.key}>{col.label}</th>
                   ))}
-                  <th>Situação</th>
-                  {showActionsColumn && <th>Ações</th>}
+                  <th>{t.crud.situacao}</th>
+                  {showActionsColumn && <th>{t.crud.acoes}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -520,7 +520,7 @@ export default function EntityCrudPanel({
                           color: row[statusField] ? "var(--green)" : "var(--text-muted)",
                         }}
                       >
-                        {row[statusField] ? "Ativo" : "Inativo"}
+                        {row[statusField] ? t.common.ativo : t.common.inativo}
                       </span>
                     </td>
                     {showActionsColumn && (
@@ -537,7 +537,7 @@ export default function EntityCrudPanel({
                               <button
                                 className="btn btn-outline btn-sm"
                                 onClick={() => handleQuickGenerateTasks(row)}
-                                title="Gerar Tarefas"
+                                title={t.crud.gerarTarefas}
                               >
                                 <Icon name="playlist_add_check" style={{ fontSize: 14 }} />
                               </button>
@@ -547,7 +547,7 @@ export default function EntityCrudPanel({
                                 <button
                                   className="btn btn-outline btn-sm"
                                   onClick={() => handleToggleActive(row)}
-                                  title={row[statusField] ? "Inativar" : "Reativar"}
+                                  title={row[statusField] ? t.crud.inativar : t.crud.reativar}
                                 >
                                   <Icon name={row[statusField] ? "toggle_on" : "toggle_off"} style={{ fontSize: 14 }} />
                                 </button>
@@ -599,7 +599,7 @@ export default function EntityCrudPanel({
                 {paged.length === 0 && (
                   <tr>
                     <td colSpan={entity.columns.length + 2}>
-                      <div className="table-empty">Nenhum registro encontrado.</div>
+                      <div className="table-empty">{t.crud.nenhumRegistro}</div>
                     </td>
                   </tr>
                 )}
@@ -622,7 +622,7 @@ export default function EntityCrudPanel({
 
       {modalOpen && (editingId ? canChange : canAdd) && (
         <Modal
-          title={editingId ? `Editar ${entity.singular}` : entity.createLabel}
+          title={editingId ? t.crud.editar(entity.singular) : entity.createLabel}
           onClose={() => setModalOpen(false)}
           width={620}
         >
@@ -637,7 +637,7 @@ export default function EntityCrudPanel({
           )}
           {editingId && entity.key === "scope-items" && Boolean(formValues.tasks_outdated) && (
             <p style={{ color: "var(--amber)", fontSize: 13, marginTop: 8 }}>
-              ⚠ As tarefas deste item de escopo podem estar desatualizadas.
+              {t.crud.tarefasDesatualizadas}
             </p>
           )}
           {editingId && entity.key === "scope-items" && (
@@ -652,11 +652,11 @@ export default function EntityCrudPanel({
                     letterSpacing: "0.05em",
                   }}
                 >
-                  Resolução do Template
+                  {t.crud.resolucaoTemplate}
                 </div>
                 <button className="btn btn-outline btn-sm" onClick={handleResolveTemplate} disabled={scopeResolving}>
                   <Icon name="rule" style={{ fontSize: 14 }} />
-                  {scopeResolving ? "Resolvendo..." : "Resolver Template"}
+                  {scopeResolving ? t.crud.resolvendo : t.crud.resolverTemplate}
                 </button>
               </div>
               {scopeResolutionError && (
@@ -664,24 +664,25 @@ export default function EntityCrudPanel({
               )}
               {scopeResolution && !scopeResolution.selected_rule && (
                 <div className="empty-state" style={{ padding: 16 }}>
-                  Nenhuma regra compatível encontrada.
+                  {t.crud.resolucaoNenhumaRegra}
                 </div>
               )}
               {scopeResolution && scopeResolution.selected_rule && scopeResolution.selected_template && (
                 <div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 14 }}>
                     <div>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-faint)", marginBottom: 4 }}>Regra</p>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-faint)", marginBottom: 4 }}>{t.crud.regra}</p>
                       <p style={{ fontSize: 13, margin: 0 }}>
                         {scopeResolution.selected_rule.code} — {scopeResolution.selected_rule.name}
                       </p>
                       <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
-                        Prioridade {scopeResolution.selected_rule.priority} · Especificidade{" "}
+                        {t.crud.prioridade} {scopeResolution.selected_rule.priority} · {t.crud.especificidade}{" "}
                         {scopeResolution.selected_rule.specificity_score}
                       </p>
                     </div>
                     <div>
                       <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-faint)", marginBottom: 4 }}>Template</p>
+
                       <p style={{ fontSize: 13, margin: 0 }}>
                         {scopeResolution.selected_template.code} — {scopeResolution.selected_template.name}
                       </p>
@@ -691,17 +692,17 @@ export default function EntityCrudPanel({
                     </div>
                   </div>
                   <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-faint)", marginBottom: 8 }}>
-                    Etapas que seriam geradas ({scopeResolution.steps.length})
+                    {t.crud.etapasGeradas(scopeResolution.steps.length)}
                   </p>
                   <div className="table-wrap">
                     <table className="table">
                       <thead>
                         <tr>
-                          <th>Ordem</th>
-                          <th>Atividade</th>
-                          <th>Nome Efetivo</th>
-                          <th>Obrigatória</th>
-                          <th>Repetível</th>
+                          <th>{t.crud.ordem}</th>
+                          <th>{t.crud.atividade}</th>
+                          <th>{t.crud.nomeEfetivo}</th>
+                          <th>{t.crud.obrigatoria}</th>
+                          <th>{t.crud.repetivel}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -710,8 +711,8 @@ export default function EntityCrudPanel({
                             <td>{s.step_order}</td>
                             <td>{s.activity_code}</td>
                             <td>{s.effective_name}</td>
-                            <td>{s.required ? "Sim" : "Não"}</td>
-                            <td>{s.repeatable ? "Sim" : "Não"}</td>
+                            <td>{s.required ? t.common.sim : t.common.nao}</td>
+                            <td>{s.repeatable ? t.common.sim : t.common.nao}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -719,7 +720,7 @@ export default function EntityCrudPanel({
                   </div>
                   {scopeResolution.matches.length > 1 && (
                     <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 8 }}>
-                      Outras regras compatíveis:{" "}
+                      {t.crud.outrasRegras}{" "}
                       {scopeResolution.matches
                         .slice(1)
                         .map((m) => m.rule.code)
@@ -729,7 +730,7 @@ export default function EntityCrudPanel({
                 </div>
               )}
               <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10 }}>
-                Esta ação só grava o resultado da resolução (regra e template usados) — nenhuma Task é criada.
+                {t.crud.resolucaoNota}
               </p>
             </div>
           )}
@@ -745,11 +746,11 @@ export default function EntityCrudPanel({
                     letterSpacing: "0.05em",
                   }}
                 >
-                  Geração de Tarefas
+                  {t.crud.geracaoTarefas}
                 </div>
                 <button className="btn btn-outline btn-sm" onClick={handleGenerateTasks} disabled={generatingTasks}>
                   <Icon name="playlist_add_check" style={{ fontSize: 14 }} />
-                  {generatingTasks ? "Gerando..." : "Gerar Tarefas"}
+                  {generatingTasks ? t.crud.gerando : t.crud.gerarTarefas}
                 </button>
               </div>
               {generateTasksError && (
@@ -758,12 +759,10 @@ export default function EntityCrudPanel({
               {generateTasksResult && (
                 <div>
                   <p style={{ fontSize: 13, marginBottom: 4 }}>
-                    Tarefas — Criadas: <strong>{generateTasksResult.created_count}</strong> · Já existentes:{" "}
-                    <strong>{generateTasksResult.existing_count}</strong>
+                    {t.crud.tarefasCriadasExistentes(generateTasksResult.created_count, generateTasksResult.existing_count)}
                   </p>
                   <p style={{ fontSize: 13, marginBottom: 8 }}>
-                    Dependências — Criadas: <strong>{generateTasksResult.created_dependencies.length}</strong> · Já
-                    existentes: <strong>{generateTasksResult.existing_dependencies.length}</strong>
+                    {t.crud.dependenciasCriadasExistentes(generateTasksResult.created_dependencies.length, generateTasksResult.existing_dependencies.length)}
                   </p>
                   {generateTasksResult.warnings.length > 0 &&
                     generateTasksResult.warnings.map((w, i) => (
@@ -775,25 +774,25 @@ export default function EntityCrudPanel({
                     <table className="table">
                       <thead>
                         <tr>
-                          <th>Ordem</th>
-                          <th>Atividade</th>
-                          <th>Tarefa</th>
+                          <th>{t.crud.ordem}</th>
+                          <th>{t.crud.atividade}</th>
+                          <th>{t.crud.tarefa}</th>
                           <th>Path</th>
-                          <th>Quantidade</th>
-                          <th>Unidade</th>
+                          <th>{t.crud.quantidade}</th>
+                          <th>{t.crud.unidade}</th>
                           <th>Status</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {generateTasksResult.tasks.map((t) => (
-                          <tr key={t.id}>
-                            <td>{t.step_order}</td>
-                            <td>{t.activity_code}</td>
-                            <td>{t.name}</td>
-                            <td>{t.path_code || "—"}</td>
-                            <td>{t.quantity ?? "—"}</td>
-                            <td>{t.unit || "—"}</td>
-                            <td>{t.status}</td>
+                        {generateTasksResult.tasks.map((task) => (
+                          <tr key={task.id}>
+                            <td>{task.step_order}</td>
+                            <td>{task.activity_code}</td>
+                            <td>{task.name}</td>
+                            <td>{task.path_code || "—"}</td>
+                            <td>{task.quantity ?? "—"}</td>
+                            <td>{task.unit || "—"}</td>
+                            <td>{task.status}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -802,8 +801,7 @@ export default function EntityCrudPanel({
                 </div>
               )}
               <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10 }}>
-                Gera uma Tarefa Gerada por etapa ativa do template resolvido — clicar de novo não duplica. Consulte
-                Planejamento &gt; Tarefas Geradas para o histórico completo.
+                {t.crud.geracaoNota}
               </p>
             </div>
           )}
@@ -819,12 +817,12 @@ export default function EntityCrudPanel({
                   marginBottom: 8,
                 }}
               >
-                Predecessoras ({taskPredecessors.length})
+                {t.crud.predecessoras(taskPredecessors.length)}
               </div>
               {taskDependenciesLoading ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.common.carregando}</p>
               ) : taskPredecessors.length === 0 ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhuma dependência predecessora.</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.crud.nenhumaDependenciaPredecessora}</p>
               ) : (
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text)" }}>
                   {taskPredecessors.map((d) => (
@@ -845,12 +843,12 @@ export default function EntityCrudPanel({
                   marginBottom: 8,
                 }}
               >
-                Sucessoras ({taskSuccessors.length})
+                {t.crud.sucessoras(taskSuccessors.length)}
               </div>
               {taskDependenciesLoading ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.common.carregando}</p>
               ) : taskSuccessors.length === 0 ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhuma dependência sucessora.</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.crud.nenhumaDependenciaSuccessora}</p>
               ) : (
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text)" }}>
                   {taskSuccessors.map((d) => (
@@ -874,12 +872,12 @@ export default function EntityCrudPanel({
                   marginBottom: 8,
                 }}
               >
-                Aliases ({familyAliases.length})
+                {t.crud.aliases(familyAliases.length)}
               </div>
               {familyAliasesLoading ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.common.carregando}</p>
               ) : familyAliases.length === 0 ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhum alias cadastrado para esta família ainda.</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.crud.nenhumAlias}</p>
               ) : (
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text)" }}>
                   {familyAliases.map((a) => (
@@ -904,12 +902,12 @@ export default function EntityCrudPanel({
                   marginBottom: 8,
                 }}
               >
-                Especificações ({familySpecs.length})
+                {t.crud.especificacoes(familySpecs.length)}
               </div>
               {familySpecsLoading ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.common.carregando}</p>
               ) : familySpecs.length === 0 ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhuma especificação cadastrada para esta família ainda.</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.crud.nenhumaEspecificacao}</p>
               ) : (
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--text)" }}>
                   {familySpecs.map((s) => (
@@ -934,24 +932,24 @@ export default function EntityCrudPanel({
                   marginBottom: 8,
                 }}
               >
-                Etapas do Template ({templateSteps.length})
+                {t.crud.etapasTemplate(templateSteps.length)}
               </div>
               {templateStepsLoading ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Carregando...</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.common.carregando}</p>
               ) : templateSteps.length === 0 ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhuma etapa cadastrada para este template ainda.</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t.crud.nenhumaEtapa}</p>
               ) : (
                 <div className="table-wrap">
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Ordem</th>
-                        <th>Atividade</th>
-                        <th>Nome da Etapa</th>
-                        <th>Obrigatória</th>
-                        <th>Repetível</th>
-                        <th>Origem da Quantidade</th>
-                        <th>Unidade</th>
+                        <th>{t.crud.ordem}</th>
+                        <th>{t.crud.atividade}</th>
+                        <th>{t.crud.nomeEfetivo}</th>
+                        <th>{t.crud.obrigatoria}</th>
+                        <th>{t.crud.repetivel}</th>
+                        <th>{t.crud.origemQuantidade}</th>
+                        <th>{t.crud.unidade}</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -961,11 +959,11 @@ export default function EntityCrudPanel({
                           <td>{s.step_order}</td>
                           <td>{s.activity_code}</td>
                           <td>{s.effective_name}</td>
-                          <td>{s.required ? "Sim" : "Não"}</td>
-                          <td>{s.repeatable ? "Sim" : "Não"}</td>
+                          <td>{s.required ? t.common.sim : t.common.nao}</td>
+                          <td>{s.repeatable ? t.common.sim : t.common.nao}</td>
                           <td>{s.quantity_source || "—"}</td>
                           <td>{s.unit_override || "—"}</td>
-                          <td>{s.active ? "Ativo" : "Inativo"}</td>
+                          <td>{s.active ? t.common.ativo : t.common.inativo}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -973,17 +971,16 @@ export default function EntityCrudPanel({
                 </div>
               )}
               <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 8 }}>
-                Para adicionar, editar ou reordenar etapas, use Cadastros Mestres &gt; Operação &gt; Etapas dos Templates
-                (filtrando por este template).
+                {t.crud.etapasNota}
               </p>
             </div>
           )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
             <button className="btn btn-outline" onClick={() => setModalOpen(false)}>
-              Cancelar
+              {t.common.cancelar}
             </button>
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Salvando..." : "Salvar"}
+              {saving ? t.common.salvando : t.common.salvar}
             </button>
           </div>
         </Modal>
@@ -991,7 +988,7 @@ export default function EntityCrudPanel({
 
       {csvImportOpen && canAdd && (
         <CsvImportModal
-          title={`Importar ${entity.label} via CSV`}
+          title={t.crud.importarTitle(entity.label)}
           onClose={() => setCsvImportOpen(false)}
           onImport={entity.api.importCsv}
           onImported={reload}

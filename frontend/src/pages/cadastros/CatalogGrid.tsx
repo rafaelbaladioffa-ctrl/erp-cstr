@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import Icon from "../../components/ui/Icon";
 import { useI18n } from "../../i18n";
+
 import type { EntityConfig } from "./registryConfig";
 
 export interface RecentRecord {
@@ -42,7 +43,7 @@ export default function CatalogGrid({
   onSelect: (key: string) => void;
   onQuickCreate: (key: string) => void;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement>(null);
 
@@ -53,7 +54,7 @@ export default function CatalogGrid({
           <div style={{ position: "relative" }} ref={newMenuRef}>
             <button className="btn btn-primary" onClick={() => setNewMenuOpen((v) => !v)}>
               <Icon name="add" style={{ fontSize: 18 }} />
-              Novo cadastro
+              {t.crud.novoCadastro}
               <Icon name={newMenuOpen ? "expand_less" : "expand_more"} style={{ fontSize: 16 }} />
             </button>
             {newMenuOpen && (
@@ -143,7 +144,7 @@ export default function CatalogGrid({
               <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>{entity.label}</div>
               <div style={{ fontSize: 12.5, color: "var(--text-muted)", flex: 1 }}>{entity.description}</div>
               <div style={{ fontSize: 12, color: "var(--text-faint)", fontWeight: 600 }}>
-                {count === null ? "—" : `${count} registro${count === 1 ? "" : "s"}`}
+                {count === null ? "—" : t.crud.contagem(count)}
               </div>
             </button>
           );
@@ -151,18 +152,18 @@ export default function CatalogGrid({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Registros recentes</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{t.crud.registrosRecentes}</div>
       </div>
       <div className="card">
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th>Entidade</th>
-                <th>Nome / Descrição</th>
-                <th>Código</th>
-                <th>Situação</th>
-                <th>Atualizado em</th>
+                <th>{t.crud.entidade}</th>
+                <th>{t.crud.nomeDescricao}</th>
+                <th>{t.crud.codigo}</th>
+                <th>{t.crud.situacao}</th>
+                <th>{t.crud.atualizadoEm}</th>
               </tr>
             </thead>
             <tbody>
@@ -184,7 +185,7 @@ export default function CatalogGrid({
                         color: row.isActive ? "var(--green)" : "var(--text-muted)",
                       }}
                     >
-                      {row.isActive ? "Ativo" : "Inativo"}
+                      {row.isActive ? t.common.ativo : t.common.inativo}
                     </span>
                   </td>
                   <td>{formatDate(row.updatedAt, locale)}</td>
@@ -193,7 +194,7 @@ export default function CatalogGrid({
               {recentRecords.length === 0 && (
                 <tr>
                   <td colSpan={5}>
-                    <div className="table-empty">Nenhum registro recente.</div>
+                    <div className="table-empty">{t.crud.nenhumRecente}</div>
                   </td>
                 </tr>
               )}
