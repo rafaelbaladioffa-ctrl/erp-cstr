@@ -25,7 +25,7 @@ backend/bot/          — Django app do bot
 ## Como o bot funciona
 
 ### Conexão
-Baileys mantém sessão em `auth_info_baileys/`. Na primeira execução gera QR Code disponível em `http://localhost:3001/qr`. Reconecta automaticamente em queda.
+Baileys mantém sessão em `auth_info_baileys/`. Na primeira execução gera QR Code disponível em `http://127.0.0.1:3001/qr?token=<BOT_API_SECRET>` (só na própria máquina). Reconecta automaticamente em queda.
 
 ### Menu interativo
 Usuário manda qualquer mensagem → bot responde com menu. Estado da conversa em `Map<JID, estado>`:
@@ -50,6 +50,9 @@ Usuário manda qualquer mensagem → bot responde com menu. Estado da conversa e
 | 18h | 21:00 | Alocação do dia seguinte + Print #6 |
 
 ### Servidor HTTP :3001 (triggers manuais)
+
+Publicado só em `127.0.0.1` (compose). Todas as rotas exigem `BOT_API_SECRET` no header `X-Bot-Token` (ou `?token=`); sem o segredo configurado, tudo retorna 401.
+
 ```
 GET /qr                     — QR Code HTML
 GET /qr.png                 — QR Code imagem
@@ -90,7 +93,7 @@ Campos de destinatário: `phone` (número sem código de país — bot adiciona 
 
 Para descobrir JID de grupos:
 ```bash
-docker exec bot curl http://localhost:3001/groups
+docker compose exec whatsapp-bot node -e 'fetch("http://localhost:3001/groups",{headers:{"X-Bot-Token":process.env.BOT_API_SECRET}}).then(r=>r.text()).then(console.log)'
 ```
 
 ---

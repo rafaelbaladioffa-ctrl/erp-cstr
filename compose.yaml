@@ -53,7 +53,7 @@ services:
       dockerfile: docker/whatsapp-bot/Dockerfile
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     environment:
       BOT_API_URL: ${BOT_API_URL:-http://backend:8000/api}
       BOT_API_SECRET: ${WHATSAPP_BOT_SECRET:-}

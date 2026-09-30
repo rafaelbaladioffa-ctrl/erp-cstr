@@ -4,6 +4,7 @@ const qrcodeImage = require("qrcode");
 const pino = require("pino");
 const axios = require("axios");
 const http = require("http");
+const crypto = require("crypto");
 const puppeteer = require("puppeteer-core");
 
 const API_URL = process.env.BOT_API_URL || "http://backend:8000/api";
@@ -521,12 +522,25 @@ const SCHEDULED_BROADCASTS = [
 ];
 const lastRunDateKey = {};
 
-// Servidor só para uso interno (não publicado no compose.yaml, só acessível
-// de dentro do próprio container) — permite disparar cada envio automático na
-// hora, via `docker exec`, para testar sem esperar o horário programado.
+// Uso interno: publicado só em 127.0.0.1 no compose.yaml. Toda rota exige
+// BOT_API_SECRET (header X-Bot-Token ou ?token=); sem segredo configurado,
+// recusa tudo.
+function isAuthorized(req, url) {
+  if (!API_SECRET) return false;
+  const provided = Buffer.from(String(req.headers["x-bot-token"] || url.searchParams.get("token") || ""));
+  const expected = Buffer.from(API_SECRET);
+  return provided.length === expected.length && crypto.timingSafeEqual(provided, expected);
+}
+
 http
   .createServer((req, res) => {
     const url = new URL(req.url, "http://localhost");
+
+    if (!isAuthorized(req, url)) {
+      res.writeHead(401).end("Não autorizado.\n");
+      return;
+    }
+    const tokenQuery = `token=${encodeURIComponent(url.searchParams.get("token") || "")}`;
 
     // Rotas do QR Code vêm ANTES da checagem de conexão de propósito: o QR só
     // existe enquanto o bot NÃO está conectado — é exatamente quando se precisa
@@ -558,7 +572,7 @@ http
         '<meta http-equiv="refresh" content="5">' +
           '<body style="font-family:sans-serif;text-align:center;padding:24px">' +
           "<h2>Escaneie no WhatsApp: Aparelhos conectados &gt; Conectar um aparelho</h2>" +
-          `<img src="/qr.png?t=${Date.now()}" width="400" height="400">` +
+          `<img src="/qr.png?${tokenQuery}&t=${Date.now()}" width="400" height="400">` +
           `<p>QR gerado há ${age}s — a página se atualiza sozinha a cada 5s.</p></body>`
       );
       return;
@@ -652,7 +666,7 @@ async function start() {
       lastQr = qr;
       lastQrAt = Date.now();
       console.log("Escaneie o QR Code abaixo com o WhatsApp (Aparelhos conectados > Conectar um aparelho):");
-      console.log("Ou abra http://127.0.0.1:3001/qr no navegador da máquina.");
+      console.log("Ou abra http://127.0.0.1:3001/qr?token=<BOT_API_SECRET> no navegador da máquina.");
       qrcode.generate(qr, { small: true });
     }
     if (connection === "close") {
