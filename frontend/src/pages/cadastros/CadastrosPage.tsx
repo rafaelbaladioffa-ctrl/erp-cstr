@@ -2,12 +2,29 @@ import { useEffect, useMemo, useState } from "react";
 import { registryApi } from "../../api/resources";
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
 import { useAuth } from "../../context/AuthContext";
+import { usePageText } from "../../i18n";
 import { hasPerm } from "../../utils/permissions";
 import CatalogGrid, { type RecentRecord } from "./CatalogGrid";
 import { ENTITIES, type ReferenceData } from "./registryConfig";
 
+const TEXT = {
+  "pt-BR": {
+    title: "Cadastros Gerais",
+    noPermission: "Seu usuário não tem permissão de visualização em nenhum cadastro. Peça a um administrador para conceder acesso no grupo de permissões.",
+  },
+  "en-US": {
+    title: "General Records",
+    noPermission: "Your user does not have view permission on any record. Ask an administrator to grant access in the permissions group.",
+  },
+  "es-ES": {
+    title: "Registros Generales",
+    noPermission: "Tu usuario no tiene permiso de visualización en ningún registro. Pide a un administrador que otorgue acceso en el grupo de permisos.",
+  },
+};
+
 export default function CadastrosPage() {
   const { user } = useAuth();
+  const p = usePageText(TEXT);
   const visibleEntities = useMemo(() => ENTITIES.filter((e) => hasPerm(user, e.perms.view)), [user]);
 
   const [view, setView] = useState<"catalog" | "entity">("catalog");
@@ -123,10 +140,9 @@ export default function CadastrosPage() {
   if (!entity) {
     return (
       <div>
-        <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", marginBottom: 16 }}>Cadastros Gerais</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", marginBottom: 16 }}>{p.title}</div>
         <div className="empty-state">
-          Seu usuário não tem permissão de visualização em nenhum cadastro. Peça a um administrador para
-          conceder acesso no grupo de permissões.
+          {p.noPermission}
         </div>
       </div>
     );

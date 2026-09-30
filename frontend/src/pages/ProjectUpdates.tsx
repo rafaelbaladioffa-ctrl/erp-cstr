@@ -7,9 +7,155 @@ import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
+import { usePageText } from "../i18n";
+
+const TEXT = {
+  "pt-BR": {
+    eyebrow: "Área Operacional",
+    title: "Atualizações de Projeto",
+    subtitle: "Gere, edite e envie o status consolidado de cada projeto.",
+    cancel: "Cancelar",
+    newUpdate: "Nova Atualização",
+    period: "Período",
+    search: "Buscar",
+    searchPlaceholder: "PO ou nome do projeto...",
+    statusLabel: "Status",
+    statusAll: "Todos",
+    statusSent: "Enviado",
+    statusPending: "Não enviado",
+    formProject: "Projeto",
+    formSelectProject: "Selecione...",
+    formDate: "Data",
+    formNotes: "Observações (opcional)",
+    generating: "Gerando...",
+    generateBtn: "Gerar Atualização",
+    loading: "Carregando...",
+    emptyState: "Selecione um período ou busque por PO/nome do projeto acima para ver as Atualizações de Projeto.",
+    badgeSent: "Enviado",
+    badgePending: "Não enviado",
+    noResults: "Nenhuma atualização encontrada para o filtro.",
+    errorDuplicate: "Já existe uma atualização para este projeto nesta data. Edite a atualização existente na lista abaixo.",
+    errorGenerate: "Não foi possível gerar a atualização.",
+    // editor
+    technicians: "Técnicos",
+    completionPercent: "Percentual de Conclusão",
+    activitiesText: "Atividades Executadas",
+    certificationDone: "Certificação Finalizada",
+    projectFinished: "Projeto Finalizado",
+    observations: "Observações",
+    saving: "Salvando...",
+    additionalRecipients: "Destinatários adicionais",
+    recipientsInfo: "Além dos responsáveis do cliente vinculado ao projeto, você pode escolher usuários do sistema e/ou digitar e-mails avulsos.",
+    systemUsers: "Usuários do sistema",
+    extraEmails: "E-mails avulsos",
+    extraEmailsPlaceholder: "Separe por vírgula ou uma linha por e-mail",
+    copied: "Copiado!",
+    copyText: "Copiar Texto",
+    downloadingPdf: "Gerando...",
+    downloadPdf: "Baixar PDF",
+    sending: "Enviando...",
+    sendEmail: "Enviar por E-mail",
+    feedbackError: "Não foi possível enviar o e-mail.",
+  },
+  "en-US": {
+    eyebrow: "Operations",
+    title: "Project Updates",
+    subtitle: "Generate, edit and send the consolidated status for each project.",
+    cancel: "Cancel",
+    newUpdate: "New Update",
+    period: "Period",
+    search: "Search",
+    searchPlaceholder: "PO or project name...",
+    statusLabel: "Status",
+    statusAll: "All",
+    statusSent: "Sent",
+    statusPending: "Not sent",
+    formProject: "Project",
+    formSelectProject: "Select...",
+    formDate: "Date",
+    formNotes: "Notes (optional)",
+    generating: "Generating...",
+    generateBtn: "Generate Update",
+    loading: "Loading...",
+    emptyState: "Select a period or search by PO/project name above to see Project Updates.",
+    badgeSent: "Sent",
+    badgePending: "Not sent",
+    noResults: "No updates found for the filter.",
+    errorDuplicate: "An update for this project on this date already exists. Edit the existing update in the list below.",
+    errorGenerate: "Could not generate the update.",
+    technicians: "Technicians",
+    completionPercent: "Completion Percentage",
+    activitiesText: "Activities Performed",
+    certificationDone: "Certification Complete",
+    projectFinished: "Project Finished",
+    observations: "Notes",
+    saving: "Saving...",
+    additionalRecipients: "Additional recipients",
+    recipientsInfo: "In addition to the client contacts linked to the project, you can choose system users and/or type individual e-mails.",
+    systemUsers: "System users",
+    extraEmails: "Individual e-mails",
+    extraEmailsPlaceholder: "Separate by comma or one e-mail per line",
+    copied: "Copied!",
+    copyText: "Copy Text",
+    downloadingPdf: "Generating...",
+    downloadPdf: "Download PDF",
+    sending: "Sending...",
+    sendEmail: "Send by E-mail",
+    feedbackError: "Could not send the e-mail.",
+  },
+  "es-ES": {
+    eyebrow: "Área Operacional",
+    title: "Actualizaciones de Proyecto",
+    subtitle: "Genere, edite y envíe el estado consolidado de cada proyecto.",
+    cancel: "Cancelar",
+    newUpdate: "Nueva Actualización",
+    period: "Período",
+    search: "Buscar",
+    searchPlaceholder: "PO o nombre del proyecto...",
+    statusLabel: "Estado",
+    statusAll: "Todos",
+    statusSent: "Enviado",
+    statusPending: "No enviado",
+    formProject: "Proyecto",
+    formSelectProject: "Seleccione...",
+    formDate: "Fecha",
+    formNotes: "Observaciones (opcional)",
+    generating: "Generando...",
+    generateBtn: "Generar Actualización",
+    loading: "Cargando...",
+    emptyState: "Seleccione un período o busque por PO/nombre del proyecto arriba para ver las Actualizaciones de Proyecto.",
+    badgeSent: "Enviado",
+    badgePending: "No enviado",
+    noResults: "No se encontraron actualizaciones para el filtro.",
+    errorDuplicate: "Ya existe una actualización para este proyecto en esta fecha. Edite la actualización existente en la lista de abajo.",
+    errorGenerate: "No se pudo generar la actualización.",
+    technicians: "Técnicos",
+    completionPercent: "Porcentaje de Finalización",
+    activitiesText: "Actividades Ejecutadas",
+    certificationDone: "Certificación Finalizada",
+    projectFinished: "Proyecto Finalizado",
+    observations: "Observaciones",
+    saving: "Guardando...",
+    additionalRecipients: "Destinatarios adicionales",
+    recipientsInfo: "Además de los responsables del cliente vinculado al proyecto, puede elegir usuarios del sistema y/o escribir correos individuales.",
+    systemUsers: "Usuarios del sistema",
+    extraEmails: "Correos individuales",
+    extraEmailsPlaceholder: "Separe por coma o un correo por línea",
+    copied: "¡Copiado!",
+    copyText: "Copiar Texto",
+    downloadingPdf: "Generando...",
+    downloadPdf: "Descargar PDF",
+    sending: "Enviando...",
+    sendEmail: "Enviar por Correo",
+    feedbackError: "No se pudo enviar el correo.",
+  },
+};
+
+type PU = typeof TEXT["pt-BR"];
 
 export default function ProjectUpdates() {
   const { user } = useAuth();
+  const p = usePageText(TEXT);
   const canCreate = hasPerm(user, PERMS.addProjectUpdate);
   const canEdit = hasPerm(user, PERMS.changeProjectUpdate);
   const [updates, setUpdates] = useState<ProjectDailyUpdate[]>([]);
@@ -64,8 +210,8 @@ export default function ProjectUpdates() {
       const data = axiosErr.response?.data;
       const raw = data ? Object.values(data).flat().join(" ") : "";
       const message = raw.includes("devem criar um set único")
-        ? "Já existe uma atualização para este projeto nesta data. Edite a atualização existente na lista abaixo."
-        : raw || "Não foi possível gerar a atualização.";
+        ? p.errorDuplicate
+        : raw || p.errorGenerate;
       setGenerateError(message);
     } finally {
       setGenerating(false);
@@ -73,8 +219,8 @@ export default function ProjectUpdates() {
   }
 
   const poByProject: Record<number, string> = {};
-  projects.forEach((p) => {
-    poByProject[p.id] = p.po || "";
+  projects.forEach((proj) => {
+    poByProject[proj.id] = proj.po || "";
   });
 
   const term = search.trim().toLowerCase();
@@ -100,14 +246,14 @@ export default function ProjectUpdates() {
   return (
     <div>
       <PageHeader
-        eyebrow="Área Operacional"
-        title="Atualizações de Projeto"
-        subtitle="Gere, edite e envie o status consolidado de cada projeto."
+        eyebrow={p.eyebrow}
+        title={p.title}
+        subtitle={p.subtitle}
         actions={
           canCreate ? (
             <button className="btn btn-primary" onClick={() => setCreating((v) => !v)}>
               <Icon name={creating ? "close" : "add"} style={{ fontSize: 18 }} />
-              {creating ? "Cancelar" : "Nova Atualização"}
+              {creating ? p.cancel : p.newUpdate}
             </button>
           ) : undefined
         }
@@ -115,34 +261,34 @@ export default function ProjectUpdates() {
 
       <div className="card" style={{ padding: 14, marginBottom: 16, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span className="field-label">Período</span>
+          <span className="field-label">{p.period}</span>
           <DateRangeCalendar value={range} onChange={setRange} maxDays={31} />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span className="field-label">Buscar</span>
+          <span className="field-label">{p.search}</span>
           <input
             type="text"
             className="input"
-            placeholder="PO ou nome do projeto..."
+            placeholder={p.searchPlaceholder}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: 220 }}
           />
           {hasFilter && (
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {filteredUpdates.length} atualização(ões) encontrada(s)
+              {filteredUpdates.length} {filteredUpdates.length === 1 ? "atualização encontrada" : "atualizações encontradas"}
             </span>
           )}
         </div>
 
         <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginLeft: "auto" }}>
           <div className="field-group">
-            <span className="field-label">Status</span>
+            <span className="field-label">{p.statusLabel}</span>
             <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
-              <option value="all">Todos</option>
-              <option value="sent">Enviado</option>
-              <option value="pending">Não enviado</option>
+              <option value="all">{p.statusAll}</option>
+              <option value="sent">{p.statusSent}</option>
+              <option value="pending">{p.statusPending}</option>
             </select>
           </div>
         </div>
@@ -150,36 +296,36 @@ export default function ProjectUpdates() {
 
       {creating && canCreate && (
         <div className="form-card">
-          <label className="form-label">Projeto</label>
+          <label className="form-label">{p.formProject}</label>
           <select className="input" value={newProjectId} onChange={(e) => setNewProjectId(Number(e.target.value))}>
-            <option value="">Selecione...</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.code} — {p.name}
+            <option value="">{p.formSelectProject}</option>
+            {projects.map((proj) => (
+              <option key={proj.id} value={proj.id}>
+                {proj.code} — {proj.name}
               </option>
             ))}
           </select>
 
-          <label className="form-label">Data</label>
+          <label className="form-label">{p.formDate}</label>
           <input type="date" className="input" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
 
-          <label className="form-label">Observações (opcional)</label>
+          <label className="form-label">{p.formNotes}</label>
           <textarea className="input" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} style={{ height: 80 }} />
 
           {generateError && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{generateError}</p>}
 
           <button className="btn btn-primary" onClick={handleGenerate} disabled={generating} style={{ marginTop: 14 }}>
-            {generating ? "Gerando..." : "Gerar Atualização"}
+            {generating ? p.generating : p.generateBtn}
           </button>
         </div>
       )}
 
       {loading ? (
-        <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+        <p style={{ color: "var(--text-muted)" }}>{p.loading}</p>
       ) : !hasFilter ? (
         <div className="empty-state">
           <Icon name="calendar_month" style={{ fontSize: 28, color: "var(--text-faint)" }} />
-          <p style={{ marginTop: 8 }}>Selecione um período ou busque por PO/nome do projeto acima para ver as Atualizações de Projeto.</p>
+          <p style={{ marginTop: 8 }}>{p.emptyState}</p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -199,7 +345,7 @@ export default function ProjectUpdates() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: update.is_sent ? "var(--green)" : "var(--amber)" }}>
-                      {update.is_sent ? "Enviado" : "Não enviado"}
+                      {update.is_sent ? p.badgeSent : p.badgePending}
                     </span>
                     <Icon name={expanded ? "expand_less" : "expand_more"} style={{ fontSize: 20, color: "var(--text-faint)" }} />
                   </div>
@@ -211,6 +357,7 @@ export default function ProjectUpdates() {
                     collaborators={collaborators}
                     userOptions={userOptions}
                     canEdit={canEdit}
+                    p={p}
                     onChange={(u) => {
                       setSelected(u);
                       setUpdates((prev) => prev.map((item) => (item.id === u.id ? u : item)));
@@ -220,7 +367,7 @@ export default function ProjectUpdates() {
               </div>
             );
           })}
-          {filteredUpdates.length === 0 && <div className="empty-state">Nenhuma atualização encontrada para o filtro.</div>}
+          {filteredUpdates.length === 0 && <div className="empty-state">{p.noResults}</div>}
         </div>
       )}
     </div>
@@ -232,12 +379,14 @@ function ProjectUpdateEditor({
   collaborators,
   userOptions,
   canEdit,
+  p,
   onChange,
 }: {
   update: ProjectDailyUpdate;
   collaborators: Collaborator[];
   userOptions: UserOption[];
   canEdit: boolean;
+  p: PU;
   onChange: (u: ProjectDailyUpdate) => void;
 }) {
   const [saving, setSaving] = useState(false);
@@ -287,13 +436,14 @@ function ProjectUpdateEditor({
       if (result.detail) {
         setFeedbackError(result.detail);
       } else {
-        setFeedback(`${result.sent.length} e-mail(s) enviado(s).${result.skipped.length ? ` Sem e-mail: ${result.skipped.join(", ")}` : ""}`);
+        const skippedPart = result.skipped.length ? ` Sem e-mail: ${result.skipped.join(", ")}` : "";
+        setFeedback(`${result.sent.length} e-mail(s) enviado(s).${skippedPart}`);
         const refreshed = await projectUpdatesApi.get(update.id);
         onChange(refreshed);
       }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      setFeedbackError(axiosErr.response?.data?.detail || "Não foi possível enviar o e-mail.");
+      setFeedbackError(axiosErr.response?.data?.detail || p.feedbackError);
     } finally {
       setSendingEmail(false);
     }
@@ -308,7 +458,7 @@ function ProjectUpdateEditor({
 
   return (
     <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
-      <label className="form-label">Técnicos</label>
+      <label className="form-label">{p.technicians}</label>
       <select
         multiple
         disabled={!canEdit}
@@ -327,7 +477,7 @@ function ProjectUpdateEditor({
         ))}
       </select>
 
-      <label className="form-label">Percentual de Conclusão</label>
+      <label className="form-label">{p.completionPercent}</label>
       <input
         type="number"
         min={0}
@@ -339,7 +489,7 @@ function ProjectUpdateEditor({
         onBlur={(e) => save({ completion_percent: Number(e.target.value) })}
       />
 
-      <label className="form-label">Atividades Executadas</label>
+      <label className="form-label">{p.activitiesText}</label>
       <textarea
         disabled={!canEdit}
         className="input"
@@ -357,7 +507,7 @@ function ProjectUpdateEditor({
             checked={update.certification_done}
             onChange={(e) => save({ certification_done: e.target.checked })}
           />
-          Certificação Finalizada
+          {p.certificationDone}
         </label>
         <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
           <input
@@ -366,11 +516,11 @@ function ProjectUpdateEditor({
             checked={update.project_finished}
             onChange={(e) => save({ project_finished: e.target.checked })}
           />
-          Projeto Finalizado
+          {p.projectFinished}
         </label>
       </div>
 
-      <label className="form-label">Observações</label>
+      <label className="form-label">{p.observations}</label>
       <textarea
         disabled={!canEdit}
         className="input"
@@ -380,7 +530,7 @@ function ProjectUpdateEditor({
         style={{ height: 70 }}
       />
 
-      {saving && <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Salvando...</p>}
+      {saving && <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{p.saving}</p>}
 
       <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginTop: 16, fontSize: 12, whiteSpace: "pre-wrap", maxHeight: 220, overflowY: "auto" }}>
         {update.preview}
@@ -397,7 +547,7 @@ function ProjectUpdateEditor({
             style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--text-muted)", fontSize: 12.5 }}
           >
             <Icon name={recipientsOpen ? "expand_less" : "expand_more"} style={{ fontSize: 16 }} />
-            Destinatários adicionais {extraUserIds.length + extraEmailsText.split(/[,;\n]/).filter((e) => e.trim()).length > 0
+            {p.additionalRecipients} {extraUserIds.length + extraEmailsText.split(/[,;\n]/).filter((e) => e.trim()).length > 0
               ? `(${extraUserIds.length + extraEmailsText.split(/[,;\n]/).filter((e) => e.trim()).length})`
               : ""}
           </button>
@@ -405,10 +555,10 @@ function ProjectUpdateEditor({
           {recipientsOpen && (
             <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginTop: 8 }}>
               <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8 }}>
-                Além dos responsáveis do cliente vinculado ao projeto, você pode escolher usuários do sistema e/ou digitar e-mails avulsos.
+                {p.recipientsInfo}
               </p>
 
-              <label className="form-label">Usuários do sistema</label>
+              <label className="form-label">{p.systemUsers}</label>
               <select
                 multiple
                 className="input"
@@ -423,10 +573,10 @@ function ProjectUpdateEditor({
                 ))}
               </select>
 
-              <label className="form-label">E-mails avulsos</label>
+              <label className="form-label">{p.extraEmails}</label>
               <textarea
                 className="input"
-                placeholder="Separe por vírgula ou uma linha por e-mail"
+                placeholder={p.extraEmailsPlaceholder}
                 value={extraEmailsText}
                 onChange={(e) => setExtraEmailsText(e.target.value)}
                 style={{ height: 60 }}
@@ -438,15 +588,15 @@ function ProjectUpdateEditor({
 
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <button onClick={copyText} className="btn btn-secondary">
-          {copied ? "Copiado!" : "Copiar Texto"}
+          {copied ? p.copied : p.copyText}
         </button>
         {canEdit && (
           <>
             <button onClick={handleDownloadPdf} disabled={downloadingPdf} className="btn btn-secondary">
-              {downloadingPdf ? "Gerando..." : "Baixar PDF"}
+              {downloadingPdf ? p.downloadingPdf : p.downloadPdf}
             </button>
             <button onClick={handleSendEmail} disabled={sendingEmail} className="btn btn-primary">
-              {sendingEmail ? "Enviando..." : "Enviar por E-mail"}
+              {sendingEmail ? p.sending : p.sendEmail}
             </button>
           </>
         )}

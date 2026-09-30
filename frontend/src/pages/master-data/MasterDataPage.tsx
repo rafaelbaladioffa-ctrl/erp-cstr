@@ -1,6 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { masterDataApi } from "../../api/resources";
+import { usePageText } from "../../i18n";
+
+const TEXT = {
+  "pt-BR": {
+    eyebrow: "Sistema",
+    title: "Cadastros Mestres",
+    subtitle: "Base padronizada de dados técnicos e operacionais — fundação para escopos, tarefas e automações futuras.",
+    noPermission: "Seu usuário não tem permissão de visualização em nenhum Cadastro Mestre. Peça a um administrador para conceder acesso no grupo de permissões.",
+    comingSoon: "Em breve",
+    selectItem: "Selecione um cadastro na lista ao lado.",
+  },
+  "en-US": {
+    eyebrow: "System",
+    title: "Master Records",
+    subtitle: "Standardized base of technical and operational data — foundation for scopes, tasks and future automations.",
+    noPermission: "Your user does not have view permission on any Master Record. Ask an administrator to grant access in the permissions group.",
+    comingSoon: "Coming soon",
+    selectItem: "Select a record from the list on the left.",
+  },
+  "es-ES": {
+    eyebrow: "Sistema",
+    title: "Datos Maestros",
+    subtitle: "Base estandarizada de datos técnicos y operacionales — fundación para alcances, tareas y automatizaciones futuras.",
+    noPermission: "Tu usuario no tiene permiso de visualización en ningún Dato Maestro. Pide a un administrador que otorgue acceso en el grupo de permisos.",
+    comingSoon: "Próximamente",
+    selectItem: "Selecciona un registro de la lista al lado.",
+  },
+};
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
 import ProjectPlanPanel from "../../components/master-data/ProjectPlanPanel";
 import SowImportPanel from "../../components/master-data/SowImportPanel";
@@ -36,6 +64,7 @@ const EMPTY_REFS: ReferenceData = {
 
 export default function MasterDataPage() {
   const { user } = useAuth();
+  const p = usePageText(TEXT);
   // Links contextuais da tela Importar SOW ("Abrir Itens de Escopo desta
   // SOW" etc.) chegam aqui como ?focusEntity=scope-items&focusSearch=
   // SOW-IMPORT-000001 — nenhuma outra tela deste app usa querystring
@@ -132,15 +161,14 @@ export default function MasterDataPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Sistema"
-        title="Cadastros Mestres"
-        subtitle="Base padronizada de dados técnicos e operacionais — fundação para escopos, tarefas e automações futuras."
+        eyebrow={p.eyebrow}
+        title={p.title}
+        subtitle={p.subtitle}
       />
 
       {!hasAnyEntity && (
         <div className="empty-state">
-          Seu usuário não tem permissão de visualização em nenhum Cadastro Mestre. Peça a um administrador para
-          conceder acesso no grupo de permissões.
+          {p.noPermission}
         </div>
       )}
 
@@ -175,7 +203,7 @@ export default function MasterDataPage() {
                     <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 16 }} />
                   </button>
                   {open && cat.entities.length === 0 && (
-                    <div style={{ padding: "2px 12px 6px", fontSize: 12, color: "var(--text-faint)" }}>Em breve</div>
+                    <div style={{ padding: "2px 12px 6px", fontSize: 12, color: "var(--text-faint)" }}>{p.comingSoon}</div>
                   )}
                   {open && cat.entities.map((entity) => {
                     const isActive = activeKey === entity.key;
@@ -232,7 +260,7 @@ export default function MasterDataPage() {
                 />
               )
             ) : (
-              <div className="empty-state">Selecione um cadastro na lista ao lado.</div>
+              <div className="empty-state">{p.selectItem}</div>
             )}
           </div>
         </div>

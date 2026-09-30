@@ -5,6 +5,7 @@ import TechnicianAbsenceFormModal from "../components/projects/TechnicianAbsence
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatCard from "../components/ui/StatCard";
+import { useI18n, usePageText } from "../i18n";
 import {
   AWAY_STATUSES,
   BUSY_COLOR,
@@ -23,14 +24,206 @@ import {
   reorderRowsByPair,
 } from "../utils/timeline";
 
-function techStatusBadge(tech: OperationsBoardTechnician) {
-  const hasInProgress = tech.current_tasks.some((t) => t.status === "in_progress");
-  const hasPaused = tech.current_tasks.some((t) => t.status === "paused");
-  const pausedAway = hasPaused && AWAY_STATUSES.includes(tech.presence_status);
-  if (hasInProgress) return { label: "Em execução", color: BUSY_COLOR.in_progress };
-  if (hasPaused && !pausedAway) return { label: "Pausado", color: BUSY_COLOR.paused };
-  return { label: tech.presence_status_display, color: PRESENCE_COLOR[tech.presence_status] };
-}
+const TEXT = {
+  "pt-BR": {
+    eyebrow: "Central de Operações",
+    title: "Operação do Dia",
+    subtitleToday: "Pool de atividades, técnicos e timeline em tempo real",
+    subtitleDate: (date: string) => `Visualizando ${date}`,
+    today: "Hoje",
+    allSites: "Todos os sites",
+    statPlanned: "Atividades Planejadas",
+    statActive: "Em Execução",
+    statCompleted: "Concluídas",
+    statPending: "Pendentes",
+    statOnSite: "Técnicos no Site",
+    statAbsent: "Técnicos Ausentes",
+    progressLabel: "Progresso do Dia",
+    techCardTitle: "Técnicos",
+    techCardHint: (n: number) => `${n} no site hoje`,
+    pairLabel: "Dupla",
+    statusInProgress: "Em execução",
+    statusPaused: "Pausado",
+    openTasks: (n: number) => ` · ${n} tarefas abertas`,
+    poolTitle: "Pool de Atividades do Dia",
+    poolHint: (n: number) => `${n} pendentes`,
+    dispatchSelectTech: "Selecione um técnico disponível na coluna ao lado",
+    dispatchTechsSelected: (n: number) => `${n} técnico(s) selecionado(s)`,
+    dispatching: "Despachando...",
+    dispatch: "Despachar",
+    colActivity: "Atividade",
+    colProject: "Projeto",
+    colSite: "Site",
+    colDuration: "Duração Est.",
+    colStatus: "Status",
+    colActions: "Ações",
+    badgeDispatched: (names: string) => `Despachada · ${names}`,
+    badgeWaiting: "Aguardando despacho",
+    dispatchBtn: "Despachar",
+    removing: "Removendo...",
+    removeDispatch: "Remover Despacho",
+    noPoolActivity: "Nenhuma atividade pendente neste site.",
+    techniciansLabel: (n: number) => `TÉCNICOS (${n})`,
+    rowStats: (done: number, doneLabel: string, pending: number, pendingLabel: string) =>
+      `${done} ${doneLabel} · ${pending} ${pendingLabel}`,
+    finishedSingular: "finalizada",
+    finishedPlural: "finalizadas",
+    pendingSingular: "pendente",
+    pendingPlural: "pendentes",
+    inProgress: " – em andamento",
+    closeLabel: "Fechar",
+    legendDone: "Concluída",
+    legendInProgress: "Em execução",
+    legendAvailable: "Disponível",
+    legendPaused: "Pausa",
+    legendLunch: "Horário de Almoço",
+    legendPersonal: "Particular",
+    legendSiteBlocked: "Sem Acesso ao Site",
+    legendAwaiting: "Aguardando Liberações",
+    legendNotStarted: "Não iniciado / Fim de Expediente",
+    sidePanelTitle: "Próximas atividades / Operações",
+    othersLabel: (n: number) => `Outros técnicos (${n})`,
+    noQueueActivity: "Nenhuma atividade pendente na fila.",
+    viewAll: "Ver todas as atividades do dia",
+    footerHint: "Clique em uma atividade para ver detalhes completos.",
+    confirmUndispatch: "Remover o despacho dessa tarefa? Os técnicos voltam a ficar disponíveis pro pool.",
+    absenceTitle: "Ausências planejadas (férias, atestado, folga)",
+    noTechLinked: "Nenhum técnico vinculado a este site.",
+    loading: "Carregando...",
+  },
+  "en-US": {
+    eyebrow: "Operations Center",
+    title: "Day Operations",
+    subtitleToday: "Activity pool, technicians and real-time timeline",
+    subtitleDate: (date: string) => `Viewing ${date}`,
+    today: "Today",
+    allSites: "All sites",
+    statPlanned: "Planned Activities",
+    statActive: "In Progress",
+    statCompleted: "Completed",
+    statPending: "Pending",
+    statOnSite: "On-Site Technicians",
+    statAbsent: "Absent Technicians",
+    progressLabel: "Day Progress",
+    techCardTitle: "Technicians",
+    techCardHint: (n: number) => `${n} on site today`,
+    pairLabel: "Pair",
+    statusInProgress: "In progress",
+    statusPaused: "Paused",
+    openTasks: (n: number) => ` · ${n} open tasks`,
+    poolTitle: "Day Activity Pool",
+    poolHint: (n: number) => `${n} pending`,
+    dispatchSelectTech: "Select an available technician in the column to the right",
+    dispatchTechsSelected: (n: number) => `${n} technician(s) selected`,
+    dispatching: "Dispatching...",
+    dispatch: "Dispatch",
+    colActivity: "Activity",
+    colProject: "Project",
+    colSite: "Site",
+    colDuration: "Est. Duration",
+    colStatus: "Status",
+    colActions: "Actions",
+    badgeDispatched: (names: string) => `Dispatched · ${names}`,
+    badgeWaiting: "Awaiting dispatch",
+    dispatchBtn: "Dispatch",
+    removing: "Removing...",
+    removeDispatch: "Remove Dispatch",
+    noPoolActivity: "No pending activities at this site.",
+    techniciansLabel: (n: number) => `TECHNICIANS (${n})`,
+    rowStats: (done: number, doneLabel: string, pending: number, pendingLabel: string) =>
+      `${done} ${doneLabel} · ${pending} ${pendingLabel}`,
+    finishedSingular: "completed",
+    finishedPlural: "completed",
+    pendingSingular: "pending",
+    pendingPlural: "pending",
+    inProgress: " – in progress",
+    closeLabel: "Close",
+    legendDone: "Completed",
+    legendInProgress: "In progress",
+    legendAvailable: "Available",
+    legendPaused: "Paused",
+    legendLunch: "Lunch Break",
+    legendPersonal: "Personal",
+    legendSiteBlocked: "No Site Access",
+    legendAwaiting: "Awaiting Releases",
+    legendNotStarted: "Not started / End of Shift",
+    sidePanelTitle: "Upcoming activities / Operations",
+    othersLabel: (n: number) => `Other technicians (${n})`,
+    noQueueActivity: "No pending activities in queue.",
+    viewAll: "View all activities for the day",
+    footerHint: "Click an activity to see full details.",
+    confirmUndispatch: "Remove the dispatch for this task? Technicians will return to the pool.",
+    absenceTitle: "Planned absences (vacation, sick leave, day off)",
+    noTechLinked: "No technician linked to this site.",
+    loading: "Loading...",
+  },
+  "es-ES": {
+    eyebrow: "Central de Operaciones",
+    title: "Operación del Día",
+    subtitleToday: "Grupo de actividades, técnicos y línea de tiempo en tiempo real",
+    subtitleDate: (date: string) => `Visualizando ${date}`,
+    today: "Hoy",
+    allSites: "Todos los sitios",
+    statPlanned: "Actividades Planificadas",
+    statActive: "En Ejecución",
+    statCompleted: "Completadas",
+    statPending: "Pendientes",
+    statOnSite: "Técnicos en Sitio",
+    statAbsent: "Técnicos Ausentes",
+    progressLabel: "Progreso del Día",
+    techCardTitle: "Técnicos",
+    techCardHint: (n: number) => `${n} en sitio hoy`,
+    pairLabel: "Dupla",
+    statusInProgress: "En ejecución",
+    statusPaused: "Pausado",
+    openTasks: (n: number) => ` · ${n} tareas abiertas`,
+    poolTitle: "Grupo de Actividades del Día",
+    poolHint: (n: number) => `${n} pendientes`,
+    dispatchSelectTech: "Seleccione un técnico disponible en la columna de al lado",
+    dispatchTechsSelected: (n: number) => `${n} técnico(s) seleccionado(s)`,
+    dispatching: "Despachando...",
+    dispatch: "Despachar",
+    colActivity: "Actividad",
+    colProject: "Proyecto",
+    colSite: "Sitio",
+    colDuration: "Duración Est.",
+    colStatus: "Estado",
+    colActions: "Acciones",
+    badgeDispatched: (names: string) => `Despachada · ${names}`,
+    badgeWaiting: "Esperando despacho",
+    dispatchBtn: "Despachar",
+    removing: "Eliminando...",
+    removeDispatch: "Eliminar Despacho",
+    noPoolActivity: "No hay actividades pendientes en este sitio.",
+    techniciansLabel: (n: number) => `TÉCNICOS (${n})`,
+    rowStats: (done: number, doneLabel: string, pending: number, pendingLabel: string) =>
+      `${done} ${doneLabel} · ${pending} ${pendingLabel}`,
+    finishedSingular: "finalizada",
+    finishedPlural: "finalizadas",
+    pendingSingular: "pendiente",
+    pendingPlural: "pendientes",
+    inProgress: " – en progreso",
+    closeLabel: "Cerrar",
+    legendDone: "Completada",
+    legendInProgress: "En ejecución",
+    legendAvailable: "Disponible",
+    legendPaused: "Pausa",
+    legendLunch: "Hora del Almuerzo",
+    legendPersonal: "Personal",
+    legendSiteBlocked: "Sin Acceso al Sitio",
+    legendAwaiting: "Esperando Liberaciones",
+    legendNotStarted: "No iniciado / Fin de Jornada",
+    sidePanelTitle: "Próximas actividades / Operaciones",
+    othersLabel: (n: number) => `Otros técnicos (${n})`,
+    noQueueActivity: "No hay actividades pendientes en la cola.",
+    viewAll: "Ver todas las actividades del día",
+    footerHint: "Haga clic en una actividad para ver los detalles completos.",
+    confirmUndispatch: "¿Eliminar el despacho de esta tarea? Los técnicos volverán a estar disponibles en el grupo.",
+    absenceTitle: "Ausencias planificadas (vacaciones, baja médica, día libre)",
+    noTechLinked: "Ningún técnico vinculado a este sitio.",
+    loading: "Cargando...",
+  },
+};
 
 function formatElapsed(startIso: string | null, now: number) {
   if (!startIso) return "";
@@ -42,6 +235,8 @@ function formatElapsed(startIso: string | null, now: number) {
 }
 
 export default function OperationsBoard() {
+  const p = usePageText(TEXT);
+  const { locale } = useI18n();
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState<number | "all" | null>("all");
   const [board, setBoard] = useState<OperationsBoardData | null>(null);
@@ -110,8 +305,6 @@ export default function OperationsBoard() {
 
   function toggleTech(techId: number, available: boolean) {
     if (!available) return;
-    // Dupla fixa: selecionar um dos dois já seleciona o parceiro junto
-    // (o despacho em conjunto é o padrão — ver CollaboratorPair no backend).
     const tech = (board?.technicians || []).find((t) => t.id === techId);
     const partnerId = tech?.pair_partner?.id;
     const ids = partnerId != null ? [techId, partnerId] : [techId];
@@ -140,7 +333,7 @@ export default function OperationsBoard() {
   }
 
   async function handleUndispatch(taskId: number) {
-    if (!confirm("Remover o despacho dessa tarefa? Os técnicos voltam a ficar disponíveis pro pool.")) return;
+    if (!confirm(p.confirmUndispatch)) return;
     setUndispatchingId(taskId);
     try {
       await operationsApi.undispatch(taskId);
@@ -156,10 +349,6 @@ export default function OperationsBoard() {
   const nowDate = isToday ? new Date(now) : new Date(selectedDate + "T18:00:00");
   const base = isToday ? nowDate : new Date(selectedDate + "T07:00:00");
   const nowPct = pct(nowDate, base);
-  // Um técnico pode ter mais de uma tarefa "aberta" ao mesmo tempo (pausou
-  // uma, iniciou outra) — as barras dela empilham verticalmente na mesma
-  // linha, e as 3 colunas (nomes/timeline/fila) precisam da MESMA altura de
-  // linha pra continuarem alinhadas.
   const techRows = reorderRowsByPair(
     technicians
       .filter((tech) => !tech.on_leave)
@@ -176,18 +365,10 @@ export default function OperationsBoard() {
       };
     })
   );
-  const trackHeight = (count: number) => (count <= 1 ? 52 : 10 + count * 30);
-  const barTop = (index: number, count: number) => (count <= 1 ? 8 : 6 + index * 30);
-  const barHeight = (count: number) => (count <= 1 ? 36 : 26);
 
   const windowEnd = new Date(base);
   windowEnd.setHours(WINDOW_END_HOUR, 0, 0, 0);
 
-  // Barras "não iniciado" — uma pra CADA tarefa já despachada e ainda na
-  // fila do técnico, emendadas em sequência logo depois da última barra
-  // real (na mesma lane, pra não abrir uma linha nova), cada uma com o
-  // nome da própria tarefa. Duração fixa de 1h30 por tarefa — não temos
-  // horário agendado real pras tarefas da fila, só a ordem (queue_order).
   const NOT_STARTED_DURATION_MS = 1.5 * 60 * 60 * 1000;
   function notStartedBars(row: (typeof techRows)[number]) {
     if (row.tech.queue.length === 0) return [];
@@ -216,12 +397,41 @@ export default function OperationsBoard() {
   const expandedGroups = techsWithQueue.slice(0, 3);
   const otherGroups = techsWithQueue.slice(3);
 
+  const techStatusLabel = (tech: OperationsBoardTechnician) => {
+    const hasInProgress = tech.current_tasks.some((t) => t.status === "in_progress");
+    const hasPaused = tech.current_tasks.some((t) => t.status === "paused");
+    const pausedAway = hasPaused && AWAY_STATUSES.includes(tech.presence_status);
+    if (hasInProgress) return p.statusInProgress;
+    if (hasPaused && !pausedAway) return p.statusPaused;
+    return tech.presence_status_display;
+  };
+
+  const techStatusColor = (tech: OperationsBoardTechnician) => {
+    const hasInProgress = tech.current_tasks.some((t) => t.status === "in_progress");
+    const hasPaused = tech.current_tasks.some((t) => t.status === "paused");
+    const pausedAway = hasPaused && AWAY_STATUSES.includes(tech.presence_status);
+    if (hasInProgress) return BUSY_COLOR.in_progress;
+    if (hasPaused && !pausedAway) return BUSY_COLOR.paused;
+    return PRESENCE_COLOR[tech.presence_status];
+  };
+
   return (
     <div>
       <PageHeader
-        eyebrow="Central de Operações"
-        title="Operação do Dia"
-        subtitle={isToday ? "Pool de atividades, técnicos e timeline em tempo real" : `Visualizando ${new Date(selectedDate + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}`}
+        eyebrow={p.eyebrow}
+        title={p.title}
+        subtitle={
+          isToday
+            ? p.subtitleToday
+            : p.subtitleDate(
+                new Date(selectedDate + "T12:00:00").toLocaleDateString(locale, {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                })
+              )
+        }
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -242,7 +452,7 @@ export default function OperationsBoard() {
                 onClick={() => dateInputRef.current?.showPicker?.()}
               >
                 <Icon name="calendar_today" style={{ fontSize: 14 }} />
-                <span>{new Date(selectedDate + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
+                <span>{new Date(selectedDate + "T12:00:00").toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
                 <input
                   ref={dateInputRef}
                   type="date"
@@ -267,7 +477,7 @@ export default function OperationsBoard() {
               </button>
               {!isToday && (
                 <button className="btn btn-outline btn-sm" onClick={() => setSelectedDate(todayStr)}>
-                  Hoje
+                  {p.today}
                 </button>
               )}
             </div>
@@ -276,7 +486,7 @@ export default function OperationsBoard() {
               value={siteId ?? ""}
               onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}
             >
-              <option value="all">Todos os sites</option>
+              <option value="all">{p.allSites}</option>
               {sites.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -288,32 +498,32 @@ export default function OperationsBoard() {
       />
 
       {loading && !board ? (
-        <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+        <p style={{ color: "var(--text-muted)" }}>{p.loading}</p>
       ) : (
         <>
           <div className="ops-stat-row">
             <div className="stat-grid" style={{ flex: 1, marginBottom: 0, gridTemplateColumns: "repeat(6, 1fr)" }}>
-              <StatCard label="Atividades Planejadas" value={stats?.planned ?? 0} />
-              <StatCard label="Em Execução" value={stats?.active ?? 0} />
-              <StatCard label="Concluídas" value={stats?.completed ?? 0} />
-              <StatCard label="Pendentes" value={stats?.pending ?? 0} />
-              <StatCard label="Técnicos no Site" value={stats?.technicians_on_site ?? 0} />
-              <StatCard label="Técnicos Ausentes" value={stats?.technicians_absent ?? 0} />
+              <StatCard label={p.statPlanned} value={stats?.planned ?? 0} />
+              <StatCard label={p.statActive} value={stats?.active ?? 0} />
+              <StatCard label={p.statCompleted} value={stats?.completed ?? 0} />
+              <StatCard label={p.statPending} value={stats?.pending ?? 0} />
+              <StatCard label={p.statOnSite} value={stats?.technicians_on_site ?? 0} />
+              <StatCard label={p.statAbsent} value={stats?.technicians_absent ?? 0} />
             </div>
             <div className="ops-progress-card">
               <div className="ops-progress-ring" style={{ ["--pct" as string]: stats?.progress_pct ?? 0 }}>
                 <div className="ops-progress-ring-inner">{stats?.progress_pct ?? 0}%</div>
               </div>
-              <div className="ops-progress-label">Progresso do Dia</div>
+              <div className="ops-progress-label">{p.progressLabel}</div>
             </div>
           </div>
 
           <div className="ops-columns">
             <div className="ops-tech-card">
               <button type="button" className="ops-card-head ops-card-head-toggle" onClick={() => setTechOpen((v) => !v)}>
-                <div className="ops-card-title">Técnicos</div>
+                <div className="ops-card-title">{p.techCardTitle}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div className="ops-card-hint">{technicians.length} no site hoje</div>
+                  <div className="ops-card-hint">{p.techCardHint(technicians.length)}</div>
                   <Icon name={techOpen ? "expand_less" : "expand_more"} style={{ fontSize: 20, color: "var(--text-faint)" }} />
                 </div>
               </button>
@@ -375,11 +585,11 @@ export default function OperationsBoard() {
                         </div>
                         <div className="ops-tech-status" style={{ color: dotColor }}>
                           {busyStatus === "in_progress"
-                            ? "Em execução"
+                            ? p.statusInProgress
                             : busyStatus === "paused"
-                              ? "Pausado"
+                              ? p.statusPaused
                               : tech.presence_status_display}
-                          {tech.current_tasks.length > 1 && ` · ${tech.current_tasks.length} tarefas abertas`}
+                          {tech.current_tasks.length > 1 && p.openTasks(tech.current_tasks.length)}
                         </div>
                         {tech.current_tasks.map((t) => (
                           <div key={t.id} className="ops-tech-current">
@@ -404,7 +614,7 @@ export default function OperationsBoard() {
                       <button
                         type="button"
                         className="ops-tech-absence-btn"
-                        title="Ausências planejadas (férias, atestado, folga)"
+                        title={p.absenceTitle}
                         onClick={(e) => {
                           e.stopPropagation();
                           setAbsenceTech({ id: tech.id, name: tech.name });
@@ -429,20 +639,20 @@ export default function OperationsBoard() {
                   <div key={primary.id} className="ops-pair-group">
                     <div className="ops-pair-label">
                       <Icon name="groups" style={{ fontSize: 13 }} />
-                      Dupla
+                      {p.pairLabel}
                     </div>
                     {content}
                   </div>
                 );
               })}
-              {techOpen && technicians.length === 0 && <div className="empty-state">Nenhum técnico vinculado a este site.</div>}
+              {techOpen && technicians.length === 0 && <div className="empty-state">{p.noTechLinked}</div>}
             </div>
 
             <div className="ops-pool-card">
               <button type="button" className="ops-card-head ops-card-head-toggle" onClick={() => setPoolOpen((v) => !v)}>
-                <div className="ops-card-title">Pool de Atividades do Dia</div>
+                <div className="ops-card-title">{p.poolTitle}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div className="ops-card-hint">{pool.length} pendentes</div>
+                  <div className="ops-card-hint">{p.poolHint(pool.length)}</div>
                   <Icon name={poolOpen ? "expand_less" : "expand_more"} style={{ fontSize: 20, color: "var(--text-faint)" }} />
                 </div>
               </button>
@@ -452,11 +662,11 @@ export default function OperationsBoard() {
                     <div className="ops-dispatch-bar">
                       <span className="ops-dispatch-bar-text">
                         {selectedTechs.length === 0
-                          ? "Selecione um técnico disponível na coluna ao lado"
-                          : `${selectedTechs.length} técnico(s) selecionado(s)`}
+                          ? p.dispatchSelectTech
+                          : p.dispatchTechsSelected(selectedTechs.length)}
                       </span>
                       <button className="btn btn-primary btn-sm" disabled={selectedTechs.length === 0 || dispatching} onClick={dispatch}>
-                        {dispatching ? "Despachando..." : "Despachar"}
+                        {dispatching ? p.dispatching : p.dispatch}
                       </button>
                     </div>
                   )}
@@ -464,12 +674,12 @@ export default function OperationsBoard() {
                     <table className="table">
                       <thead>
                         <tr>
-                          <th>Atividade</th>
-                          <th>Projeto</th>
-                          {siteId === "all" && <th>Site</th>}
-                          <th>Duração Est.</th>
-                          <th>Status</th>
-                          <th>Ações</th>
+                          <th>{p.colActivity}</th>
+                          <th>{p.colProject}</th>
+                          {siteId === "all" && <th>{p.colSite}</th>}
+                          <th>{p.colDuration}</th>
+                          <th>{p.colStatus}</th>
+                          <th>{p.colActions}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -499,11 +709,11 @@ export default function OperationsBoard() {
                             <td>
                               {task.assignees.length > 0 ? (
                                 <span className="badge" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>
-                                  Despachada · {task.assignees.map((a) => a.name).join(", ")}
+                                  {p.badgeDispatched(task.assignees.map((a) => a.name).join(", "))}
                                 </span>
                               ) : (
                                 <span className="badge" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>
-                                  Aguardando despacho
+                                  {p.badgeWaiting}
                                 </span>
                               )}
                             </td>
@@ -516,7 +726,7 @@ export default function OperationsBoard() {
                                     selectTask(task.id);
                                   }}
                                 >
-                                  Despachar
+                                  {p.dispatchBtn}
                                 </button>
                                 {task.assignees.length > 0 && (
                                   <button
@@ -528,7 +738,7 @@ export default function OperationsBoard() {
                                       handleUndispatch(task.id);
                                     }}
                                   >
-                                    {undispatchingId === task.id ? "Removendo..." : "Remover Despacho"}
+                                    {undispatchingId === task.id ? p.removing : p.removeDispatch}
                                   </button>
                                 )}
                               </div>
@@ -537,7 +747,7 @@ export default function OperationsBoard() {
                         ))}
                       </tbody>
                     </table>
-                    {pool.length === 0 && <div className="table-empty">Nenhuma atividade pendente neste site.</div>}
+                    {pool.length === 0 && <div className="table-empty">{p.noPoolActivity}</div>}
                   </div>
                 </>
               )}
@@ -547,7 +757,7 @@ export default function OperationsBoard() {
           <div className="tod-layout" style={{ marginTop: 16 }}>
             <div className="tod-tech-panel">
               <div className="tod-panel-head">
-                <div className="tod-tech-title">TÉCNICOS ({techRows.length})</div>
+                <div className="tod-tech-title">{p.techniciansLabel(techRows.length)}</div>
                 <div className="tod-ruler">
                   {HOURS.map((h) => (
                     <span
@@ -571,18 +781,21 @@ export default function OperationsBoard() {
                   ))}
                   <div className="tod-now-line" style={{ left: `${nowPct}%` }}>
                     <div className="tod-now-tag">
-                      {nowDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      {nowDate.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
                     </div>
                     <div className="tod-now-dot" />
                   </div>
                 </div>
 
                 {techRows.map(({ tech, lanedSegments, laneCount, doneCount, pendingCount }, rowIdx) => {
-                  const badge = techStatusBadge(tech);
+                  const badgeColor = techStatusColor(tech);
+                  const badgeLabel = techStatusLabel(tech);
                   const rowHeight = laneCount <= 1 ? 88 : 36 + laneCount * 52;
                   const barH = 22;
                   const barT = (lane: number) => 8 + lane * 52;
                   const notStarted = notStartedBars({ tech, lanedSegments, laneCount, doneCount, pendingCount });
+                  const doneLabel = doneCount === 1 ? p.finishedSingular : p.finishedPlural;
+                  const pendLabel = pendingCount === 1 ? p.pendingSingular : p.pendingPlural;
                   return (
                     <div
                       key={tech.id}
@@ -594,21 +807,21 @@ export default function OperationsBoard() {
                         <div className="tod-row-name-line">
                           <div className="tod-row-avatar">
                             {initials(tech.name)}
-                            <span className="tod-row-avatar-dot" style={{ background: badge.color }} />
+                            <span className="tod-row-avatar-dot" style={{ background: badgeColor }} />
                           </div>
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div className="tod-row-name">{tech.name}</div>
                             <span
                               className="tod-status-badge"
-                              style={{ background: `color-mix(in srgb, ${badge.color} 16%, white)`, color: badge.color }}
+                              style={{ background: `color-mix(in srgb, ${badgeColor} 16%, white)`, color: badgeColor }}
                             >
-                              {badge.label}
+                              {badgeLabel}
                             </span>
                           </div>
                         </div>
                         <div className="tod-row-sites">{tech.site_name}</div>
                         <div className="tod-row-stats">
-                          {doneCount} finalizada{doneCount === 1 ? "" : "s"} · {pendingCount} pendente{pendingCount === 1 ? "" : "s"}
+                          {doneCount} {doneLabel} · {pendingCount} {pendLabel}
                         </div>
                       </div>
                       {lanedSegments.length === 0 && notStarted.length === 0 ? (
@@ -673,50 +886,50 @@ export default function OperationsBoard() {
                   );
                 })}
               </div>
-              {techRows.length === 0 && <div className="empty-state">Nenhum técnico vinculado a este site.</div>}
+              {techRows.length === 0 && <div className="empty-state">{p.noTechLinked}</div>}
               <div className="tl-legend-row tod-legend-row">
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: DONE_COLOR }} />
-                  Concluída
+                  {p.legendDone}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: BUSY_COLOR.in_progress }} />
-                  Em execução
+                  {p.legendInProgress}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.available }} />
-                  Disponível
+                  {p.legendAvailable}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: BUSY_COLOR.paused }} />
-                  Pausa
+                  {p.legendPaused}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.lunch }} />
-                  Horário de Almoço
+                  {p.legendLunch}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.personal }} />
-                  Particular
+                  {p.legendPersonal}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.site_blocked }} />
-                  Sem Acesso ao Site
+                  {p.legendSiteBlocked}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.awaiting_release }} />
-                  Aguardando Liberações
+                  {p.legendAwaiting}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch tod-legend-notstarted" />
-                  Não iniciado / Fim de Expediente
+                  {p.legendNotStarted}
                 </div>
               </div>
             </div>
 
             <div className="tod-side-panel">
               <div className="tod-side-head">
-                <div className="tod-side-title">Próximas atividades / Operações</div>
+                <div className="tod-side-title">{p.sidePanelTitle}</div>
                 <button type="button" className="tod-filter-btn" onClick={() => setPoolOpen(true)} title="Ver pool completo">
                   <Icon name="filter_list" style={{ fontSize: 16 }} />
                 </button>
@@ -740,7 +953,7 @@ export default function OperationsBoard() {
                 {otherGroups.length > 0 && (
                   <div className="tod-others-row" onClick={() => setOthersOpen((v) => !v)}>
                     <span>
-                      Outros técnicos ({otherGroups.length})
+                      {p.othersLabel(otherGroups.length)}
                     </span>
                     <Icon name={othersOpen ? "expand_less" : "chevron_right"} style={{ fontSize: 18 }} />
                   </div>
@@ -760,15 +973,15 @@ export default function OperationsBoard() {
                       ))}
                     </div>
                   ))}
-                {techsWithQueue.length === 0 && <div className="empty-state">Nenhuma atividade pendente na fila.</div>}
+                {techsWithQueue.length === 0 && <div className="empty-state">{p.noQueueActivity}</div>}
               </div>
               <button type="button" className="tod-viewall-link" onClick={() => setPoolOpen(true)}>
-                Ver todas as atividades do dia
+                {p.viewAll}
                 <Icon name="arrow_forward" style={{ fontSize: 15 }} />
               </button>
             </div>
           </div>
-          <div className="tod-footer-hint">Clique em uma atividade para ver detalhes completos.</div>
+          <div className="tod-footer-hint">{p.footerHint}</div>
         </>
       )}
       {todPopup && (
@@ -785,10 +998,10 @@ export default function OperationsBoard() {
               <div className="tl-popup-label">{todPopup.label}</div>
               <div className="tl-popup-time">
                 {formatTime(todPopup.start.toISOString())}
-                {todPopup.end ? ` – ${formatTime(todPopup.end.toISOString())}` : " – em andamento"}
+                {todPopup.end ? ` – ${formatTime(todPopup.end.toISOString())}` : p.inProgress}
               </div>
             </div>
-            <button className="tl-popup-close" onClick={() => setTodPopup(null)} aria-label="Fechar">×</button>
+            <button className="tl-popup-close" onClick={() => setTodPopup(null)} aria-label={p.closeLabel}>×</button>
           </div>
         </>
       )}

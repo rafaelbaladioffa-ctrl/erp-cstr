@@ -3,6 +3,7 @@ import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsTimeline } from "../api/types";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
+import { usePageText } from "../i18n";
 import {
   BUSY_COLOR,
   DONE_COLOR,
@@ -18,6 +19,111 @@ import {
   pct,
   reorderRowsByPair,
 } from "../utils/timeline";
+
+const TEXT = {
+  "pt-BR": {
+    eyebrow: "Central de Operações",
+    title: "Timeline Operacional",
+    subtitle: "Visão em Gantt — histórico por técnico",
+    prevDay: "Dia anterior",
+    nextDay: "Próximo dia",
+    today: "Hoje",
+    viewDay: "Dia",
+    viewWeek: "Semana",
+    viewMonth: "Mês",
+    comingSoon: "Em breve",
+    filters: "Filtros",
+    siteLabel: "Site",
+    allSites: "Todos os sites",
+    techniciansLabel: (n: number) => `Técnicos${n > 0 ? ` (${n} selecionado(s))` : ""}`,
+    clearSelection: "Limpar seleção",
+    loading: "Carregando...",
+    legendDone: "Concluída",
+    legendInProgress: "Em execução",
+    legendAvailable: "Disponível",
+    legendPause: "Pausa",
+    legendLunch: "Horário de Almoço",
+    legendPersonal: "Particular",
+    legendSiteBlocked: "Sem Acesso ao Site",
+    legendAwaitingRelease: "Aguardando Liberações",
+    legendIdle: "Não iniciado / Fim de Expediente",
+    doneCount: (n: number) => `${n} finalizada${n === 1 ? "" : "s"}`,
+    nowPrefix: "agora ",
+    noActivity: "Sem atividade neste dia",
+    inProgress: " – em andamento",
+    closePopup: "Fechar",
+    noTechForDate: (d: string) => `Nenhum técnico encontrado para ${d}.`,
+    noFilteredTech: "Nenhum dos técnicos selecionados está disponível neste filtro.",
+  },
+  "en-US": {
+    eyebrow: "Operations Center",
+    title: "Operational Timeline",
+    subtitle: "Gantt view — history by technician",
+    prevDay: "Previous day",
+    nextDay: "Next day",
+    today: "Today",
+    viewDay: "Day",
+    viewWeek: "Week",
+    viewMonth: "Month",
+    comingSoon: "Coming soon",
+    filters: "Filters",
+    siteLabel: "Site",
+    allSites: "All sites",
+    techniciansLabel: (n: number) => `Technicians${n > 0 ? ` (${n} selected)` : ""}`,
+    clearSelection: "Clear selection",
+    loading: "Loading...",
+    legendDone: "Completed",
+    legendInProgress: "In progress",
+    legendAvailable: "Available",
+    legendPause: "Break",
+    legendLunch: "Lunch break",
+    legendPersonal: "Personal",
+    legendSiteBlocked: "No Site Access",
+    legendAwaitingRelease: "Awaiting Releases",
+    legendIdle: "Not started / End of shift",
+    doneCount: (n: number) => `${n} completed`,
+    nowPrefix: "now ",
+    noActivity: "No activity on this day",
+    inProgress: " – in progress",
+    closePopup: "Close",
+    noTechForDate: (d: string) => `No technician found for ${d}.`,
+    noFilteredTech: "None of the selected technicians are available in this filter.",
+  },
+  "es-ES": {
+    eyebrow: "Centro de Operaciones",
+    title: "Línea de Tiempo Operacional",
+    subtitle: "Vista Gantt — historial por técnico",
+    prevDay: "Día anterior",
+    nextDay: "Día siguiente",
+    today: "Hoy",
+    viewDay: "Día",
+    viewWeek: "Semana",
+    viewMonth: "Mes",
+    comingSoon: "Próximamente",
+    filters: "Filtros",
+    siteLabel: "Sitio",
+    allSites: "Todos los sitios",
+    techniciansLabel: (n: number) => `Técnicos${n > 0 ? ` (${n} seleccionado(s))` : ""}`,
+    clearSelection: "Limpiar selección",
+    loading: "Cargando...",
+    legendDone: "Completada",
+    legendInProgress: "En ejecución",
+    legendAvailable: "Disponible",
+    legendPause: "Pausa",
+    legendLunch: "Hora de almuerzo",
+    legendPersonal: "Personal",
+    legendSiteBlocked: "Sin acceso al sitio",
+    legendAwaitingRelease: "Esperando liberaciones",
+    legendIdle: "No iniciado / Fin de jornada",
+    doneCount: (n: number) => `${n} finalizada${n === 1 ? "" : "s"}`,
+    nowPrefix: "ahora ",
+    noActivity: "Sin actividad en este día",
+    inProgress: " – en curso",
+    closePopup: "Cerrar",
+    noTechForDate: (d: string) => `No se encontró técnico para ${d}.`,
+    noFilteredTech: "Ninguno de los técnicos seleccionados está disponible en este filtro.",
+  },
+};
 
 type BarPopup = {
   key: string;
@@ -47,6 +153,7 @@ function todayISO() {
 type ViewMode = "day" | "week" | "month";
 
 export default function TimelineOperacional() {
+  const p = usePageText(TEXT);
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState<number | "all">("all");
   const [selectedTechIds, setSelectedTechIds] = useState<number[]>([]);
@@ -107,46 +214,46 @@ export default function TimelineOperacional() {
 
   return (
     <div>
-      <PageHeader eyebrow="Central de Operações" title="Timeline Operacional" subtitle="Visão em Gantt — histórico por técnico" />
+      <PageHeader eyebrow={p.eyebrow} title={p.title} subtitle={p.subtitle} />
 
       <div className="tl-toolbar">
         <div className="tl-date-nav">
-          <button className="tl-nav-btn" onClick={() => setDate((d) => shiftDate(d, -1))} aria-label="Dia anterior">
+          <button className="tl-nav-btn" onClick={() => setDate((d) => shiftDate(d, -1))} aria-label={p.prevDay}>
             <Icon name="chevron_left" style={{ fontSize: 18 }} />
           </button>
           <input type="date" className="input" style={{ width: 150 }} value={date} onChange={(e) => setDate(e.target.value)} />
-          <button className="tl-nav-btn" onClick={() => setDate((d) => shiftDate(d, 1))} aria-label="Próximo dia">
+          <button className="tl-nav-btn" onClick={() => setDate((d) => shiftDate(d, 1))} aria-label={p.nextDay}>
             <Icon name="chevron_right" style={{ fontSize: 18 }} />
           </button>
           <button className="btn btn-outline btn-sm" onClick={() => setDate(todayISO())}>
-            Hoje
+            {p.today}
           </button>
         </div>
 
         <div className="tl-view-toggle">
           <button className={`tl-view-btn${viewMode === "day" ? " active" : ""}`} onClick={() => setViewMode("day")}>
-            Dia
+            {p.viewDay}
           </button>
-          <button className="tl-view-btn" disabled title="Em breve">
-            Semana
+          <button className="tl-view-btn" disabled title={p.comingSoon}>
+            {p.viewWeek}
           </button>
-          <button className="tl-view-btn" disabled title="Em breve">
-            Mês
+          <button className="tl-view-btn" disabled title={p.comingSoon}>
+            {p.viewMonth}
           </button>
         </div>
 
         <button className="btn btn-outline btn-sm" onClick={() => setFiltersOpen((v) => !v)}>
           <Icon name="filter_list" style={{ fontSize: 16 }} />
-          Filtros
+          {p.filters}
         </button>
       </div>
 
       {filtersOpen && (
         <div className="tl-filters-panel">
           <div className="field-group">
-            <label className="field-label">Site</label>
+            <label className="field-label">{p.siteLabel}</label>
             <select className="select" value={siteId} onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}>
-              <option value="all">Todos os sites</option>
+              <option value="all">{p.allSites}</option>
               {sites.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -156,7 +263,7 @@ export default function TimelineOperacional() {
           </div>
           <div className="field-group">
             <label className="field-label">
-              Técnicos {selectedTechIds.length > 0 && `(${selectedTechIds.length} selecionado(s))`}
+              {p.techniciansLabel(selectedTechIds.length)}
             </label>
             <select
               multiple
@@ -173,7 +280,7 @@ export default function TimelineOperacional() {
             </select>
             {selectedTechIds.length > 0 && (
               <button className="btn btn-outline btn-sm" style={{ marginTop: 6 }} onClick={() => setSelectedTechIds([])}>
-                Limpar seleção
+                {p.clearSelection}
               </button>
             )}
           </div>
@@ -181,45 +288,45 @@ export default function TimelineOperacional() {
       )}
 
       {loading && !data ? (
-        <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+        <p style={{ color: "var(--text-muted)" }}>{p.loading}</p>
       ) : (
         <div className="tl-card">
           <div className="tl-legend-row">
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: DONE_COLOR }} />
-              Concluída
+              {p.legendDone}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: BUSY_COLOR.in_progress }} />
-              Em execução
+              {p.legendInProgress}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.available }} />
-              Disponível
+              {p.legendAvailable}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: BUSY_COLOR.paused }} />
-              Pausa
+              {p.legendPause}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.lunch }} />
-              Horário de Almoço
+              {p.legendLunch}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.personal }} />
-              Particular
+              {p.legendPersonal}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.site_blocked }} />
-              Sem Acesso ao Site
+              {p.legendSiteBlocked}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.awaiting_release }} />
-              Aguardando Liberações
+              {p.legendAwaitingRelease}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: "var(--text-faint)" }} />
-              Não iniciado / Fim de Expediente
+              {p.legendIdle}
             </div>
           </div>
 
@@ -236,7 +343,7 @@ export default function TimelineOperacional() {
                         {siteId === "all" && <span className="tl-row-site"> · {tech.site_name}</span>}
                       </div>
                       <div className="tl-row-overview">
-                        {doneCount} finalizada{doneCount === 1 ? "" : "s"}
+                        {p.doneCount(doneCount)}
                       </div>
                     </div>
                   </div>
@@ -265,7 +372,7 @@ export default function TimelineOperacional() {
                 ))}
                 {nowPct != null && (
                   <div className="tl-now-line" style={{ left: `${nowPct}%` }}>
-                    <div className="tl-now-tag">agora {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+                    <div className="tl-now-tag">{p.nowPrefix}{now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
                     <div className="tl-now-dot" />
                   </div>
                 )}
@@ -276,7 +383,7 @@ export default function TimelineOperacional() {
                   return (
                     <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(0) }}>
                       <div className="tl-row-track">
-                        <div className="tl-idle-note">Sem atividade neste dia</div>
+                        <div className="tl-idle-note">{p.noActivity}</div>
                       </div>
                     </div>
                   );
@@ -326,8 +433,8 @@ export default function TimelineOperacional() {
           {techRows.length === 0 && (
             <div className="empty-state">
               {technicians.length === 0
-                ? `Nenhum técnico encontrado para ${formatDateBR(date)}.`
-                : "Nenhum dos técnicos selecionados está disponível neste filtro."}
+                ? p.noTechForDate(formatDateBR(date))
+                : p.noFilteredTech}
             </div>
           )}
         </div>
@@ -346,10 +453,10 @@ export default function TimelineOperacional() {
               <div className="tl-popup-label">{popup.label}</div>
               <div className="tl-popup-time">
                 {formatTime(popup.start.toISOString())}
-                {popup.end ? ` – ${formatTime(popup.end.toISOString())}` : " – em andamento"}
+                {popup.end ? ` – ${formatTime(popup.end.toISOString())}` : p.inProgress}
               </div>
             </div>
-            <button className="tl-popup-close" onClick={() => setPopup(null)} aria-label="Fechar">×</button>
+            <button className="tl-popup-close" onClick={() => setPopup(null)} aria-label={p.closePopup}>×</button>
           </div>
         </>
       )}
