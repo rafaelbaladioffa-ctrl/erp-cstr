@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { meApi } from "../api/resources";
 import { useAuth } from "../context/AuthContext";
+import { useI18n } from "../i18n";
 import Modal from "./ui/Modal";
 
 export default function AccountModal({ onClose }: { onClose: () => void }) {
   const { user, logout } = useAuth();
+  const { t } = useI18n();
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -20,33 +22,33 @@ export default function AccountModal({ onClose }: { onClose: () => void }) {
     setError("");
     setSuccess("");
     if (!oldPassword || !newPassword) {
-      setError("Preencha a senha atual e a nova senha.");
+      setError(t.account.errCamposObrigatorios);
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("A confirmação não confere com a nova senha.");
+      setError(t.account.errSenhasMismatch);
       return;
     }
     setSaving(true);
     try {
       const result = await meApi.changePassword(oldPassword, newPassword);
-      setSuccess(result.detail || "Senha alterada com sucesso.");
+      setSuccess(result.detail || t.account.sucesso);
       setOldPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      setError(axiosErr.response?.data?.detail || "Não foi possível alterar a senha.");
+      setError(axiosErr.response?.data?.detail || t.account.errDefault);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal title="Minha Conta" subtitle={`${displayName} · ${email}`} onClose={onClose} width={440}>
+    <Modal title={t.account.titulo} subtitle={`${displayName} · ${email}`} onClose={onClose} width={440}>
       <form onSubmit={handleSubmit}>
         <label className="form-label" style={{ marginTop: 0 }}>
-          Senha atual
+          {t.account.senhaAtual}
         </label>
         <input
           className="input"
@@ -56,7 +58,7 @@ export default function AccountModal({ onClose }: { onClose: () => void }) {
           autoComplete="current-password"
         />
 
-        <label className="form-label">Nova senha</label>
+        <label className="form-label">{t.account.novaSenha}</label>
         <input
           className="input"
           type="password"
@@ -65,7 +67,7 @@ export default function AccountModal({ onClose }: { onClose: () => void }) {
           autoComplete="new-password"
         />
 
-        <label className="form-label">Confirmar nova senha</label>
+        <label className="form-label">{t.account.confirmarSenha}</label>
         <input
           className="input"
           type="password"
@@ -79,10 +81,10 @@ export default function AccountModal({ onClose }: { onClose: () => void }) {
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
           <button type="button" className="btn btn-outline" onClick={logout}>
-            Sair da conta
+            {t.account.sairConta}
           </button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? "Salvando..." : "Alterar senha"}
+            {saving ? t.account.salvando : t.account.salvarSenha}
           </button>
         </div>
       </form>

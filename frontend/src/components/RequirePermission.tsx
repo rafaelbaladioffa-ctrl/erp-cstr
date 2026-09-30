@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useI18n } from "../i18n";
 import { hasPerm } from "../utils/permissions";
 
 export default function RequirePermission({
@@ -10,8 +11,9 @@ export default function RequirePermission({
   children: ReactElement;
 }) {
   const { user } = useAuth();
+  const { t } = useI18n();
   if (!hasPerm(user, permission)) {
-    return <p style={{ padding: 32, color: "#526174" }}>Você não tem permissão para acessar esta área.</p>;
+    return <p style={{ padding: 32, color: "#526174" }}>{t.permission.semAcesso}</p>;
   }
   return children;
 }

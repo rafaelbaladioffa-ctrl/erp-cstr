@@ -14,18 +14,11 @@ import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
+import { useI18n, usePageText } from "../i18n";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 type DetailTab = "overview" | "tasks" | "hours" | "occurrences" | "attachments";
-
-const TASK_STATUS_OPTIONS = [
-  { value: "not_started", label: "Não Iniciada" },
-  { value: "in_progress", label: "Em Andamento" },
-  { value: "paused", label: "Pausada" },
-  { value: "completed", label: "Concluída" },
-  { value: "canceled", label: "Cancelada" },
-];
 
 type TaskSortColumn = "task_name" | "status" | "technicians";
 
@@ -36,10 +29,374 @@ const SEVERITY_TONE: Record<string, { bg: string; color: string }> = {
   critical: { bg: "var(--red-soft)", color: "var(--red)" },
 };
 
+const TEXT = {
+  "pt-BR": {
+    loading: "Carregando...",
+    notFound: "Projeto não encontrado.",
+    backToProjects: "Voltar para Projetos",
+    projectOptions: "Opções do Projeto",
+    editProject: "Editar Projeto",
+    closeProject: "Encerrar Projeto",
+    confirmCloseProject: (name: string) => `Encerrar o projeto "${name}"? Esta ação marcará o projeto como encerrado.`,
+    tasksProgress: (n: number, total: number) => `${n} de ${total} tarefas`,
+    rackPositions: "Rack Positions",
+    importBulk: "Importar em massa",
+    add: "Adicionar",
+    thRackPosition: "Rack Position",
+    thDH: "DH",
+    thLinks: "Links",
+    thUTP: "UTP",
+    thActions: "Ações",
+    noRackPositions: "Nenhuma Rack Position cadastrada ainda.",
+    importing: "Importando...",
+    importFromProjectType: "Importar do Tipo de Projeto",
+    addFromCatalog: "Adicionar do Catálogo",
+    addCustom: "Adicionar Avulsas",
+    newTask: "Nova Tarefa",
+    searchPlaceholder: "Buscar por nome da tarefa...",
+    searchLabel: "Buscar",
+    statusLabel: "Status",
+    statusAll: "Todos",
+    taskStatusOptions: [
+      { value: "not_started", label: "Não Iniciada" },
+      { value: "in_progress", label: "Em Andamento" },
+      { value: "paused", label: "Pausada" },
+      { value: "completed", label: "Concluída" },
+      { value: "canceled", label: "Cancelada" },
+    ],
+    thTask: "Tarefa",
+    thPath: "Path",
+    thQty: "Qtd.",
+    thStatus: "Status",
+    thTechnicians: "Técnicos",
+    noTasksEmpty: "Nenhuma tarefa cadastrada.",
+    noTasksFiltered: "Nenhuma tarefa encontrada com esse filtro.",
+    scopeItemTitle: (code: string) => `Item de Escopo: ${code}`,
+    importSuccess: (n: number) => `${n} Tarefa(s) do Tipo de Projeto adicionada(s) com sucesso.`,
+    importNone: "Nenhuma nova Tarefa foi adicionada. Verifique os vínculos do Tipo de Projeto ou as tarefas já existentes.",
+    importError: "Não foi possível importar as tarefas.",
+    confirmDeleteRack: (pos: string) => `Excluir o Rack Position "${pos}"?`,
+    confirmDeleteTask: (name: string) => `Excluir a tarefa "${name}" do projeto?`,
+    confirmDeleteOccurrence: (title: string) => `Excluir a ocorrência "${title}"?`,
+    confirmDeleteAttachment: (name: string) => `Excluir o anexo "${name}"?`,
+    hoursByTech: "Por Técnico",
+    hoursByTask: "Por Tarefa",
+    thTechnician: "Técnico",
+    thHours: "Horas Trabalhadas",
+    noHours: "Nenhuma hora registrada ainda.",
+    occurrences: "Ocorrências",
+    newOccurrence: "Nova Ocorrência",
+    thTitle: "Título",
+    thResponsible: "Responsável",
+    thSeverity: "Criticidade",
+    thDate: "Data",
+    noOccurrences: "Nenhuma ocorrência registrada.",
+    attachFile: "Anexar arquivo",
+    fileLabel: "Arquivo",
+    descriptionLabel: "Descrição (opcional)",
+    descriptionPlaceholder: "Ex: Planta baixa atualizada",
+    uploading: "Enviando...",
+    send: "Enviar",
+    thFile: "Arquivo",
+    thDescription: "Descrição",
+    thSize: "Tamanho",
+    thUploadedBy: "Enviado por",
+    noAttachments: "Nenhum arquivo anexado.",
+    sections: "Seções",
+    tabLabels: { overview: "Visão geral", tasks: "Tarefas", hours: "Horas trabalhadas", occurrences: "Ocorrências", attachments: "Anexos" },
+    pendingBadge: (n: number) => `${n} pendente${n > 1 ? "s" : ""}`,
+    doneBadge: (done: number, total: number) => `${done}/${total}`,
+    responsible: "Responsáveis",
+    client: "Cliente",
+    cstr: "CSTR",
+    schedule: "Cronograma",
+    start: "Início",
+    deadline: "Prazo",
+    end: "Término",
+    metaClient: "Cliente",
+    metaSite: "Site",
+    metaCategory: "Categoria",
+    bulkTitle: "Adicionar Tarefas Avulsas",
+    bulkHelp: "Um nome de tarefa por linha. Essas tarefas não vêm do catálogo — ficam exclusivas deste projeto.",
+    progressLabel: "Progresso geral",
+    pendingTask: "Tarefa pendente",
+    pendingTasks: "Tarefas pendentes",
+    hoursWorked: "Horas trabalhadas",
+    occurrencesLabel: "Ocorrências",
+    timeline: "Linha do tempo",
+    timelineStart: "Início: ",
+    timelineDeadline: "Prazo: ",
+    today: "Hoje",
+    durationPrefix: "Duração: ",
+    durationDays: (n: number) => `${n} dias`,
+    daysOverdue: (n: number) => `${n} dias em atraso`,
+    deadlineToday: "Prazo hoje",
+    daysLeft: (n: number) => `${n} dias restantes`,
+    statusDist: "Distribuição de status",
+    concluded: "concl.",
+    donutLabels: [
+      { color: "#3B6D11", label: "Concluída" },
+      { color: "#185FA5", label: "Em andamento" },
+      { color: "#BA7517", label: "Não iniciada" },
+      { color: "#A32D2D", label: "Cancelada" },
+    ],
+    activityProgress: "Progresso por tipo de atividade",
+    noTasksOverview: "Nenhuma tarefa cadastrada.",
+    top6: "* exibindo top 6 grupos",
+    pendingHighlight: "Pendências em destaque",
+    allDone: "Todas as tarefas concluídas!",
+    morePending: (n: number) => `+ ${n} pendentes · `,
+    seeAllTasks: "ver todas as tarefas →",
+    description: "Descrição",
+  },
+  "en-US": {
+    loading: "Loading...",
+    notFound: "Project not found.",
+    backToProjects: "Back to Projects",
+    projectOptions: "Project Options",
+    editProject: "Edit Project",
+    closeProject: "Close Project",
+    confirmCloseProject: (name: string) => `Close project "${name}"? This action will mark the project as closed.`,
+    tasksProgress: (n: number, total: number) => `${n} of ${total} tasks`,
+    rackPositions: "Rack Positions",
+    importBulk: "Bulk import",
+    add: "Add",
+    thRackPosition: "Rack Position",
+    thDH: "DH",
+    thLinks: "Links",
+    thUTP: "UTP",
+    thActions: "Actions",
+    noRackPositions: "No Rack Positions registered yet.",
+    importing: "Importing...",
+    importFromProjectType: "Import from Project Type",
+    addFromCatalog: "Add from Catalog",
+    addCustom: "Add Custom Tasks",
+    newTask: "New Task",
+    searchPlaceholder: "Search by task name...",
+    searchLabel: "Search",
+    statusLabel: "Status",
+    statusAll: "All",
+    taskStatusOptions: [
+      { value: "not_started", label: "Not Started" },
+      { value: "in_progress", label: "In Progress" },
+      { value: "paused", label: "Paused" },
+      { value: "completed", label: "Completed" },
+      { value: "canceled", label: "Canceled" },
+    ],
+    thTask: "Task",
+    thPath: "Path",
+    thQty: "Qty.",
+    thStatus: "Status",
+    thTechnicians: "Technicians",
+    noTasksEmpty: "No tasks registered.",
+    noTasksFiltered: "No tasks found with this filter.",
+    scopeItemTitle: (code: string) => `Scope Item: ${code}`,
+    importSuccess: (n: number) => `${n} Task(s) from Project Type added successfully.`,
+    importNone: "No new Tasks were added. Check Project Type links or existing tasks.",
+    importError: "Could not import tasks.",
+    confirmDeleteRack: (pos: string) => `Delete Rack Position "${pos}"?`,
+    confirmDeleteTask: (name: string) => `Delete task "${name}" from project?`,
+    confirmDeleteOccurrence: (title: string) => `Delete occurrence "${title}"?`,
+    confirmDeleteAttachment: (name: string) => `Delete attachment "${name}"?`,
+    hoursByTech: "By Technician",
+    hoursByTask: "By Task",
+    thTechnician: "Technician",
+    thHours: "Hours Worked",
+    noHours: "No hours registered yet.",
+    occurrences: "Occurrences",
+    newOccurrence: "New Occurrence",
+    thTitle: "Title",
+    thResponsible: "Responsible",
+    thSeverity: "Severity",
+    thDate: "Date",
+    noOccurrences: "No occurrences registered.",
+    attachFile: "Attach file",
+    fileLabel: "File",
+    descriptionLabel: "Description (optional)",
+    descriptionPlaceholder: "E.g.: Updated floor plan",
+    uploading: "Uploading...",
+    send: "Send",
+    thFile: "File",
+    thDescription: "Description",
+    thSize: "Size",
+    thUploadedBy: "Uploaded by",
+    noAttachments: "No files attached.",
+    sections: "Sections",
+    tabLabels: { overview: "Overview", tasks: "Tasks", hours: "Hours worked", occurrences: "Occurrences", attachments: "Attachments" },
+    pendingBadge: (n: number) => `${n} pending`,
+    doneBadge: (done: number, total: number) => `${done}/${total}`,
+    responsible: "Responsible",
+    client: "Client",
+    cstr: "CSTR",
+    schedule: "Schedule",
+    start: "Start",
+    deadline: "Deadline",
+    end: "End",
+    metaClient: "Client",
+    metaSite: "Site",
+    metaCategory: "Category",
+    bulkTitle: "Add Custom Tasks",
+    bulkHelp: "One task name per line. These tasks are not from the catalog — they are exclusive to this project.",
+    progressLabel: "Overall progress",
+    pendingTask: "Pending task",
+    pendingTasks: "Pending tasks",
+    hoursWorked: "Hours worked",
+    occurrencesLabel: "Occurrences",
+    timeline: "Timeline",
+    timelineStart: "Start: ",
+    timelineDeadline: "Deadline: ",
+    today: "Today",
+    durationPrefix: "Duration: ",
+    durationDays: (n: number) => `${n} days`,
+    daysOverdue: (n: number) => `${n} days overdue`,
+    deadlineToday: "Deadline today",
+    daysLeft: (n: number) => `${n} days remaining`,
+    statusDist: "Status distribution",
+    concluded: "compl.",
+    donutLabels: [
+      { color: "#3B6D11", label: "Completed" },
+      { color: "#185FA5", label: "In progress" },
+      { color: "#BA7517", label: "Not started" },
+      { color: "#A32D2D", label: "Canceled" },
+    ],
+    activityProgress: "Progress by activity type",
+    noTasksOverview: "No tasks registered.",
+    top6: "* showing top 6 groups",
+    pendingHighlight: "Featured pending items",
+    allDone: "All tasks completed!",
+    morePending: (n: number) => `+ ${n} pending · `,
+    seeAllTasks: "see all tasks →",
+    description: "Description",
+  },
+  "es-ES": {
+    loading: "Cargando...",
+    notFound: "Proyecto no encontrado.",
+    backToProjects: "Volver a Proyectos",
+    projectOptions: "Opciones del Proyecto",
+    editProject: "Editar Proyecto",
+    closeProject: "Cerrar Proyecto",
+    confirmCloseProject: (name: string) => `¿Cerrar el proyecto "${name}"? Esta acción marcará el proyecto como cerrado.`,
+    tasksProgress: (n: number, total: number) => `${n} de ${total} tareas`,
+    rackPositions: "Rack Positions",
+    importBulk: "Importar en masa",
+    add: "Agregar",
+    thRackPosition: "Rack Position",
+    thDH: "DH",
+    thLinks: "Links",
+    thUTP: "UTP",
+    thActions: "Acciones",
+    noRackPositions: "Ninguna Rack Position registrada todavía.",
+    importing: "Importando...",
+    importFromProjectType: "Importar del Tipo de Proyecto",
+    addFromCatalog: "Agregar del Catálogo",
+    addCustom: "Agregar Tareas Sueltas",
+    newTask: "Nueva Tarea",
+    searchPlaceholder: "Buscar por nombre de tarea...",
+    searchLabel: "Buscar",
+    statusLabel: "Estado",
+    statusAll: "Todos",
+    taskStatusOptions: [
+      { value: "not_started", label: "No Iniciada" },
+      { value: "in_progress", label: "En Curso" },
+      { value: "paused", label: "Pausada" },
+      { value: "completed", label: "Completada" },
+      { value: "canceled", label: "Cancelada" },
+    ],
+    thTask: "Tarea",
+    thPath: "Path",
+    thQty: "Cant.",
+    thStatus: "Estado",
+    thTechnicians: "Técnicos",
+    noTasksEmpty: "Ninguna tarea registrada.",
+    noTasksFiltered: "Ninguna tarea encontrada con este filtro.",
+    scopeItemTitle: (code: string) => `Ítem de Alcance: ${code}`,
+    importSuccess: (n: number) => `${n} Tarea(s) del Tipo de Proyecto agregada(s) con éxito.`,
+    importNone: "No se agregó ninguna Tarea nueva. Verifique los vínculos del Tipo de Proyecto o las tareas ya existentes.",
+    importError: "No fue posible importar las tareas.",
+    confirmDeleteRack: (pos: string) => `¿Eliminar el Rack Position "${pos}"?`,
+    confirmDeleteTask: (name: string) => `¿Eliminar la tarea "${name}" del proyecto?`,
+    confirmDeleteOccurrence: (title: string) => `¿Eliminar la ocurrencia "${title}"?`,
+    confirmDeleteAttachment: (name: string) => `¿Eliminar el archivo adjunto "${name}"?`,
+    hoursByTech: "Por Técnico",
+    hoursByTask: "Por Tarea",
+    thTechnician: "Técnico",
+    thHours: "Horas Trabajadas",
+    noHours: "Ninguna hora registrada todavía.",
+    occurrences: "Ocurrencias",
+    newOccurrence: "Nueva Ocurrencia",
+    thTitle: "Título",
+    thResponsible: "Responsable",
+    thSeverity: "Criticidad",
+    thDate: "Fecha",
+    noOccurrences: "Ninguna ocurrencia registrada.",
+    attachFile: "Adjuntar archivo",
+    fileLabel: "Archivo",
+    descriptionLabel: "Descripción (opcional)",
+    descriptionPlaceholder: "Ej: Plano actualizado",
+    uploading: "Enviando...",
+    send: "Enviar",
+    thFile: "Archivo",
+    thDescription: "Descripción",
+    thSize: "Tamaño",
+    thUploadedBy: "Subido por",
+    noAttachments: "Ningún archivo adjunto.",
+    sections: "Secciones",
+    tabLabels: { overview: "Visión general", tasks: "Tareas", hours: "Horas trabajadas", occurrences: "Ocurrencias", attachments: "Adjuntos" },
+    pendingBadge: (n: number) => `${n} pendiente${n > 1 ? "s" : ""}`,
+    doneBadge: (done: number, total: number) => `${done}/${total}`,
+    responsible: "Responsables",
+    client: "Cliente",
+    cstr: "CSTR",
+    schedule: "Cronograma",
+    start: "Inicio",
+    deadline: "Plazo",
+    end: "Término",
+    metaClient: "Cliente",
+    metaSite: "Site",
+    metaCategory: "Categoría",
+    bulkTitle: "Agregar Tareas Sueltas",
+    bulkHelp: "Un nombre de tarea por línea. Estas tareas no vienen del catálogo — son exclusivas de este proyecto.",
+    progressLabel: "Progreso general",
+    pendingTask: "Tarea pendiente",
+    pendingTasks: "Tareas pendientes",
+    hoursWorked: "Horas trabajadas",
+    occurrencesLabel: "Ocurrencias",
+    timeline: "Línea de tiempo",
+    timelineStart: "Inicio: ",
+    timelineDeadline: "Plazo: ",
+    today: "Hoy",
+    durationPrefix: "Duración: ",
+    durationDays: (n: number) => `${n} días`,
+    daysOverdue: (n: number) => `${n} días de atraso`,
+    deadlineToday: "Plazo hoy",
+    daysLeft: (n: number) => `${n} días restantes`,
+    statusDist: "Distribución de estado",
+    concluded: "compl.",
+    donutLabels: [
+      { color: "#3B6D11", label: "Completada" },
+      { color: "#185FA5", label: "En curso" },
+      { color: "#BA7517", label: "No iniciada" },
+      { color: "#A32D2D", label: "Cancelada" },
+    ],
+    activityProgress: "Progreso por tipo de actividad",
+    noTasksOverview: "Ninguna tarea registrada.",
+    top6: "* mostrando top 6 grupos",
+    pendingHighlight: "Pendientes destacadas",
+    allDone: "¡Todas las tareas completadas!",
+    morePending: (n: number) => `+ ${n} pendientes · `,
+    seeAllTasks: "ver todas las tareas →",
+    description: "Descripción",
+  },
+};
+
+type PD = typeof TEXT["pt-BR"];
+
 export default function ProjectDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const projectId = Number(id);
+  const p = usePageText(TEXT);
+  const { locale } = useI18n();
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
@@ -96,11 +453,11 @@ export default function ProjectDetail() {
 
   const handleCloseProject = useCallback(async () => {
     if (!project) return;
-    if (!confirm(`Encerrar o projeto "${project.name}"? Esta ação marcará o projeto como encerrado.`)) return;
+    if (!confirm(p.confirmCloseProject(project.name))) return;
     setProjectMenuOpen(false);
     await projectsApi.update(project.id, { status: "closed" } as never);
     reload();
-  }, [project]);
+  }, [project, p]);
 
   const canAddRack = hasPerm(user, PERMS.addRackPosition);
   const canChangeRack = hasPerm(user, PERMS.changeRackPosition);
@@ -201,7 +558,7 @@ export default function ProjectDetail() {
   }
 
   async function handleDeleteRack(rp: RackPosition) {
-    if (!confirm(`Excluir o Rack Position "${rp.position}"?`)) return;
+    if (!confirm(p.confirmDeleteRack(rp.position))) return;
     await rackPositionsApi.remove(rp.id);
     reload();
   }
@@ -219,7 +576,7 @@ export default function ProjectDetail() {
   }
 
   async function handleDeleteTask(task: ProjectTask) {
-    if (!confirm(`Excluir a tarefa "${task.task_name}" do projeto?`)) return;
+    if (!confirm(p.confirmDeleteTask(task.task_name))) return;
     await projectTasksApi.remove(task.id);
     setSelectedTaskIds((prev) => prev.filter((id) => id !== task.id));
     reload();
@@ -236,7 +593,7 @@ export default function ProjectDetail() {
   }
 
   async function handleDeleteOccurrence(occurrence: ProjectOccurrence) {
-    if (!confirm(`Excluir a ocorrência "${occurrence.title}"?`)) return;
+    if (!confirm(p.confirmDeleteOccurrence(occurrence.title))) return;
     await projectOccurrencesApi.remove(occurrence.id);
     reloadOccurrences();
   }
@@ -257,7 +614,7 @@ export default function ProjectDetail() {
   }
 
   async function handleDeleteAttachment(attachment: ProjectAttachment) {
-    if (!confirm(`Excluir o anexo "${attachment.file_name}"?`)) return;
+    if (!confirm(p.confirmDeleteAttachment(attachment.file_name))) return;
     await projectAttachmentsApi.remove(attachment.id);
     reloadAttachments();
   }
@@ -279,14 +636,14 @@ export default function ProjectDetail() {
     try {
       const result = await projectsApi.importTasks(project.id);
       if (result.created) {
-        alert(`${result.created} Tarefa(s) do Tipo de Projeto adicionada(s) com sucesso.`);
+        alert(p.importSuccess(result.created));
       } else {
-        alert("Nenhuma nova Tarefa foi adicionada. Verifique os vínculos do Tipo de Projeto ou as tarefas já existentes.");
+        alert(p.importNone);
       }
       reload();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      alert(axiosErr.response?.data?.detail || "Não foi possível importar as tarefas.");
+      alert(axiosErr.response?.data?.detail || p.importError);
     } finally {
       setImportingTasks(false);
     }
@@ -338,8 +695,8 @@ export default function ProjectDetail() {
     return <Icon name={taskSortDirection === "asc" ? "arrow_upward" : "arrow_downward"} style={{ fontSize: 14, verticalAlign: "middle", marginLeft: 4 }} />;
   }
 
-  if (loading) return <p style={{ color: "var(--text-muted)" }}>Carregando...</p>;
-  if (!project) return <p style={{ color: "var(--text-muted)" }}>Projeto não encontrado.</p>;
+  if (loading) return <p style={{ color: "var(--text-muted)" }}>{p.loading}</p>;
+  if (!project) return <p style={{ color: "var(--text-muted)" }}>{p.notFound}</p>;
 
   const pendingTasks = tasks.filter((t) => t.status !== "completed" && t.status !== "canceled");
 
@@ -363,7 +720,7 @@ export default function ProjectDetail() {
             style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--text-muted)", textDecoration: "none", fontSize: 12, marginBottom: 10 }}
           >
             <Icon name="arrow_back" style={{ fontSize: 15 }} />
-            Voltar para Projetos
+            {p.backToProjects}
           </Link>
 
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20 }}>
@@ -384,19 +741,19 @@ export default function ProjectDetail() {
                 )}
                 {project.client_name && (
                   <div style={{ paddingRight: 16, borderRight: "1px solid var(--border)", marginRight: 16 }}>
-                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-faint)", marginBottom: 1 }}>Cliente</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-faint)", marginBottom: 1 }}>{p.metaClient}</div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{project.client_name}</div>
                   </div>
                 )}
                 {project.site_name && (
                   <div style={{ paddingRight: 16, borderRight: project.category_name ? "1px solid var(--border)" : "none", marginRight: project.category_name ? 16 : 0 }}>
-                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-faint)", marginBottom: 1 }}>Site</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-faint)", marginBottom: 1 }}>{p.metaSite}</div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{project.site_name}</div>
                   </div>
                 )}
                 {project.category_name && (
                   <div>
-                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-faint)", marginBottom: 1 }}>Categoria</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-faint)", marginBottom: 1 }}>{p.metaCategory}</div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{project.category_name}</div>
                   </div>
                 )}
@@ -408,7 +765,7 @@ export default function ProjectDetail() {
               <StatusBadge status={project.status} label={project.status_display} />
               <div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: "var(--orange)", lineHeight: 1 }}>{project.progress_percent}%</div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{project.completed_tasks} de {project.total_tasks} tarefas</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{p.tasksProgress(project.completed_tasks, project.total_tasks)}</div>
               </div>
               {/* dropdown de opções do projeto */}
               <div ref={projectMenuRef} style={{ position: "relative" }}>
@@ -417,7 +774,7 @@ export default function ProjectDetail() {
                   onClick={() => setProjectMenuOpen((v) => !v)}
                 >
                   <Icon name="settings" style={{ fontSize: 15 }} />
-                  Opções do Projeto
+                  {p.projectOptions}
                   <Icon name={projectMenuOpen ? "expand_less" : "expand_more"} style={{ fontSize: 15 }} />
                 </button>
                 {projectMenuOpen && (
@@ -434,7 +791,7 @@ export default function ProjectDetail() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
                     >
                       <Icon name="edit" style={{ fontSize: 15, color: "var(--text-muted)" }} />
-                      Editar Projeto
+                      {p.editProject}
                     </button>
                     <div style={{ height: 1, background: "var(--border)" }} />
                     <button
@@ -444,7 +801,7 @@ export default function ProjectDetail() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
                     >
                       <Icon name="do_not_disturb_on" style={{ fontSize: 15, color: "var(--danger)" }} />
-                      Encerrar Projeto
+                      {p.closeProject}
                     </button>
                   </div>
                 )}
@@ -470,6 +827,8 @@ export default function ProjectDetail() {
               descriptionOpen={descriptionOpen}
               setDescriptionOpen={setDescriptionOpen}
               onGoToTasks={() => handleNavClick("tasks")}
+              p={p}
+              locale={locale}
             />
           )}
 
@@ -479,17 +838,17 @@ export default function ProjectDetail() {
               {project.has_rack_positions && (
                 <>
                   <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
-                    <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>Rack Positions</h2>
+                    <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>{p.rackPositions}</h2>
                     <div className="section-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {canAddRack && (
                         <>
                           <button className="btn btn-outline btn-sm" onClick={() => setRackBulkOpen(true)}>
                             <Icon name="playlist_add" style={{ fontSize: 15 }} />
-                            Importar em massa
+                            {p.importBulk}
                           </button>
                           <button className="btn btn-primary btn-sm" onClick={() => setRackFormOpen(true)}>
                             <Icon name="add" style={{ fontSize: 15 }} />
-                            Adicionar
+                            {p.add}
                           </button>
                         </>
                       )}
@@ -500,11 +859,11 @@ export default function ProjectDetail() {
                       <table className="table">
                         <thead>
                           <tr>
-                            <th>Rack Position</th>
-                            <th>DH</th>
-                            <th>Links</th>
-                            <th>UTP</th>
-                            {(canChangeRack || canDeleteRack) && <th>Ações</th>}
+                            <th>{p.thRackPosition}</th>
+                            <th>{p.thDH}</th>
+                            <th>{p.thLinks}</th>
+                            <th>{p.thUTP}</th>
+                            {(canChangeRack || canDeleteRack) && <th>{p.thActions}</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -533,7 +892,7 @@ export default function ProjectDetail() {
                             </tr>
                           ))}
                           {rackPositions.length === 0 && (
-                            <tr><td colSpan={5}><div className="table-empty">Nenhuma Rack Position cadastrada ainda.</div></td></tr>
+                            <tr><td colSpan={5}><div className="table-empty">{p.noRackPositions}</div></td></tr>
                           )}
                         </tbody>
                       </table>
@@ -544,27 +903,27 @@ export default function ProjectDetail() {
 
               <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
                 <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>
-                  Tarefas <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)" }}>({project.completed_tasks} / {project.total_tasks})</span>
+                  {p.tabLabels.tasks} <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)" }}>({project.completed_tasks} / {project.total_tasks})</span>
                 </h2>
                 {canAddTask && (
                   <div className="section-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {project.project_type && (
                       <button className="btn btn-outline btn-sm" onClick={handleImportFromProjectType} disabled={importingTasks}>
                         <Icon name="library_add" style={{ fontSize: 15 }} />
-                        {importingTasks ? "Importando..." : "Importar do Tipo de Projeto"}
+                        {importingTasks ? p.importing : p.importFromProjectType}
                       </button>
                     )}
                     <button className="btn btn-outline btn-sm" onClick={() => setTaskCatalogOpen(true)}>
                       <Icon name="playlist_add" style={{ fontSize: 15 }} />
-                      Adicionar do Catálogo
+                      {p.addFromCatalog}
                     </button>
                     <button className="btn btn-outline btn-sm" onClick={() => setCustomTasksOpen(true)}>
                       <Icon name="edit_note" style={{ fontSize: 15 }} />
-                      Adicionar Avulsas
+                      {p.addCustom}
                     </button>
                     <button className="btn btn-primary btn-sm" onClick={() => setTaskFormOpen(true)}>
                       <Icon name="add" style={{ fontSize: 15 }} />
-                      Nova Tarefa
+                      {p.newTask}
                     </button>
                   </div>
                 )}
@@ -583,17 +942,17 @@ export default function ProjectDetail() {
 
               <div className="filter-row" style={{ marginBottom: 12 }}>
                 <div className="field-group" style={{ width: 220 }}>
-                  <span className="field-label">Buscar</span>
+                  <span className="field-label">{p.searchLabel}</span>
                   <div className="search-input-wrap">
                     <Icon name="search" />
-                    <input className="input" placeholder="Buscar por nome da tarefa..." value={taskSearch} onChange={(e) => setTaskSearch(e.target.value)} />
+                    <input className="input" placeholder={p.searchPlaceholder} value={taskSearch} onChange={(e) => setTaskSearch(e.target.value)} />
                   </div>
                 </div>
                 <div className="field-group">
-                  <span className="field-label">Status</span>
+                  <span className="field-label">{p.statusLabel}</span>
                   <select className="select" value={taskStatusFilter} onChange={(e) => setTaskStatusFilter(e.target.value)}>
-                    <option value="">Todos</option>
-                    {TASK_STATUS_OPTIONS.map((o) => (
+                    <option value="">{p.statusAll}</option>
+                    {p.taskStatusOptions.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
@@ -611,18 +970,18 @@ export default function ProjectDetail() {
                           </th>
                         )}
                         <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("task_name")}>
-                          Tarefa{sortIndicator("task_name")}
+                          {p.thTask}{sortIndicator("task_name")}
                         </th>
-                        <th>Path</th>
-                        <th>Qtd.</th>
-                        {project.has_rack_positions && <th>Rack Position</th>}
+                        <th>{p.thPath}</th>
+                        <th>{p.thQty}</th>
+                        {project.has_rack_positions && <th>{p.thRackPosition}</th>}
                         <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("status")}>
-                          Status{sortIndicator("status")}
+                          {p.thStatus}{sortIndicator("status")}
                         </th>
                         <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleTaskSort("technicians")}>
-                          Técnicos{sortIndicator("technicians")}
+                          {p.thTechnicians}{sortIndicator("technicians")}
                         </th>
-                        {(canChangeTask || canDeleteTask) && <th>Ações</th>}
+                        {(canChangeTask || canDeleteTask) && <th>{p.thActions}</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -633,7 +992,7 @@ export default function ProjectDetail() {
                               <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelection(task.id)} />
                             </td>
                           )}
-                          <td title={task.scope_item_code ? `Item de Escopo: ${task.scope_item_code}` : undefined}>{task.task_name}</td>
+                          <td title={task.scope_item_code ? p.scopeItemTitle(task.scope_item_code) : undefined}>{task.task_name}</td>
                           <td>{task.path_code || "—"}</td>
                           <td>{task.quantity_planned ? `${task.quantity_planned} ${task.unit}`.trim() : "—"}</td>
                           {project.has_rack_positions && <td>{task.rack_position_labels.join(", ") || "—"}</td>}
@@ -661,7 +1020,7 @@ export default function ProjectDetail() {
                         <tr>
                           <td colSpan={project.has_rack_positions ? 8 : 7}>
                             <div className="table-empty">
-                              {tasks.length === 0 ? "Nenhuma tarefa cadastrada." : "Nenhuma tarefa encontrada com esse filtro."}
+                              {tasks.length === 0 ? p.noTasksEmpty : p.noTasksFiltered}
                             </div>
                           </td>
                         </tr>
@@ -677,11 +1036,11 @@ export default function ProjectDetail() {
           {activeTab === "hours" && (
             <div className="panel-field-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <div>
-                <h2 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", margin: "0 0 10px" }}>Por Técnico</h2>
+                <h2 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", margin: "0 0 10px" }}>{p.hoursByTech}</h2>
                 <div className="card">
                   <div className="table-wrap">
                     <table className="table">
-                      <thead><tr><th>Técnico</th><th>Horas Trabalhadas</th></tr></thead>
+                      <thead><tr><th>{p.thTechnician}</th><th>{p.thHours}</th></tr></thead>
                       <tbody>
                         {hours.map((item) => (
                           <tr key={item.collaborator_id}>
@@ -690,10 +1049,10 @@ export default function ProjectDetail() {
                           </tr>
                         ))}
                         {!hoursLoading && hours.length === 0 && (
-                          <tr><td colSpan={2}><div className="table-empty">Nenhuma hora registrada ainda.</div></td></tr>
+                          <tr><td colSpan={2}><div className="table-empty">{p.noHours}</div></td></tr>
                         )}
                         {hoursLoading && (
-                          <tr><td colSpan={2}><div className="table-empty">Carregando...</div></td></tr>
+                          <tr><td colSpan={2}><div className="table-empty">{p.loading}</div></td></tr>
                         )}
                       </tbody>
                     </table>
@@ -701,11 +1060,11 @@ export default function ProjectDetail() {
                 </div>
               </div>
               <div>
-                <h2 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", margin: "0 0 10px" }}>Por Tarefa</h2>
+                <h2 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", margin: "0 0 10px" }}>{p.hoursByTask}</h2>
                 <div className="card">
                   <div className="table-wrap">
                     <table className="table">
-                      <thead><tr><th>Tarefa</th><th>Horas Trabalhadas</th></tr></thead>
+                      <thead><tr><th>{p.thTask}</th><th>{p.thHours}</th></tr></thead>
                       <tbody>
                         {tasks.map((task) => (
                           <tr key={task.id}>
@@ -714,7 +1073,7 @@ export default function ProjectDetail() {
                           </tr>
                         ))}
                         {tasks.length === 0 && (
-                          <tr><td colSpan={2}><div className="table-empty">Nenhuma tarefa cadastrada.</div></td></tr>
+                          <tr><td colSpan={2}><div className="table-empty">{p.noTasksEmpty}</div></td></tr>
                         )}
                       </tbody>
                     </table>
@@ -728,11 +1087,11 @@ export default function ProjectDetail() {
           {activeTab === "occurrences" && (
             <>
               <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
-                <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>Ocorrências</h2>
+                <h2 style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", margin: 0 }}>{p.occurrences}</h2>
                 {canAddOccurrence && (
                   <button className="btn btn-primary btn-sm" onClick={() => setOccurrenceFormOpen(true)}>
                     <Icon name="add" style={{ fontSize: 15 }} />
-                    Nova Ocorrência
+                    {p.newOccurrence}
                   </button>
                 )}
               </div>
@@ -741,12 +1100,12 @@ export default function ProjectDetail() {
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Título</th>
-                        <th>Responsável</th>
-                        <th>Criticidade</th>
-                        <th>Status</th>
-                        <th>Data</th>
-                        {(canChangeOccurrence || canDeleteOccurrence) && <th>Ações</th>}
+                        <th>{p.thTitle}</th>
+                        <th>{p.thResponsible}</th>
+                        <th>{p.thSeverity}</th>
+                        <th>{p.thStatus}</th>
+                        <th>{p.thDate}</th>
+                        {(canChangeOccurrence || canDeleteOccurrence) && <th>{p.thActions}</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -758,7 +1117,7 @@ export default function ProjectDetail() {
                             <span className="badge" style={SEVERITY_TONE[occurrence.severity]}>{occurrence.severity_display}</span>
                           </td>
                           <td><StatusBadge status={occurrence.status} label={occurrence.status_display} /></td>
-                          <td>{new Date(occurrence.occurred_at + "T00:00:00").toLocaleDateString("pt-BR")}</td>
+                          <td>{new Date(occurrence.occurred_at + "T00:00:00").toLocaleDateString(locale)}</td>
                           {(canChangeOccurrence || canDeleteOccurrence) && (
                             <td>
                               <div style={{ display: "flex", gap: 8 }}>
@@ -778,10 +1137,10 @@ export default function ProjectDetail() {
                         </tr>
                       ))}
                       {!occurrencesLoading && occurrences.length === 0 && (
-                        <tr><td colSpan={6}><div className="table-empty">Nenhuma ocorrência registrada.</div></td></tr>
+                        <tr><td colSpan={6}><div className="table-empty">{p.noOccurrences}</div></td></tr>
                       )}
                       {occurrencesLoading && (
-                        <tr><td colSpan={6}><div className="table-empty">Carregando...</div></td></tr>
+                        <tr><td colSpan={6}><div className="table-empty">{p.loading}</div></td></tr>
                       )}
                     </tbody>
                   </table>
@@ -795,19 +1154,19 @@ export default function ProjectDetail() {
             <>
               {canAddAttachment && (
                 <div className="card" style={{ padding: 16, marginBottom: 16 }}>
-                  <h2 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", margin: "0 0 12px" }}>Anexar arquivo</h2>
+                  <h2 style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", margin: "0 0 12px" }}>{p.attachFile}</h2>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
                     <div className="field-group" style={{ flex: "1 1 220px" }}>
-                      <span className="field-label">Arquivo</span>
+                      <span className="field-label">{p.fileLabel}</span>
                       <input id="attachment-file-input" type="file" className="input" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} />
                     </div>
                     <div className="field-group" style={{ flex: "1 1 220px" }}>
-                      <span className="field-label">Descrição (opcional)</span>
-                      <input type="text" className="input" value={attachmentDescription} onChange={(e) => setAttachmentDescription(e.target.value)} placeholder="Ex: Planta baixa atualizada" />
+                      <span className="field-label">{p.descriptionLabel}</span>
+                      <input type="text" className="input" value={attachmentDescription} onChange={(e) => setAttachmentDescription(e.target.value)} placeholder={p.descriptionPlaceholder} />
                     </div>
                     <button className="btn btn-primary" onClick={handleUploadAttachment} disabled={!attachmentFile || uploadingAttachment}>
                       <Icon name="upload" style={{ fontSize: 16 }} />
-                      {uploadingAttachment ? "Enviando..." : "Enviar"}
+                      {uploadingAttachment ? p.uploading : p.send}
                     </button>
                   </div>
                 </div>
@@ -817,12 +1176,12 @@ export default function ProjectDetail() {
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Arquivo</th>
-                        <th>Descrição</th>
-                        <th>Tamanho</th>
-                        <th>Enviado por</th>
-                        <th>Data</th>
-                        <th>Ações</th>
+                        <th>{p.thFile}</th>
+                        <th>{p.thDescription}</th>
+                        <th>{p.thSize}</th>
+                        <th>{p.thUploadedBy}</th>
+                        <th>{p.thDate}</th>
+                        <th>{p.thActions}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -832,7 +1191,7 @@ export default function ProjectDetail() {
                           <td>{attachment.description || "—"}</td>
                           <td>{formatFileSize(attachment.file_size)}</td>
                           <td>{attachment.uploaded_by_name || "—"}</td>
-                          <td>{new Date(attachment.created_at).toLocaleDateString("pt-BR")}</td>
+                          <td>{new Date(attachment.created_at).toLocaleDateString(locale)}</td>
                           <td>
                             <div style={{ display: "flex", gap: 8 }}>
                               <button className="btn btn-outline btn-sm" onClick={() => handleDownloadAttachment(attachment)}>
@@ -848,10 +1207,10 @@ export default function ProjectDetail() {
                         </tr>
                       ))}
                       {!attachmentsLoading && attachments.length === 0 && (
-                        <tr><td colSpan={6}><div className="table-empty">Nenhum arquivo anexado.</div></td></tr>
+                        <tr><td colSpan={6}><div className="table-empty">{p.noAttachments}</div></td></tr>
                       )}
                       {attachmentsLoading && (
-                        <tr><td colSpan={6}><div className="table-empty">Carregando...</div></td></tr>
+                        <tr><td colSpan={6}><div className="table-empty">{p.loading}</div></td></tr>
                       )}
                     </tbody>
                   </table>
@@ -865,16 +1224,16 @@ export default function ProjectDetail() {
         <div className="project-detail-sidebar" style={{ width: 260, flexShrink: 0 }}>
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ padding: "10px 14px", fontSize: 10, fontWeight: 800, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: "1px solid var(--border)" }}>
-              Seções
+              {p.sections}
             </div>
 
             {(["overview", "tasks", "hours", "occurrences", "attachments"] as DetailTab[]).map((tab) => {
-              const labels: Record<DetailTab, string> = {
-                overview: "Visão geral",
-                tasks: "Tarefas",
-                hours: "Horas trabalhadas",
-                occurrences: "Ocorrências",
-                attachments: "Anexos",
+              const badges: Record<DetailTab, string | null> = {
+                overview: null,
+                tasks: pendingTasks.length > 0 ? p.pendingBadge(pendingTasks.length) : p.doneBadge(project.completed_tasks, project.total_tasks),
+                hours: `${project.worked_hours}h`,
+                occurrences: occurrences.length > 0 ? String(occurrences.length) : null,
+                attachments: attachments.length > 0 ? String(attachments.length) : null,
               };
               const icons: Record<DetailTab, string> = {
                 overview: "dashboard",
@@ -882,13 +1241,6 @@ export default function ProjectDetail() {
                 hours: "schedule",
                 occurrences: "warning",
                 attachments: "attach_file",
-              };
-              const badges: Record<DetailTab, string | null> = {
-                overview: null,
-                tasks: pendingTasks.length > 0 ? `${pendingTasks.length} pendente${pendingTasks.length > 1 ? "s" : ""}` : `${project.completed_tasks}/${project.total_tasks}`,
-                hours: `${project.worked_hours}h`,
-                occurrences: occurrences.length > 0 ? String(occurrences.length) : null,
-                attachments: attachments.length > 0 ? String(attachments.length) : null,
               };
               const badgeWarn = tab === "tasks" && pendingTasks.length > 0;
               const isActive = activeTab === tab;
@@ -916,7 +1268,7 @@ export default function ProjectDetail() {
                   <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <Icon name={icons[tab]} style={{ fontSize: 15, color: isActive ? "var(--orange)" : "var(--text-faint)" }} />
                     <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 400, color: isActive ? "var(--orange)" : "var(--text)" }}>
-                      {labels[tab]}
+                      {p.tabLabels[tab]}
                     </span>
                   </span>
                   {badges[tab] && (
@@ -940,23 +1292,23 @@ export default function ProjectDetail() {
             {/* bloco de metadados no sidebar */}
             <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)" }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-                Responsáveis
+                {p.responsible}
               </div>
-              <SidebarField label="CSTR" value={project.responsible_cstr_name || "—"} />
-              <SidebarField label="Cliente" value={project.responsible_client_name || "—"} />
+              <SidebarField label={p.cstr} value={project.responsible_cstr_name || "—"} />
+              <SidebarField label={p.client} value={project.responsible_client_name || "—"} />
             </div>
 
             <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)" }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-                Cronograma
+                {p.schedule}
               </div>
-              <SidebarField label="Início" value={formatDate(project.actual_start || project.planned_start)} />
+              <SidebarField label={p.start} value={formatDate(project.actual_start || project.planned_start, locale)} />
               <SidebarField
-                label="Prazo"
-                value={formatDate(project.planned_end)}
+                label={p.deadline}
+                value={formatDate(project.planned_end, locale)}
                 warn={!!project.planned_end && !project.actual_end}
               />
-              {project.actual_end && <SidebarField label="Término" value={formatDate(project.actual_end)} />}
+              {project.actual_end && <SidebarField label={p.end} value={formatDate(project.actual_end, locale)} />}
             </div>
           </div>
         </div>
@@ -987,8 +1339,8 @@ export default function ProjectDetail() {
       )}
       {customTasksOpen && (
         <BulkNamesModal
-          title="Adicionar Tarefas Avulsas"
-          helpText="Um nome de tarefa por linha. Essas tarefas não vêm do catálogo — ficam exclusivas deste projeto."
+          title={p.bulkTitle}
+          helpText={p.bulkHelp}
           extraFields={[]}
           extraValues={{}}
           onSave={(names) => projectsApi.createCustomTasks(project.id, names)}
@@ -1025,7 +1377,7 @@ function groupTasksByPrefix(tasks: ProjectTask[]) {
 
 function OverviewSection({
   project, tasks, pendingTasks, occurrencesCount,
-  descriptionOpen, setDescriptionOpen, onGoToTasks,
+  descriptionOpen, setDescriptionOpen, onGoToTasks, p, locale,
 }: {
   project: Project;
   tasks: ProjectTask[];
@@ -1034,6 +1386,8 @@ function OverviewSection({
   descriptionOpen: boolean;
   setDescriptionOpen: (v: boolean) => void;
   onGoToTasks: () => void;
+  p: PD;
+  locale: string;
 }) {
   // timeline
   const startStr = project.actual_start || project.planned_start;
@@ -1078,29 +1432,31 @@ function OverviewSection({
 
   const highlightPending = pendingTasks.slice(0, 4);
 
+  const donutCounts = [statusCounts.completed, statusCounts.in_progress, statusCounts.not_started, statusCounts.canceled];
+
   return (
     <>
       {/* KPIs */}
       <div className="project-stats-4col" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: "var(--orange)" }}>{project.progress_percent}%</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>Progresso geral</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>{p.progressLabel}</div>
         </div>
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, color: pendingTasks.length > 0 ? "var(--warning)" : "var(--success)" }}>
             {pendingTasks.length}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
-            {pendingTasks.length === 1 ? "Tarefa pendente" : "Tarefas pendentes"}
+            {pendingTasks.length === 1 ? p.pendingTask : p.pendingTasks}
           </div>
         </div>
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{project.worked_hours}h</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>Horas trabalhadas</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>{p.hoursWorked}</div>
         </div>
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{occurrencesCount}</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>Ocorrências</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>{p.occurrencesLabel}</div>
         </div>
       </div>
 
@@ -1109,27 +1465,29 @@ function OverviewSection({
         {/* timeline */}
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", marginBottom: 16 }}>
-            Linha do tempo
+            {p.timeline}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-muted)", marginBottom: 22 }}>
-            <span>Início: {formatDate(startStr)}</span>
-            <span>Prazo: {formatDate(endStr)}</span>
+            <span>{p.timelineStart}{formatDate(startStr, locale)}</span>
+            <span>{p.timelineDeadline}{formatDate(endStr, locale)}</span>
           </div>
           <div style={{ position: "relative", height: 10, background: "var(--surface-2)", borderRadius: 5, border: "0.5px solid var(--border)" }}>
             <div style={{ height: "100%", borderRadius: 5, background: "var(--orange)", width: `${tlPct}%` }} />
             {tlPct > 0 && tlPct < 100 && (
               <div style={{ position: "absolute", top: -8, left: `${tlPct}%`, width: 2, height: 26, background: "var(--orange)", borderRadius: 1 }}>
                 <span style={{ position: "absolute", bottom: "100%", left: 5, fontSize: 10, color: "var(--orange)", fontWeight: 700, whiteSpace: "nowrap", marginBottom: 2 }}>
-                  Hoje
+                  {p.today}
                 </span>
               </div>
             )}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
-            {daysTotal != null && <span>Duração: <strong style={{ color: "var(--text)" }}>{daysTotal} dias</strong></span>}
+            {daysTotal != null && (
+              <span>{p.durationPrefix}<strong style={{ color: "var(--text)" }}>{p.durationDays(daysTotal)}</strong></span>
+            )}
             {daysLeft != null && (
               <span style={{ color: daysLeft < 0 ? "var(--danger)" : daysLeft <= 3 ? "var(--warning)" : "var(--text-muted)" }}>
-                {daysLeft < 0 ? `${Math.abs(daysLeft)} dias em atraso` : daysLeft === 0 ? "Prazo hoje" : `${daysLeft} dias restantes`}
+                {daysLeft < 0 ? p.daysOverdue(Math.abs(daysLeft)) : daysLeft === 0 ? p.deadlineToday : p.daysLeft(daysLeft)}
               </span>
             )}
           </div>
@@ -1138,7 +1496,7 @@ function OverviewSection({
         {/* donut */}
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", marginBottom: 16 }}>
-            Distribuição de status
+            {p.statusDist}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
             <div style={{ position: "relative", width: 90, height: 90, flexShrink: 0 }}>
@@ -1162,22 +1520,17 @@ function OverviewSection({
               </svg>
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "var(--orange)", lineHeight: 1 }}>
                 {project.progress_percent}%
-                <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400, marginTop: 2 }}>concl.</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400, marginTop: 2 }}>{p.concluded}</span>
               </div>
             </div>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
-              {[
-                { color: "#3B6D11", label: "Concluída", count: statusCounts.completed },
-                { color: "#185FA5", label: "Em andamento", count: statusCounts.in_progress },
-                { color: "#BA7517", label: "Não iniciada", count: statusCounts.not_started },
-                { color: "#A32D2D", label: "Cancelada", count: statusCounts.canceled },
-              ].map(({ color, label, count }) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 13 }}>
+              {p.donutLabels.map(({ color, label }, i) => (
+                <div key={color} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 13 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0, display: "inline-block" }} />
                     <span style={{ color: "var(--text)" }}>{label}</span>
                   </span>
-                  <span style={{ fontWeight: 700, color }}>{count}</span>
+                  <span style={{ fontWeight: 700, color }}>{donutCounts[i]}</span>
                 </div>
               ))}
             </div>
@@ -1191,10 +1544,10 @@ function OverviewSection({
         {/* progresso por tipo */}
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", marginBottom: 16 }}>
-            Progresso por tipo de atividade
+            {p.activityProgress}
           </div>
           {groups.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Nenhuma tarefa cadastrada.</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{p.noTasksOverview}</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
               {groups.map(([prefix, { total, completed }]) => {
@@ -1214,7 +1567,7 @@ function OverviewSection({
                 );
               })}
               {groups.length === 6 && (
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>* exibindo top 6 grupos</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{p.top6}</div>
               )}
             </div>
           )}
@@ -1223,10 +1576,10 @@ function OverviewSection({
         {/* pendências em destaque */}
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", marginBottom: 16 }}>
-            Pendências em destaque
+            {p.pendingHighlight}
           </div>
           {highlightPending.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--success)" }}>Todas as tarefas concluídas!</div>
+            <div style={{ fontSize: 13, color: "var(--success)" }}>{p.allDone}</div>
           ) : (
             <>
               <div style={{ display: "flex", flexDirection: "column" }}>
@@ -1240,12 +1593,12 @@ function OverviewSection({
               </div>
               {pendingTasks.length > 4 && (
                 <div style={{ marginTop: 10, fontSize: 12, textAlign: "right" }}>
-                  <span style={{ color: "var(--text-muted)" }}>+ {pendingTasks.length - 4} pendentes · </span>
+                  <span style={{ color: "var(--text-muted)" }}>{p.morePending(pendingTasks.length - 4)}</span>
                   <button
                     onClick={onGoToTasks}
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--orange)", fontWeight: 700, fontSize: 12, padding: 0 }}
                   >
-                    ver todas as tarefas →
+                    {p.seeAllTasks}
                   </button>
                 </div>
               )}
@@ -1263,7 +1616,7 @@ function OverviewSection({
           >
             <Icon name={descriptionOpen ? "expand_less" : "expand_more"} style={{ fontSize: 18, color: "var(--text-faint)" }} />
             <Icon name="description" style={{ fontSize: 15, color: "var(--orange)" }} />
-            <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Descrição</span>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{p.description}</span>
           </button>
           {descriptionOpen && (
             <div style={{ padding: "0 16px 16px", fontSize: 13.5, color: "var(--text)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
@@ -1306,9 +1659,9 @@ function SidebarField({ label, value, warn }: { label: string; value: string; wa
   );
 }
 
-function formatDate(value: string | null | undefined) {
+function formatDate(value: string | null | undefined, locale: string) {
   if (!value) return "—";
   const date = new Date(value.length === 10 ? `${value}T00:00:00` : value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("pt-BR");
+  return date.toLocaleDateString(locale);
 }

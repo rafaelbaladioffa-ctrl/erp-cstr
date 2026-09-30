@@ -244,7 +244,7 @@ export default function Layout() {
 
   const displayName = user?.full_name || user?.username || "";
   const email = user?.email || user?.username || "";
-  const role = user?.is_superuser ? "Admin" : "Usuário";
+  const role = user?.is_superuser ? t.layout.roleAdmin : t.layout.roleUsuario;
   const initials = (displayName || email).slice(0, 2).toUpperCase();
 
   const hasResults = searchResults.projects.length > 0 || searchResults.sites.length > 0 || searchResults.tasks.length > 0;
@@ -278,13 +278,13 @@ export default function Layout() {
 
   function formatNotifDate(value: string) {
     const date = new Date(value);
-    return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
   return (
     <div className="app-shell">
       <header className="shellbar">
-        <button className="mobile-menu-btn" aria-label="Abrir menu" onClick={() => setMobileMenuOpen(true)}>
+        <button className="mobile-menu-btn" aria-label={t.layout.abrirMenu} onClick={() => setMobileMenuOpen(true)}>
           <Icon name="menu" style={{ fontSize: 22 }} />
         </button>
         <Link to="/dashboard" className="shellbar-brand" style={{ textDecoration: "none" }}>
@@ -295,18 +295,18 @@ export default function Layout() {
           <Icon name="search" style={{ fontSize: 17 }} />
           <input
             type="text"
-            placeholder="Buscar projetos, sites, tarefas..."
+            placeholder={t.search.placeholder}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setSearchOpen(true)}
           />
           {searchOpen && term.length >= 2 && (
             <div className="search-dropdown">
-              {searching && <div className="search-dropdown-empty">Buscando...</div>}
-              {!searching && !hasResults && <div className="search-dropdown-empty">Nenhum resultado para "{term}".</div>}
+              {searching && <div className="search-dropdown-empty">{t.search.buscando}</div>}
+              {!searching && !hasResults && <div className="search-dropdown-empty">{t.search.semResultadosPara(term)}</div>}
               {!searching && searchResults.projects.length > 0 && (
                 <div className="search-dropdown-group">
-                  <div className="search-dropdown-title">Projetos</div>
+                  <div className="search-dropdown-title">{t.search.projetos}</div>
                   {searchResults.projects.map((p) => (
                     <button key={`p-${p.id}`} className="search-dropdown-item" onClick={() => goTo(`/projetos/${p.id}`, p.name || p.code, "folder")}>
                       <Icon name="folder" style={{ fontSize: 17 }} />
@@ -324,7 +324,7 @@ export default function Layout() {
               )}
               {!searching && searchResults.sites.length > 0 && (
                 <div className="search-dropdown-group">
-                  <div className="search-dropdown-title">Sites</div>
+                  <div className="search-dropdown-title">{t.search.sites}</div>
                   {searchResults.sites.map((s) => (
                     <button key={`s-${s.id}`} className="search-dropdown-item" onClick={() => goTo("/cadastros")}>
                       <Icon name="location_on" style={{ fontSize: 17 }} />
@@ -340,7 +340,7 @@ export default function Layout() {
               )}
               {!searching && searchResults.tasks.length > 0 && (
                 <div className="search-dropdown-group">
-                  <div className="search-dropdown-title">Tarefas</div>
+                  <div className="search-dropdown-title">{t.search.tarefas}</div>
                   {searchResults.tasks.map((t) => (
                     <button key={`t-${t.id}`} className="search-dropdown-item" onClick={() => goTo(`/projetos/${t.project_id}`)}>
                       <Icon name="checklist" style={{ fontSize: 17 }} />
@@ -362,13 +362,13 @@ export default function Layout() {
         {pushPermission !== "granted" && pushPermission !== "denied" && (
           <button
             className="shellbar-icon-btn"
-            aria-label="Ativar notificações"
-            title="Ativar notificações no celular"
+            aria-label={t.notif.ativarNotificacoes}
+            title={t.notif.ativarNotificacoes}
             onClick={async () => {
               const ok = await registerPushNotifications();
               setPushPermission(Notification.permission);
               if (!ok && Notification.permission === "denied") {
-                alert("Notificações bloqueadas. Libere nas configurações do navegador.");
+                alert(t.layout.notifBloqueadas);
               }
             }}
           >
@@ -376,22 +376,22 @@ export default function Layout() {
           </button>
         )}
         <div ref={notifRef} style={{ position: "relative" }}>
-          <button className="shellbar-icon-btn" aria-label="Notificações" onClick={() => setNotifOpen((v) => !v)} style={{ position: "relative" }}>
+          <button className="shellbar-icon-btn" aria-label={t.notif.titulo} onClick={() => setNotifOpen((v) => !v)} style={{ position: "relative" }}>
             <Icon name="notifications" style={{ fontSize: 18 }} />
             {unreadCount > 0 && <span className="notif-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>}
           </button>
           {notifOpen && (
             <div className="search-dropdown" style={{ right: 0, left: "auto", width: 340 }}>
               <div className="settings-dropdown-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px" }}>
-                <span>Notificações</span>
+                <span>{t.notif.titulo}</span>
                 {unreadCount > 0 && (
                   <button className="btn btn-outline btn-sm" style={{ padding: "2px 8px", fontSize: 11 }} onClick={handleMarkAllRead}>
-                    Marcar todas como lidas
+                    {t.notif.marcarLidas}
                   </button>
                 )}
               </div>
-              {notifLoading && <div className="search-dropdown-empty">Carregando...</div>}
-              {!notifLoading && notifications.length === 0 && <div className="search-dropdown-empty">Nenhuma notificação.</div>}
+              {notifLoading && <div className="search-dropdown-empty">{t.common.carregando}</div>}
+              {!notifLoading && notifications.length === 0 && <div className="search-dropdown-empty">{t.notif.semNotificacoes}</div>}
               {!notifLoading &&
                 notifications.map((n) => (
                   <button
@@ -412,7 +412,7 @@ export default function Layout() {
           )}
         </div>
         <div ref={settingsRef} style={{ position: "relative" }}>
-          <button className="shellbar-icon-btn" aria-label="Configurações" onClick={() => setSettingsOpen((v) => !v)}>
+          <button className="shellbar-icon-btn" aria-label={t.layout.configuracoes} onClick={() => setSettingsOpen((v) => !v)}>
             <Icon name="settings" style={{ fontSize: 18 }} />
           </button>
           {settingsOpen && (
@@ -479,15 +479,15 @@ export default function Layout() {
         {mobileMenuOpen && <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />}
         <aside className={`sidebar${mobileMenuOpen ? " sidebar-open" : ""}${sidebarCollapsed ? " sidebar-mini" : ""}`}>
           <div className="sidebar-mobile-head">
-            <span>Menu</span>
-            <button className="sidebar-close-btn" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}>
+            <span>{t.layout.menuMobile}</span>
+            <button className="sidebar-close-btn" aria-label={t.layout.fecharMenu} onClick={() => setMobileMenuOpen(false)}>
               <Icon name="close" style={{ fontSize: 18 }} />
             </button>
           </div>
 
           {!sidebarCollapsed && !hasAnyModule && (
             <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "0 10px" }}>
-              Seu usuário não tem acesso a nenhum módulo.
+              {t.layout.semModulo}
             </p>
           )}
 
@@ -519,8 +519,8 @@ export default function Layout() {
                       {!sidebarCollapsed && (
                         <button
                           className="sidebar-link-tab-btn"
-                          aria-label={`Abrir ${item.label} em guia`}
-                          title="Abrir em guia"
+                          aria-label={t.layout.abrirEmGuia(item.label)}
+                          title={t.layout.abrirEmGuiaTip}
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -542,7 +542,7 @@ export default function Layout() {
           {!sidebarCollapsed && (
             <>
               <button className="sidebar-collapse-link" onClick={toggleSidebarCollapsed}>
-                Recolher
+                {t.layout.recolher}
               </button>
               <div className="sidebar-footer">
                 <div className="sidebar-footer-user">
@@ -554,21 +554,21 @@ export default function Layout() {
                 </div>
                 <button className="sidebar-logout" onClick={logout}>
                   <Icon name="logout" style={{ fontSize: 16 }} />
-                  Sair
+                  {t.settings.sair}
                 </button>
               </div>
             </>
           )}
           {sidebarCollapsed && (
             <div className="sidebar-footer-mini">
-              <button className="sidebar-logout sidebar-logout-mini" onClick={logout} title="Sair">
+              <button className="sidebar-logout sidebar-logout-mini" onClick={logout} title={t.settings.sair}>
                 <Icon name="logout" style={{ fontSize: 16 }} />
               </button>
               <button
                 className="sidebar-logout sidebar-logout-mini"
-                aria-label="Expandir menu"
+                aria-label={t.layout.expandirMenu}
                 onClick={toggleSidebarCollapsed}
-                title="Expandir menu"
+                title={t.layout.expandirMenu}
               >
                 <Icon name="chevron_right" style={{ fontSize: 18 }} />
               </button>

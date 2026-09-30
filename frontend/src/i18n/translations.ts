@@ -25,6 +25,22 @@ export interface Translations {
     detalhe: string;
     erp: string;
   };
+  // Layout — shellbar / sidebar
+  layout: {
+    abrirMenu: string;
+    fecharMenu: string;
+    menuMobile: string;
+    abrirEmGuia: (label: string) => string;
+    abrirEmGuiaTip: string;
+    configuracoes: string;
+    semModulo: string;
+    recolher: string;
+    expandirMenu: string;
+    notifAtivas: string;
+    notifBloqueadas: string;
+    roleAdmin: string;
+    roleUsuario: string;
+  };
   // Layout — menu de configurações
   settings: {
     tema: string;
@@ -48,7 +64,9 @@ export interface Translations {
     projetos: string;
     sites: string;
     tarefas: string;
+    buscando: string;
     semResultados: string;
+    semResultadosPara: (term: string) => string;
   };
   // Comuns (botões, estados, etc.)
   common: {
@@ -77,5 +95,48 @@ export interface Translations {
     ate: string;
     hoje: string;
     ontem: string;
+    salvando: string;
+    removendo: string;
+    remover: string;
+  };
+  // Permissão / acesso
+  permission: {
+    semAcesso: string;
+    semModulo: string;
+    superuserOnly: string;
+  };
+  // Paginação
+  pagination: {
+    nenhum: string;
+    exibindo: (start: number, end: number, total: number) => string;
+    porPagina: (n: number) => string;
+    anteriorPagina: string;
+    proximaPagina: string;
+  };
+  // Minha Conta
+  account: {
+    titulo: string;
+    senhaAtual: string;
+    novaSenha: string;
+    confirmarSenha: string;
+    salvarSenha: string;
+    salvando: string;
+    sairConta: string;
+    errCamposObrigatorios: string;
+    errSenhasMismatch: string;
+    errDefault: string;
+    sucesso: string;
+  };
+  // Modal de ausências de técnico
+  absence: {
+    titulo: (name: string) => string;
+    de: string;
+    ate: string;
+    motivo: string;
+    motivoPlaceholder: string;
+    adicionarAusencia: string;
+    fechar: string;
+    removendo: string;
+    remover: string;
   };
 }

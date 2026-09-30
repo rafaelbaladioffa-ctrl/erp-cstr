@@ -1,16 +1,11 @@
 import { useEffect, useState } from "react";
 import { technicianAbsencesApi } from "../../api/resources";
 import type { TechnicianAbsence } from "../../api/types";
+import { useI18n } from "../../i18n";
 import DynamicForm, { type FieldConfig, type FormValues } from "../ui/DynamicForm";
 import Modal from "../ui/Modal";
 
 type ApiErrors = Record<string, string[]>;
-
-const FIELDS: FieldConfig[] = [
-  { name: "date_from", label: "De", type: "date", required: true },
-  { name: "date_to", label: "Até", type: "date", required: true },
-  { name: "reason", label: "Motivo", type: "text", placeholder: "Ex: Férias, Atestado médico, Folga", span: 2 },
-];
 
 export default function TechnicianAbsenceFormModal({
   collaboratorId,
@@ -23,11 +18,18 @@ export default function TechnicianAbsenceFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t, locale } = useI18n();
   const [values, setValues] = useState<FormValues>({ date_from: "", date_to: "", reason: "" });
   const [errors, setErrors] = useState<ApiErrors>({});
   const [saving, setSaving] = useState(false);
   const [existing, setExisting] = useState<TechnicianAbsence[]>([]);
   const [removingId, setRemovingId] = useState<number | null>(null);
+
+  const fields: FieldConfig[] = [
+    { name: "date_from", label: t.absence.de, type: "date", required: true },
+    { name: "date_to", label: t.absence.ate, type: "date", required: true },
+    { name: "reason", label: t.absence.motivo, type: "text", placeholder: t.absence.motivoPlaceholder, span: 2 },
+  ];
 
   useEffect(() => {
     technicianAbsencesApi.list(collaboratorId).then((data) => setExisting(data.results));
@@ -66,7 +68,7 @@ export default function TechnicianAbsenceFormModal({
   }
 
   return (
-    <Modal title={`Ausências — ${collaboratorName}`} onClose={onClose} width={480}>
+    <Modal title={t.absence.titulo(collaboratorName)} onClose={onClose} width={480}>
       {existing.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           {existing.map((a) => (
@@ -82,7 +84,7 @@ export default function TechnicianAbsenceFormModal({
               }}
             >
               <span>
-                {new Date(`${a.date_from}T00:00`).toLocaleDateString("pt-BR")} a {new Date(`${a.date_to}T00:00`).toLocaleDateString("pt-BR")}
+                {new Date(`${a.date_from}T00:00`).toLocaleDateString(locale)} — {new Date(`${a.date_to}T00:00`).toLocaleDateString(locale)}
                 {a.reason ? ` — ${a.reason}` : ""}
               </span>
               <button
@@ -91,20 +93,20 @@ export default function TechnicianAbsenceFormModal({
                 disabled={removingId === a.id}
                 onClick={() => handleRemove(a.id)}
               >
-                {removingId === a.id ? "Removendo..." : "Remover"}
+                {removingId === a.id ? t.absence.removendo : t.absence.remover}
               </button>
             </div>
           ))}
         </div>
       )}
-      <DynamicForm fields={FIELDS} values={values} errors={errors} onChange={(name, value) => setValues((prev) => ({ ...prev, [name]: value }))} />
+      <DynamicForm fields={fields} values={values} errors={errors} onChange={(name, value) => setValues((prev) => ({ ...prev, [name]: value }))} />
       {errors.non_field_errors && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{errors.non_field_errors.join(" ")}</p>}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
         <button className="btn btn-outline" onClick={onClose}>
-          Fechar
+          {t.absence.fechar}
         </button>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving || !values.date_from || !values.date_to}>
-          {saving ? "Salvando..." : "Adicionar Ausência"}
+          {saving ? t.common.salvando : t.absence.adicionarAusencia}
         </button>
       </div>
     </Modal>

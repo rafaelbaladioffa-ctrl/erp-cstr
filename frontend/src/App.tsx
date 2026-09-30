@@ -5,6 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import RequirePermission from "./components/RequirePermission";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { TabsProvider } from "./context/TabsContext";
+import { useI18n } from "./i18n";
 import AuditLog from "./pages/AuditLog";
 import ResetPassword from "./pages/ResetPassword";
 import CadastrosPage from "./pages/cadastros/CadastrosPage";
@@ -24,26 +25,29 @@ import { CADASTROS_PERMS, MASTER_DATA_PERMS, PERMS, hasAnyPerm, hasPerm } from "
 
 function RequireSuperuser({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { t } = useI18n();
   if (!user?.is_superuser) {
-    return <p style={{ padding: 32, color: "#526174" }}>Acesso restrito a superusuários.</p>;
+    return <p style={{ padding: 32, color: "#526174" }}>{t.permission.superuserOnly}</p>;
   }
   return <>{children}</>;
 }
 
 function HomeRedirect() {
   const { user } = useAuth();
+  const { t } = useI18n();
   if (hasPerm(user, PERMS.viewProject)) return <Navigate to="/dashboard" replace />;
   if (hasPerm(user, PERMS.viewDailyUpdate)) return <Navigate to="/atualizacoes-diarias" replace />;
   if (hasPerm(user, PERMS.viewProjectUpdate)) return <Navigate to="/atualizacoes-projeto" replace />;
   if (hasPerm(user, PERMS.viewMyTasks)) return <Navigate to="/minhas-tarefas" replace />;
   if (hasAnyPerm(user, CADASTROS_PERMS)) return <Navigate to="/cadastros" replace />;
-  return <p style={{ padding: 32, color: "#526174" }}>Seu usuário não tem acesso a nenhum módulo.</p>;
+  return <p style={{ padding: 32, color: "#526174" }}>{t.layout.semModulo}</p>;
 }
 
 function RequireAnyPermission({ permissions, children }: { permissions: string[]; children: ReactNode }) {
   const { user } = useAuth();
+  const { t } = useI18n();
   if (!hasAnyPerm(user, permissions)) {
-    return <p style={{ padding: 32, color: "#526174" }}>Você não tem permissão para acessar este módulo.</p>;
+    return <p style={{ padding: 32, color: "#526174" }}>{t.permission.semModulo}</p>;
   }
   return <>{children}</>;
 }
