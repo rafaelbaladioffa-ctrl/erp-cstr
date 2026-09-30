@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { Translations } from "./translations";
 import ptBR from "./pt-BR";
 import enUS from "./en-US";
@@ -34,6 +34,12 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(getStoredLocale);
+
+  // Sincroniza o atributo lang do documento para que <input type="date">
+  // e outros elementos nativos do browser também respeitem o idioma escolhido.
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   const setLocale = useCallback((next: Locale) => {
     localStorage.setItem("erp_locale", next);
