@@ -185,6 +185,8 @@ REST_FRAMEWORK = {
         # endpoint de login: barra rajadas rápidas por IP antes mesmo de o
         # axes contar as tentativas falhas no banco.
         "login": "5/min",
+        # Cada chamada é real e paga no provider de IA.
+        "ai_test": "5/hour",
     },
 }
 

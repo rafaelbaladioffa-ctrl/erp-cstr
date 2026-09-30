@@ -41,7 +41,7 @@ export default function ProjectUpdates() {
     reload();
     projectsApi.list().then((data) => setProjects(data.results));
     collaboratorsApi.list().then((data) => setCollaborators(data.results));
-    usersApi.options().then(setUserOptions);
+    usersApi.options().then(setUserOptions).catch(() => setUserOptions([]));
   }, []);
 
   async function handleGenerate() {

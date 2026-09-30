@@ -7,6 +7,7 @@ from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from audit.models import AuditLog
@@ -96,7 +97,9 @@ from updates.project_client_mail import send_project_daily_update_email
 from updates.project_pdf import build_project_daily_update_pdf
 
 from .permissions import (
+    DenyClientScopedUsers,
     IsSuperUser,
+    require_perms,
     RequireChangePermissionForActions,
     RequireViewPermissionForActions,
     ViewAwareModelPermissions,
@@ -253,6 +256,8 @@ class UserOptionsView(APIView):
     """Lista enxuta de usuários do sistema (id/nome/e-mail) para telas que
     precisam deixar o usuário escolher destinatários adicionais de e-mail
     (ex: enviar Atualização de Projeto para alguém além dos responsáveis)."""
+
+    permission_classes = [DenyClientScopedUsers]
 
     def get(self, request):
         from users.models import User
@@ -1810,6 +1815,8 @@ class AiStatusView(APIView):
     parser de SOW está CONFIGURADO (env vars), sem nenhuma chamada real ao
     OpenRouter. Nunca retorna a API key."""
 
+    permission_classes = [require_perms("master_data.view_sowimport")]
+
     def get(self, request):
         return Response(get_ai_config_status())
 
@@ -1821,6 +1828,10 @@ class AiTestView(APIView):
     Nunca retorna a API key. Retorna 503 (não 200) quando a IA não está
     configurada ou a chamada falha — o corpo sempre traz `success` e,
     quando falha, `error_code`/`detail`."""
+
+    permission_classes = [require_perms("master_data.add_sowimport")]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "ai_test"
 
     def post(self, request):
         ai_parser = get_ai_sow_parser()
@@ -1842,6 +1853,8 @@ class ProjectPlanView(APIView):
     uma SOW (ou um conjunto de ScopeItems) dentro de um Projeto, sem criar
     nada — só leitura, pra alimentar o resumo antes da confirmação de
     "Criar tarefas do projeto" (ver ProjectPlanCreateTasksView)."""
+
+    permission_classes = [require_perms("master_data.view_generatedtask")]
 
     def get(self, request):
         project_id = request.query_params.get("project")
@@ -1933,6 +1946,8 @@ class ProjectPlanCreateTasksView(APIView):
     `sow_import` ou `scope_item_ids`) que já têm rule_resolution_status=
     RESOLVED. Idempotente: nunca duplica, nunca sobrescreve uma
     ProjectTask já vinculada a uma GeneratedTask."""
+
+    permission_classes = [require_perms("master_data.view_generatedtask", "projects.add_projecttask")]
 
     def post(self, request):
         project_id = request.data.get("project")

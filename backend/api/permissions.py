@@ -82,3 +82,23 @@ class _HasViewPermission(DjangoModelPermissions):
         queryset = view.get_queryset()
         perms = self.get_required_permissions("GET", queryset.model)
         return bool(request.user and request.user.has_perms(perms))
+
+
+def require_perms(*perms):
+    """Classe de permissão para APIViews sem queryset: exige todas as
+    permissões Django informadas (ex: "projects.add_projecttask")."""
+
+    class _RequirePerms(BasePermission):
+        def has_permission(self, request, view):
+            return bool(request.user and request.user.is_authenticated and request.user.has_perms(perms))
+
+    return _RequirePerms
+
+
+class DenyClientScopedUsers(BasePermission):
+    """Nega acesso a usuários-cliente (User.client preenchido)."""
+
+    def has_permission(self, request, view):
+        from core.access_scope import get_scope_for_user
+
+        return bool(request.user and request.user.is_authenticated) and get_scope_for_user(request.user) is None

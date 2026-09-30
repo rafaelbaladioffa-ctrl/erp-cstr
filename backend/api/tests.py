@@ -5930,3 +5930,47 @@ class CreateProjectTasksFromGeneratedTasksServiceTests(TestCase):
         self.assertEqual(len(second["existing"]), 1)
         self.assertEqual(second["existing"][0].pk, first["created"][0].pk)
         self.assertEqual(ProjectTask.objects.filter(project=self.project, generated_task=self.generated_task).count(), 1)
+
+
+class EndpointPermissionTests(TestCase):
+    def setUp(self):
+        self.api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.client_a = Client.objects.create(company=self.company, legal_name="Cliente A")
+        self.project = Project.objects.create(company=self.company, name="Projeto", client=self.client_a)
+
+    def _user(self, username, *perms, client=None):
+        user = User.objects.create_user(username=username, email=f"{username}@example.com", password="x", company=self.company, client=client)
+        for perm in perms:
+            app_label, codename = perm.split(".")
+            user.user_permissions.add(Permission.objects.get(codename=codename, content_type__app_label=app_label))
+        self.api.force_authenticate(user=user)
+        return user
+
+    def test_create_tasks_requires_add_projecttask(self):
+        self._user("so_leitura", "master_data.view_generatedtask", "projects.view_project")
+        response = self.api.post("/api/planning/project-plan/create-tasks/", {"project": self.project.pk}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_create_tasks_allowed_with_permissions(self):
+        self._user("planejador", "master_data.view_generatedtask", "projects.add_projecttask")
+        response = self.api.post("/api/planning/project-plan/create-tasks/", {"project": self.project.pk}, format="json")
+        self.assertNotEqual(response.status_code, 403)
+
+    def test_project_plan_and_ai_status_require_permissions(self):
+        self._user("sem_perm")
+        self.assertEqual(self.api.get(f"/api/planning/project-plan/?project={self.project.pk}").status_code, 403)
+        self.assertEqual(self.api.get("/api/planning/ai/status/").status_code, 403)
+        self.assertEqual(self.api.post("/api/planning/ai/test/").status_code, 403)
+
+    def test_ai_status_allowed_with_view_sowimport(self):
+        self._user("sow_viewer", "master_data.view_sowimport")
+        self.assertEqual(self.api.get("/api/planning/ai/status/").status_code, 200)
+
+    def test_user_options_denied_to_client_users(self):
+        self._user("cliente_opts", client=self.client_a)
+        self.assertEqual(self.api.get("/api/user-options/").status_code, 403)
+
+    def test_user_options_allowed_to_internal_users(self):
+        self._user("interno_opts")
+        self.assertEqual(self.api.get("/api/user-options/").status_code, 200)
