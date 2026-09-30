@@ -194,13 +194,18 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
 }
 
+# IPs de proxies confiáveis (ex.: de onde chega o túnel Cloudflare). Só
+# requisições vindas deles têm o CF-Connecting-IP aceito como IP real.
+TRUSTED_PROXY_IPS = {item.strip() for item in os.getenv("TRUSTED_PROXY_IPS", "").split(",") if item.strip()}
+
 # --- Proteção contra brute force (django-axes) ---------------------------
-# Bloqueia por combinação de IP + usuário após N tentativas de login
-# falhas, tanto no Django Admin quanto no endpoint de login da API
-# (/api/token/), já que ambos passam pelo authenticate() padrão do Django.
+# Bloqueia o PAR usuário+IP após N falhas (Admin e /api/token/). Bloquear só
+# pelo usuário permitiria que qualquer um travasse a conta de terceiros;
+# desbloqueio manual: Admin > Axes > Access attempts, ou `manage.py axes_reset_username`.
 AXES_FAILURE_LIMIT = 5
 AXES_COOLOFF_TIME = timedelta(minutes=30)
-AXES_LOCKOUT_PARAMETERS = ["ip_address", "username"]
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_CLIENT_IP_CALLABLE = "core.client_ip.get_client_ip"
 AXES_RESET_ON_SUCCESS = True
 AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = True
 AXES_LOCKOUT_TEMPLATE = None

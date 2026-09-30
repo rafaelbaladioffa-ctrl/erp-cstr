@@ -1,6 +1,13 @@
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenBlacklistView, TokenObtainPairView, TokenRefreshView
 
+from core.client_ip import get_client_ip
+
+
+class ClientIpScopedRateThrottle(ScopedRateThrottle):
+    def get_ident(self, request):
+        return get_client_ip(request)
+
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):
     """Login da API (usuário/senha -> par de tokens JWT). Limitado por
@@ -8,7 +15,7 @@ class ThrottledTokenObtainPairView(TokenObtainPairView):
     camada de defesa contra brute force; o django-axes complementa
     bloqueando por IP+usuário após N tentativas falhas."""
 
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIpScopedRateThrottle]
     throttle_scope = "login"
 
 
@@ -17,7 +24,7 @@ class ThrottledTokenRefreshView(TokenRefreshView):
     refresh como vetor alternativo de força bruta contra tokens roubados
     ou adivinhados."""
 
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIpScopedRateThrottle]
     throttle_scope = "login"
 
 

@@ -183,3 +183,44 @@ class CompanyTests(TestCase):
         self.assertContains(response, "Tipos de Projeto")
         self.assertContains(response, f'/admin/core/task/{task.pk}/change/')
         self.assertContains(response, "Editar")
+
+
+class ClientIpAndLockoutTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.user = User.objects.create_user(username="lock_target", email="lock@example.com", password="certa-123")
+
+    def _login(self, password, ip, **extra):
+        return self.client.post(
+            "/api/token/",
+            {"username": "lock_target", "password": password},
+            content_type="application/json",
+            REMOTE_ADDR=ip,
+            **extra,
+        )
+
+    def test_cf_header_ignored_when_not_from_trusted_proxy(self):
+        from django.test import RequestFactory, override_settings
+        from core.client_ip import get_client_ip
+        request = RequestFactory().get("/", REMOTE_ADDR="10.0.0.5", HTTP_CF_CONNECTING_IP="1.2.3.4")
+        with override_settings(TRUSTED_PROXY_IPS=set()):
+            self.assertEqual(get_client_ip(request), "10.0.0.5")
+        with override_settings(TRUSTED_PROXY_IPS={"10.0.0.5"}):
+            self.assertEqual(get_client_ip(request), "1.2.3.4")
+
+    def test_invalid_cf_header_falls_back_to_remote_addr(self):
+        from django.test import RequestFactory, override_settings
+        from core.client_ip import get_client_ip
+        request = RequestFactory().get("/", REMOTE_ADDR="10.0.0.5", HTTP_CF_CONNECTING_IP="nao-e-ip")
+        with override_settings(TRUSTED_PROXY_IPS={"10.0.0.5"}):
+            self.assertEqual(get_client_ip(request), "10.0.0.5")
+
+    def test_lockout_is_per_username_and_ip_pair(self):
+        from unittest import mock
+        from api.auth_views import ClientIpScopedRateThrottle
+        with mock.patch.object(ClientIpScopedRateThrottle, "THROTTLE_RATES", {"login": "1000/min"}):
+            for _ in range(5):
+                self._login("errada", "203.0.113.10")
+            self.assertNotEqual(self._login("certa-123", "203.0.113.10").status_code, 200)
+            self.assertEqual(self._login("certa-123", "198.51.100.20").status_code, 200)
