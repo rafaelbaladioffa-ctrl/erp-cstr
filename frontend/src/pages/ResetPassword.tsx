@@ -1,6 +1,37 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { passwordResetApi } from "../api/resources";
+import { usePageText } from "../i18n";
+
+const TEXT = {
+  "pt-BR": {
+    title: "Redefinir senha", subtitle: "Escolha uma nova senha para sua conta.",
+    newPass: "Nova senha", confirm: "Confirmar senha",
+    submit: "Salvar nova senha", saving: "Salvando...",
+    doneTitle: "Senha redefinida!", doneSubtitle: "Sua senha foi alterada com sucesso.",
+    goLogin: "Ir para o login",
+    errEmpty: "Informe a nova senha.", errMismatch: "As senhas não coincidem.",
+    errInvalidLink: "Link inválido.", errDefault: "Erro ao redefinir a senha. O link pode ter expirado.",
+  },
+  "en-US": {
+    title: "Reset password", subtitle: "Choose a new password for your account.",
+    newPass: "New password", confirm: "Confirm password",
+    submit: "Save new password", saving: "Saving...",
+    doneTitle: "Password reset!", doneSubtitle: "Your password has been changed successfully.",
+    goLogin: "Go to login",
+    errEmpty: "Please enter a new password.", errMismatch: "Passwords do not match.",
+    errInvalidLink: "Invalid link.", errDefault: "Error resetting password. The link may have expired.",
+  },
+  "es-ES": {
+    title: "Restablecer contraseña", subtitle: "Elige una nueva contraseña para tu cuenta.",
+    newPass: "Nueva contraseña", confirm: "Confirmar contraseña",
+    submit: "Guardar nueva contraseña", saving: "Guardando...",
+    doneTitle: "¡Contraseña restablecida!", doneSubtitle: "Tu contraseña ha sido cambiada con éxito.",
+    goLogin: "Ir al inicio de sesión",
+    errEmpty: "Ingresa la nueva contraseña.", errMismatch: "Las contraseñas no coinciden.",
+    errInvalidLink: "Enlace inválido.", errDefault: "Error al restablecer la contraseña. El enlace puede haber expirado.",
+  },
+};
 
 const NODES = [
   { cx: 60,  cy: 48,  r: 5,   color: "#e05b2b" },
@@ -24,6 +55,7 @@ const EDGES = [
 export default function ResetPassword() {
   const { uid, token } = useParams<{ uid: string; token: string }>();
   const navigate = useNavigate();
+  const p = usePageText(TEXT);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,16 +65,16 @@ export default function ResetPassword() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (!password) { setError("Informe a nova senha."); return; }
-    if (password !== confirm) { setError("As senhas não coincidem."); return; }
-    if (!uid || !token) { setError("Link inválido."); return; }
+    if (!password) { setError(p.errEmpty); return; }
+    if (password !== confirm) { setError(p.errMismatch); return; }
+    if (!uid || !token) { setError(p.errInvalidLink); return; }
     setLoading(true);
     try {
       await passwordResetApi.confirm(uid, token, password);
       setDone(true);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || "Erro ao redefinir a senha. O link pode ter expirado.");
+      setError(msg || p.errDefault);
     } finally {
       setLoading(false);
     }
@@ -73,21 +105,21 @@ export default function ResetPassword() {
         {done ? (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>✓</div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: "#0d1f30", marginBottom: 8 }}>Senha redefinida!</div>
-            <div style={{ fontSize: 13, color: "#7a8a96", marginBottom: 24 }}>Sua senha foi alterada com sucesso.</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#0d1f30", marginBottom: 8 }}>{p.doneTitle}</div>
+            <div style={{ fontSize: 13, color: "#7a8a96", marginBottom: 24 }}>{p.doneSubtitle}</div>
             <button
               onClick={() => navigate("/login")}
               style={{ width: "100%", height: 42, borderRadius: 9, background: "#e05b2b", color: "#fff", fontSize: 14.5, fontWeight: 700, border: "none", cursor: "pointer" }}
             >
-              Ir para o login
+              {p.goLogin}
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#0d1f30", marginBottom: 4 }}>Redefinir senha</div>
-            <div style={{ fontSize: 13, color: "#7a8a96", marginBottom: 24 }}>Escolha uma nova senha para sua conta.</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0d1f30", marginBottom: 4 }}>{p.title}</div>
+            <div style={{ fontSize: 13, color: "#7a8a96", marginBottom: 24 }}>{p.subtitle}</div>
 
-            <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>Nova senha</label>
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>{p.newPass}</label>
             <input
               type="password"
               className="input"
@@ -97,7 +129,7 @@ export default function ResetPassword() {
               autoFocus
             />
 
-            <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>Confirmar senha</label>
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>{p.confirm}</label>
             <input
               type="password"
               className="input"
@@ -113,7 +145,7 @@ export default function ResetPassword() {
               disabled={loading}
               style={{ width: "100%", height: 42, borderRadius: 9, background: loading ? "#c0452a" : "#e05b2b", color: "#fff", fontSize: 14.5, fontWeight: 700, border: "none", cursor: loading ? "not-allowed" : "pointer", marginTop: 20 }}
             >
-              {loading ? "Salvando..." : "Salvar nova senha"}
+              {loading ? p.saving : p.submit}
             </button>
           </form>
         )}

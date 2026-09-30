@@ -8,7 +8,68 @@ import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatCard from "../components/ui/StatCard";
 import { useAuth } from "../context/AuthContext";
+import { usePageText } from "../i18n";
 import { PERMS, hasPerm } from "../utils/permissions";
+
+const TEXT = {
+  "pt-BR": {
+    back: "Voltar para Cadastros",
+    eyebrow: "Sites", title: "Mapa de Sites",
+    subtitle: "Sites ativos com coordenadas e seus projetos em andamento.",
+    reprocess: "Reprocessar geocodificação", processing: "Processando...",
+    sitesOnMap: "Sites no mapa", withoutCoords: "Sem coordenadas",
+    withoutCoordsHint: "ativos, ainda não geocodificados",
+    loading: "Carregando...",
+    activeProjects: (n: number) => `${n} projeto(s) ativo(s) neste site`,
+    noProjects: "Nenhum projeto ativo neste site no momento.",
+    popupActiveProjects: (n: number) => `${n} projeto(s) ativo(s)`,
+    confirmRegeocode: "Reprocessar a geocodificação de todos os sites ativos sem coordenadas manuais? Isso pode levar alguns segundos.",
+    regeocodeResult: (updated: number, failed: number, skipped: number) => {
+      let msg = `${updated} site(s) geocodificado(s) com sucesso.`;
+      if (failed) msg += ` ${failed} não foram encontrados pelo serviço de geocodificação.`;
+      if (skipped) msg += ` ${skipped} ignorado(s) por ter coordenadas manuais.`;
+      return msg;
+    },
+  },
+  "en-US": {
+    back: "Back to Registrations",
+    eyebrow: "Sites", title: "Sites Map",
+    subtitle: "Active sites with coordinates and their ongoing projects.",
+    reprocess: "Reprocess geocoding", processing: "Processing...",
+    sitesOnMap: "Sites on map", withoutCoords: "Without coordinates",
+    withoutCoordsHint: "active, not yet geocoded",
+    loading: "Loading...",
+    activeProjects: (n: number) => `${n} active project(s) at this site`,
+    noProjects: "No active projects at this site right now.",
+    popupActiveProjects: (n: number) => `${n} active project(s)`,
+    confirmRegeocode: "Reprocess geocoding for all active sites without manual coordinates? This may take a few seconds.",
+    regeocodeResult: (updated: number, failed: number, skipped: number) => {
+      let msg = `${updated} site(s) geocoded successfully.`;
+      if (failed) msg += ` ${failed} could not be found by the geocoding service.`;
+      if (skipped) msg += ` ${skipped} skipped (manual coordinates).`;
+      return msg;
+    },
+  },
+  "es-ES": {
+    back: "Volver a Registros",
+    eyebrow: "Sitios", title: "Mapa de Sitios",
+    subtitle: "Sitios activos con coordenadas y sus proyectos en curso.",
+    reprocess: "Reprocesar geocodificación", processing: "Procesando...",
+    sitesOnMap: "Sitios en mapa", withoutCoords: "Sin coordenadas",
+    withoutCoordsHint: "activos, aún no geocodificados",
+    loading: "Cargando...",
+    activeProjects: (n: number) => `${n} proyecto(s) activo(s) en este sitio`,
+    noProjects: "Sin proyectos activos en este sitio en este momento.",
+    popupActiveProjects: (n: number) => `${n} proyecto(s) activo(s)`,
+    confirmRegeocode: "¿Reprocesar la geocodificación de todos los sitios activos sin coordenadas manuales? Esto puede tardar algunos segundos.",
+    regeocodeResult: (updated: number, failed: number, skipped: number) => {
+      let msg = `${updated} sitio(s) geocodificado(s) con éxito.`;
+      if (failed) msg += ` ${failed} no fueron encontrados por el servicio de geocodificación.`;
+      if (skipped) msg += ` ${skipped} ignorado(s) por tener coordenadas manuales.`;
+      return msg;
+    },
+  },
+};
 
 function escapeHtml(value: string): string {
   return value
@@ -38,6 +99,7 @@ function pinIcon(count: number): L.DivIcon {
 export default function SitesMap() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const p = usePageText(TEXT);
   const canRegeocode = hasPerm(user, PERMS.changeSite);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -74,7 +136,7 @@ export default function SitesMap() {
       const marker = L.marker([point.lat, point.lng], { icon: pinIcon(count) }).addTo(layerGroup);
       const popupHtml = `
         <strong>${escapeHtml(point.name)}</strong>
-        <span style="background:#F16023;color:#fff;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;margin-left:6px;">${count} projeto(s) ativo(s)</span><br/>
+        <span style="background:#F16023;color:#fff;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;margin-left:6px;">${p.popupActiveProjects(count)}</span><br/>
         ${point.client ? `<span style="color:#526174;">${escapeHtml(point.client)}</span><br/>` : ""}
         <span style="color:#526174;font-size:12px;">${escapeHtml(point.address)}</span>
       `;
@@ -107,14 +169,11 @@ export default function SitesMap() {
   }, []);
 
   async function handleRegeocodeAll() {
-    if (!confirm("Reprocessar a geocodificação de todos os sites ativos sem coordenadas manuais? Isso pode levar alguns segundos.")) return;
+    if (!confirm(p.confirmRegeocode)) return;
     setRegeocoding(true);
     try {
       const result = await sitesMapApi.regeocodeBulk();
-      let message = `${result.updated} site(s) geocodificado(s) com sucesso.`;
-      if (result.failed) message += ` ${result.failed} não foram encontrados pelo serviço de geocodificação.`;
-      if (result.skipped_manual) message += ` ${result.skipped_manual} ignorado(s) por ter coordenadas manuais.`;
-      alert(message);
+      alert(p.regeocodeResult(result.updated, result.failed, result.skipped_manual));
       reload();
     } finally {
       setRegeocoding(false);
@@ -125,18 +184,18 @@ export default function SitesMap() {
     <div>
       <Link to="/cadastros" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--text-muted)", textDecoration: "none", fontSize: 13, marginBottom: 12 }}>
         <Icon name="arrow_back" style={{ fontSize: 16 }} />
-        Voltar para Cadastros
+        {p.back}
       </Link>
 
       <PageHeader
-        eyebrow="Sites"
-        title="Mapa de Sites"
-        subtitle="Sites ativos com coordenadas e seus projetos em andamento."
+        eyebrow={p.eyebrow}
+        title={p.title}
+        subtitle={p.subtitle}
         actions={
           canRegeocode ? (
             <button className="btn btn-outline" onClick={handleRegeocodeAll} disabled={regeocoding}>
               <Icon name="my_location" style={{ fontSize: 16 }} />
-              {regeocoding ? "Processando..." : "Reprocessar geocodificação"}
+              {regeocoding ? p.processing : p.reprocess}
             </button>
           ) : undefined
         }
@@ -144,12 +203,12 @@ export default function SitesMap() {
 
       {data && (
         <div className="stat-grid">
-          <StatCard label="Sites no mapa" value={data.points_count} />
-          <StatCard label="Sem coordenadas" value={data.without_coords} hint="ativos, ainda não geocodificados" />
+          <StatCard label={p.sitesOnMap} value={data.points_count} />
+          <StatCard label={p.withoutCoords} value={data.without_coords} hint={p.withoutCoordsHint} />
         </div>
       )}
 
-      {loading && !data && <p style={{ color: "var(--text-muted)" }}>Carregando...</p>}
+      {loading && !data && <p style={{ color: "var(--text-muted)" }}>{p.loading}</p>}
 
       <div className="card" style={{ padding: 0, overflow: "hidden", position: "relative", height: "calc(100vh - 300px)", minHeight: 480 }}>
         <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
@@ -175,7 +234,7 @@ export default function SitesMap() {
               <div>
                 <h2 style={{ fontSize: 15, color: "#172033", margin: "0 0 4px" }}>{selectedPoint.name}</h2>
                 <p style={{ fontSize: 12, color: "#526174", margin: 0 }}>
-                  {selectedPoint.projects.length} projeto(s) ativo(s) neste site
+                  {p.activeProjects(selectedPoint.projects.length)}
                 </p>
               </div>
               <button
@@ -187,7 +246,7 @@ export default function SitesMap() {
             </div>
             <div>
               {selectedPoint.projects.length === 0 ? (
-                <div style={{ padding: 18, fontSize: 13, color: "#526174" }}>Nenhum projeto ativo neste site no momento.</div>
+                <div style={{ padding: 18, fontSize: 13, color: "#526174" }}>{p.noProjects}</div>
               ) : (
                 selectedPoint.projects.map((project) => (
                   <a

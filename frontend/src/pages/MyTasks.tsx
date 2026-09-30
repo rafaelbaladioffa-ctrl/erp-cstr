@@ -3,14 +3,121 @@ import { myTasksApi, presenceApi } from "../api/resources";
 import type { ProjectTask, TechnicianPresence } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import Icon from "../components/ui/Icon";
+import { usePageText } from "../i18n";
 import { PERMS, hasPerm } from "../utils/permissions";
 
-const STATUS_LABELS: Record<string, string> = {
-  not_started: "Não Iniciada",
-  in_progress: "Em Andamento",
-  paused: "Pausada",
-  completed: "Concluída",
-  canceled: "Cancelada",
+const TEXT = {
+  "pt-BR": {
+    title: "Minhas Tarefas",
+    noProfile: "Seu usuário ainda não está vinculado a um Técnico. Peça para o administrador vincular seu usuário no cadastro de Técnicos.",
+    loading: "Carregando...",
+    myStatus: "Meu status",
+    autoInProgress: "Em Execução — definido automaticamente enquanto uma tarefa está em andamento",
+    selectStatus: "Selecione seu status",
+    reopenHint: 'Expediente encerrado — escolha "Disponível" acima pra reabrir, se precisar.',
+    queueBadge: (n: number) => `Fila #${n}`,
+    quantityPlaceholder: "Quantidade executada (opcional)",
+    saving: "Salvando...", start: "Iniciar", pause: "Pausar", complete: "Concluir",
+    completedAt: (dt: string) => `Concluída em ${dt}`,
+    actualStart: "Início real", actualEnd: "Término real", actualHours: "Horas realizadas",
+    quantityDone: "Quantidade executada",
+    notes: "Observações", notesPlaceholder: "Anote algo sobre esta tarefa...",
+    noTasks: "Nenhuma tarefa nesta aba.",
+    since: "desde", at: "às",
+    statusLabels: { not_started: "Não Iniciada", in_progress: "Em Andamento", paused: "Pausada", completed: "Concluída", canceled: "Cancelada" } as Record<string, string>,
+    presenceOptions: [
+      { key: "available", label: "Disponível" },
+      { key: "lunch", label: "Horário de Almoço" },
+      { key: "personal", label: "Particular" },
+      { key: "site_blocked", label: "Sem Acesso ao Site" },
+      { key: "awaiting_release", label: "Aguardando Liberações" },
+      { key: "off_duty", label: "Fim de Expediente" },
+    ],
+    outcomeOptions: [
+      { key: "completed", label: "Concluída" },
+      { key: "partial", label: "Parcial" },
+      { key: "blocked", label: "Bloqueada" },
+    ],
+    tabs: [
+      { key: "pending" as TabKey, label: "Pendentes", short: "Pendentes" },
+      { key: "in_progress" as TabKey, label: "Em Andamento", short: "Em curso" },
+      { key: "completed" as TabKey, label: "Finalizadas", short: "Finalizadas" },
+    ],
+  },
+  "en-US": {
+    title: "My Tasks",
+    noProfile: "Your user is not yet linked to a Technician. Ask an administrator to link your user in the Technicians register.",
+    loading: "Loading...",
+    myStatus: "My status",
+    autoInProgress: "In Progress — set automatically while a task is running",
+    selectStatus: "Select your status",
+    reopenHint: 'Shift ended — choose "Available" above to reopen if needed.',
+    queueBadge: (n: number) => `Queue #${n}`,
+    quantityPlaceholder: "Quantity done (optional)",
+    saving: "Saving...", start: "Start", pause: "Pause", complete: "Complete",
+    completedAt: (dt: string) => `Completed at ${dt}`,
+    actualStart: "Actual start", actualEnd: "Actual end", actualHours: "Actual hours",
+    quantityDone: "Quantity done",
+    notes: "Notes", notesPlaceholder: "Add a note about this task...",
+    noTasks: "No tasks in this tab.",
+    since: "since", at: "at",
+    statusLabels: { not_started: "Not Started", in_progress: "In Progress", paused: "Paused", completed: "Completed", canceled: "Canceled" } as Record<string, string>,
+    presenceOptions: [
+      { key: "available", label: "Available" },
+      { key: "lunch", label: "Lunch break" },
+      { key: "personal", label: "Personal" },
+      { key: "site_blocked", label: "No Site Access" },
+      { key: "awaiting_release", label: "Awaiting Clearance" },
+      { key: "off_duty", label: "End of Shift" },
+    ],
+    outcomeOptions: [
+      { key: "completed", label: "Completed" },
+      { key: "partial", label: "Partial" },
+      { key: "blocked", label: "Blocked" },
+    ],
+    tabs: [
+      { key: "pending" as TabKey, label: "Pending", short: "Pending" },
+      { key: "in_progress" as TabKey, label: "In Progress", short: "In progress" },
+      { key: "completed" as TabKey, label: "Completed", short: "Completed" },
+    ],
+  },
+  "es-ES": {
+    title: "Mis Tareas",
+    noProfile: "Tu usuario aún no está vinculado a un Técnico. Pide al administrador que vincule tu usuario en el registro de Técnicos.",
+    loading: "Cargando...",
+    myStatus: "Mi estado",
+    autoInProgress: "En Ejecución — definido automáticamente mientras una tarea está en curso",
+    selectStatus: "Selecciona tu estado",
+    reopenHint: 'Jornada cerrada — elige "Disponible" arriba para reabrir si es necesario.',
+    queueBadge: (n: number) => `Cola #${n}`,
+    quantityPlaceholder: "Cantidad ejecutada (opcional)",
+    saving: "Guardando...", start: "Iniciar", pause: "Pausar", complete: "Completar",
+    completedAt: (dt: string) => `Completada el ${dt}`,
+    actualStart: "Inicio real", actualEnd: "Fin real", actualHours: "Horas realizadas",
+    quantityDone: "Cantidad ejecutada",
+    notes: "Observaciones", notesPlaceholder: "Añade una nota sobre esta tarea...",
+    noTasks: "Sin tareas en esta pestaña.",
+    since: "desde", at: "a las",
+    statusLabels: { not_started: "No Iniciada", in_progress: "En Curso", paused: "Pausada", completed: "Completada", canceled: "Cancelada" } as Record<string, string>,
+    presenceOptions: [
+      { key: "available", label: "Disponible" },
+      { key: "lunch", label: "Hora de almuerzo" },
+      { key: "personal", label: "Personal" },
+      { key: "site_blocked", label: "Sin acceso al sitio" },
+      { key: "awaiting_release", label: "Esperando autorizaciones" },
+      { key: "off_duty", label: "Fin de jornada" },
+    ],
+    outcomeOptions: [
+      { key: "completed", label: "Completada" },
+      { key: "partial", label: "Parcial" },
+      { key: "blocked", label: "Bloqueada" },
+    ],
+    tabs: [
+      { key: "pending" as TabKey, label: "Pendientes", short: "Pendientes" },
+      { key: "in_progress" as TabKey, label: "En Curso", short: "En curso" },
+      { key: "completed" as TabKey, label: "Finalizadas", short: "Finalizadas" },
+    ],
+  },
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -32,28 +139,7 @@ const PRESENCE_DOT_COLOR: Record<string, string> = {
   off_duty: "var(--text-faint)",
 };
 
-const PRESENCE_STATUS_OPTIONS: { key: string; label: string }[] = [
-  { key: "available", label: "Disponível" },
-  { key: "lunch", label: "Horário de Almoço" },
-  { key: "personal", label: "Particular" },
-  { key: "site_blocked", label: "Sem Acesso ao Site" },
-  { key: "awaiting_release", label: "Aguardando Liberações" },
-  { key: "off_duty", label: "Fim de Expediente" },
-];
-
-const OUTCOME_OPTIONS: { key: string; label: string }[] = [
-  { key: "completed", label: "Concluída" },
-  { key: "partial", label: "Parcial" },
-  { key: "blocked", label: "Bloqueada" },
-];
-
 type TabKey = "pending" | "in_progress" | "completed";
-
-const TABS: { key: TabKey; label: string; short: string }[] = [
-  { key: "pending", label: "Pendentes", short: "Pendentes" },
-  { key: "in_progress", label: "Em Andamento", short: "Em curso" },
-  { key: "completed", label: "Finalizadas", short: "Finalizadas" },
-];
 
 function tabOf(status: string): TabKey | null {
   if (status === "not_started") return "pending";
@@ -82,6 +168,7 @@ function formatTime(value: string | null) {
 
 export default function MyTasks() {
   const { user } = useAuth();
+  const p = usePageText(TEXT);
   const canEdit = hasPerm(user, PERMS.changeMyTasks);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,7 +200,7 @@ export default function MyTasks() {
   }, []);
 
   async function setPresenceStatus(status: string) {
-    const label = PRESENCE_STATUS_OPTIONS.find((opt) => opt.key === status)?.label || status;
+    const label = p.presenceOptions.find((opt) => opt.key === status)?.label || status;
     const question = status === "off_duty" ? "Encerrar seu expediente?" : `Alterar seu status para "${label}"?`;
     if (!confirm(question)) return;
     const updated = await presenceApi.setStatus(status);
@@ -154,16 +241,13 @@ export default function MyTasks() {
     });
   }
 
-  if (loading) return <p style={{ color: "var(--text-muted)", padding: 20 }}>Carregando...</p>;
+  if (loading) return <p style={{ color: "var(--text-muted)", padding: 20 }}>{p.loading}</p>;
 
   if (!user?.has_collaborator_profile) {
     return (
       <div>
-        <div className="mt-title">Minhas Tarefas</div>
-        <div className="empty-state">
-          Seu usuário ainda não está vinculado a um Técnico. Peça para o administrador vincular seu
-          usuário no cadastro de Técnicos.
-        </div>
+        <div className="mt-title">{p.title}</div>
+        <div className="empty-state">{p.noProfile}</div>
       </div>
     );
   }
@@ -174,7 +258,7 @@ export default function MyTasks() {
 
   return (
     <div className="mt-screen">
-      <div className="mt-title">Minhas Tarefas</div>
+      <div className="mt-title">{p.title}</div>
 
       {presence && (
         <div className="mt-presence-bar">
@@ -183,10 +267,10 @@ export default function MyTasks() {
             <div>
               <div className="mt-presence-label">{presence.status_display}</div>
               {presence.checked_in_at && !isOffDuty && (
-                <div className="mt-presence-since">desde {formatTime(presence.checked_in_at)}</div>
+                <div className="mt-presence-since">{p.since} {formatTime(presence.checked_in_at)}</div>
               )}
               {isOffDuty && presence.checked_out_at && (
-                <div className="mt-presence-since">às {formatTime(presence.checked_out_at)}</div>
+                <div className="mt-presence-since">{p.at} {formatTime(presence.checked_out_at)}</div>
               )}
             </div>
           </div>
@@ -195,10 +279,10 @@ export default function MyTasks() {
 
       {presence && (
         <div className="mt-status-select-row">
-          <label className="mt-status-select-label">Meu status</label>
+          <label className="mt-status-select-label">{p.myStatus}</label>
           {isAutoInProgress ? (
             <div className="input" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
-              Em Execução — definido automaticamente enquanto uma tarefa está em andamento
+              {p.autoInProgress}
             </div>
           ) : (
             <select
@@ -208,10 +292,10 @@ export default function MyTasks() {
             >
               {presence.status === "not_started" && (
                 <option value="" disabled>
-                  Selecione seu status
+                  {p.selectStatus}
                 </option>
               )}
-              {PRESENCE_STATUS_OPTIONS.map((opt) => (
+              {p.presenceOptions.map((opt) => (
                 <option key={opt.key} value={opt.key}>
                   {opt.label}
                 </option>
@@ -220,14 +304,14 @@ export default function MyTasks() {
           )}
           {isOffDuty && (
             <div className="mt-status-reopen-hint">
-              Expediente encerrado — escolha "Disponível" acima pra reabrir, se precisar.
+              {p.reopenHint}
             </div>
           )}
         </div>
       )}
 
       <div className="mt-tabs">
-        {TABS.map((tab) => {
+        {p.tabs.map((tab) => {
           const count = tasks.filter((t) => tabOf(t.status) === tab.key).length;
           return (
             <button
@@ -256,9 +340,9 @@ export default function MyTasks() {
                   </div>
                 </div>
                 <div className="mt-card-status" style={{ color: STATUS_TONE[t.status] || "var(--text-muted)" }}>
-                  {STATUS_LABELS[t.status] || t.status_display}
+                  {p.statusLabels[t.status] || t.status_display}
                   {t.status === "not_started" && t.queue_order != null && (
-                    <span className="mt-queue-badge">Fila #{t.queue_order}</span>
+                    <span className="mt-queue-badge">{p.queueBadge(t.queue_order)}</span>
                   )}
                   <Icon name={expanded ? "expand_less" : "expand_more"} style={{ fontSize: 20 }} />
                 </div>
@@ -267,7 +351,7 @@ export default function MyTasks() {
               {canEdit && t.status === "in_progress" && (
                 <>
                   <div className="mt-outcome-row">
-                    {OUTCOME_OPTIONS.map((opt) => (
+                    {p.outcomeOptions.map((opt) => (
                       <button
                         key={opt.key}
                         type="button"
@@ -281,7 +365,7 @@ export default function MyTasks() {
                   <input
                     className="input mt-quantity-input"
                     style={{ width: "calc(100% - 32px)" }}
-                    placeholder="Quantidade executada (opcional)"
+                    placeholder={p.quantityPlaceholder}
                     value={quantityByTask[t.id] ?? ""}
                     onChange={(e) => setQuantityByTask((prev) => ({ ...prev, [t.id]: e.target.value }))}
                   />
@@ -297,25 +381,25 @@ export default function MyTasks() {
                       className="mt-btn mt-btn-start"
                     >
                       <Icon name="play_arrow" style={{ fontSize: 20 }} />
-                      {saving ? "Salvando..." : "Iniciar"}
+                      {saving ? p.saving : p.start}
                     </button>
                   )}
                   {t.status === "in_progress" && (
                     <>
                       <button onClick={() => pauseTask(t)} disabled={saving} className="mt-btn mt-btn-pause">
                         <Icon name="pause" style={{ fontSize: 20 }} />
-                        Pausar
+                        {p.pause}
                       </button>
                       <button onClick={() => completeTask(t)} disabled={saving} className="mt-btn mt-btn-complete">
                         <Icon name="check" style={{ fontSize: 20 }} />
-                        Concluir
+                        {p.complete}
                       </button>
                     </>
                   )}
                   {t.status === "completed" && (
                     <div className="mt-done-note">
                       <Icon name="task_alt" style={{ fontSize: 18 }} />
-                      Concluída em {formatDateTime(t.actual_end)}
+                      {p.completedAt(formatDateTime(t.actual_end))}
                     </div>
                   )}
                 </div>
@@ -324,40 +408,40 @@ export default function MyTasks() {
                 <div className="mt-details">
                   <div className="mt-meta-grid">
                     <div className="mt-meta">
-                      <span className="mt-meta-label">Início real</span>
+                      <span className="mt-meta-label">{p.actualStart}</span>
                       <span className="mt-meta-value">{formatDateTime(t.actual_start)}</span>
                     </div>
                     <div className="mt-meta">
-                      <span className="mt-meta-label">Término real</span>
+                      <span className="mt-meta-label">{p.actualEnd}</span>
                       <span className="mt-meta-value">{formatDateTime(t.actual_end)}</span>
                     </div>
                     <div className="mt-meta">
-                      <span className="mt-meta-label">Horas realizadas</span>
+                      <span className="mt-meta-label">{p.actualHours}</span>
                       <span className="mt-meta-value">{t.actual_hours ? `${t.actual_hours}h` : "—"}</span>
                     </div>
                   </div>
 
                   {t.quantity_done && (
                     <div className="mt-meta" style={{ marginBottom: 12 }}>
-                      <span className="mt-meta-label">Quantidade executada</span>
+                      <span className="mt-meta-label">{p.quantityDone}</span>
                       <span className="mt-meta-value">{t.quantity_done}</span>
                     </div>
                   )}
 
-                  <label className="mt-notes-label">Observações</label>
+                  <label className="mt-notes-label">{p.notes}</label>
                   <textarea
                     disabled={!canEdit}
                     className="input mt-notes"
                     defaultValue={t.notes}
                     onBlur={(e) => save(t.id, { notes: e.target.value })}
-                    placeholder="Anote algo sobre esta tarefa..."
+                    placeholder={p.notesPlaceholder}
                   />
                 </div>
               )}
             </div>
           );
         })}
-        {visibleTasks.length === 0 && <div className="empty-state">Nenhuma tarefa nesta aba.</div>}
+        {visibleTasks.length === 0 && <div className="empty-state">{p.noTasks}</div>}
       </div>
     </div>
   );

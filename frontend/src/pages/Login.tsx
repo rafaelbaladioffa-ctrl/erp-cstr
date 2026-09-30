@@ -3,6 +3,55 @@ import { useNavigate } from "react-router-dom";
 import { savedUsername } from "../api/client";
 import { passwordResetApi } from "../api/resources";
 import { useAuth } from "../context/AuthContext";
+import { usePageText } from "../i18n";
+
+const TEXT = {
+  "pt-BR": {
+    title: "Acesse o sistema",
+    user: "Usuário",
+    password: "Senha",
+    remember: "Salvar usuário",
+    forgot: "Esqueci minha senha",
+    enter: "Entrar",
+    entering: "Entrando...",
+    invalidCredentials: "Usuário ou senha inválidos.",
+    recoverTitle: "Recuperar senha",
+    emailLabel: "E-mail cadastrado",
+    sendInstructions: "Enviar instruções",
+    sending: "Enviando...",
+    sendError: "Erro ao enviar. Tente novamente.",
+  },
+  "en-US": {
+    title: "Sign in",
+    user: "Username",
+    password: "Password",
+    remember: "Remember username",
+    forgot: "Forgot my password",
+    enter: "Sign in",
+    entering: "Signing in...",
+    invalidCredentials: "Invalid username or password.",
+    recoverTitle: "Recover password",
+    emailLabel: "Registered e-mail",
+    sendInstructions: "Send instructions",
+    sending: "Sending...",
+    sendError: "Error sending. Please try again.",
+  },
+  "es-ES": {
+    title: "Acceder al sistema",
+    user: "Usuario",
+    password: "Contraseña",
+    remember: "Guardar usuario",
+    forgot: "Olvidé mi contraseña",
+    enter: "Entrar",
+    entering: "Entrando...",
+    invalidCredentials: "Usuario o contraseña inválidos.",
+    recoverTitle: "Recuperar contraseña",
+    emailLabel: "Correo registrado",
+    sendInstructions: "Enviar instrucciones",
+    sending: "Enviando...",
+    sendError: "Error al enviar. Intente nuevamente.",
+  },
+};
 
 const NODES = [
   { cx: 60,  cy: 48,  r: 5,   color: "#e05b2b" },
@@ -26,6 +75,7 @@ const EDGES = [
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const p = usePageText(TEXT);
   const [username, setUsername] = useState(savedUsername.get());
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(() => Boolean(savedUsername.get()));
@@ -49,7 +99,7 @@ export default function Login() {
       }
       navigate("/");
     } catch {
-      setError("Usuário ou senha inválidos.");
+      setError(p.invalidCredentials);
     } finally {
       setLoading(false);
     }
@@ -58,7 +108,6 @@ export default function Login() {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#07111f", padding: 16, position: "relative", overflow: "hidden" }}>
 
-      {/* Fundo: rede de nós e conexões */}
       <svg
         aria-hidden="true"
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.38, pointerEvents: "none" }}
@@ -67,46 +116,24 @@ export default function Login() {
         xmlns="http://www.w3.org/2000/svg"
       >
         {EDGES.map(([a, b], i) => (
-          <line
-            key={i}
-            x1={NODES[a].cx} y1={NODES[a].cy}
-            x2={NODES[b].cx} y2={NODES[b].cy}
-            stroke="#1e4a72" strokeWidth="1"
-          />
+          <line key={i} x1={NODES[a].cx} y1={NODES[a].cy} x2={NODES[b].cx} y2={NODES[b].cy} stroke="#1e4a72" strokeWidth="1" />
         ))}
         {NODES.map((n, i) => (
-          <circle
-            key={i}
-            cx={n.cx} cy={n.cy} r={n.r}
-            fill={n.color}
-            stroke={n.stroke ?? "none"}
-            strokeWidth={n.stroke ? 1 : 0}
-          />
+          <circle key={i} cx={n.cx} cy={n.cy} r={n.r} fill={n.color} stroke={n.stroke ?? "none"} strokeWidth={n.stroke ? 1 : 0} />
         ))}
       </svg>
 
-      {/* Card */}
       <form
         onSubmit={handleSubmit}
-        style={{
-          position: "relative",
-          zIndex: 1,
-          background: "#fff",
-          borderRadius: 16,
-          padding: "36px 32px",
-          width: "100%",
-          maxWidth: 360,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
-        }}
+        style={{ position: "relative", zIndex: 1, background: "#fff", borderRadius: 16, padding: "36px 32px", width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}
       >
-        {/* Logo */}
         <div style={{ marginBottom: 20 }}>
           <img src="/consultimer-logo-light.png" alt="Consultimer" style={{ height: 34 }} />
         </div>
 
-        <div style={{ fontSize: 18, fontWeight: 800, color: "#0d1f30", marginBottom: 20 }}>Acesse o sistema</div>
+        <div style={{ fontSize: 18, fontWeight: 800, color: "#0d1f30", marginBottom: 20 }}>{p.title}</div>
 
-        <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>Usuário</label>
+        <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>{p.user}</label>
         <input
           className="input"
           style={{ width: "100%", marginBottom: 14, background: "#f6f8fa", border: "1px solid #d8e0e8" }}
@@ -115,7 +142,7 @@ export default function Login() {
           autoFocus
         />
 
-        <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>Senha</label>
+        <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>{p.password}</label>
         <input
           type="password"
           className="input"
@@ -127,25 +154,25 @@ export default function Login() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, marginBottom: 4 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "#7a8a96", cursor: "pointer" }}>
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} style={{ accentColor: "#e05b2b" }} />
-            Salvar usuário
+            {p.remember}
           </label>
           <button
             type="button"
             onClick={() => setShowForgot((v) => !v)}
             style={{ background: "none", border: "none", fontSize: 12.5, color: "#e05b2b", cursor: "pointer", padding: 0 }}
           >
-            Esqueci minha senha
+            {p.forgot}
           </button>
         </div>
 
         {showForgot && (
           <div style={{ marginTop: 10, padding: "14px", borderRadius: 10, background: "#f6f8fa", border: "1px solid #d8e0e8" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#0d1f30", marginBottom: 10 }}>Recuperar senha</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0d1f30", marginBottom: 10 }}>{p.recoverTitle}</div>
             {forgotMsg ? (
               <div style={{ fontSize: 12.5, color: forgotMsg.ok ? "#1a6b3a" : "#c0392b", lineHeight: 1.55 }}>{forgotMsg.text}</div>
             ) : (
               <>
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>E-mail cadastrado</label>
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: "#3a4a56", display: "block", marginBottom: 5 }}>{p.emailLabel}</label>
                 <input
                   type="email"
                   className="input"
@@ -164,14 +191,14 @@ export default function Login() {
                       const res = await passwordResetApi.request(forgotEmail.trim());
                       setForgotMsg({ ok: true, text: res.detail });
                     } catch {
-                      setForgotMsg({ ok: false, text: "Erro ao enviar. Tente novamente." });
+                      setForgotMsg({ ok: false, text: p.sendError });
                     } finally {
                       setForgotLoading(false);
                     }
                   }}
                   style={{ width: "100%", height: 36, borderRadius: 8, background: "#e05b2b", color: "#fff", fontSize: 13, fontWeight: 600, border: "none", cursor: forgotLoading ? "not-allowed" : "pointer" }}
                 >
-                  {forgotLoading ? "Enviando..." : "Enviar instruções"}
+                  {forgotLoading ? p.sending : p.sendInstructions}
                 </button>
               </>
             )}
@@ -183,21 +210,9 @@ export default function Login() {
         <button
           type="submit"
           disabled={loading}
-          style={{
-            width: "100%",
-            height: 42,
-            borderRadius: 9,
-            background: loading ? "#c0452a" : "#e05b2b",
-            color: "#fff",
-            fontSize: 14.5,
-            fontWeight: 700,
-            border: "none",
-            cursor: loading ? "not-allowed" : "pointer",
-            marginTop: 20,
-            letterSpacing: ".02em",
-          }}
+          style={{ width: "100%", height: 42, borderRadius: 9, background: loading ? "#c0452a" : "#e05b2b", color: "#fff", fontSize: 14.5, fontWeight: 700, border: "none", cursor: loading ? "not-allowed" : "pointer", marginTop: 20, letterSpacing: ".02em" }}
         >
-          {loading ? "Entrando..." : "Entrar"}
+          {loading ? p.entering : p.enter}
         </button>
 
         <div style={{ textAlign: "center", marginTop: 16, fontSize: 11, color: "#aab5c0" }}>ERP CSTR · v2.0</div>

@@ -11,7 +11,98 @@ import StatCard from "../components/ui/StatCard";
 import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { useTabs } from "../context/TabsContext";
+import { usePageText } from "../i18n";
 import { PERMS, hasPerm } from "../utils/permissions";
+
+const TEXT = {
+  "pt-BR": {
+    eyebrow: "Portfólio", title: "Projetos",
+    subtitle: "Acompanhe o portfólio, prazos e evolução operacional.",
+    newProject: "Novo projeto",
+    statActive: "Em andamento", statActiveHint: "projetos ativos",
+    statPaused: "Pausados", statPausedHint: "aguardando retomada",
+    statPlanning: "Planejamentos", statPlanningHint: "em preparação",
+    statCompleted: "Finalizados", statCompletedHint: "concluídos ou cancelados",
+    tabActive: "Ativos", tabPaused: "Pausados", tabPlanning: "Planejamentos", tabFinished: "Finalizados",
+    viewKanban: "Visão Kanban", viewList: "Lista de projetos",
+    found: (n: number) => `${n} projeto(s) encontrado(s)`,
+    listView: "Visualização em lista", kanbanView: "Visualização em kanban",
+    export: "Exportar",
+    search: "Buscar", searchPlaceholder: "Buscar por nome ou PO...",
+    client: "Cliente", site: "Site", category: "Categoria", all: "Todos", allFem: "Todas",
+    loading: "Carregando...",
+    colProject: "Projeto", colClientSite: "Cliente / Site", colTasks: "Tarefas",
+    colProgress: "Progresso", colStatus: "Status", colDeadline: "Prazo", colActions: "Ações",
+    tasksLabel: "tarefas",
+    open: "Abrir", noProjects: "Nenhum projeto encontrado.",
+    detailProgress: "progresso geral",
+    detailClient: "Cliente", detailSite: "Site", detailCategory: "Categoria",
+    detailTasks: "Tarefas", detailHours: "Horas", detailDeadline: "Prazo",
+    openProject: "Abrir projeto", openTab: "Abrir em guia", edit: "Editar",
+    deadlineNoDeadline: "Sem prazo", deadlineOverdue: (d: number) => `${d}d em atraso`,
+    deadlineToday: "Vence hoje", deadlineDays: (d: number) => `${d}d restantes`,
+    dropHere: "Soltar aqui", noProjectsKanban: "Nenhum projeto",
+    kanbanActive: "Em andamento", kanbanPaused: "Pausados", kanbanPlanning: "Planejamento", kanbanFinished: "Finalizados",
+  },
+  "en-US": {
+    eyebrow: "Portfolio", title: "Projects",
+    subtitle: "Track your portfolio, deadlines, and operational progress.",
+    newProject: "New project",
+    statActive: "In progress", statActiveHint: "active projects",
+    statPaused: "Paused", statPausedHint: "awaiting resumption",
+    statPlanning: "Planning", statPlanningHint: "in preparation",
+    statCompleted: "Completed", statCompletedHint: "concluded or canceled",
+    tabActive: "Active", tabPaused: "Paused", tabPlanning: "Planning", tabFinished: "Completed",
+    viewKanban: "Kanban view", viewList: "Projects list",
+    found: (n: number) => `${n} project(s) found`,
+    listView: "List view", kanbanView: "Kanban view",
+    export: "Export",
+    search: "Search", searchPlaceholder: "Search by name or PO...",
+    client: "Client", site: "Site", category: "Category", all: "All", allFem: "All",
+    loading: "Loading...",
+    colProject: "Project", colClientSite: "Client / Site", colTasks: "Tasks",
+    colProgress: "Progress", colStatus: "Status", colDeadline: "Deadline", colActions: "Actions",
+    tasksLabel: "tasks",
+    open: "Open", noProjects: "No projects found.",
+    detailProgress: "overall progress",
+    detailClient: "Client", detailSite: "Site", detailCategory: "Category",
+    detailTasks: "Tasks", detailHours: "Hours", detailDeadline: "Deadline",
+    openProject: "Open project", openTab: "Open in tab", edit: "Edit",
+    deadlineNoDeadline: "No deadline", deadlineOverdue: (d: number) => `${d}d overdue`,
+    deadlineToday: "Due today", deadlineDays: (d: number) => `${d}d remaining`,
+    dropHere: "Drop here", noProjectsKanban: "No projects",
+    kanbanActive: "In progress", kanbanPaused: "Paused", kanbanPlanning: "Planning", kanbanFinished: "Completed",
+  },
+  "es-ES": {
+    eyebrow: "Portafolio", title: "Proyectos",
+    subtitle: "Sigue el portafolio, plazos y evolución operacional.",
+    newProject: "Nuevo proyecto",
+    statActive: "En curso", statActiveHint: "proyectos activos",
+    statPaused: "Pausados", statPausedHint: "en espera de reanudación",
+    statPlanning: "Planificación", statPlanningHint: "en preparación",
+    statCompleted: "Finalizados", statCompletedHint: "concluidos o cancelados",
+    tabActive: "Activos", tabPaused: "Pausados", tabPlanning: "Planificación", tabFinished: "Finalizados",
+    viewKanban: "Vista Kanban", viewList: "Lista de proyectos",
+    found: (n: number) => `${n} proyecto(s) encontrado(s)`,
+    listView: "Vista de lista", kanbanView: "Vista Kanban",
+    export: "Exportar",
+    search: "Buscar", searchPlaceholder: "Buscar por nombre o PO...",
+    client: "Cliente", site: "Sitio", category: "Categoría", all: "Todos", allFem: "Todas",
+    loading: "Cargando...",
+    colProject: "Proyecto", colClientSite: "Cliente / Sitio", colTasks: "Tareas",
+    colProgress: "Progreso", colStatus: "Estado", colDeadline: "Plazo", colActions: "Acciones",
+    tasksLabel: "tareas",
+    open: "Abrir", noProjects: "Ningún proyecto encontrado.",
+    detailProgress: "progreso general",
+    detailClient: "Cliente", detailSite: "Sitio", detailCategory: "Categoría",
+    detailTasks: "Tareas", detailHours: "Horas", detailDeadline: "Plazo",
+    openProject: "Abrir proyecto", openTab: "Abrir en pestaña", edit: "Editar",
+    deadlineNoDeadline: "Sin plazo", deadlineOverdue: (d: number) => `${d}d de retraso`,
+    deadlineToday: "Vence hoy", deadlineDays: (d: number) => `${d}d restantes`,
+    dropHere: "Soltar aquí", noProjectsKanban: "Ningún proyecto",
+    kanbanActive: "En curso", kanbanPaused: "Pausados", kanbanPlanning: "Planificación", kanbanFinished: "Finalizados",
+  },
+};
 
 type TabKey = "in_progress" | "paused" | "planning" | "completed";
 type ViewMode = "list" | "kanban";
@@ -66,25 +157,34 @@ function exportCsv(projects: Project[]) {
   URL.revokeObjectURL(url);
 }
 
-function DeadlineLabel({ planned_end }: { planned_end: string | null }) {
+function DeadlineLabel({ planned_end, noDeadline, overdue, today, days }: {
+  planned_end: string | null;
+  noDeadline: string;
+  overdue: (d: number) => string;
+  today: string;
+  days: (d: number) => string;
+}) {
   const diff = daysDiff(planned_end);
-  if (diff === null) return <span style={{ color: "var(--text-faint)", fontSize: 11 }}>Sem prazo</span>;
+  if (diff === null) return <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{noDeadline}</span>;
   if (diff < 0)
-    return <span style={{ color: "var(--red)", fontSize: 11, fontWeight: 600 }}>{Math.abs(diff)}d em atraso</span>;
+    return <span style={{ color: "var(--red)", fontSize: 11, fontWeight: 600 }}>{overdue(Math.abs(diff))}</span>;
   if (diff === 0)
-    return <span style={{ color: "var(--orange)", fontSize: 11, fontWeight: 600 }}>Vence hoje</span>;
+    return <span style={{ color: "var(--orange)", fontSize: 11, fontWeight: 600 }}>{today}</span>;
   if (diff <= 14)
-    return <span style={{ color: "var(--orange)", fontSize: 11 }}>{diff}d restantes</span>;
-  return <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{diff}d restantes</span>;
+    return <span style={{ color: "var(--orange)", fontSize: 11 }}>{days(diff)}</span>;
+  return <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{days(diff)}</span>;
 }
 
+type PL = typeof TEXT["pt-BR"];
+
 // ── Detail panel shown beside the list ──────────────────────────────────────
-function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab }: {
+function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab, p }: {
   project: Project;
   canChange: boolean;
   onEdit: (p: Project) => void;
   onClose: () => void;
   onOpenTab: (p: Project) => void;
+  p: PL;
 }) {
   const diff = daysDiff(project.planned_end);
   const progressColor =
@@ -117,7 +217,7 @@ function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab }: {
       {/* big progress */}
       <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--border)", textAlign: "center" }}>
         <div style={{ fontSize: 36, fontWeight: 700, color: progressColor, lineHeight: 1 }}>{project.progress_percent}%</div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, marginBottom: 10 }}>progresso geral</div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, marginBottom: 10 }}>{p.detailProgress}</div>
         <div className="progress-track">
           <div className="progress-fill" style={{ width: `${project.progress_percent}%`, background: progressColor }} />
         </div>
@@ -126,12 +226,12 @@ function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab }: {
       {/* stats */}
       <div style={{ padding: "12px 16px", flex: 1, overflowY: "auto" }}>
         {[
-          { label: "Cliente", value: project.client_name || "—" },
-          { label: "Site", value: project.site_name || "—" },
-          { label: "Categoria", value: project.category_name || "—" },
-          { label: "Tarefas", value: `${project.completed_tasks} / ${project.total_tasks}` },
-          { label: "Horas", value: formatHours(project.worked_hours) },
-          { label: "Prazo", value: formatDate(project.planned_end) },
+          { label: p.detailClient, value: project.client_name || "—" },
+          { label: p.detailSite, value: project.site_name || "—" },
+          { label: p.detailCategory, value: project.category_name || "—" },
+          { label: p.detailTasks, value: `${project.completed_tasks} / ${project.total_tasks}` },
+          { label: p.detailHours, value: formatHours(project.worked_hours) },
+          { label: p.detailDeadline, value: formatDate(project.planned_end) },
         ].map(({ label, value }) => (
           <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label}</span>
@@ -140,7 +240,7 @@ function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab }: {
         ))}
         {diff !== null && (
           <div style={{ padding: "8px 0" }}>
-            <DeadlineLabel planned_end={project.planned_end} />
+            <DeadlineLabel planned_end={project.planned_end} noDeadline={p.deadlineNoDeadline} overdue={p.deadlineOverdue} today={p.deadlineToday} days={p.deadlineDays} />
           </div>
         )}
       </div>
@@ -148,14 +248,14 @@ function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab }: {
       {/* actions */}
       <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
         <Link to={`/projetos/${project.id}`} className="btn btn-primary btn-sm" style={{ textAlign: "center", textDecoration: "none" }}>
-          Abrir projeto
+          {p.openProject}
         </Link>
         <button className="btn btn-outline btn-sm" onClick={() => onOpenTab(project)}>
-          <Icon name="tab" style={{ fontSize: 14 }} /> Abrir em guia
+          <Icon name="tab" style={{ fontSize: 14 }} /> {p.openTab}
         </button>
         {canChange && (
           <button className="btn btn-outline btn-sm" onClick={() => onEdit(project)}>
-            <Icon name="edit" style={{ fontSize: 14 }} /> Editar
+            <Icon name="edit" style={{ fontSize: 14 }} /> {p.edit}
           </button>
         )}
       </div>
@@ -165,12 +265,13 @@ function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab }: {
 
 // ── Kanban card ──────────────────────────────────────────────────────────────
 function KanbanCard({
-  project, selected, onClick, onDragStart,
+  project, selected, onClick, onDragStart, p,
 }: {
   project: Project;
   selected: boolean;
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
+  p: PL;
 }) {
   const diff = daysDiff(project.planned_end);
   const overdue = diff !== null && diff < 0;
@@ -211,12 +312,12 @@ function KanbanCard({
         />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{project.completed_tasks}/{project.total_tasks} tarefas</span>
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{project.completed_tasks}/{project.total_tasks} {p.tasksLabel}</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)" }}>{project.progress_percent}%</span>
       </div>
       {diff !== null && (
         <div style={{ marginTop: 5 }}>
-          <DeadlineLabel planned_end={project.planned_end} />
+          <DeadlineLabel planned_end={project.planned_end} noDeadline={p.deadlineNoDeadline} overdue={p.deadlineOverdue} today={p.deadlineToday} days={p.deadlineDays} />
         </div>
       )}
     </div>
@@ -224,30 +325,32 @@ function KanbanCard({
 }
 
 // ── Kanban board ─────────────────────────────────────────────────────────────
-const KANBAN_COLS: { key: string | string[]; label: string; statusKey: string; color: string; dropStatus: string }[] = [
-  { key: "in_progress", label: "Em andamento", statusKey: "in_progress", color: "#185fa5", dropStatus: "in_progress" },
-  { key: "paused", label: "Pausados", statusKey: "paused", color: "#854f0b", dropStatus: "paused" },
-  { key: "planning", label: "Planejamento", statusKey: "planning", color: "#534ab7", dropStatus: "planning" },
-  { key: ["completed", "canceled"], label: "Finalizados", statusKey: "completed", color: "#3b6d11", dropStatus: "completed" },
+const KANBAN_COLS_BASE: { key: string | string[]; labelKey: keyof PL; statusKey: string; color: string; dropStatus: string }[] = [
+  { key: "in_progress", labelKey: "kanbanActive", statusKey: "in_progress", color: "#185fa5", dropStatus: "in_progress" },
+  { key: "paused", labelKey: "kanbanPaused", statusKey: "paused", color: "#854f0b", dropStatus: "paused" },
+  { key: "planning", labelKey: "kanbanPlanning", statusKey: "planning", color: "#534ab7", dropStatus: "planning" },
+  { key: ["completed", "canceled"], labelKey: "kanbanFinished", statusKey: "completed", color: "#3b6d11", dropStatus: "completed" },
 ];
 
 function KanbanView({
-  projects, selectedId, onSelect, onStatusChange,
+  projects, selectedId, onSelect, onStatusChange, p,
 }: {
   projects: Project[];
   selectedId: number | null;
   onSelect: (p: Project) => void;
   onStatusChange: (projectId: number, newStatus: string) => void;
+  p: PL;
 }) {
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const dragIdRef = useRef<number | null>(null);
 
   return (
     <div className="kanban-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, minHeight: 300 }}>
-      {KANBAN_COLS.map((col, ci) => {
-        const colProjects = projects.filter((p) =>
-          Array.isArray(col.key) ? col.key.includes(p.status) : p.status === col.key
+      {KANBAN_COLS_BASE.map((col, ci) => {
+        const colProjects = projects.filter((proj) =>
+          Array.isArray(col.key) ? col.key.includes(proj.status) : proj.status === col.key
         );
+        const colLabel = p[col.labelKey] as string;
         const isOver = dragOverCol === col.dropStatus;
         return (
           <div
@@ -275,7 +378,7 @@ function KanbanView({
               marginBottom: 12,
             }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                {col.label}
+                {colLabel}
               </span>
               <span style={{
                 fontSize: 11, fontWeight: 700,
@@ -294,19 +397,20 @@ function KanbanView({
                 border: isOver ? "2px dashed var(--orange)" : "2px dashed transparent",
                 borderRadius: 8, transition: "border-color 0.1s",
               }}>
-                {isOver ? "Soltar aqui" : "Nenhum projeto"}
+                {isOver ? p.dropHere : p.noProjectsKanban}
               </div>
             )}
-            {colProjects.map((p) => (
+            {colProjects.map((proj) => (
               <KanbanCard
-                key={p.id}
-                project={p}
-                selected={selectedId === p.id}
-                onClick={() => onSelect(p)}
+                key={proj.id}
+                project={proj}
+                selected={selectedId === proj.id}
+                onClick={() => onSelect(proj)}
                 onDragStart={(e) => {
-                  dragIdRef.current = p.id;
+                  dragIdRef.current = proj.id;
                   e.dataTransfer.effectAllowed = "move";
                 }}
+                p={p}
               />
             ))}
           </div>
@@ -321,6 +425,7 @@ export default function ProjectsList() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { openTab } = useTabs();
+  const lp = usePageText(TEXT);
   const canAdd = hasPerm(user, PERMS.addProject);
   const canChange = hasPerm(user, PERMS.changeProject);
 
@@ -433,24 +538,24 @@ export default function ProjectsList() {
   return (
     <div>
       <PageHeader
-        eyebrow="Portfólio"
-        title="Projetos"
-        subtitle="Acompanhe o portfólio, prazos e evolução operacional."
+        eyebrow={lp.eyebrow}
+        title={lp.title}
+        subtitle={lp.subtitle}
         actions={
           canAdd ? (
             <button className="btn btn-primary" onClick={openCreate}>
               <Icon name="add" style={{ fontSize: 18 }} />
-              Novo projeto
+              {lp.newProject}
             </button>
           ) : undefined
         }
       />
 
       <div className="stat-grid">
-        <StatCard label="Em andamento" value={inProgressCount} hint="projetos ativos" />
-        <StatCard label="Pausados" value={pausedCount} hint="aguardando retomada" />
-        <StatCard label="Planejamentos" value={planningCount} hint="em preparação" />
-        <StatCard label="Finalizados" value={completedCount} hint="concluídos ou cancelados" />
+        <StatCard label={lp.statActive} value={inProgressCount} hint={lp.statActiveHint} />
+        <StatCard label={lp.statPaused} value={pausedCount} hint={lp.statPausedHint} />
+        <StatCard label={lp.statPlanning} value={planningCount} hint={lp.statPlanningHint} />
+        <StatCard label={lp.statCompleted} value={completedCount} hint={lp.statCompletedHint} />
       </div>
 
       <div className="card" style={{ padding: 0, overflow: "visible" }}>
@@ -459,10 +564,10 @@ export default function ProjectsList() {
         {viewMode === "list" && (
           <>
             <div className="tabs" style={{ padding: "16px 20px 0", marginBottom: 0, borderBottom: "none" }}>
-              <button className={`tab-btn${tab === "in_progress" ? " active" : ""}`} onClick={() => setTab("in_progress")}>Ativos</button>
-              <button className={`tab-btn${tab === "paused" ? " active" : ""}`} onClick={() => setTab("paused")}>Pausados</button>
-              <button className={`tab-btn${tab === "planning" ? " active" : ""}`} onClick={() => setTab("planning")}>Planejamentos</button>
-              <button className={`tab-btn${tab === "completed" ? " active" : ""}`} onClick={() => setTab("completed")}>Finalizados</button>
+              <button className={`tab-btn${tab === "in_progress" ? " active" : ""}`} onClick={() => setTab("in_progress")}>{lp.tabActive}</button>
+              <button className={`tab-btn${tab === "paused" ? " active" : ""}`} onClick={() => setTab("paused")}>{lp.tabPaused}</button>
+              <button className={`tab-btn${tab === "planning" ? " active" : ""}`} onClick={() => setTab("planning")}>{lp.tabPlanning}</button>
+              <button className={`tab-btn${tab === "completed" ? " active" : ""}`} onClick={() => setTab("completed")}>{lp.tabFinished}</button>
             </div>
             <div style={{ borderBottom: "1px solid var(--border)" }} />
           </>
@@ -472,9 +577,9 @@ export default function ProjectsList() {
         <div className="toolbar" style={{ padding: "14px 20px" }}>
           <div>
             <div className="toolbar-title">
-              {viewMode === "kanban" ? "Visão Kanban" : "Lista de projetos"}
+              {viewMode === "kanban" ? lp.viewKanban : lp.viewList}
             </div>
-            <div className="toolbar-subtitle">{activeCount} projeto(s) encontrado(s)</div>
+            <div className="toolbar-subtitle">{lp.found(activeCount)}</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {/* view toggle */}
@@ -507,7 +612,7 @@ export default function ProjectsList() {
             </div>
             <button className="btn btn-outline" onClick={() => exportCsv(viewMode === "kanban" ? kanbanBase : filtered)}>
               <Icon name="download" style={{ fontSize: 16 }} />
-              Exportar
+              {lp.export}
             </button>
           </div>
         </div>
@@ -515,35 +620,35 @@ export default function ProjectsList() {
         {/* filters */}
         <div className="filter-row" style={{ padding: "0 20px 14px" }}>
           <div className="field-group" style={{ flex: 1, minWidth: 220 }}>
-            <span className="field-label">Buscar</span>
+            <span className="field-label">{lp.search}</span>
             <div className="search-input-wrap">
               <Icon name="search" />
               <input
                 className="input"
-                placeholder="Buscar por nome ou PO..."
+                placeholder={lp.searchPlaceholder}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
           </div>
           <div className="field-group">
-            <span className="field-label">Cliente</span>
+            <span className="field-label">{lp.client}</span>
             <select className="select" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
-              <option value="">Todos</option>
+              <option value="">{lp.all}</option>
               {clientOptions.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div className="field-group">
-            <span className="field-label">Site</span>
+            <span className="field-label">{lp.site}</span>
             <select className="select" value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
-              <option value="">Todos</option>
+              <option value="">{lp.all}</option>
               {siteOptions.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="field-group">
-            <span className="field-label">Categoria</span>
+            <span className="field-label">{lp.category}</span>
             <select className="select" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="">Todas</option>
+              <option value="">{lp.allFem}</option>
               {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
@@ -552,7 +657,7 @@ export default function ProjectsList() {
         <div style={{ borderTop: "1px solid var(--border)" }} />
 
         {loading ? (
-          <p style={{ padding: 20, color: "var(--text-muted)" }}>Carregando...</p>
+          <p style={{ padding: 20, color: "var(--text-muted)" }}>{lp.loading}</p>
         ) : viewMode === "kanban" ? (
           /* ── KANBAN VIEW ── */
           <div className="projects-layout" style={{ display: "flex", alignItems: "flex-start" }}>
@@ -563,19 +668,20 @@ export default function ProjectsList() {
                 onSelect={setSelectedProject}
                 onStatusChange={(projectId, newStatus) => {
                   const STATUS_DISPLAY: Record<string, string> = {
-                    in_progress: "Ativo",
-                    paused: "Pausado",
-                    planning: "Planejamento",
-                    completed: "Finalizado",
-                    canceled: "Cancelado",
+                    in_progress: lp.kanbanActive,
+                    paused: lp.kanbanPaused,
+                    planning: lp.kanbanPlanning,
+                    completed: lp.kanbanFinished,
+                    canceled: lp.kanbanFinished,
                   };
-                  const current = projects.find((p) => p.id === projectId);
+                  const current = projects.find((pr) => pr.id === projectId);
                   if (!current || current.status === newStatus) return;
                   const display = STATUS_DISPLAY[newStatus] ?? newStatus;
-                  setProjects((prev) => prev.map((p) => p.id === projectId ? { ...p, status: newStatus, status_display: display } : p));
+                  setProjects((prev) => prev.map((pr) => pr.id === projectId ? { ...pr, status: newStatus, status_display: display } : pr));
                   if (selectedProject?.id === projectId) setSelectedProject((prev) => prev ? { ...prev, status: newStatus, status_display: display } : prev);
                   projectsApi.update(projectId, { status: newStatus } as Partial<Project>).catch(() => reload());
                 }}
+                p={lp}
               />
             </div>
             {selectedProject && (
@@ -586,6 +692,7 @@ export default function ProjectsList() {
                   onEdit={openEdit}
                   onClose={() => setSelectedProject(null)}
                   onOpenTab={handleOpenProjectTab}
+                  p={lp}
                 />
               </div>
             )}
@@ -597,71 +704,71 @@ export default function ProjectsList() {
               <table className="table" style={{ minWidth: 700 }}>
                 <thead>
                   <tr>
-                    <th style={{ minWidth: 200 }}>Projeto</th>
-                    <th>Cliente / Site</th>
-                    <th style={{ textAlign: "center" }}>Tarefas</th>
-                    <th style={{ minWidth: 160 }}>Progresso</th>
-                    <th>Status</th>
-                    <th>Prazo</th>
-                    <th>Ações</th>
+                    <th style={{ minWidth: 200 }}>{lp.colProject}</th>
+                    <th>{lp.colClientSite}</th>
+                    <th style={{ textAlign: "center" }}>{lp.colTasks}</th>
+                    <th style={{ minWidth: 160 }}>{lp.colProgress}</th>
+                    <th>{lp.colStatus}</th>
+                    <th>{lp.colDeadline}</th>
+                    <th>{lp.colActions}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paged.map((p) => {
-                    const isSelected = selectedProject?.id === p.id;
-                    const diff = daysDiff(p.planned_end);
+                  {paged.map((pr) => {
+                    const isSelected = selectedProject?.id === pr.id;
+                    const diff = daysDiff(pr.planned_end);
                     const overrideColor =
-                      p.status === "completed" ? "var(--green)" :
+                      pr.status === "completed" ? "var(--green)" :
                       diff !== null && diff < 0 ? "var(--red)" :
                       undefined;
                     return (
                       <tr
-                        key={p.id}
+                        key={pr.id}
                         style={{
                           background: isSelected ? "var(--surface-2)" : undefined,
                           cursor: "pointer",
                         }}
-                        onClick={() => setSelectedProject(isSelected ? null : p)}
+                        onClick={() => setSelectedProject(isSelected ? null : pr)}
                       >
                         <td>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{p.name}</div>
-                          {p.po && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>PO: {p.po}</div>}
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{pr.name}</div>
+                          {pr.po && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>PO: {pr.po}</div>}
                         </td>
                         <td>
-                          <div style={{ fontSize: 13, color: "var(--text)" }}>{p.client_name || "—"}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.site_name || "—"}</div>
+                          <div style={{ fontSize: 13, color: "var(--text)" }}>{pr.client_name || "—"}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{pr.site_name || "—"}</div>
                         </td>
                         <td style={{ textAlign: "center" }}>
                           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
-                            {p.completed_tasks}<span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>/{p.total_tasks}</span>
+                            {pr.completed_tasks}<span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>/{pr.total_tasks}</span>
                           </div>
-                          <div style={{ fontSize: 10, color: "var(--text-faint)" }}>tarefas</div>
+                          <div style={{ fontSize: 10, color: "var(--text-faint)" }}>{lp.tasksLabel}</div>
                         </td>
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <div className="progress-track" style={{ flex: 1 }}>
                               <div
                                 className="progress-fill"
-                                style={{ width: `${p.progress_percent}%`, ...(overrideColor ? { background: overrideColor } : {}) }}
+                                style={{ width: `${pr.progress_percent}%`, ...(overrideColor ? { background: overrideColor } : {}) }}
                               />
                             </div>
                             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", minWidth: 32, textAlign: "right" }}>
-                              {p.progress_percent}%
+                              {pr.progress_percent}%
                             </span>
                           </div>
                         </td>
                         <td>
-                          <StatusBadge status={p.status} label={p.status_display} />
+                          <StatusBadge status={pr.status} label={pr.status_display} />
                         </td>
                         <td>
-                          <div style={{ fontSize: 12, color: "var(--text)" }}>{formatDate(p.planned_end)}</div>
-                          <DeadlineLabel planned_end={p.planned_end} />
+                          <div style={{ fontSize: 12, color: "var(--text)" }}>{formatDate(pr.planned_end)}</div>
+                          <DeadlineLabel planned_end={pr.planned_end} noDeadline={lp.deadlineNoDeadline} overdue={lp.deadlineOverdue} today={lp.deadlineToday} days={lp.deadlineDays} />
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
                           <div style={{ display: "flex", gap: 6 }}>
-                            <Link to={`/projetos/${p.id}`} className="btn btn-outline btn-sm">Abrir</Link>
+                            <Link to={`/projetos/${pr.id}`} className="btn btn-outline btn-sm">{lp.open}</Link>
                             {canChange && (
-                              <button className="btn btn-outline btn-sm" onClick={() => openEdit(p)}>
+                              <button className="btn btn-outline btn-sm" onClick={() => openEdit(pr)}>
                                 <Icon name="edit" style={{ fontSize: 14 }} />
                               </button>
                             )}
@@ -673,7 +780,7 @@ export default function ProjectsList() {
                   {paged.length === 0 && (
                     <tr>
                       <td colSpan={7}>
-                        <div className="table-empty">Nenhum projeto encontrado.</div>
+                        <div className="table-empty">{lp.noProjects}</div>
                       </td>
                     </tr>
                   )}
@@ -689,6 +796,7 @@ export default function ProjectsList() {
                   onEdit={openEdit}
                   onClose={() => setSelectedProject(null)}
                   onOpenTab={handleOpenProjectTab}
+                  p={lp}
                 />
               </div>
             )}

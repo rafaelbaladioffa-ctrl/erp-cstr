@@ -52,3 +52,11 @@ export function useI18n(): I18nContextValue {
   if (!ctx) throw new Error("useI18n must be used inside I18nProvider");
   return ctx;
 }
+
+/** Helper para texto localizado inline por página.
+ *  Uso: const p = usePageText({ "pt-BR": {...}, "en-US": {...}, "es-ES": {...} })
+ */
+export function usePageText<T extends Record<string, unknown>>(map: Record<Locale, T>): T {
+  const { locale } = useI18n();
+  return map[locale];
+}

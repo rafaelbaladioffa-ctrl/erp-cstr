@@ -6,7 +6,83 @@ import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import DateRangeCalendar, { type DateRange } from "../components/ui/DateRangeCalendar";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
+import { usePageText } from "../i18n";
 import { PERMS, hasPerm } from "../utils/permissions";
+
+const TEXT = {
+  "pt-BR": {
+    eyebrow: "Área Operacional", title: "Atualizações Diárias",
+    subtitle: "Registre e envie o consolidado diário de alocação da equipe.",
+    newUpdate: "Nova Atualização", cancel: "Cancelar",
+    period: "Período",
+    found: (n: number) => `${n} atualização(ões) encontrada(s)`,
+    consolidatedPdfLabel: "Gerar PDF Consolidado do dia",
+    generateConsolidated: "Gerar PDF Consolidado", generating: "Gerando...",
+    loading: "Carregando...",
+    selectPeriod: "Selecione um período acima para ver as Atualizações Diárias.",
+    projectLabel: (n: number) => `Projeto ${n}`,
+    selectProject: "Selecione...",
+    dateFrom: "Data inicial", dateTo: "Data final",
+    days: (n: number) => `${n} dias`,
+    project: "Projeto",
+    technicians: "Técnicos", addProject: "Adicionar Projeto",
+    saving: "Salvando...", save: "Salvar",
+    noUpdate: "Nenhuma atualização registrada.",
+    pdf: "PDF", sendEmail: "Enviar e-mail",
+    errNoRows: "Adicione ao menos um projeto com técnico(s) selecionado(s).",
+    errInvalidPeriod: "Um ou mais projetos têm período inválido (data inicial > data final).",
+    errSave: "Não foi possível salvar a atualização.",
+    errPdf: "Não foi possível gerar o PDF consolidado. Verifique se existem Atualizações Diárias para a data selecionada.",
+  },
+  "en-US": {
+    eyebrow: "Operations", title: "Daily Updates",
+    subtitle: "Record and send the daily team allocation summary.",
+    newUpdate: "New Update", cancel: "Cancel",
+    period: "Period",
+    found: (n: number) => `${n} update(s) found`,
+    consolidatedPdfLabel: "Generate Consolidated PDF for date",
+    generateConsolidated: "Generate Consolidated PDF", generating: "Generating...",
+    loading: "Loading...",
+    selectPeriod: "Select a period above to see Daily Updates.",
+    projectLabel: (n: number) => `Project ${n}`,
+    selectProject: "Select...",
+    dateFrom: "Start date", dateTo: "End date",
+    days: (n: number) => `${n} days`,
+    project: "Project",
+    technicians: "Technicians", addProject: "Add Project",
+    saving: "Saving...", save: "Save",
+    noUpdate: "No updates recorded.",
+    pdf: "PDF", sendEmail: "Send email",
+    errNoRows: "Add at least one project with technician(s) selected.",
+    errInvalidPeriod: "One or more projects have an invalid period (start date > end date).",
+    errSave: "Could not save the update.",
+    errPdf: "Could not generate the consolidated PDF. Check if Daily Updates exist for the selected date.",
+  },
+  "es-ES": {
+    eyebrow: "Operaciones", title: "Actualizaciones Diarias",
+    subtitle: "Registra y envía el consolidado diario de asignación del equipo.",
+    newUpdate: "Nueva Actualización", cancel: "Cancelar",
+    period: "Período",
+    found: (n: number) => `${n} actualización(es) encontrada(s)`,
+    consolidatedPdfLabel: "Generar PDF Consolidado del día",
+    generateConsolidated: "Generar PDF Consolidado", generating: "Generando...",
+    loading: "Cargando...",
+    selectPeriod: "Selecciona un período arriba para ver las Actualizaciones Diarias.",
+    projectLabel: (n: number) => `Proyecto ${n}`,
+    selectProject: "Seleccionar...",
+    dateFrom: "Fecha inicial", dateTo: "Fecha final",
+    days: (n: number) => `${n} días`,
+    project: "Proyecto",
+    technicians: "Técnicos", addProject: "Agregar Proyecto",
+    saving: "Guardando...", save: "Guardar",
+    noUpdate: "Sin actualizaciones registradas.",
+    pdf: "PDF", sendEmail: "Enviar correo",
+    errNoRows: "Agrega al menos un proyecto con técnico(s) seleccionado(s).",
+    errInvalidPeriod: "Uno o más proyectos tienen período inválido (fecha inicial > fecha final).",
+    errSave: "No fue posible guardar la actualización.",
+    errPdf: "No fue posible generar el PDF consolidado. Verifica si existen Actualizaciones Diarias para la fecha seleccionada.",
+  },
+};
 
 function tomorrowIso() {
   const d = new Date();
@@ -28,6 +104,7 @@ function emptyRow(): AllocationRow {
 
 export default function DailyUpdates() {
   const { user } = useAuth();
+  const p = usePageText(TEXT);
   const canCreate = hasPerm(user, PERMS.addDailyUpdate);
   const canSend = hasPerm(user, PERMS.changeDailyUpdate);
   const [updates, setUpdates] = useState<DailyUpdate[]>([]);
@@ -92,12 +169,12 @@ export default function DailyUpdates() {
   async function handleCreate() {
     const validRows = allocationRows.filter((row) => row.projectId && row.collaboratorIds.length > 0);
     if (validRows.length === 0) {
-      setCreateError("Adicione ao menos um projeto com técnico(s) selecionado(s).");
+      setCreateError(p.errNoRows);
       return;
     }
     const invalidPeriod = validRows.find((row) => !row.dateFrom || !row.dateTo || row.dateFrom > row.dateTo);
     if (invalidPeriod) {
-      setCreateError("Um ou mais projetos têm período inválido (data inicial > data final).");
+      setCreateError(p.errInvalidPeriod);
       return;
     }
     setSavingCreate(true);
@@ -125,7 +202,7 @@ export default function DailyUpdates() {
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: Record<string, unknown> } };
       const data = axiosErr.response?.data;
-      setCreateError(data ? JSON.stringify(data) : "Não foi possível salvar a atualização.");
+      setCreateError(data ? JSON.stringify(data) : p.errSave);
     } finally {
       setSavingCreate(false);
     }
@@ -151,7 +228,7 @@ export default function DailyUpdates() {
     try {
       await downloadAuthenticatedFile(dailyUpdatesApi.consolidatedPdfPath(consolidatedDate), `atualizacao-diaria-${consolidatedDate}.pdf`);
     } catch {
-      alert("Não foi possível gerar o PDF consolidado. Verifique se existem Atualizações Diárias para a data selecionada.");
+      alert(p.errPdf);
     } finally {
       setDownloadingId(null);
     }
@@ -160,9 +237,9 @@ export default function DailyUpdates() {
   return (
     <div>
       <PageHeader
-        eyebrow="Área Operacional"
-        title="Atualizações Diárias"
-        subtitle="Registre e envie o consolidado diário de alocação da equipe."
+        eyebrow={p.eyebrow}
+        title={p.title}
+        subtitle={p.subtitle}
         actions={
           canCreate ? (
             <button
@@ -174,7 +251,7 @@ export default function DailyUpdates() {
               }}
             >
               <Icon name={creating ? "close" : "add"} style={{ fontSize: 18 }} />
-              {creating ? "Cancelar" : "Nova Atualização"}
+              {creating ? p.cancel : p.newUpdate}
             </button>
           ) : undefined
         }
@@ -182,11 +259,11 @@ export default function DailyUpdates() {
 
       <div className="card" style={{ padding: 14, marginBottom: 16, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span className="field-label">Período</span>
+          <span className="field-label">{p.period}</span>
           <DateRangeCalendar value={range} onChange={setRange} maxDays={7} />
           {range && (
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {updates.length} atualização(ões) encontrada(s)
+              {p.found(updates.length)}
             </span>
           )}
         </div>
@@ -194,12 +271,12 @@ export default function DailyUpdates() {
         {canSend && (
           <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginLeft: "auto", flexWrap: "wrap" }}>
             <div className="field-group">
-              <span className="field-label">Gerar PDF Consolidado do dia</span>
+              <span className="field-label">{p.consolidatedPdfLabel}</span>
               <input type="date" className="input" value={consolidatedDate} onChange={(e) => setConsolidatedDate(e.target.value)} />
             </div>
             <button className="btn btn-outline" onClick={handleDownloadConsolidated} disabled={downloadingId === "consolidated"}>
               <Icon name="picture_as_pdf" style={{ fontSize: 16 }} />
-              {downloadingId === "consolidated" ? "Gerando..." : "Gerar PDF Consolidado"}
+              {downloadingId === "consolidated" ? p.generating : p.generateConsolidated}
             </button>
           </div>
         )}
@@ -226,7 +303,7 @@ export default function DailyUpdates() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                  Projeto {index + 1}
+                  {p.projectLabel(index + 1)}
                 </span>
                 {allocationRows.length > 1 && (
                   <button
@@ -240,13 +317,13 @@ export default function DailyUpdates() {
                 )}
               </div>
 
-              <label className="form-label">Projeto</label>
+              <label className="form-label">{p.project}</label>
               <select
                 className="input"
                 value={row.projectId}
                 onChange={(e) => updateAllocationRow(index, { projectId: Number(e.target.value) })}
               >
-                <option value="">Selecione...</option>
+                <option value="">{p.selectProject}</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.code} — {p.name}
@@ -256,7 +333,7 @@ export default function DailyUpdates() {
 
               <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
                 <div className="field-group" style={{ flex: 1, minWidth: 140 }}>
-                  <label className="form-label">Data inicial</label>
+                  <label className="form-label">{p.dateFrom}</label>
                   <input
                     type="date"
                     className="input"
@@ -268,7 +345,7 @@ export default function DailyUpdates() {
                   />
                 </div>
                 <div className="field-group" style={{ flex: 1, minWidth: 140 }}>
-                  <label className="form-label">Data final</label>
+                  <label className="form-label">{p.dateTo}</label>
                   <input
                     type="date"
                     className="input"
@@ -281,11 +358,11 @@ export default function DailyUpdates() {
               {row.dateFrom !== row.dateTo && row.dateFrom <= row.dateTo && (
                 <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0 4px" }}>
                   <Icon name="info" style={{ fontSize: 13, verticalAlign: "middle", marginRight: 4 }} />
-                  {getDatesInRange(row.dateFrom, row.dateTo).length} dias
+                  {p.days(getDatesInRange(row.dateFrom, row.dateTo).length)}
                 </p>
               )}
 
-              <label className="form-label" style={{ marginTop: 10 }}>Técnicos</label>
+              <label className="form-label" style={{ marginTop: 10 }}>{p.technicians}</label>
               <select
                 multiple
                 className="input"
@@ -306,25 +383,25 @@ export default function DailyUpdates() {
 
           <button type="button" onClick={addAllocationRow} className="btn btn-outline btn-sm" style={{ marginBottom: 14 }}>
             <Icon name="add" style={{ fontSize: 15 }} />
-            Adicionar Projeto
+            {p.addProject}
           </button>
 
           {createError && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{createError}</p>}
 
           <div>
             <button className="btn btn-primary" onClick={handleCreate} disabled={savingCreate}>
-              {savingCreate ? "Salvando..." : "Salvar"}
+              {savingCreate ? p.saving : p.save}
             </button>
           </div>
         </div>
       )}
 
       {loading ? (
-        <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+        <p style={{ color: "var(--text-muted)" }}>{p.loading}</p>
       ) : !range ? (
         <div className="empty-state">
           <Icon name="calendar_month" style={{ fontSize: 28, color: "var(--text-faint)" }} />
-          <p style={{ marginTop: 8 }}>Selecione um período acima para ver as Atualizações Diárias.</p>
+          <p style={{ marginTop: 8 }}>{p.selectPeriod}</p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -341,10 +418,10 @@ export default function DailyUpdates() {
                       disabled={downloadingId === update.id}
                       className="btn btn-secondary btn-sm"
                     >
-                      {downloadingId === update.id ? "Gerando..." : "PDF"}
+                      {downloadingId === update.id ? p.generating : p.pdf}
                     </button>
                     <button onClick={() => handleSendEmail(update.id)} className="btn btn-primary btn-sm">
-                      Enviar e-mail
+                      {p.sendEmail}
                     </button>
                   </div>
                 )}
@@ -354,7 +431,7 @@ export default function DailyUpdates() {
               </pre>
             </div>
           ))}
-          {updates.length === 0 && <div className="empty-state">Nenhuma atualização registrada.</div>}
+          {updates.length === 0 && <div className="empty-state">{p.noUpdate}</div>}
         </div>
       )}
     </div>
