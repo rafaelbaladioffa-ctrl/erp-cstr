@@ -848,6 +848,52 @@ class ClientUserAccessScopeApiTests(TestCase):
         self.assertEqual(names, {"Projeto A1"})
 
 
+    def test_client_user_cannot_create_occurrence_in_other_client_project(self):
+        self._client_user("cliente_a_occ", client=self.client_a, perms=("view_project", "add_projectoccurrence"))
+        blocked = self.client_api.post("/api/project-occurrences/", {"project": self.project_b.pk, "title": "Invasão"}, format="json")
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn("project", blocked.data)
+        allowed = self.client_api.post("/api/project-occurrences/", {"project": self.project_a1.pk, "title": "Própria"}, format="json")
+        self.assertEqual(allowed.status_code, 201)
+
+    def test_client_user_cannot_move_occurrence_to_other_client_project(self):
+        from projects.models import ProjectOccurrence
+        occurrence = ProjectOccurrence.objects.create(project=self.project_a1, title="Minha")
+        self._client_user(
+            "cliente_a_occ_move", client=self.client_a, perms=("view_project", "view_projectoccurrence", "change_projectoccurrence"),
+        )
+        response = self.client_api.patch(f"/api/project-occurrences/{occurrence.pk}/", {"project": self.project_b.pk}, format="json")
+        self.assertEqual(response.status_code, 400)
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.project_id, self.project_a1.pk)
+
+    def test_client_user_cannot_create_project_for_other_client_or_site(self):
+        self._client_user("cliente_a_proj", client=self.client_a, perms=("view_project", "add_project"))
+        other_site = Site.objects.create(client=self.client_b, name="Site B")
+        response = self.client_api.post(
+            "/api/projects/",
+            {"company": self.company.pk, "name": "Projeto Intruso", "client": self.client_b.pk, "site": other_site.pk},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("client", response.data)
+        self.assertFalse(Project.objects.filter(name="Projeto Intruso").exists())
+
+    def test_client_user_restricted_by_site_cannot_write_to_other_site_project(self):
+        self._client_user(
+            "cliente_a_site_occ", client=self.client_a, sites=[self.site_a1], perms=("view_project", "add_projectoccurrence"),
+        )
+        response = self.client_api.post("/api/project-occurrences/", {"project": self.project_a2.pk, "title": "Outro site"}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_staff_user_can_still_write_to_any_project(self):
+        user = User.objects.create_user(username="staff_occ", email="staff_occ@example.com", password="test-password", company=self.company)
+        for codename in ("view_project", "add_projectoccurrence"):
+            user.user_permissions.add(Permission.objects.get(codename=codename, content_type__app_label="projects"))
+        self.client_api.force_authenticate(user=user)
+        response = self.client_api.post("/api/project-occurrences/", {"project": self.project_b.pk, "title": "Interna"}, format="json")
+        self.assertEqual(response.status_code, 201)
+
 class ProjectTaskDispatchApiTests(TestCase):
     """dispatch/undispatch de ProjectTaskAssignment via ProjectTaskViewSet."""
 

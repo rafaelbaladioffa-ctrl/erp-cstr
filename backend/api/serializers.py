@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from audit.models import AuditLog
+from core.access_scope import get_scope_for_user, scope_related_queryset
 from core.models import (
     Category,
     Client,
@@ -46,6 +47,24 @@ from projects.models import Project, ProjectAttachment, ProjectOccurrence, Proje
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import build_project_update_body
 
+
+
+class ClientScopedRelationsMixin:
+    """Limita os IDs aceitos em campos de relação graváveis ao escopo do
+    usuário-cliente — sem isso, quem só lê dentro do escopo poderia gravar
+    registros apontando para projetos/clientes/sites de terceiros."""
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if request is None or get_scope_for_user(user) is None:
+            return fields
+        for field in fields.values():
+            relation = field.child_relation if isinstance(field, serializers.ManyRelatedField) else field
+            if isinstance(relation, serializers.RelatedField) and not relation.read_only and relation.queryset is not None:
+                relation.queryset = scope_related_queryset(relation.queryset, user)
+        return fields
 
 class ClientSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
@@ -1288,7 +1307,7 @@ class JobTitleCrudSerializer(serializers.ModelSerializer):
         return str(obj.company) if obj.company_id else None
 
 
-class SiteCrudSerializer(serializers.ModelSerializer):
+class SiteCrudSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     client_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -1318,7 +1337,7 @@ class ClientCrudSerializer(serializers.ModelSerializer):
         return str(obj.company) if obj.company_id else None
 
 
-class ResponsibleCrudSerializer(serializers.ModelSerializer):
+class ResponsibleCrudSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     """Responsável unificado — Tipo (`kind`) define se é CSTR (usa
     `company`, via Person) ou Cliente (usa `client` + `job_title`)."""
 
@@ -1414,7 +1433,7 @@ class TaskCrudSerializer(serializers.ModelSerializer):
         return [str(pt) for pt in obj.project_types.all()]
 
 
-class ProjectSerializer(serializers.ModelSerializer):
+class ProjectSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     client_name = serializers.SerializerMethodField()
     site_name = serializers.SerializerMethodField()
     category_name = serializers.SerializerMethodField()
@@ -1543,14 +1562,14 @@ class ProjectSerializer(serializers.ModelSerializer):
         return instance
 
 
-class RackPositionSerializer(serializers.ModelSerializer):
+class RackPositionSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     class Meta:
         model = RackPosition
         fields = ("id", "project", "position", "dh", "links", "utp", "created_at", "updated_at")
         read_only_fields = ("created_at", "updated_at")
 
 
-class ProjectTaskSerializer(serializers.ModelSerializer):
+class ProjectTaskSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     task_name = serializers.CharField(source="display_name", read_only=True)
     project_name = serializers.CharField(source="project.name", read_only=True)
     project_code = serializers.CharField(source="project.code", read_only=True)
@@ -1671,7 +1690,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ProjectOccurrenceSerializer(serializers.ModelSerializer):
+class ProjectOccurrenceSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     responsible_name = serializers.CharField(source="responsible.person.name", read_only=True, default=None)
     severity_display = serializers.CharField(source="get_severity_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
@@ -1697,7 +1716,7 @@ class ProjectOccurrenceSerializer(serializers.ModelSerializer):
         read_only_fields = ("resolved_at", "created_at", "updated_at")
 
 
-class ProjectAttachmentSerializer(serializers.ModelSerializer):
+class ProjectAttachmentSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     file_name = serializers.SerializerMethodField()
     file_size = serializers.SerializerMethodField()
     uploaded_by_name = serializers.SerializerMethodField()
@@ -1829,7 +1848,7 @@ class TechnicianAbsenceSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class DailyUpdateAllocationSerializer(serializers.ModelSerializer):
+class DailyUpdateAllocationSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     project_name = serializers.CharField(source="project.name", read_only=True)
     collaborator_ids = serializers.PrimaryKeyRelatedField(
         source="collaborators", queryset=Collaborator.objects.filter(is_active=True), many=True
@@ -1888,7 +1907,7 @@ class DailyUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 
-class ProjectDailyUpdateSerializer(serializers.ModelSerializer):
+class ProjectDailyUpdateSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     project_name = serializers.CharField(source="project.name", read_only=True)
     project_code = serializers.CharField(source="project.code", read_only=True)
     client_name = serializers.SerializerMethodField()
@@ -1942,7 +1961,7 @@ class ProjectDailyUpdateSerializer(serializers.ModelSerializer):
         return super().to_representation(instance)
 
 
-class ProjectDailyUpdateCreateSerializer(serializers.ModelSerializer):
+class ProjectDailyUpdateCreateSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     """Usado apenas na criação: os demais campos são calculados
     automaticamente a partir do projeto (ver ProjectDailyUpdate.save())."""
 

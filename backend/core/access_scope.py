@@ -120,3 +120,25 @@ def user_can_access_category(user, category):
     if scope["categories"] is not None and category.id not in scope["categories"]:
         return False
     return True
+
+
+def scope_related_queryset(queryset, user):
+    """Restringe as opções de um campo de relação gravável ao escopo do
+    usuário-cliente: Projeto, Cliente, Site, Categoria e qualquer modelo com
+    FK `project` para Projeto. Outros modelos ficam como estão."""
+    from core.models import Category, Client, Site
+    from projects.models import Project
+
+    model = queryset.model
+    if model is Project:
+        return scope_project_queryset(queryset, user)
+    if model is Client:
+        return scope_client_queryset(queryset, user)
+    if model is Site:
+        return scope_site_queryset(queryset, user)
+    if model is Category:
+        return scope_category_queryset(queryset, user)
+    project_field = next((f for f in model._meta.get_fields() if f.name == "project" and f.is_relation), None)
+    if project_field is not None and project_field.related_model is Project:
+        return scope_project_queryset(queryset, user, field_prefix="project__")
+    return queryset
