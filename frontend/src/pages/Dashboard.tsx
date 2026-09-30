@@ -5,7 +5,74 @@ import type { ProjectsPerformanceData, TechnicalPerformanceData } from "../api/t
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import { useAuth } from "../context/AuthContext";
+import { usePageText } from "../i18n";
 import { PERMS, hasPerm } from "../utils/permissions";
+
+const TEXT = {
+  "pt-BR": {
+    greeting: (): string => { const h = new Date().getHours(); return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"; },
+    subtitle: "Acompanhe as pendências e acesse os módulos do sistema.",
+    kpiActive: "Em andamento", kpiActiveHint: "projetos ativos",
+    kpiOverdue: "Em atraso", kpiOverdueHint: "prazo vencido",
+    kpiTasks: "Tarefas concluídas", kpiTasksHint: "acumuladas",
+    kpiHours: "Horas trabalhadas", kpiHoursHint: "acumuladas",
+    quickAccess: "Acesso rápido", customize: "Personalizar atalhos",
+    add: "Adicionar",
+    alerts: "Atenção imediata", overdueCount: (n: number) => `${n} em atraso`,
+    viewProjects: "Ver projetos →",
+    loading: "Carregando...",
+    tagOverdue: "Atrasado", tagUrgent: "Urgente",
+    modalTitle: "Personalizar atalhos",
+    modalSubtitle: (max: number) => `Selecione até ${max} atalhos para exibir na tela inicial.`,
+    selected: (n: number, max: number) => `${n} / ${max} selecionados`,
+    cancel: "Cancelar", save: "Salvar",
+    noPermission: "Você não tem permissão para acessar esta página.",
+    overdueLabel: (days: number) => `Prazo vencido há ${days} dia(s)`,
+    dueIn: (days: number) => (days === 0 ? "Vence hoje" : `Vence em ${days} dia(s)`),
+  },
+  "en-US": {
+    greeting: () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; },
+    subtitle: "Track pending items and access system modules.",
+    kpiActive: "In progress", kpiActiveHint: "active projects",
+    kpiOverdue: "Overdue", kpiOverdueHint: "deadline passed",
+    kpiTasks: "Tasks completed", kpiTasksHint: "accumulated",
+    kpiHours: "Hours worked", kpiHoursHint: "accumulated",
+    quickAccess: "Quick access", customize: "Customize shortcuts",
+    add: "Add",
+    alerts: "Immediate attention", overdueCount: (n: number) => `${n} overdue`,
+    viewProjects: "View projects →",
+    loading: "Loading...",
+    tagOverdue: "Overdue", tagUrgent: "Urgent",
+    modalTitle: "Customize shortcuts",
+    modalSubtitle: (max: number) => `Select up to ${max} shortcuts to display on the home screen.`,
+    selected: (n: number, max: number) => `${n} / ${max} selected`,
+    cancel: "Cancel", save: "Save",
+    noPermission: "You don't have permission to access this page.",
+    overdueLabel: (days: number) => `Overdue by ${days} day(s)`,
+    dueIn: (days: number) => (days === 0 ? "Due today" : `Due in ${days} day(s)`),
+  },
+  "es-ES": {
+    greeting: () => { const h = new Date().getHours(); return h < 12 ? "Buenos días" : h < 18 ? "Buenas tardes" : "Buenas noches"; },
+    subtitle: "Sigue las pendientes y accede a los módulos del sistema.",
+    kpiActive: "En curso", kpiActiveHint: "proyectos activos",
+    kpiOverdue: "En atraso", kpiOverdueHint: "plazo vencido",
+    kpiTasks: "Tareas completadas", kpiTasksHint: "acumuladas",
+    kpiHours: "Horas trabajadas", kpiHoursHint: "acumuladas",
+    quickAccess: "Acceso rápido", customize: "Personalizar accesos",
+    add: "Agregar",
+    alerts: "Atención inmediata", overdueCount: (n: number) => `${n} en atraso`,
+    viewProjects: "Ver proyectos →",
+    loading: "Cargando...",
+    tagOverdue: "Atrasado", tagUrgent: "Urgente",
+    modalTitle: "Personalizar accesos directos",
+    modalSubtitle: (max: number) => `Selecciona hasta ${max} accesos para mostrar en la pantalla de inicio.`,
+    selected: (n: number, max: number) => `${n} / ${max} seleccionados`,
+    cancel: "Cancelar", save: "Guardar",
+    noPermission: "No tienes permiso para acceder a esta página.",
+    overdueLabel: (days: number) => `Vencido hace ${days} día(s)`,
+    dueIn: (days: number) => (days === 0 ? "Vence hoy" : `Vence en ${days} día(s)`),
+  },
+};
 
 // ── Shortcut catalog ─────────────────────────────────────────────────────────
 interface ShortcutDef {
@@ -65,21 +132,19 @@ function daysDiff(value: string | null): number | null {
 }
 
 function greeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Bom dia";
-  if (h < 18) return "Boa tarde";
-  return "Boa noite";
+  return "";
 }
+
+type DP = typeof TEXT["pt-BR"];
 
 // ── Shortcut editor modal ────────────────────────────────────────────────────
 function ShortcutEditor({
-  selected,
-  onSave,
-  onClose,
+  selected, onSave, onClose, p,
 }: {
   selected: string[];
   onSave: (ids: string[]) => void;
   onClose: () => void;
+  p: DP;
 }) {
   const [draft, setDraft] = useState<string[]>(selected);
 
@@ -97,9 +162,9 @@ function ShortcutEditor({
       <div style={{ background: "var(--white)", borderRadius: 12, width: 420, maxWidth: "calc(100vw - 32px)", boxShadow: "0 8px 32px rgba(0,0,0,0.16)" }}>
         <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Personalizar atalhos</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{p.modalTitle}</div>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-              Selecione até {MAX_SHORTCUTS} atalhos para exibir na tela inicial.
+              {p.modalSubtitle(MAX_SHORTCUTS)}
             </div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}>
@@ -142,10 +207,10 @@ function ShortcutEditor({
         </div>
 
         <div style={{ padding: "14px 20px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{draft.length} / {MAX_SHORTCUTS} selecionados</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{p.selected(draft.length, MAX_SHORTCUTS)}</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-outline" onClick={onClose}>Cancelar</button>
-            <button className="btn btn-primary" onClick={() => { onSave(draft); onClose(); }}>Salvar</button>
+            <button className="btn btn-outline" onClick={onClose}>{p.cancel}</button>
+            <button className="btn btn-primary" onClick={() => { onSave(draft); onClose(); }}>{p.save}</button>
           </div>
         </div>
       </div>
@@ -156,6 +221,7 @@ function ShortcutEditor({
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth();
+  const p = usePageText(TEXT);
   const canViewProjects = hasPerm(user, PERMS.viewProject);
   const canViewTechnical = hasPerm(user, PERMS.viewCollaborator);
 
@@ -191,26 +257,25 @@ export default function Dashboard() {
 
     // Overdue projects
     projectsData.projects
-      .filter((p) => p.is_overdue)
+      .filter((pr) => pr.is_overdue)
       .slice(0, 3)
-      .forEach((p) => {
-        const diff = daysDiff(p.planned_end ?? null);
+      .forEach((pr) => {
+        const diff = daysDiff(pr.planned_end ?? null);
         const days = diff !== null ? Math.abs(diff) : 0;
-        list.push({ id: p.id, name: p.name, meta: `${p.code} · Prazo vencido há ${days} dia(s) · ${p.client || "—"}`, level: "red" });
+        list.push({ id: pr.id, name: pr.name, meta: `${pr.code} · ${p.overdueLabel(days)} · ${pr.client || "—"}`, level: "red" });
       });
 
     // Near deadline (within 7 days, not overdue)
     projectsData.projects
-      .filter((p) => {
-        if (p.is_overdue) return false;
-        const diff = daysDiff(p.planned_end ?? null);
+      .filter((pr) => {
+        if (pr.is_overdue) return false;
+        const diff = daysDiff(pr.planned_end ?? null);
         return diff !== null && diff <= 7;
       })
       .slice(0, 4)
-      .forEach((p) => {
-        const diff = daysDiff(p.planned_end ?? null);
-        const label = diff === 0 ? "Vence hoje" : `Vence em ${diff} dia(s)`;
-        list.push({ id: p.id, name: p.name, meta: `${p.code} · ${label} · ${p.client || "—"}`, level: "orange" });
+      .forEach((pr) => {
+        const diff = daysDiff(pr.planned_end ?? null);
+        list.push({ id: pr.id, name: pr.name, meta: `${pr.code} · ${p.dueIn(diff ?? 0)} · ${pr.client || "—"}`, level: "orange" });
       });
 
     if (list.length === 0 && !loading) {
@@ -233,38 +298,38 @@ export default function Dashboard() {
   const cols = 3;
 
   if (!canViewProjects && !canViewTechnical) {
-    return <p style={{ padding: 32, color: "var(--text-muted)" }}>Você não tem permissão para acessar esta página.</p>;
+    return <p style={{ padding: 32, color: "var(--text-muted)" }}>{p.noPermission}</p>;
   }
 
   return (
     <div>
       <PageHeader
-        eyebrow={greeting()}
+        eyebrow={p.greeting()}
         title={firstName}
-        subtitle="Acompanhe as pendências e acesse os módulos do sistema."
+        subtitle={p.subtitle}
       />
 
       {/* KPI row */}
       <div className="stat-grid" style={{ marginBottom: 16 }}>
         <div className="card" style={{ padding: "16px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 700, color: "var(--blue)", lineHeight: 1 }}>{loading ? "—" : kpis.active}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 6 }}>Em andamento</div>
-          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>projetos ativos</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 6 }}>{p.kpiActive}</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>{p.kpiActiveHint}</div>
         </div>
         <div className="card" style={{ padding: "16px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 700, color: kpis.overdue > 0 ? "var(--red)" : "var(--green)", lineHeight: 1 }}>{loading ? "—" : kpis.overdue}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 6 }}>Em atraso</div>
-          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>prazo vencido</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 6 }}>{p.kpiOverdue}</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>{p.kpiOverdueHint}</div>
         </div>
         <div className="card" style={{ padding: "16px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>{loading ? "—" : kpis.tasks}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 6 }}>Tarefas concluídas</div>
-          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>acumuladas</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 6 }}>{p.kpiTasks}</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>{p.kpiTasksHint}</div>
         </div>
         <div className="card" style={{ padding: "16px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>{loading ? "—" : formatHours(kpis.hours)}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 6 }}>Horas trabalhadas</div>
-          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>acumuladas</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginTop: 6 }}>{p.kpiHours}</div>
+          <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>{p.kpiHoursHint}</div>
         </div>
       </div>
 
@@ -276,7 +341,7 @@ export default function Dashboard() {
           <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Icon name="grid_view" style={{ fontSize: 16, color: "var(--text-muted)" }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Acesso rápido</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{p.quickAccess}</span>
             </div>
             <button
               onClick={() => setEditorOpen(true)}
@@ -329,7 +394,7 @@ export default function Dashboard() {
                 }}
               >
                 <Icon name="add" style={{ fontSize: 22, color: "var(--text-muted)" }} />
-                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Adicionar</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{p.add}</div>
               </div>
             )}
           </div>
@@ -339,22 +404,22 @@ export default function Dashboard() {
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
             <Icon name="warning" style={{ fontSize: 16, color: "var(--orange)" }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Atenção imediata</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{p.alerts}</span>
             {kpis.overdue > 0 && (
               <span style={{ background: "var(--red-soft)", color: "var(--red)", fontSize: 11, fontWeight: 700, padding: "1px 8px", borderRadius: 10 }}>
-                {kpis.overdue} em atraso
+                {p.overdueCount(kpis.overdue)}
               </span>
             )}
             <div style={{ flex: 1 }} />
             {canViewProjects && (
               <Link to="/projetos" style={{ fontSize: 12, color: "var(--orange)", textDecoration: "none", fontWeight: 600 }}>
-                Ver projetos →
+                {p.viewProjects}
               </Link>
             )}
           </div>
 
           {loading ? (
-            <div style={{ padding: "20px 18px", color: "var(--text-muted)", fontSize: 13 }}>Carregando...</div>
+            <div style={{ padding: "20px 18px", color: "var(--text-muted)", fontSize: 13 }}>{p.loading}</div>
           ) : (
             <div>
               {alerts.map((a, i) => {
@@ -369,7 +434,7 @@ export default function Dashboard() {
                     </div>
                     {a.level !== "blue" && (
                       <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8, background: bgColor, color, flexShrink: 0 }}>
-                        {a.level === "red" ? "Atrasado" : "Urgente"}
+                        {a.level === "red" ? p.tagOverdue : p.tagUrgent}
                       </span>
                     )}
                     {a.id !== null && (
@@ -406,6 +471,7 @@ export default function Dashboard() {
           selected={shortcuts}
           onSave={handleSaveShortcuts}
           onClose={() => setEditorOpen(false)}
+          p={p}
         />
       )}
     </div>
