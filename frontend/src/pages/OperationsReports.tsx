@@ -3,6 +3,7 @@ import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsReports } from "../api/types";
 import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
+import { usePageText } from "../i18n";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -66,14 +67,225 @@ function detectLogType(text: string): Exclude<LogType, "all"> {
   return "status";
 }
 
-const LOG_TYPE_META: Record<Exclude<LogType, "all">, { label: string; color: string; tag: string }> = {
-  concluiu: { label: "Concluiu", color: "var(--green)", tag: "log-tag-concluiu" },
-  despacho: { label: "Despacho", color: "var(--blue)", tag: "log-tag-despacho" },
-  inicio:   { label: "Iniciou",  color: "var(--amber)", tag: "log-tag-inicio" },
-  status:   { label: "Status",   color: "var(--text-faint)", tag: "log-tag-status" },
+const LOG_TYPE_META: Record<Exclude<LogType, "all">, { color: string; tag: string }> = {
+  concluiu: { color: "var(--green)", tag: "log-tag-concluiu" },
+  despacho: { color: "var(--blue)", tag: "log-tag-despacho" },
+  inicio:   { color: "var(--amber)", tag: "log-tag-inicio" },
+  status:   { color: "var(--text-faint)", tag: "log-tag-status" },
+};
+
+const TEXT = {
+  "pt-BR": {
+    eyebrow: "Central de Operações",
+    title: "Relatórios e Indicadores",
+    subtitle: "Desempenho por técnico e por tipo de atividade no período",
+    ate: "até",
+    todosSites: "Todos os sites",
+    carregando: "Carregando...",
+    utilizacaoMedia: "Utilização Média",
+    mediaTecnicos: "Média dos técnicos no período",
+    horasProdutivas: "Horas Produtivas Hoje",
+    pctMetaDiaria: (pct: number) => `${pct}% da meta diária (6h)`,
+    nenhumaHoraProdutiva: "Nenhuma hora produtiva registrada hoje",
+    horasImprodutivas: "Horas Improdutivas Hoje",
+    zeradoHoje: "Zerado hoje — ótimo resultado",
+    limiteRecomendado: "Limite recomendado: 30min",
+    concluidasMes: "Concluídas no Mês",
+    tarefasConcluidasMes: "Tarefas concluídas no mês corrente",
+    rankingUtilizacao: "Ranking de Utilização — Período",
+    tecnicosJornada: "Técnicos com jornada cadastrada",
+    sobrecarga: "Sobrecarga (>300%)",
+    elevado: "Elevado (100–300%)",
+    normal: "Normal (<100%)",
+    nenhumTecnicoJornada: "Nenhum técnico com jornada no período.",
+    horasImprodutivasMes: "Horas Improdutivas — Mês",
+    statusImprodutivos: "Status classificados como improdutivos, mês corrente",
+    nenhumaHoraImprodutiva: "Nenhuma hora improdutiva registrada no mês.",
+    alertaImprod: (h: string) => `⚠ ${h} de técnicos sem atividade alocada — revisar distribuição de tarefas`,
+    logAutomatico: "Log Automático — Hoje",
+    geradoSistema: "Gerado pelo sistema a cada mudança de status",
+    nEventos: (n: number) => `${n} eventos`,
+    logFiltroTodos: "Todos",
+    nenhumEvento: "Nenhum evento registrado hoje.",
+    nenhumEventoTipo: "Nenhum evento deste tipo registrado hoje.",
+    desempenhoHoje: "Desempenho por Técnico — Hoje",
+    nTecnicosHoje: (n: number) => `${n} técnico(s) com atividade hoje`,
+    jornada: (hours: string) => `Jornada: ${hours}`,
+    utilizacaoLabel: "utilização",
+    metricAtividades: "Atividades",
+    metricIntervalos: "Intervalos",
+    metricImprodutivo: "Improdutivo",
+    metricDisponivel: "Disponível",
+    titleAtividades: (h: string) => `Em atividades: ${h}`,
+    titleIntervalos: (h: string) => `Intervalos: ${h}`,
+    titleImprodutivo: (h: string) => `Improdutivo: ${h}`,
+    titleDisponivel: (h: string) => `Disponível: ${h}`,
+    nenhumaAtividadeHoje: "Nenhuma atividade hoje.",
+    desempenhoHistorico: "Desempenho por Técnico — Histórico",
+    nTecnicosPeriodo: (n: number) => `${n} técnico(s) com atividade no período`,
+    thTecnico: "Técnico",
+    thSites: "Sites",
+    thJornada: "Jornada",
+    thEmAtividades: "Em Atividades",
+    thConcluidas: "Concluídas",
+    thUtilizacao: "Utilização",
+    semJornada: "Sem jornada",
+    nenhumaAtividadePeriodo: "Nenhuma atividade concluída no período.",
+    tempoPorTipo: "Tempo por Tipo de Atividade — Histórico",
+    nAtividades: (n: number) => `${n} atividades do cadastro mestre`,
+    thAtividade: "Atividade",
+    thExecucoes: "Execuções",
+    thTempoMedio: "Tempo Médio",
+    thMelhorTempo: "Melhor Tempo",
+    logLabel: {
+      concluiu: "Concluiu",
+      despacho: "Despacho",
+      inicio: "Iniciou",
+      status: "Status",
+    },
+  },
+  "en-US": {
+    eyebrow: "Operations Center",
+    title: "Reports & Indicators",
+    subtitle: "Performance by technician and activity type in the period",
+    ate: "to",
+    todosSites: "All sites",
+    carregando: "Loading...",
+    utilizacaoMedia: "Average Utilization",
+    mediaTecnicos: "Average of technicians in the period",
+    horasProdutivas: "Productive Hours Today",
+    pctMetaDiaria: (pct: number) => `${pct}% of daily target (6h)`,
+    nenhumaHoraProdutiva: "No productive hours recorded today",
+    horasImprodutivas: "Unproductive Hours Today",
+    zeradoHoje: "Zero today — great result",
+    limiteRecomendado: "Recommended limit: 30min",
+    concluidasMes: "Completed This Month",
+    tarefasConcluidasMes: "Tasks completed in the current month",
+    rankingUtilizacao: "Utilization Ranking — Period",
+    tecnicosJornada: "Technicians with registered shift",
+    sobrecarga: "Overload (>300%)",
+    elevado: "High (100–300%)",
+    normal: "Normal (<100%)",
+    nenhumTecnicoJornada: "No technician with a shift in the period.",
+    horasImprodutivasMes: "Unproductive Hours — Month",
+    statusImprodutivos: "Statuses classified as unproductive, current month",
+    nenhumaHoraImprodutiva: "No unproductive hours recorded this month.",
+    alertaImprod: (h: string) => `⚠ ${h} of technicians without allocated activity — review task distribution`,
+    logAutomatico: "Automatic Log — Today",
+    geradoSistema: "Generated by the system on each status change",
+    nEventos: (n: number) => `${n} events`,
+    logFiltroTodos: "All",
+    nenhumEvento: "No events recorded today.",
+    nenhumEventoTipo: "No events of this type recorded today.",
+    desempenhoHoje: "Performance by Technician — Today",
+    nTecnicosHoje: (n: number) => `${n} technician(s) with activity today`,
+    jornada: (hours: string) => `Shift: ${hours}`,
+    utilizacaoLabel: "utilization",
+    metricAtividades: "Activities",
+    metricIntervalos: "Breaks",
+    metricImprodutivo: "Unproductive",
+    metricDisponivel: "Available",
+    titleAtividades: (h: string) => `In activities: ${h}`,
+    titleIntervalos: (h: string) => `Breaks: ${h}`,
+    titleImprodutivo: (h: string) => `Unproductive: ${h}`,
+    titleDisponivel: (h: string) => `Available: ${h}`,
+    nenhumaAtividadeHoje: "No activity today.",
+    desempenhoHistorico: "Performance by Technician — History",
+    nTecnicosPeriodo: (n: number) => `${n} technician(s) with activity in the period`,
+    thTecnico: "Technician",
+    thSites: "Sites",
+    thJornada: "Shift",
+    thEmAtividades: "In Activities",
+    thConcluidas: "Completed",
+    thUtilizacao: "Utilization",
+    semJornada: "No shift",
+    nenhumaAtividadePeriodo: "No activity completed in the period.",
+    tempoPorTipo: "Time by Activity Type — History",
+    nAtividades: (n: number) => `${n} activities from master data`,
+    thAtividade: "Activity",
+    thExecucoes: "Executions",
+    thTempoMedio: "Avg Time",
+    thMelhorTempo: "Best Time",
+    logLabel: {
+      concluiu: "Completed",
+      despacho: "Dispatch",
+      inicio: "Started",
+      status: "Status",
+    },
+  },
+  "es-ES": {
+    eyebrow: "Centro de Operaciones",
+    title: "Informes e Indicadores",
+    subtitle: "Rendimiento por técnico y tipo de actividad en el período",
+    ate: "hasta",
+    todosSites: "Todos los sitios",
+    carregando: "Cargando...",
+    utilizacaoMedia: "Utilización Media",
+    mediaTecnicos: "Promedio de técnicos en el período",
+    horasProdutivas: "Horas Productivas Hoy",
+    pctMetaDiaria: (pct: number) => `${pct}% del objetivo diario (6h)`,
+    nenhumaHoraProdutiva: "Ninguna hora productiva registrada hoy",
+    horasImprodutivas: "Horas Improductivas Hoy",
+    zeradoHoje: "Cero hoy — excelente resultado",
+    limiteRecomendado: "Límite recomendado: 30min",
+    concluidasMes: "Completadas en el Mes",
+    tarefasConcluidasMes: "Tareas completadas en el mes actual",
+    rankingUtilizacao: "Ranking de Utilización — Período",
+    tecnicosJornada: "Técnicos con jornada registrada",
+    sobrecarga: "Sobrecarga (>300%)",
+    elevado: "Elevado (100–300%)",
+    normal: "Normal (<100%)",
+    nenhumTecnicoJornada: "Ningún técnico con jornada en el período.",
+    horasImprodutivasMes: "Horas Improductivas — Mes",
+    statusImprodutivos: "Estados clasificados como improductivos, mes actual",
+    nenhumaHoraImprodutiva: "Ninguna hora improductiva registrada en el mes.",
+    alertaImprod: (h: string) => `⚠ ${h} de técnicos sin actividad asignada — revisar distribución de tareas`,
+    logAutomatico: "Log Automático — Hoy",
+    geradoSistema: "Generado por el sistema en cada cambio de estado",
+    nEventos: (n: number) => `${n} eventos`,
+    logFiltroTodos: "Todos",
+    nenhumEvento: "Ningún evento registrado hoy.",
+    nenhumEventoTipo: "Ningún evento de este tipo registrado hoy.",
+    desempenhoHoje: "Rendimiento por Técnico — Hoy",
+    nTecnicosHoje: (n: number) => `${n} técnico(s) con actividad hoy`,
+    jornada: (hours: string) => `Jornada: ${hours}`,
+    utilizacaoLabel: "utilización",
+    metricAtividades: "Actividades",
+    metricIntervalos: "Intervalos",
+    metricImprodutivo: "Improductivo",
+    metricDisponivel: "Disponible",
+    titleAtividades: (h: string) => `En actividades: ${h}`,
+    titleIntervalos: (h: string) => `Intervalos: ${h}`,
+    titleImprodutivo: (h: string) => `Improductivo: ${h}`,
+    titleDisponivel: (h: string) => `Disponible: ${h}`,
+    nenhumaAtividadeHoje: "Ninguna actividad hoy.",
+    desempenhoHistorico: "Rendimiento por Técnico — Histórico",
+    nTecnicosPeriodo: (n: number) => `${n} técnico(s) con actividad en el período`,
+    thTecnico: "Técnico",
+    thSites: "Sitios",
+    thJornada: "Jornada",
+    thEmAtividades: "En Actividades",
+    thConcluidas: "Completadas",
+    thUtilizacao: "Utilización",
+    semJornada: "Sin jornada",
+    nenhumaAtividadePeriodo: "Ninguna actividad completada en el período.",
+    tempoPorTipo: "Tiempo por Tipo de Actividad — Histórico",
+    nAtividades: (n: number) => `${n} actividades del catálogo maestro`,
+    thAtividade: "Actividad",
+    thExecucoes: "Ejecuciones",
+    thTempoMedio: "Tiempo Medio",
+    thMelhorTempo: "Mejor Tiempo",
+    logLabel: {
+      concluiu: "Completó",
+      despacho: "Despacho",
+      inicio: "Inició",
+      status: "Estado",
+    },
+  },
 };
 
 export default function OperationsReportsPage() {
+  const p = usePageText(TEXT);
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState<number | "all">("all");
   const [dateFrom, setDateFrom] = useState(() => daysAgoISO(29));
@@ -128,16 +340,16 @@ export default function OperationsReportsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Central de Operações"
-        title="Relatórios e Indicadores"
-        subtitle="Desempenho por técnico e por tipo de atividade no período"
+        eyebrow={p.eyebrow}
+        title={p.title}
+        subtitle={p.subtitle}
         actions={
           <div className="ops-toolbar">
             <input type="date" className="input" style={{ width: 150 }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            <span style={{ color: "var(--text-faint)", fontSize: 12.5 }}>até</span>
+            <span style={{ color: "var(--text-faint)", fontSize: 12.5 }}>{p.ate}</span>
             <input type="date" className="input" style={{ width: 150 }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
             <select className="select" value={siteId} onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}>
-              <option value="all">Todos os sites</option>
+              <option value="all">{p.todosSites}</option>
               {sites.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
@@ -147,7 +359,7 @@ export default function OperationsReportsPage() {
       />
 
       {loading && !data ? (
-        <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+        <p style={{ color: "var(--text-muted)" }}>{p.carregando}</p>
       ) : (
         <>
           {/* ① KPI Cards com ícone, barra de progresso e contexto */}
@@ -155,7 +367,7 @@ export default function OperationsReportsPage() {
             {/* Utilização Média */}
             <div className="rpt-kpi-card">
               <div className="rpt-kpi-top">
-                <span className="rpt-kpi-label">Utilização Média</span>
+                <span className="rpt-kpi-label">{p.utilizacaoMedia}</span>
                 <span className="rpt-kpi-icon" style={{ background: "var(--orange-soft)", color: "var(--orange)" }}>
                   ⚡
                 </span>
@@ -166,13 +378,13 @@ export default function OperationsReportsPage() {
               >
                 {stats?.avg_utilization_pct ?? 0}%
               </div>
-              <div className="rpt-kpi-hint">Média dos técnicos no período</div>
+              <div className="rpt-kpi-hint">{p.mediaTecnicos}</div>
             </div>
 
             {/* Horas Produtivas */}
             <div className="rpt-kpi-card">
               <div className="rpt-kpi-top">
-                <span className="rpt-kpi-label">Horas Produtivas Hoje</span>
+                <span className="rpt-kpi-label">{p.horasProdutivas}</span>
                 <span className="rpt-kpi-icon" style={{ background: "var(--green-soft)", color: "var(--green)" }}>✓</span>
               </div>
               <div className="rpt-kpi-value" style={{ color: "var(--green)" }}>
@@ -190,19 +402,19 @@ export default function OperationsReportsPage() {
                     />
                   </div>
                   <div className="rpt-kpi-hint">
-                    {Math.round(((stats?.today_productive_hours ?? 0) / 6) * 100)}% da meta diária (6h)
+                    {p.pctMetaDiaria(Math.round(((stats?.today_productive_hours ?? 0) / 6) * 100))}
                   </div>
                 </>
               )}
               {(stats?.today_productive_hours ?? 0) === 0 && (
-                <div className="rpt-kpi-hint">Nenhuma hora produtiva registrada hoje</div>
+                <div className="rpt-kpi-hint">{p.nenhumaHoraProdutiva}</div>
               )}
             </div>
 
             {/* Horas Improdutivas */}
             <div className="rpt-kpi-card">
               <div className="rpt-kpi-top">
-                <span className="rpt-kpi-label">Horas Improdutivas Hoje</span>
+                <span className="rpt-kpi-label">{p.horasImprodutivas}</span>
                 <span
                   className="rpt-kpi-icon"
                   style={{
@@ -220,18 +432,18 @@ export default function OperationsReportsPage() {
                 {formatHours(stats?.today_unproductive_hours ?? 0)}
               </div>
               <div className="rpt-kpi-hint">
-                {(stats?.today_unproductive_hours ?? 0) === 0 ? "Zerado hoje — ótimo resultado" : "Limite recomendado: 30min"}
+                {(stats?.today_unproductive_hours ?? 0) === 0 ? p.zeradoHoje : p.limiteRecomendado}
               </div>
             </div>
 
             {/* Concluídas no Mês */}
             <div className="rpt-kpi-card">
               <div className="rpt-kpi-top">
-                <span className="rpt-kpi-label">Concluídas no Mês</span>
+                <span className="rpt-kpi-label">{p.concluidasMes}</span>
                 <span className="rpt-kpi-icon" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>📋</span>
               </div>
               <div className="rpt-kpi-value">{stats?.completed_this_month ?? 0}</div>
-              <div className="rpt-kpi-hint">Tarefas concluídas no mês corrente</div>
+              <div className="rpt-kpi-hint">{p.tarefasConcluidasMes}</div>
             </div>
           </div>
 
@@ -240,8 +452,8 @@ export default function OperationsReportsPage() {
             {/* Ranking de utilização — linha 1 col 1 */}
             <div className="ops-pool-card rpt-compact-card">
               <div className="ops-card-head">
-                <div className="ops-card-title">Ranking de Utilização — Período</div>
-                <div className="ops-card-hint">Técnicos com jornada cadastrada</div>
+                <div className="ops-card-title">{p.rankingUtilizacao}</div>
+                <div className="ops-card-hint">{p.tecnicosJornada}</div>
               </div>
               {rankedTechs.length > 0 ? (
                 <>
@@ -265,21 +477,21 @@ export default function OperationsReportsPage() {
                     })}
                   </div>
                   <div className="rpt-rank-legend">
-                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--red)" }} />Sobrecarga (&gt;300%)</div>
-                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--amber)" }} />Elevado (100–300%)</div>
-                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--green)" }} />Normal (&lt;100%)</div>
+                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--red)" }} />{p.sobrecarga}</div>
+                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--amber)" }} />{p.elevado}</div>
+                    <div className="rpt-rank-legend-item"><span className="rpt-rank-legend-dot" style={{ background: "var(--green)" }} />{p.normal}</div>
                   </div>
                 </>
               ) : (
-                <div className="empty-state">Nenhum técnico com jornada no período.</div>
+                <div className="empty-state">{p.nenhumTecnicoJornada}</div>
               )}
             </div>
 
             {/* Horas Improdutivas — linha 1 col 2 */}
             <div className="ops-pool-card rpt-compact-card">
               <div className="ops-card-head">
-                <div className="ops-card-title">Horas Improdutivas — Mês</div>
-                <div className="ops-card-hint">Status classificados como improdutivos, mês corrente</div>
+                <div className="ops-card-title">{p.horasImprodutivasMes}</div>
+                <div className="ops-card-hint">{p.statusImprodutivos}</div>
               </div>
               <div className="reason-bars">
                 {unproductiveByReason.map((r) => (
@@ -291,11 +503,11 @@ export default function OperationsReportsPage() {
                     <div className="reason-bar-value">{formatHours(r.hours)}</div>
                   </div>
                 ))}
-                {unproductiveByReason.length === 0 && <div className="empty-state">Nenhuma hora improdutiva registrada no mês.</div>}
+                {unproductiveByReason.length === 0 && <div className="empty-state">{p.nenhumaHoraImprodutiva}</div>}
               </div>
               {totalUnproductiveHours > 40 && (
                 <div className="rpt-improd-alert">
-                  ⚠ {formatHours(totalUnproductiveHours)} de técnicos sem atividade alocada — revisar distribuição de tarefas
+                  {p.alertaImprod(formatHours(totalUnproductiveHours))}
                 </div>
               )}
             </div>
@@ -304,10 +516,10 @@ export default function OperationsReportsPage() {
             <div className="ops-pool-card rpt-compact-card">
               <div className="ops-card-head">
                 <div>
-                  <div className="ops-card-title">Log Automático — Hoje</div>
-                  <div className="ops-card-hint">Gerado pelo sistema a cada mudança de status</div>
+                  <div className="ops-card-title">{p.logAutomatico}</div>
+                  <div className="ops-card-hint">{p.geradoSistema}</div>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-faint)" }}>{logEntries.length} eventos</div>
+                <div style={{ fontSize: 11, color: "var(--text-faint)" }}>{p.nEventos(logEntries.length)}</div>
               </div>
 
               {/* Filtro por tipo */}
@@ -318,7 +530,7 @@ export default function OperationsReportsPage() {
                     className={`log-filter-chip${logFilter === f ? " active" : ""}`}
                     onClick={() => setLogFilter(f)}
                   >
-                    {f === "all" ? "Todos" : LOG_TYPE_META[f].label}
+                    {f === "all" ? p.logFiltroTodos : p.logLabel[f]}
                     {f !== "all" && (
                       <span className="log-filter-count">
                         {logEntries.filter((e) => detectLogType(e.text) === f).length}
@@ -332,19 +544,22 @@ export default function OperationsReportsPage() {
                 {filteredLog.map((e, idx) => {
                   const type = detectLogType(e.text);
                   const meta = LOG_TYPE_META[type];
+                  const label = p.logLabel[type];
                   return (
                     <div key={idx} className="log-item">
                       <span className="log-dot" style={{ background: meta.color }} />
                       <div className="log-time">{formatClock(e.at)}</div>
                       <div className="log-text">
                         <strong>{e.name}</strong> {e.text}{" "}
-                        <span className={`log-tag ${meta.tag}`}>{meta.label}</span>
+                        <span className={`log-tag ${meta.tag}`}>{label}</span>
                       </div>
                     </div>
                   );
                 })}
                 {filteredLog.length === 0 && (
-                  <div className="empty-state">Nenhum evento{logFilter !== "all" ? " deste tipo" : ""} registrado hoje.</div>
+                  <div className="empty-state">
+                    {logFilter !== "all" ? p.nenhumEventoTipo : p.nenhumEvento}
+                  </div>
                 )}
               </div>
 
@@ -353,7 +568,7 @@ export default function OperationsReportsPage() {
                 {(["concluiu", "despacho", "inicio", "status"] as Exclude<LogType, "all">[]).map((t) => (
                   <div key={t} className="log-legend-item">
                     <span className="log-legend-dot" style={{ background: LOG_TYPE_META[t].color }} />
-                    {LOG_TYPE_META[t].label}
+                    {p.logLabel[t]}
                   </div>
                 ))}
               </div>
@@ -362,8 +577,8 @@ export default function OperationsReportsPage() {
             {/* Desempenho Hoje */}
             <div className="ops-pool-card rpt-compact-card">
               <div className="ops-card-head">
-                <div className="ops-card-title">Desempenho por Técnico — Hoje</div>
-                <div className="ops-card-hint">{todayTechnicians.length} técnico(s) com atividade hoje</div>
+                <div className="ops-card-title">{p.desempenhoHoje}</div>
+                <div className="ops-card-hint">{p.nTecnicosHoje(todayTechnicians.length)}</div>
               </div>
 
               <div className="rpt-compact-scroll">
@@ -385,13 +600,13 @@ export default function OperationsReportsPage() {
                       <div>
                         <div className="rpt-today-name">{t.name}</div>
                         {t.journey_hours > 0 && (
-                          <div className="rpt-today-sub">Jornada: {formatHours(t.journey_hours)}</div>
+                          <div className="rpt-today-sub">{p.jornada(formatHours(t.journey_hours))}</div>
                         )}
                       </div>
                       {t.utilization_pct != null && (
                         <div className="rpt-today-util" style={{ color: utilTextColor(t.utilization_pct) }}>
                           {t.utilization_pct}%
-                          <span className="rpt-today-util-label">utilização</span>
+                          <span className="rpt-today-util-label">{p.utilizacaoLabel}</span>
                         </div>
                       )}
                     </div>
@@ -399,10 +614,10 @@ export default function OperationsReportsPage() {
                     {/* Barra de tempo */}
                     <div className="rpt-today-timeline">
                       <div className="rpt-today-bar">
-                        <div style={{ width: `${activePct}%`, background: "var(--green)", height: "100%", borderRadius: 2 }} title={`Em atividades: ${formatHours(t.active_hours)}`} />
-                        <div style={{ width: `${breakPct}%`, background: "var(--amber)", height: "100%", opacity: 0.7 }} title={`Intervalos: ${formatHours(t.break_hours)}`} />
-                        <div style={{ width: `${unprodPct}%`, background: "var(--red)", height: "100%", opacity: 0.75 }} title={`Improdutivo: ${formatHours(t.unproductive_hours ?? 0)}`} />
-                        <div style={{ width: `${avPct}%`, background: "var(--blue)", height: "100%", opacity: 0.5 }} title={`Disponível: ${formatHours(t.available_hours)}`} />
+                        <div style={{ width: `${activePct}%`, background: "var(--green)", height: "100%", borderRadius: 2 }} title={p.titleAtividades(formatHours(t.active_hours))} />
+                        <div style={{ width: `${breakPct}%`, background: "var(--amber)", height: "100%", opacity: 0.7 }} title={p.titleIntervalos(formatHours(t.break_hours))} />
+                        <div style={{ width: `${unprodPct}%`, background: "var(--red)", height: "100%", opacity: 0.75 }} title={p.titleImprodutivo(formatHours(t.unproductive_hours ?? 0))} />
+                        <div style={{ width: `${avPct}%`, background: "var(--blue)", height: "100%", opacity: 0.5 }} title={p.titleDisponivel(formatHours(t.available_hours))} />
                       </div>
                     </div>
 
@@ -410,22 +625,22 @@ export default function OperationsReportsPage() {
                     <div className="rpt-today-metrics">
                       <div className="rpt-today-metric">
                         <span className="rpt-today-metric-dot" style={{ background: "var(--green)" }} />
-                        <span className="rpt-today-metric-label">Atividades</span>
+                        <span className="rpt-today-metric-label">{p.metricAtividades}</span>
                         <span className="rpt-today-metric-val">{formatHours(t.active_hours)}</span>
                       </div>
                       <div className="rpt-today-metric">
                         <span className="rpt-today-metric-dot" style={{ background: "var(--amber)", opacity: 0.8 }} />
-                        <span className="rpt-today-metric-label">Intervalos</span>
+                        <span className="rpt-today-metric-label">{p.metricIntervalos}</span>
                         <span className="rpt-today-metric-val">{formatHours(t.break_hours)}</span>
                       </div>
                       <div className="rpt-today-metric">
                         <span className="rpt-today-metric-dot" style={{ background: "var(--red)", opacity: 0.75 }} />
-                        <span className="rpt-today-metric-label">Improdutivo</span>
+                        <span className="rpt-today-metric-label">{p.metricImprodutivo}</span>
                         <span className="rpt-today-metric-val">{formatHours(t.unproductive_hours ?? 0)}</span>
                       </div>
                       <div className="rpt-today-metric">
                         <span className="rpt-today-metric-dot" style={{ background: "var(--blue)", opacity: 0.6 }} />
-                        <span className="rpt-today-metric-label">Disponível</span>
+                        <span className="rpt-today-metric-label">{p.metricDisponivel}</span>
                         <span className="rpt-today-metric-val">{formatHours(t.available_hours)}</span>
                       </div>
                     </div>
@@ -434,7 +649,7 @@ export default function OperationsReportsPage() {
               })}
 
               {todayTechnicians.length === 0 && (
-                <div className="table-empty" style={{ padding: 20 }}>Nenhuma atividade hoje.</div>
+                <div className="table-empty" style={{ padding: 20 }}>{p.nenhumaAtividadeHoje}</div>
               )}
               </div>{/* /rpt-compact-scroll */}
             </div>
@@ -444,19 +659,19 @@ export default function OperationsReportsPage() {
           {/* ③ Desempenho Histórico com barras coloridas e avatares */}
           <div className="ops-pool-card" style={{ marginBottom: 16 }}>
             <div className="ops-card-head">
-              <div className="ops-card-title">Desempenho por Técnico — Histórico</div>
-              <div className="ops-card-hint">{technicians.length} técnico(s) com atividade no período</div>
+              <div className="ops-card-title">{p.desempenhoHistorico}</div>
+              <div className="ops-card-hint">{p.nTecnicosPeriodo(technicians.length)}</div>
             </div>
             <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Técnico</th>
-                    <th>Sites</th>
-                    <th>Jornada</th>
-                    <th>Em Atividades</th>
-                    <th>Concluídas</th>
-                    <th>Utilização</th>
+                    <th>{p.thTecnico}</th>
+                    <th>{p.thSites}</th>
+                    <th>{p.thJornada}</th>
+                    <th>{p.thEmAtividades}</th>
+                    <th>{p.thConcluidas}</th>
+                    <th>{p.thUtilizacao}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -500,7 +715,7 @@ export default function OperationsReportsPage() {
                               </span>
                             </div>
                           ) : (
-                            <span className="rpt-no-journey">Sem jornada</span>
+                            <span className="rpt-no-journey">{p.semJornada}</span>
                           )}
                         </td>
                       </tr>
@@ -508,7 +723,7 @@ export default function OperationsReportsPage() {
                   })}
                 </tbody>
               </table>
-              {technicians.length === 0 && <div className="table-empty">Nenhuma atividade concluída no período.</div>}
+              {technicians.length === 0 && <div className="table-empty">{p.nenhumaAtividadePeriodo}</div>}
             </div>
           </div>
 
@@ -516,17 +731,17 @@ export default function OperationsReportsPage() {
           {/* ⑤ Tabela Tipo de Atividade com barras de tempo */}
           <div className="ops-pool-card">
             <div className="ops-card-head">
-              <div className="ops-card-title">Tempo por Tipo de Atividade — Histórico</div>
-              <div className="ops-card-hint">{activities.length} atividades do cadastro mestre</div>
+              <div className="ops-card-title">{p.tempoPorTipo}</div>
+              <div className="ops-card-hint">{p.nAtividades(activities.length)}</div>
             </div>
             <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Atividade</th>
-                    <th>Execuções</th>
-                    <th>Tempo Médio</th>
-                    <th>Melhor Tempo</th>
+                    <th>{p.thAtividade}</th>
+                    <th>{p.thExecucoes}</th>
+                    <th>{p.thTempoMedio}</th>
+                    <th>{p.thMelhorTempo}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -560,7 +775,7 @@ export default function OperationsReportsPage() {
                   ))}
                 </tbody>
               </table>
-              {activities.length === 0 && <div className="table-empty">Nenhuma atividade concluída no período.</div>}
+              {activities.length === 0 && <div className="table-empty">{p.nenhumaAtividadePeriodo}</div>}
               {activities.length > 0 && (
                 <Pagination
                   page={activitiesPage}
