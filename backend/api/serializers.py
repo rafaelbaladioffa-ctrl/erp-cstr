@@ -102,6 +102,17 @@ class CollaboratorSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "registration", "email", "is_active")
 
 
+class CollaboratorSummarySerializer(serializers.ModelSerializer):
+    """Técnico embutido em tarefas/atualizações, que clientes também leem:
+    sem e-mail nem matrícula (dados internos)."""
+
+    name = serializers.CharField(source="person.name", read_only=True)
+
+    class Meta:
+        model = Collaborator
+        fields = ("id", "name", "is_active")
+
+
 # ---------------------------------------------------------------------------
 # Cadastros Gerais (CRUD completo usado pelo módulo Cadastros do frontend)
 # ---------------------------------------------------------------------------
@@ -1577,7 +1588,7 @@ class ProjectTaskSerializer(ClientScopedRelationsMixin, serializers.ModelSeriali
     priority_display = serializers.CharField(source="get_priority_display", read_only=True)
     worked_hours = serializers.SerializerMethodField()
     rack_position_labels = serializers.SerializerMethodField()
-    collaborators = CollaboratorSerializer(many=True, read_only=True)
+    collaborators = CollaboratorSummarySerializer(many=True, read_only=True)
     collaborator_ids = serializers.PrimaryKeyRelatedField(
         source="collaborators", queryset=Collaborator.objects.filter(is_active=True), many=True, write_only=True, required=False
     )
@@ -1853,7 +1864,7 @@ class DailyUpdateAllocationSerializer(ClientScopedRelationsMixin, serializers.Mo
     collaborator_ids = serializers.PrimaryKeyRelatedField(
         source="collaborators", queryset=Collaborator.objects.filter(is_active=True), many=True
     )
-    collaborators = CollaboratorSerializer(many=True, read_only=True)
+    collaborators = CollaboratorSummarySerializer(many=True, read_only=True)
 
     class Meta:
         model = DailyUpdateAllocation
@@ -1911,7 +1922,7 @@ class ProjectDailyUpdateSerializer(ClientScopedRelationsMixin, serializers.Model
     project_name = serializers.CharField(source="project.name", read_only=True)
     project_code = serializers.CharField(source="project.code", read_only=True)
     client_name = serializers.SerializerMethodField()
-    collaborators = CollaboratorSerializer(many=True, read_only=True)
+    collaborators = CollaboratorSummarySerializer(many=True, read_only=True)
     collaborator_ids = serializers.PrimaryKeyRelatedField(
         source="collaborators", queryset=Collaborator.objects.filter(is_active=True), many=True, required=False
     )

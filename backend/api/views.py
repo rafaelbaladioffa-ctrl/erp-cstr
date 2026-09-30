@@ -332,6 +332,10 @@ class GlobalSearchView(APIView):
         query = (request.query_params.get("q") or "").strip()
         if len(query) < 2:
             return Response({"projects": [], "sites": [], "tasks": []})
+        user = request.user
+        can_projects = user.has_perm("projects.view_project")
+        can_sites = user.has_perm("core.view_site")
+        can_tasks = user.has_perm("projects.view_projecttask")
 
         projects_qs = scope_project_queryset(
             Project.objects.select_related("client", "site").filter(
@@ -349,7 +353,7 @@ class GlobalSearchView(APIView):
                 "site": str(p.site) if p.site_id else "",
             }
             for p in projects_qs
-        ]
+        ] if can_projects else []
 
         sites_qs = scope_site_queryset(
             Site.objects.select_related("client").filter(
@@ -366,7 +370,7 @@ class GlobalSearchView(APIView):
                 "city": s.city,
             }
             for s in sites_qs
-        ]
+        ] if can_sites else []
 
         tasks_qs = scope_project_queryset(
             ProjectTask.objects.select_related("task", "project").filter(
@@ -386,7 +390,7 @@ class GlobalSearchView(APIView):
                 "status_display": t.get_status_display(),
             }
             for t in tasks_qs
-        ]
+        ] if can_tasks else []
 
         return Response({"projects": projects, "sites": sites, "tasks": tasks})
 

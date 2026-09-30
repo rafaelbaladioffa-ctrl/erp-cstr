@@ -1168,8 +1168,8 @@ export interface ProjectTaskCreatePayload {
 export interface Collaborator {
   id: number;
   name: string;
-  registration: string;
-  email: string;
+  registration?: string;
+  email?: string;
   is_active: boolean;
 }
 

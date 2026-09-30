@@ -5974,3 +5974,51 @@ class EndpointPermissionTests(TestCase):
     def test_user_options_allowed_to_internal_users(self):
         self._user("interno_opts")
         self.assertEqual(self.api.get("/api/user-options/").status_code, 200)
+
+
+class InternalDataExposureTests(TestCase):
+    def setUp(self):
+        self.api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.client_a = Client.objects.create(company=self.company, legal_name="Cliente A")
+        self.site = Site.objects.create(client=self.client_a, name="Site Busca")
+        self.project = Project.objects.create(company=self.company, name="Projeto Busca", client=self.client_a, site=self.site, po="PO-123")
+        catalog = Task.objects.create(name="Tarefa Busca")
+        self.task = ProjectTask.objects.create(project=self.project, task=catalog, order=1)
+        person = Person.objects.create(name="Técnico Interno", email="tecnico@interno.com", company=self.company)
+        self.task.collaborators.add(Collaborator.objects.create(person=person, registration="MAT-999"))
+
+    def _user(self, username, *perms, client=None):
+        user = User.objects.create_user(username=username, email=f"{username}@example.com", password="x", company=self.company, client=client)
+        for perm in perms:
+            app_label, codename = perm.split(".")
+            user.user_permissions.add(Permission.objects.get(codename=codename, content_type__app_label=app_label))
+        self.api.force_authenticate(user=user)
+
+    def test_task_payload_hides_technician_email_and_registration(self):
+        self._user("cliente_payload", "projects.view_project", "projects.view_projecttask", client=self.client_a)
+        response = self.api.get(f"/api/project-tasks/{self.task.pk}/")
+        self.assertEqual(response.status_code, 200)
+        collaborator = response.data["collaborators"][0]
+        self.assertEqual(collaborator["name"], "Técnico Interno")
+        self.assertNotIn("email", collaborator)
+        self.assertNotIn("registration", collaborator)
+        self.assertNotIn("tecnico@interno.com", json.dumps(response.data, default=str))
+
+    def test_search_without_permissions_returns_nothing(self):
+        self._user("tecnico_sem_view")
+        response = self.api.get("/api/search/?q=Busca")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"projects": [], "sites": [], "tasks": []})
+
+    def test_search_returns_only_permitted_groups(self):
+        self._user("so_projetos", "projects.view_project")
+        response = self.api.get("/api/search/?q=Busca")
+        self.assertEqual(len(response.data["projects"]), 1)
+        self.assertEqual(response.data["sites"], [])
+        self.assertEqual(response.data["tasks"], [])
+
+    def test_search_with_all_permissions(self):
+        self._user("tudo", "projects.view_project", "core.view_site", "projects.view_projecttask")
+        response = self.api.get("/api/search/?q=Busca")
+        self.assertEqual((len(response.data["projects"]), len(response.data["sites"]), len(response.data["tasks"])), (1, 1, 1))
