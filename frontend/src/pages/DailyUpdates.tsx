@@ -6,7 +6,7 @@ import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import DateRangeCalendar, { type DateRange } from "../components/ui/DateRangeCalendar";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
-import { usePageText } from "../i18n";
+import { useI18n, usePageText } from "../i18n";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 const TEXT = {
@@ -105,6 +105,7 @@ function emptyRow(): AllocationRow {
 export default function DailyUpdates() {
   const { user } = useAuth();
   const p = usePageText(TEXT);
+  const { locale } = useI18n();
   const canCreate = hasPerm(user, PERMS.addDailyUpdate);
   const canSend = hasPerm(user, PERMS.changeDailyUpdate);
   const [updates, setUpdates] = useState<DailyUpdate[]>([]);
@@ -409,7 +410,7 @@ export default function DailyUpdates() {
             <div key={update.id} className="card" style={{ padding: 16 }}>
               <div className="section-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <strong style={{ color: "var(--text)" }}>
-                  {new Date(update.allocation_date + "T00:00:00").toLocaleDateString("pt-BR")}
+                  {new Date(update.allocation_date + "T00:00:00").toLocaleDateString(locale)}
                 </strong>
                 {canSend && (
                   <div className="section-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

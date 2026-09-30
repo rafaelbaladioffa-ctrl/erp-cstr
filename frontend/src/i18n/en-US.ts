@@ -119,6 +119,18 @@ const enUS: Translations = {
     errDefault: "Could not change the password.",
     sucesso: "Password changed successfully.",
   },
+  calendar: {
+    selecionarPeriodo: "Select period",
+    limparPeriodo: "Clear period",
+    limpar: "Clear",
+    periodoLimitado: (n) => `Period limited to ${n} days.`,
+    escolhaDiaFinal: (maxDays) => `Choose the end day (up to ${maxDays} days)...`,
+    cliqueNumDia: "Click a day, or two days for a range.",
+  },
+  form: {
+    selecione: "Select...",
+    ativo: "Active",
+  },
   absence: {
     titulo: (name) => `Absences — ${name}`,
     de: "From",

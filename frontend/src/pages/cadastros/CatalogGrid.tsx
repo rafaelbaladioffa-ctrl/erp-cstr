@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import Icon from "../../components/ui/Icon";
+import { useI18n } from "../../i18n";
 import type { EntityConfig } from "./registryConfig";
 
 export interface RecentRecord {
@@ -23,9 +24,9 @@ function toneFor(index: number) {
   return TONES[index % TONES.length];
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, locale: string) {
   if (!value) return "—";
-  return new Date(value).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(value).toLocaleString(locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export default function CatalogGrid({
@@ -41,6 +42,7 @@ export default function CatalogGrid({
   onSelect: (key: string) => void;
   onQuickCreate: (key: string) => void;
 }) {
+  const { locale } = useI18n();
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement>(null);
 
@@ -185,7 +187,7 @@ export default function CatalogGrid({
                       {row.isActive ? "Ativo" : "Inativo"}
                     </span>
                   </td>
-                  <td>{formatDate(row.updatedAt)}</td>
+                  <td>{formatDate(row.updatedAt, locale)}</td>
                 </tr>
               ))}
               {recentRecords.length === 0 && (

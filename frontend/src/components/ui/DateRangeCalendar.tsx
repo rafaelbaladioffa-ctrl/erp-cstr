@@ -1,16 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../../i18n";
 import Icon from "./Icon";
 
 export interface DateRange {
   start: string;
   end: string;
 }
-
-const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-const MONTH_NAMES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-];
 
 function toIso(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -19,11 +14,6 @@ function toIso(d: Date) {
 function fromIso(s: string) {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);
-}
-
-function formatShort(s: string) {
-  const d = fromIso(s);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
 function buildMonthGrid(viewDate: Date) {
@@ -38,6 +28,16 @@ function buildMonthGrid(viewDate: Date) {
   return days;
 }
 
+// Nomes de dias da semana via Intl — sempre começa domingo
+function getWeekdayNames(locale: string): string[] {
+  const names: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(2024, 0, 7 + i); // 7 jan 2024 = domingo
+    names.push(d.toLocaleDateString(locale, { weekday: "short" }));
+  }
+  return names;
+}
+
 export default function DateRangeCalendar({
   value,
   onChange,
@@ -47,6 +47,7 @@ export default function DateRangeCalendar({
   onChange: (range: DateRange | null) => void;
   maxDays?: number;
 }) {
+  const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => (value ? fromIso(value.start) : new Date()));
   const [pendingStart, setPendingStart] = useState<string | null>(null);
@@ -84,7 +85,7 @@ export default function DateRangeCalendar({
       const clampedEnd = new Date(fromIso(start));
       clampedEnd.setDate(clampedEnd.getDate() + (maxDays - 1));
       end = toIso(clampedEnd);
-      setWarning(`Período limitado a ${maxDays} dias.`);
+      setWarning(t.calendar.periodoLimitado(maxDays));
     }
     onChange({ start, end });
     setPendingStart(null);
@@ -112,13 +113,21 @@ export default function DateRangeCalendar({
     return null;
   }
 
+  function formatShort(s: string) {
+    return fromIso(s).toLocaleDateString(locale, { day: "2-digit", month: "short" });
+  }
+
+  const weekdays = getWeekdayNames(locale);
   const days = buildMonthGrid(viewDate);
   const today = toIso(new Date());
+
   const label = value
     ? value.start === value.end
       ? formatShort(value.start)
       : `${formatShort(value.start)} – ${formatShort(value.end)}`
-    : "Selecionar período";
+    : t.calendar.selecionarPeriodo;
+
+  const monthYearLabel = viewDate.toLocaleDateString(locale, { month: "long", year: "numeric" });
 
   return (
     <div className="daterange" ref={ref}>
@@ -128,7 +137,7 @@ export default function DateRangeCalendar({
         <Icon name="expand_more" style={{ fontSize: 16 }} />
       </button>
       {value && (
-        <button className="daterange-clear" onClick={handleClear} aria-label="Limpar período">
+        <button className="daterange-clear" onClick={handleClear} aria-label={t.calendar.limparPeriodo}>
           <Icon name="close" style={{ fontSize: 14 }} />
         </button>
       )}
@@ -139,20 +148,18 @@ export default function DateRangeCalendar({
             <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))}>
               <Icon name="chevron_left" style={{ fontSize: 18 }} />
             </button>
-            <strong>
-              {MONTH_NAMES[viewDate.getMonth()]} {viewDate.getFullYear()}
-            </strong>
+            <strong style={{ textTransform: "capitalize" }}>{monthYearLabel}</strong>
             <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))}>
               <Icon name="chevron_right" style={{ fontSize: 18 }} />
             </button>
           </div>
 
           <div className="daterange-hint">
-            {pendingStart ? "Escolha o dia final (até 7 dias)..." : "Clique num dia, ou dois dias para um período."}
+            {pendingStart ? t.calendar.escolhaDiaFinal(maxDays) : t.calendar.cliqueNumDia}
           </div>
 
           <div className="daterange-grid daterange-weekdays">
-            {WEEKDAYS.map((w) => (
+            {weekdays.map((w) => (
               <span key={w}>{w}</span>
             ))}
           </div>
@@ -187,7 +194,7 @@ export default function DateRangeCalendar({
 
           <div className="daterange-popover-foot">
             <button className="btn-outline btn-sm" onClick={handleClear}>
-              Limpar
+              {t.calendar.limpar}
             </button>
           </div>
         </div>

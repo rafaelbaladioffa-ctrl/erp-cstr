@@ -7,7 +7,7 @@ import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
-import { usePageText } from "../i18n";
+import { useI18n, usePageText } from "../i18n";
 
 const TEXT = {
   "pt-BR": {
@@ -156,6 +156,7 @@ type PU = typeof TEXT["pt-BR"];
 export default function ProjectUpdates() {
   const { user } = useAuth();
   const p = usePageText(TEXT);
+  const { locale } = useI18n();
   const canCreate = hasPerm(user, PERMS.addProjectUpdate);
   const canEdit = hasPerm(user, PERMS.changeProjectUpdate);
   const [updates, setUpdates] = useState<ProjectDailyUpdate[]>([]);
@@ -340,7 +341,7 @@ export default function ProjectUpdates() {
                   <div style={{ minWidth: 0 }}>
                     <strong style={{ color: "var(--text)" }}>{update.project_name}</strong>
                     <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
-                      {update.project_code} · {new Date(update.date + "T00:00:00").toLocaleDateString("pt-BR")} · {update.completion_percent}%
+                      {update.project_code} · {new Date(update.date + "T00:00:00").toLocaleDateString(locale)} · {update.completion_percent}%
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

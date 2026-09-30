@@ -119,6 +119,18 @@ const ptBR: Translations = {
     errDefault: "Não foi possível alterar a senha.",
     sucesso: "Senha alterada com sucesso.",
   },
+  calendar: {
+    selecionarPeriodo: "Selecionar período",
+    limparPeriodo: "Limpar período",
+    limpar: "Limpar",
+    periodoLimitado: (n) => `Período limitado a ${n} dias.`,
+    escolhaDiaFinal: (maxDays) => `Escolha o dia final (até ${maxDays} dias)...`,
+    cliqueNumDia: "Clique num dia, ou dois dias para um período.",
+  },
+  form: {
+    selecione: "Selecione...",
+    ativo: "Ativo",
+  },
   absence: {
     titulo: (name) => `Ausências — ${name}`,
     de: "De",

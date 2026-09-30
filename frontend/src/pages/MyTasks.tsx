@@ -3,7 +3,7 @@ import { myTasksApi, presenceApi } from "../api/resources";
 import type { ProjectTask, TechnicianPresence } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import Icon from "../components/ui/Icon";
-import { usePageText } from "../i18n";
+import { useI18n, usePageText } from "../i18n";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 const TEXT = {
@@ -152,23 +152,24 @@ function nowISO() {
   return new Date().toISOString();
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function formatTime(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
 export default function MyTasks() {
   const { user } = useAuth();
   const p = usePageText(TEXT);
+  const { locale } = useI18n();
+
+  function formatDateTime(value: string | null) {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString(locale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function formatTime(value: string | null) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  }
   const canEdit = hasPerm(user, PERMS.changeMyTasks);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [loading, setLoading] = useState(true);

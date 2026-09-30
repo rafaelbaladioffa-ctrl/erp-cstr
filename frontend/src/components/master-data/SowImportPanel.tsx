@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { useI18n } from "../../i18n";
 import { useNavigate } from "react-router-dom";
 import { masterDataApi, planningApi } from "../../api/resources";
 import type { AiStatus, SowImport, SowParsedItem } from "../../api/types";
@@ -100,6 +101,7 @@ function editFormFromItem(item: SowParsedItem): EditForm {
 
 export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
   const navigate = useNavigate();
+  const { locale } = useI18n();
   const [mode, setMode] = useState<"list" | "new" | "detail">("list");
   const [imports, setImports] = useState<SowImport[]>([]);
   const [loadingList, setLoadingList] = useState(false);
@@ -480,7 +482,7 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
                   <td>{imp.total_items_approved}</td>
                   <td>{imp.total_items_rejected}</td>
                   <td>{imp.total_warnings}</td>
-                  <td>{new Date(imp.created_at).toLocaleString("pt-BR")}</td>
+                  <td>{new Date(imp.created_at).toLocaleString(locale)}</td>
                 </tr>
               ))}
             </tbody>

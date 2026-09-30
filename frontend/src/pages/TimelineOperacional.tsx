@@ -3,7 +3,7 @@ import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsTimeline } from "../api/types";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
-import { usePageText } from "../i18n";
+import { useI18n, usePageText } from "../i18n";
 import {
   BUSY_COLOR,
   DONE_COLOR,
@@ -154,6 +154,7 @@ type ViewMode = "day" | "week" | "month";
 
 export default function TimelineOperacional() {
   const p = usePageText(TEXT);
+  const { locale } = useI18n();
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState<number | "all">("all");
   const [selectedTechIds, setSelectedTechIds] = useState<number[]>([]);
@@ -372,7 +373,7 @@ export default function TimelineOperacional() {
                 ))}
                 {nowPct != null && (
                   <div className="tl-now-line" style={{ left: `${nowPct}%` }}>
-                    <div className="tl-now-tag">{p.nowPrefix}{now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+                    <div className="tl-now-tag">{p.nowPrefix}{now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</div>
                     <div className="tl-now-dot" />
                   </div>
                 )}

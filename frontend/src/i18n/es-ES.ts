@@ -119,6 +119,18 @@ const esES: Translations = {
     errDefault: "No se pudo cambiar la contraseña.",
     sucesso: "Contraseña cambiada con éxito.",
   },
+  calendar: {
+    selecionarPeriodo: "Seleccionar período",
+    limparPeriodo: "Limpiar período",
+    limpar: "Limpiar",
+    periodoLimitado: (n) => `Período limitado a ${n} días.`,
+    escolhaDiaFinal: (maxDays) => `Elige el día final (hasta ${maxDays} días)...`,
+    cliqueNumDia: "Haz clic en un día, o dos días para un período.",
+  },
+  form: {
+    selecione: "Seleccionar...",
+    ativo: "Activo",
+  },
   absence: {
     titulo: (name) => `Ausencias — ${name}`,
     de: "Desde",

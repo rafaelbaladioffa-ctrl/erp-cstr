@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { auditLogApi } from "../api/resources";
 import type { AuditLogEntry } from "../api/types";
-import { usePageText } from "../i18n";
+import { useI18n, usePageText } from "../i18n";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
@@ -78,12 +78,13 @@ const TEXT = {
   },
 };
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("pt-BR");
-}
-
 export default function AuditLog() {
   const p = usePageText(TEXT);
+  const { locale } = useI18n();
+
+  function formatDateTime(value: string) {
+    return new Date(value).toLocaleString(locale);
+  }
   const [rows, setRows] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState("");

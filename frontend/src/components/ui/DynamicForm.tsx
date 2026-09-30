@@ -1,3 +1,4 @@
+import { useI18n } from "../../i18n";
 import { formatBrazilPhone } from "../../utils/formatPhone";
 
 export type FieldOption = { value: string | number; label: string };
@@ -31,6 +32,7 @@ export default function DynamicForm({
   errors?: Record<string, string[]>;
   onChange: (name: string, value: unknown) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="dynamic-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
       {fields.filter((field) => !field.visibleIf || field.visibleIf(values)).map((field) => {
@@ -46,7 +48,7 @@ export default function DynamicForm({
               {field.label}
               {field.required && <span style={{ color: "var(--red)" }}> *</span>}
             </span>
-            {renderInput(field, value, onChange)}
+            {renderInput(field, value, onChange, t)}
             {fieldErrors && (
               <span style={{ fontSize: 11.5, color: "var(--red)", marginTop: 2 }}>{fieldErrors.join(" ")}</span>
             )}
@@ -57,7 +59,7 @@ export default function DynamicForm({
   );
 }
 
-function renderInput(field: FieldConfig, value: unknown, onChange: (name: string, value: unknown) => void) {
+function renderInput(field: FieldConfig, value: unknown, onChange: (name: string, value: unknown) => void, t: ReturnType<typeof useI18n>["t"]) {
   switch (field.type) {
     case "textarea":
       return (
@@ -73,7 +75,7 @@ function renderInput(field: FieldConfig, value: unknown, onChange: (name: string
       return (
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, height: 38 }}>
           <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(field.name, e.target.checked)} />
-          {field.placeholder || "Ativo"}
+          {field.placeholder || t.form.ativo}
         </label>
       );
     case "select":
@@ -83,7 +85,7 @@ function renderInput(field: FieldConfig, value: unknown, onChange: (name: string
           value={value === null || value === undefined ? "" : String(value)}
           onChange={(e) => onChange(field.name, e.target.value === "" ? null : Number(e.target.value) || e.target.value)}
         >
-          <option value="">{field.placeholder || "Selecione..."}</option>
+          <option value="">{field.placeholder || t.form.selecione}</option>
           {field.options?.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}

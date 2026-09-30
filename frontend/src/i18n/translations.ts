@@ -127,6 +127,20 @@ export interface Translations {
     errDefault: string;
     sucesso: string;
   };
+  // Calendário / seletor de período
+  calendar: {
+    selecionarPeriodo: string;
+    limparPeriodo: string;
+    limpar: string;
+    periodoLimitado: (n: number) => string;
+    escolhaDiaFinal: (maxDays: number) => string;
+    cliqueNumDia: string;
+  };
+  // Formulário genérico
+  form: {
+    selecione: string;
+    ativo: string;
+  };
   // Modal de ausências de técnico
   absence: {
     titulo: (name: string) => string;

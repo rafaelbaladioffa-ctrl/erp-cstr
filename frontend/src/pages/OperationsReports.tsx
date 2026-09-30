@@ -3,7 +3,7 @@ import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsReports } from "../api/types";
 import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
-import { usePageText } from "../i18n";
+import { useI18n, usePageText } from "../i18n";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -22,8 +22,8 @@ function formatHours(value: number) {
   return m > 0 ? `${h}h ${m}min` : `${h}h`;
 }
 
-function formatClock(iso: string) {
-  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+function formatClock(iso: string, locale: string) {
+  return new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 }
 
 function initials(name: string) {
@@ -286,6 +286,7 @@ const TEXT = {
 
 export default function OperationsReportsPage() {
   const p = usePageText(TEXT);
+  const { locale } = useI18n();
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState<number | "all">("all");
   const [dateFrom, setDateFrom] = useState(() => daysAgoISO(29));
@@ -548,7 +549,7 @@ export default function OperationsReportsPage() {
                   return (
                     <div key={idx} className="log-item">
                       <span className="log-dot" style={{ background: meta.color }} />
-                      <div className="log-time">{formatClock(e.at)}</div>
+                      <div className="log-time">{formatClock(e.at, locale)}</div>
                       <div className="log-text">
                         <strong>{e.name}</strong> {e.text}{" "}
                         <span className={`log-tag ${meta.tag}`}>{label}</span>

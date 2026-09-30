@@ -11,7 +11,7 @@ import StatCard from "../components/ui/StatCard";
 import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { useTabs } from "../context/TabsContext";
-import { usePageText } from "../i18n";
+import { useI18n, usePageText } from "../i18n";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 const TEXT = {
@@ -114,9 +114,9 @@ function formatHours(hours: number) {
   return `${h}:${String(m).padStart(2, "0")}`;
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, locale: string) {
   if (!value) return "—";
-  return new Date(value + "T00:00:00").toLocaleDateString("pt-BR");
+  return new Date(value + "T00:00:00").toLocaleDateString(locale);
 }
 
 function daysDiff(value: string | null): number | null {
@@ -186,6 +186,7 @@ function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab, p }: {
   onOpenTab: (p: Project) => void;
   p: PL;
 }) {
+  const { locale } = useI18n();
   const diff = daysDiff(project.planned_end);
   const progressColor =
     project.progress_percent >= 80 ? "var(--green)" :
@@ -231,7 +232,7 @@ function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab, p }: {
           { label: p.detailCategory, value: project.category_name || "—" },
           { label: p.detailTasks, value: `${project.completed_tasks} / ${project.total_tasks}` },
           { label: p.detailHours, value: formatHours(project.worked_hours) },
-          { label: p.detailDeadline, value: formatDate(project.planned_end) },
+          { label: p.detailDeadline, value: formatDate(project.planned_end, locale) },
         ].map(({ label, value }) => (
           <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label}</span>
@@ -426,6 +427,7 @@ export default function ProjectsList() {
   const navigate = useNavigate();
   const { openTab } = useTabs();
   const lp = usePageText(TEXT);
+  const { locale } = useI18n();
   const canAdd = hasPerm(user, PERMS.addProject);
   const canChange = hasPerm(user, PERMS.changeProject);
 
@@ -761,7 +763,7 @@ export default function ProjectsList() {
                           <StatusBadge status={pr.status} label={pr.status_display} />
                         </td>
                         <td>
-                          <div style={{ fontSize: 12, color: "var(--text)" }}>{formatDate(pr.planned_end)}</div>
+                          <div style={{ fontSize: 12, color: "var(--text)" }}>{formatDate(pr.planned_end, locale)}</div>
                           <DeadlineLabel planned_end={pr.planned_end} noDeadline={lp.deadlineNoDeadline} overdue={lp.deadlineOverdue} today={lp.deadlineToday} days={lp.deadlineDays} />
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
