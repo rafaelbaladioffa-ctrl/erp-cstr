@@ -16,6 +16,18 @@ class ERPUserAdmin(SelectablePageSizeAdminMixin, BaseUserAdmin, ModelAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
         ("ERP", {"fields": ("company", "must_change_password")}),
         (
+            "Acesso do Gestor (por Site)",
+            {
+                "fields": ("manager_sites",),
+                "description": (
+                    "Restringe este usuário interno a visualizar/editar apenas os Projetos e dados dos Sites "
+                    "marcados. O usuário continua sendo equipe interna — as permissões Django (grupos, add/"
+                    "change/delete/view) continuam valendo normalmente. Deixe em branco para acesso "
+                    "irrestrito a todos os Sites. Não use em conjunto com 'Cliente vinculado' abaixo."
+                ),
+            },
+        ),
+        (
             "Acesso do Usuário-Cliente",
             {
                 "fields": ("client", "client_sites", "client_categories"),
@@ -31,7 +43,7 @@ class ERPUserAdmin(SelectablePageSizeAdminMixin, BaseUserAdmin, ModelAdmin):
     )
     add_fieldsets = BaseUserAdmin.add_fieldsets + (("ERP", {"fields": ("email", "company")}),)
     autocomplete_fields = ("client",)
-    filter_horizontal = ("groups", "user_permissions", "client_sites", "client_categories")
+    filter_horizontal = ("groups", "user_permissions", "client_sites", "client_categories", "manager_sites")
     list_display = ("username", "email", "company", "client", "is_staff", "is_active")
     list_filter = ("company", "client", "is_staff", "is_active", "groups")
     search_fields = ("username", "first_name", "last_name", "email")

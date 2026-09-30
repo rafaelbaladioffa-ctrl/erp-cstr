@@ -10,6 +10,7 @@ from unfold.admin import ModelAdmin, TabularInline
 from .access_scope import (
     deny_if_client_scoped,
     get_scope_for_user,
+    is_client_scoped,
     scope_category_queryset,
     scope_client_queryset,
     scope_site_queryset,
@@ -67,7 +68,7 @@ class DenyClientScopedAdminMixin:
         return deny_if_client_scoped(super().get_queryset(request), request.user)
 
     def _client_scoped(self, request):
-        return get_scope_for_user(request.user) is not None
+        return is_client_scoped(request.user)
 
     def has_view_permission(self, request, obj=None):
         return super().has_view_permission(request, obj) and not self._client_scoped(request)
@@ -108,7 +109,7 @@ class SiteAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdm
         scope = get_scope_for_user(request.user)
         if scope is None:
             return True
-        if obj.client_id not in scope["clients"]:
+        if scope["clients"] is not None and obj.client_id not in scope["clients"]:
             return False
         if scope["sites"] is not None and obj.id not in scope["sites"]:
             return False
@@ -424,11 +425,15 @@ class ResponsibleAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePage
     def _accessible(self, request, obj):
         """Usuário-cliente só acessa Responsáveis (kind=client) do próprio
         Cliente — os de kind=cstr têm client_id nulo, então nunca batem no
-        escopo. Equipe interna (scope None) acessa tudo normalmente."""
+        escopo. Equipe interna (scope None) acessa tudo normalmente.
+        Gestores com escopo de site (clients=None) são equipe interna —
+        acessam todos os Responsáveis."""
         if obj is None:
             return True
         scope = get_scope_for_user(request.user)
         if scope is None:
+            return True
+        if scope["clients"] is None:
             return True
         return obj.client_id in scope["clients"]
 
@@ -596,6 +601,8 @@ class ClientAdmin(CompanyScopedAdmin):
             return True
         scope = get_scope_for_user(request.user)
         if scope is None:
+            return True
+        if scope["clients"] is None:
             return True
         return obj.id in scope["clients"]
 

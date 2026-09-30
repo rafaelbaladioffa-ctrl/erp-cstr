@@ -96,9 +96,10 @@ def require_perms(*perms):
 
 
 class DenyClientScopedUsers(BasePermission):
-    """Nega acesso a usuários-cliente (User.client preenchido)."""
+    """Nega acesso a usuários-cliente (User.client preenchido).
+    Gestores com escopo de site são equipe interna e passam normalmente."""
 
     def has_permission(self, request, view):
-        from core.access_scope import get_scope_for_user
+        from core.access_scope import is_client_scoped
 
-        return bool(request.user and request.user.is_authenticated) and get_scope_for_user(request.user) is None
+        return bool(request.user and request.user.is_authenticated) and not is_client_scoped(request.user)

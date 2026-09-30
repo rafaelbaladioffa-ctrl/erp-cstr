@@ -45,6 +45,17 @@ class User(AbstractUser):
         related_name="portal_users",
         help_text="Restringe quais Categorias (cadastro) o usuário-cliente vê/edita/exclui. Vazio = sem restrição.",
     )
+    manager_sites = models.ManyToManyField(
+        "core.Site",
+        verbose_name="sites do gestor",
+        blank=True,
+        related_name="manager_users",
+        help_text=(
+            "Restringe este usuário interno (gestor) a visualizar/editar apenas os Projetos e dados dos Sites "
+            "marcados. O usuário continua sendo equipe interna (sem vínculo de Cliente) — as permissões Django "
+            "continuam valendo. Deixe em branco para acesso irrestrito a todos os Sites."
+        ),
+    )
 
     class Meta:
         verbose_name = "usuário"

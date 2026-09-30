@@ -17,24 +17,41 @@ API (api/views.py) — uma única fonte de verdade para a regra de negócio.
 
 def get_scope_for_user(user):
     """Retorna None se o usuário não tem nenhuma restrição (superusuário,
-    anônimo, ou sem Cliente vinculado). Caso contrário, retorna um dict
-    {"clients": {id}, "sites": set[int] | None, "categories": set[int] | None}
-    — None numa dimensão específica significa "sem restrição nessa dimensão"."""
+    anônimo, ou sem restrição configurada). Caso contrário, retorna um dict
+    {"clients": set|None, "sites": set[int]|None, "categories": set[int]|None}
+    — None numa dimensão específica significa "sem restrição nessa dimensão".
+
+    Dois perfis de restrição existem:
+    - Usuário-cliente (User.client preenchido): restrito a um Cliente, e
+      opcionalmente a Sites e Categorias desse Cliente.
+    - Gestor com escopo de site (User.manager_sites não vazio): usuário
+      interno restrito a Sites específicos, sem restrição por Cliente."""
     if not user or not getattr(user, "is_authenticated", False):
         return {"clients": set(), "sites": set(), "categories": set()}
     if user.is_superuser:
         return None
-    if not user.client_id:
-        return None
+    # Usuário-cliente: restrito a Cliente + Sites/Categorias opcionais.
+    if user.client_id:
+        site_ids = set(user.client_sites.values_list("id", flat=True))
+        category_ids = set(user.client_categories.values_list("id", flat=True))
+        return {
+            "clients": {user.client_id},
+            "sites": site_ids if site_ids else None,
+            "categories": category_ids if category_ids else None,
+        }
+    # Gestor com escopo de site: sem restrição por Cliente, restrito a Sites.
+    manager_site_ids = set(user.manager_sites.values_list("id", flat=True))
+    if manager_site_ids:
+        return {"clients": None, "sites": manager_site_ids, "categories": None}
+    return None
 
-    site_ids = set(user.client_sites.values_list("id", flat=True))
-    category_ids = set(user.client_categories.values_list("id", flat=True))
 
-    return {
-        "clients": {user.client_id},
-        "sites": site_ids if site_ids else None,
-        "categories": category_ids if category_ids else None,
-    }
+def is_client_scoped(user):
+    """Retorna True apenas para usuários-cliente (User.client preenchido).
+    Gestores com escopo de site são usuários internos — retornam False."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    return bool(getattr(user, "client_id", None))
 
 
 def scope_project_queryset(
@@ -82,20 +99,26 @@ def user_can_access_project(user, project):
 def scope_client_queryset(queryset, user, *, client_field="id"):
     """Filtra `queryset` para o(s) Cliente(s) do escopo do usuário. Use
     `client_field="id"` quando o queryset é de Client diretamente, ou o nome
-    da FK (ex: "client_id") quando é de um modelo relacionado a Client."""
+    da FK (ex: "client_id") quando é de um modelo relacionado a Client.
+    Gestores com escopo de site (clients=None) não têm restrição por Cliente."""
     scope = get_scope_for_user(user)
     if scope is None:
+        return queryset
+    if scope["clients"] is None:
         return queryset
     return queryset.filter(**{f"{client_field}__in": scope["clients"]})
 
 
 def scope_site_queryset(queryset, user, *, client_field="client_id", site_field="id"):
     """Filtra `queryset` de Site (ou relacionado) pelo Cliente e, se
-    restrito, pelos Sites marcados no escopo do usuário."""
+    restrito, pelos Sites marcados no escopo do usuário.
+    Gestores com escopo de site (clients=None) são filtrados só por Sites,
+    sem restrição por Cliente."""
     scope = get_scope_for_user(user)
     if scope is None:
         return queryset
-    queryset = queryset.filter(**{f"{client_field}__in": scope["clients"]})
+    if scope["clients"] is not None:
+        queryset = queryset.filter(**{f"{client_field}__in": scope["clients"]})
     if scope["sites"] is not None:
         queryset = queryset.filter(**{f"{site_field}__in": scope["sites"]})
     return queryset
@@ -104,9 +127,10 @@ def scope_site_queryset(queryset, user, *, client_field="client_id", site_field=
 def deny_if_client_scoped(queryset, user):
     """Para cadastros internos que um usuário-cliente não deve enxergar de
     forma alguma (Empresas, Colaboradores, Cargos, Responsáveis, Tipos de
-    Projeto, Tarefas do catálogo etc): nega acesso total se o usuário tiver
-    escopo de cliente."""
-    if get_scope_for_user(user) is not None:
+    Projeto, Tarefas do catálogo etc): nega acesso total se o usuário for
+    usuário-cliente. Gestores com escopo de site são equipe interna e
+    enxergam esses cadastros normalmente."""
+    if is_client_scoped(user):
         return queryset.none()
     return queryset
 
