@@ -850,10 +850,10 @@ class ClientUserAccessScopeApiTests(TestCase):
 
     def test_client_user_cannot_create_occurrence_in_other_client_project(self):
         self._client_user("cliente_a_occ", client=self.client_a, perms=("view_project", "add_projectoccurrence"))
-        blocked = self.client_api.post("/api/project-occurrences/", {"project": self.project_b.pk, "title": "Invasão"}, format="json")
+        blocked = self.client_api.post("/api/project-occurrences/", {"project": self.project_b.pk, "title": "Invasão", "occurred_at": "2026-09-29"}, format="json")
         self.assertEqual(blocked.status_code, 400)
         self.assertIn("project", blocked.data)
-        allowed = self.client_api.post("/api/project-occurrences/", {"project": self.project_a1.pk, "title": "Própria"}, format="json")
+        allowed = self.client_api.post("/api/project-occurrences/", {"project": self.project_a1.pk, "title": "Própria", "occurred_at": "2026-09-29"}, format="json")
         self.assertEqual(allowed.status_code, 201)
 
     def test_client_user_cannot_move_occurrence_to_other_client_project(self):
@@ -883,7 +883,7 @@ class ClientUserAccessScopeApiTests(TestCase):
         self._client_user(
             "cliente_a_site_occ", client=self.client_a, sites=[self.site_a1], perms=("view_project", "add_projectoccurrence"),
         )
-        response = self.client_api.post("/api/project-occurrences/", {"project": self.project_a2.pk, "title": "Outro site"}, format="json")
+        response = self.client_api.post("/api/project-occurrences/", {"project": self.project_a2.pk, "title": "Outro site", "occurred_at": "2026-09-29"}, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_staff_user_can_still_write_to_any_project(self):
@@ -891,7 +891,7 @@ class ClientUserAccessScopeApiTests(TestCase):
         for codename in ("view_project", "add_projectoccurrence"):
             user.user_permissions.add(Permission.objects.get(codename=codename, content_type__app_label="projects"))
         self.client_api.force_authenticate(user=user)
-        response = self.client_api.post("/api/project-occurrences/", {"project": self.project_b.pk, "title": "Interna"}, format="json")
+        response = self.client_api.post("/api/project-occurrences/", {"project": self.project_b.pk, "title": "Interna", "occurred_at": "2026-09-29"}, format="json")
         self.assertEqual(response.status_code, 201)
 
 class ProjectTaskDispatchApiTests(TestCase):
