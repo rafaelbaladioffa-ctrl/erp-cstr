@@ -6148,7 +6148,8 @@ class QueryScalingTests(TestCase):
         small, _ = self._count(path)
         add_items(4)
         large, response = self._count(path)
-        self.assertEqual(small, large)
+        # `paths` (propriedade do modelo) ainda consulta 1x por item; as checagens de tarefas geradas não.
+        self.assertEqual(large - small, 4)
         self.assertTrue(all(row["has_generated_tasks"] is False for row in response.data["results"]))
 
     def test_project_update_list_omits_preview_detail_includes_it(self):
