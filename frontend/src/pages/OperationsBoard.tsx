@@ -22,6 +22,7 @@ import {
   initials,
   pairRowClass,
   pct,
+  presenceLabel,
   reorderRowsByPair,
 } from "../utils/timeline";
 
@@ -403,7 +404,7 @@ export default function OperationsBoard() {
     const pausedAway = hasPaused && AWAY_STATUSES.includes(tech.presence_status);
     if (hasInProgress) return p.statusInProgress;
     if (hasPaused && !pausedAway) return p.statusPaused;
-    return tech.presence_status_display;
+    return presenceLabel(tech.presence_status, locale, tech.presence_status_display);
   };
 
   const techStatusColor = (tech: OperationsBoardTechnician) => {
@@ -578,7 +579,7 @@ export default function OperationsBoard() {
                             ? p.statusInProgress
                             : busyStatus === "paused"
                               ? p.statusPaused
-                              : tech.presence_status_display}
+                              : presenceLabel(tech.presence_status, locale, tech.presence_status_display)}
                           {tech.current_tasks.length > 1 && p.openTasks(tech.current_tasks.length)}
                         </div>
                         {tech.current_tasks.map((t) => (
@@ -815,7 +816,7 @@ export default function OperationsBoard() {
                         </div>
                       </div>
                       {lanedSegments.length === 0 && notStarted.length === 0 ? (
-                        <div className="tod-empty-row">{tech.presence_status_display}</div>
+                        <div className="tod-empty-row">{presenceLabel(tech.presence_status, locale, tech.presence_status_display)}</div>
                       ) : (
                         <div className="tod-track" style={{ minHeight: rowHeight - 20 }}>
                           {lanedSegments.map(({ segment, lane }, idx) => {
