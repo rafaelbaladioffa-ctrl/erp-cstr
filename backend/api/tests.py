@@ -6066,6 +6066,7 @@ class QueryScalingTests(TestCase):
     def _assert_constant(self, path, client=None):
         for _ in range(2):
             self._add_technician_with_work()
+        self._count(path, client)  # aquecimento: caches por usuário (permissões, Person)
         small, _ = self._count(path, client)
         for _ in range(4):
             self._add_technician_with_work()
@@ -6109,6 +6110,7 @@ class QueryScalingTests(TestCase):
                 ProjectTaskAssignment.objects.create(project_task=task, collaborator=me, queue_order=i + 1)
 
         add_tasks(2)
+        self._count("/api/my-tasks/", tech_client)
         small, _ = self._count("/api/my-tasks/", tech_client)
         add_tasks(4)
         large, response = self._count("/api/my-tasks/", tech_client)

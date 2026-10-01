@@ -2304,7 +2304,9 @@ class MyTaskViewSet(
     projects.ProjectTask.
     """
 
-    queryset = MyTask.objects.select_related("project", "task").prefetch_related("collaborators__person", "assignments")
+    queryset = MyTask.objects.select_related(
+        "task", "project", "generated_task__activity", "generated_task__path", "generated_task__scope_item", "generated_task__task_template"
+    ).prefetch_related("collaborators__person", "rack_positions", "assignments")
     permission_classes = [ViewAwareModelPermissions]
 
     def get_serializer_class(self):
