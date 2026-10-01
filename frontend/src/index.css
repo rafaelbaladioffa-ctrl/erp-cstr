@@ -845,6 +845,16 @@ textarea {
   font-weight: 700;
 }
 
+.crumb-link {
+  color: var(--text-faint);
+  text-decoration: none;
+}
+
+.crumb-link:hover {
+  color: var(--orange);
+  text-decoration: underline;
+}
+
 .crumbbar-right {
   margin-left: auto;
 }

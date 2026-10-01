@@ -66,26 +66,26 @@ function buildNavGroups(t: Translations): { title: string; items: NavItem[] }[] 
 }
 
 function currentBreadcrumb(pathname: string, search: string, t: Translations) {
-  const areaLabels: Record<string, { area: string; page: string }> = {
-    "/operacao-do-dia": { area: t.nav.centralOperacoes, page: t.nav.operacaoDoDia },
-    "/timeline-operacional": { area: t.nav.centralOperacoes, page: t.nav.timelineOperacional },
-    "/relatorios-indicadores": { area: t.nav.centralOperacoes, page: t.nav.relatoriosIndicadores },
-    "/dashboard": { area: t.nav.sistema, page: t.nav.dashboard },
-    "/atualizacoes-diarias": { area: t.nav.atualizacoes, page: t.nav.atualizacoesDiarias },
-    "/atualizacoes-projeto": { area: t.nav.atualizacoes, page: t.nav.atualizacoesProjetos },
-    "/cadastros": { area: t.nav.sistema, page: t.nav.cadastrosGerais },
-    "/cadastros-mestres": { area: t.nav.sistema, page: t.nav.cadastrosMestres },
-    "/minhas-tarefas": { area: t.nav.tecnico, page: t.nav.minhasTarefas },
-    "/auditoria": { area: t.nav.seguranca, page: t.nav.log },
+  const areaLabels: Record<string, { area: string; areaHref: string; page: string }> = {
+    "/operacao-do-dia": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.operacaoDoDia },
+    "/timeline-operacional": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.timelineOperacional },
+    "/relatorios-indicadores": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.relatoriosIndicadores },
+    "/dashboard": { area: t.nav.sistema, areaHref: "/dashboard", page: t.nav.dashboard },
+    "/atualizacoes-diarias": { area: t.nav.atualizacoes, areaHref: "/atualizacoes-diarias", page: t.nav.atualizacoesDiarias },
+    "/atualizacoes-projeto": { area: t.nav.atualizacoes, areaHref: "/atualizacoes-diarias", page: t.nav.atualizacoesProjetos },
+    "/cadastros": { area: t.nav.sistema, areaHref: "/cadastros", page: t.nav.cadastrosGerais },
+    "/cadastros-mestres": { area: t.nav.sistema, areaHref: "/cadastros-mestres", page: t.nav.cadastrosMestres },
+    "/minhas-tarefas": { area: t.nav.tecnico, areaHref: "/minhas-tarefas", page: t.nav.minhasTarefas },
+    "/auditoria": { area: t.nav.seguranca, areaHref: "/auditoria", page: t.nav.log },
   };
   if (pathname === "/projetos") {
     const tab = new URLSearchParams(search).get("tab");
-    return { area: t.nav.projeto, page: tab === "history" ? t.nav.historicoProjestos : t.nav.projetosAtivos };
+    return { area: t.nav.projeto, areaHref: "/projetos", page: tab === "history" ? t.nav.historicoProjestos : t.nav.projetosAtivos };
   }
   const match = Object.keys(areaLabels).find((key) => pathname.startsWith(key));
   if (match) return areaLabels[match];
-  if (pathname.startsWith("/projetos/")) return { area: t.nav.projeto, page: t.breadcrumb.detalhe };
-  return { area: t.breadcrumb.erp, page: "" };
+  if (pathname.startsWith("/projetos/")) return { area: t.nav.projeto, areaHref: "/projetos", page: t.breadcrumb.detalhe };
+  return { area: t.breadcrumb.erp, areaHref: "/", page: "" };
 }
 
 function isItemActive(item: NavItem, pathname: string, search: string): boolean {
@@ -578,7 +578,11 @@ export default function Layout() {
 
         <div className="app-main">
           <div className="crumbbar">
-            <span>{breadcrumb.area}</span>
+            {breadcrumb.page ? (
+              <Link to={breadcrumb.areaHref} className="crumb-link">{breadcrumb.area}</Link>
+            ) : (
+              <span>{breadcrumb.area}</span>
+            )}
             {breadcrumb.page && (
               <>
                 <Icon name="chevron_right" style={{ fontSize: 15 }} />
