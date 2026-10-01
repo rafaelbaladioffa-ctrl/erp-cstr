@@ -130,7 +130,7 @@ export default function TasksBulkUpdatePanel({
         collaborator_ids: collaboratorIds,
         rack_position_ids: rackPositionIds,
       });
-      alert(p.tarefasAtualizadas(result.updated));
+      alert(p.tarefasAtualizadas(result.updated ?? 0));
       onApplied();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
@@ -146,7 +146,7 @@ export default function TasksBulkUpdatePanel({
     setError("");
     try {
       const result = await projectsApi.tasksBulk(project.id, { action: "delete", task_ids: selectedIds });
-      alert(p.tarefasExcluidas(result.deleted));
+      alert(p.tarefasExcluidas(result.deleted ?? 0));
       onApplied();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };

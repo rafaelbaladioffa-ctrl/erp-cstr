@@ -271,7 +271,7 @@ export default function TaskRuleSimulatorPanel({ refs }: { refs: ReferenceData }
   );
 }
 
-type P = ReturnType<typeof usePageText<typeof TEXT>>;
+type P = typeof TEXT["pt-BR"];
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (

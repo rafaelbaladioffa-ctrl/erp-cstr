@@ -101,7 +101,7 @@ export default function TasksCatalogAddModal({
         add_task_ids: selectedTasks,
         rack_position_ids: usesRackPositions ? selectedRackPositions : undefined,
       });
-      alert(p.tarefasAdicionadas(result.created));
+      alert(p.tarefasAdicionadas(result.created ?? 0));
       onSaved();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
