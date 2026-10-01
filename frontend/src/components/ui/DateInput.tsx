@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../../i18n";
+import Icon from "./Icon";
 
 function toIso(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -40,8 +41,8 @@ interface DateInputProps {
   disabled?: boolean;
 }
 
-export default function DateInput({ value, onChange, className, style, min, disabled }: DateInputProps) {
-  const { locale } = useI18n();
+export default function DateInput({ value, onChange, style, min, disabled }: DateInputProps) {
+  const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => (value ? fromIso(value) : new Date()));
   const ref = useRef<HTMLDivElement>(null);
@@ -67,117 +68,81 @@ export default function DateInput({ value, onChange, className, style, min, disa
     setOpen(false);
   }
 
+  function handleClear() {
+    onChange("");
+    setOpen(false);
+  }
+
   const weekdays = getWeekdayNames(locale);
   const days = buildMonthGrid(viewDate);
   const today = toIso(new Date());
 
   const displayValue = value
     ? fromIso(value).toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" })
-    : "—";
+    : undefined;
 
   const monthYearLabel = viewDate.toLocaleDateString(locale, { month: "long", year: "numeric" });
 
   return (
-    <div ref={ref} style={{ position: "relative", display: "inline-block", ...style }}>
-      <button
-        type="button"
-        className={className ?? "input"}
-        disabled={disabled}
-        onClick={() => !disabled && setOpen((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          cursor: disabled ? "default" : "pointer",
-          textAlign: "left",
-          width: "100%",
-          fontWeight: "normal",
-          minWidth: 130,
-        }}
-      >
-        <span style={{ flex: 1, color: value ? "var(--text)" : "var(--text-muted)" }}>
-          {displayValue}
-        </span>
-        <span style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1 }}>▾</span>
+    <div className="daterange" ref={ref} style={style}>
+      <button className="daterange-trigger" onClick={() => !disabled && setOpen((v) => !v)} disabled={disabled}>
+        <Icon name="calendar_month" style={{ fontSize: 17 }} />
+        {displayValue ?? <span style={{ color: "var(--text-muted)" }}>—</span>}
+        <Icon name="expand_more" style={{ fontSize: 16 }} />
       </button>
+      {value && (
+        <button className="daterange-clear" onClick={handleClear} aria-label={t.calendar.limpar}>
+          <Icon name="close" style={{ fontSize: 14 }} />
+        </button>
+      )}
 
       {open && (
-        <div style={{
-          position: "absolute",
-          top: "calc(100% + 4px)",
-          left: 0,
-          zIndex: 1000,
-          background: "var(--white)",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          padding: 12,
-          width: 230,
-          boxShadow: "0 4px 16px rgba(0,0,0,.15)",
-        }}>
-          {/* cabeçalho mês/ano */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <button
-              type="button"
-              onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--text-muted)", padding: "0 6px", lineHeight: 1 }}
-            >‹</button>
-            <strong style={{ fontSize: 13, textTransform: "capitalize", color: "var(--text)" }}>
-              {monthYearLabel}
-            </strong>
-            <button
-              type="button"
-              onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--text-muted)", padding: "0 6px", lineHeight: 1 }}
-            >›</button>
+        <div className="daterange-popover">
+          <div className="daterange-popover-head">
+            <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))}>
+              <Icon name="chevron_left" style={{ fontSize: 18 }} />
+            </button>
+            <strong style={{ textTransform: "capitalize" }}>{monthYearLabel}</strong>
+            <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))}>
+              <Icon name="chevron_right" style={{ fontSize: 18 }} />
+            </button>
           </div>
 
-          {/* nomes dos dias da semana */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1, marginBottom: 4 }}>
+          <div className="daterange-grid daterange-weekdays">
             {weekdays.map((w, i) => (
-              <span key={i} style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", padding: "2px 0" }}>
-                {w.slice(0, 2)}
-              </span>
+              <span key={i}>{w}</span>
             ))}
           </div>
 
-          {/* dias */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}>
+          <div className="daterange-grid">
             {days.map((day) => {
               const iso = toIso(day);
               const outside = day.getMonth() !== viewDate.getMonth();
-              const selected = iso === value;
-              const isToday = iso === today;
+              const isSelected = iso === value;
               const isDisabled = !!(min && iso < min);
               return (
                 <button
                   key={iso}
-                  type="button"
+                  className={[
+                    "daterange-day",
+                    outside ? "outside" : "",
+                    isSelected ? "edge" : "",
+                    iso === today ? "today" : "",
+                    isDisabled ? "outside" : "",
+                  ].filter(Boolean).join(" ")}
                   onClick={() => !isDisabled && handleDayClick(day)}
-                  style={{
-                    fontSize: 12,
-                    textAlign: "center",
-                    padding: "5px 0",
-                    borderRadius: "50%",
-                    border: "none",
-                    cursor: isDisabled ? "default" : "pointer",
-                    background: selected
-                      ? "var(--orange)"
-                      : isToday && !selected
-                      ? "var(--orange-soft, #fff3e0)"
-                      : "transparent",
-                    color: selected
-                      ? "#fff"
-                      : outside || isDisabled
-                      ? "var(--text-muted)"
-                      : "var(--text)",
-                    fontWeight: isToday && !selected ? 600 : 400,
-                    opacity: isDisabled ? 0.4 : 1,
-                  }}
+                  disabled={isDisabled}
                 >
                   {day.getDate()}
                 </button>
               );
             })}
+          </div>
+
+          <div className="daterange-popover-foot">
+            <button className="btn-outline btn-sm" onClick={handleClear}>
+              {t.calendar.limpar}
+            </button>
           </div>
         </div>
       )}
