@@ -339,7 +339,7 @@ export default function TimelineOperacional() {
                 <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
                   <div className="tl-row-label">
                     <div className="tl-avatar">{initials(tech.name)}</div>
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <div className="tl-row-name">
                         {tech.name}
                         {siteId === "all" && <span className="tl-row-site"> · {tech.site_name}</span>}
