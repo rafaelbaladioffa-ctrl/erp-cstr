@@ -28,28 +28,31 @@ class HasOperationsBoardPermission(IsAuthenticated):
         return request.user.has_perm("projects.view_projecttaskassignment")
 
 
-def _current_tasks_data(collaborator):
-    """Todas as tarefas do técnico que estão 'abertas' agora (em execução OU
-    pausada) — normalmente é só uma, mas nada impede o técnico de pausar uma
-    e iniciar outra (a trava de 'uma execução por vez' só bloqueia duas
-    simultâneas EM EXECUÇÃO, pausar é justamente a válvula de escape). Por
-    isso isso retorna uma lista, não um único item — mostrar só a primeira
-    escondia a que estava rodando de verdade."""
+def _current_tasks_by_collaborator(collaborator_ids):
+    """Tarefas 'abertas' (em execução OU pausadas) de cada técnico, numa
+    única consulta. Pode haver mais de uma por técnico: pausar uma e iniciar
+    outra é permitido, então mostrar só a primeira esconderia a que está
+    rodando de verdade."""
     assignments = (
-        collaborator.task_assignments.select_related("project_task__project", "project_task__task")
-        .filter(project_task__status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
+        ProjectTaskAssignment.objects.filter(
+            collaborator_id__in=collaborator_ids,
+            project_task__status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED),
+        )
+        .select_related("project_task__project", "project_task__task")
         .order_by("project_task__status", "project_task__actual_start")
     )
-    return [
-        {
-            "id": a.project_task.id,
-            "name": a.project_task.display_name,
-            "project_name": a.project_task.project.name,
-            "status": a.project_task.status,
-            "actual_start": a.project_task.actual_start,
-        }
-        for a in assignments
-    ]
+    result = {}
+    for a in assignments:
+        result.setdefault(a.collaborator_id, []).append(
+            {
+                "id": a.project_task.id,
+                "name": a.project_task.display_name,
+                "project_name": a.project_task.project.name,
+                "status": a.project_task.status,
+                "actual_start": a.project_task.actual_start,
+            }
+        )
+    return result
 
 
 def _status_events_data(collaborator_ids, date):
@@ -89,21 +92,25 @@ def _site_label(collaborator):
     return ", ".join(names) if names else "—"
 
 
-def _queue_data(collaborator):
+def _queue_by_collaborator(collaborator_ids):
     assignments = (
-        collaborator.task_assignments.select_related("project_task__project", "project_task__task")
-        .filter(project_task__status=ProjectTask.STATUS_NOT_STARTED)
+        ProjectTaskAssignment.objects.filter(
+            collaborator_id__in=collaborator_ids, project_task__status=ProjectTask.STATUS_NOT_STARTED
+        )
+        .select_related("project_task__project", "project_task__task")
         .order_by("queue_order", "dispatched_at")
     )
-    return [
-        {
-            "task_id": a.project_task_id,
-            "task_name": a.project_task.display_name,
-            "project_name": a.project_task.project.name,
-            "queue_order": a.queue_order,
-        }
-        for a in assignments
-    ]
+    result = {}
+    for a in assignments:
+        result.setdefault(a.collaborator_id, []).append(
+            {
+                "task_id": a.project_task_id,
+                "task_name": a.project_task.display_name,
+                "project_name": a.project_task.project.name,
+                "queue_order": a.queue_order,
+            }
+        )
+    return result
 
 
 def build_board_data(site_id, date=None):
@@ -122,6 +129,8 @@ def build_board_data(site_id, date=None):
     collaborator_ids = [c.id for c in collaborators_qs]
     status_events_by_collaborator = _status_events_data(collaborator_ids, today)
     pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
+    current_tasks_by_collaborator = _current_tasks_by_collaborator(collaborator_ids)
+    queue_by_collaborator = _queue_by_collaborator(collaborator_ids)
     absences_today = {
         a.collaborator_id: a
         for a in TechnicianAbsence.objects.filter(
@@ -147,8 +156,8 @@ def build_board_data(site_id, date=None):
                 "leave_until": absence.date_to if absence else None,
                 "checked_in_at": presence.checked_in_at if presence else None,
                 "checked_out_at": presence.checked_out_at if presence else None,
-                "current_tasks": _current_tasks_data(collaborator),
-                "queue": _queue_data(collaborator),
+                "current_tasks": current_tasks_by_collaborator.get(collaborator.id, []),
+                "queue": queue_by_collaborator.get(collaborator.id, []),
                 "status_events": status_events_by_collaborator.get(collaborator.id, []),
                 "pair_partner": pair_partner_by_collaborator.get(collaborator.id),
             }
@@ -241,23 +250,29 @@ def build_timeline_data(site_id, date):
     status_events_by_collaborator = _status_events_data(collaborator_ids, date)
     pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
 
+    queue_by_collaborator = _queue_by_collaborator(collaborator_ids) if is_today else {}
+    # Timestamps do PRÓPRIO técnico (assignment_start/assignment_end) quando
+    # disponíveis, para não mostrar barras no período em que outro técnico
+    # executava a tarefa e este não.
+    assignments_by_collaborator = {}
+    all_assignments = (
+        ProjectTaskAssignment.objects.filter(collaborator_id__in=collaborator_ids)
+        .select_related("project_task", "project_task__project", "project_task__task")
+        .prefetch_related("project_task__assignments")
+        .filter(
+            Q(assignment_start__date=date)
+            | Q(project_task__actual_start__date=date)
+            | Q(project_task__planned_start__date=date)
+            | Q(project_task__status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
+        )
+        .order_by("project_task__planned_start", "project_task__actual_start")
+    )
+    for a in all_assignments:
+        assignments_by_collaborator.setdefault(a.collaborator_id, []).append(a)
+
     technicians = []
     for collaborator in collaborators_qs:
-        # Busca via assignments para usar os timestamps do PRÓPRIO técnico
-        # (assignment_start/assignment_end) quando disponíveis, evitando mostrar
-        # barras no período em que outro técnico estava executando mas este não.
-        assignments = (
-            ProjectTaskAssignment.objects.filter(collaborator=collaborator)
-            .select_related("project_task", "project_task__project", "project_task__task")
-            .prefetch_related("project_task__assignments")
-            .filter(
-                Q(assignment_start__date=date)
-                | Q(project_task__actual_start__date=date)
-                | Q(project_task__planned_start__date=date)
-                | Q(project_task__status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
-            )
-            .order_by("project_task__planned_start", "project_task__actual_start")
-        )
+        assignments = assignments_by_collaborator.get(collaborator.id, [])
         seen_task_ids = set()
         blocks = []
         for a in assignments:
@@ -289,7 +304,7 @@ def build_timeline_data(site_id, date):
                 "name": collaborator.person.name,
                 "site_name": _site_label(collaborator),
                 "blocks": blocks,
-                "queue": _queue_data(collaborator) if is_today else [],
+                "queue": queue_by_collaborator.get(collaborator.id, []),
                 "status_events": status_events_by_collaborator.get(collaborator.id, []),
                 "pair_partner": pair_partner_by_collaborator.get(collaborator.id),
             }

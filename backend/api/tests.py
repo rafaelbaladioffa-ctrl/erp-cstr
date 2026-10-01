@@ -6022,3 +6022,96 @@ class InternalDataExposureTests(TestCase):
         self._user("tudo", "projects.view_project", "core.view_site", "projects.view_projecttask")
         response = self.api.get("/api/search/?q=Busca")
         self.assertEqual((len(response.data["projects"]), len(response.data["sites"]), len(response.data["tasks"])), (1, 1, 1))
+
+
+class QueryScalingTests(TestCase):
+    """O número de consultas das telas de lista não pode crescer com o volume
+    de técnicos/projetos/tarefas (consultas por item dentro de laço)."""
+
+    def setUp(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self._capture = lambda: CaptureQueriesContext(connection)
+        self.api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.client_obj = Client.objects.create(company=self.company, legal_name="Cliente Escala")
+        self.site = Site.objects.create(client=self.client_obj, name="Site Escala")
+        self.catalog = Task.objects.create(name="Lançamento")
+        self.admin = User.objects.create_superuser(username="escala_admin", email="escala@example.com", password="x")
+        self.api.force_authenticate(user=self.admin)
+        self._seq = 0
+
+    def _add_technician_with_work(self):
+        self._seq += 1
+        now = timezone.now()
+        collaborator = make_collaborator(self.company, f"Técnico {self._seq}")
+        collaborator.sites.add(self.site)
+        project = Project.objects.create(company=self.company, name=f"Projeto {self._seq}", client=self.client_obj, site=self.site)
+        running = ProjectTask.objects.create(
+            project=project, task=self.catalog, order=1, status=ProjectTask.STATUS_IN_PROGRESS,
+            planned_start=now, actual_start=now,
+        )
+        queued = ProjectTask.objects.create(project=project, task=self.catalog, order=2, planned_start=now)
+        ProjectTaskAssignment.objects.create(project_task=running, collaborator=collaborator, assignment_start=now)
+        ProjectTaskAssignment.objects.create(project_task=queued, collaborator=collaborator)
+        return collaborator
+
+    def _count(self, path, client=None):
+        with self._capture() as ctx:
+            response = (client or self.api).get(path)
+        self.assertEqual(response.status_code, 200, getattr(response, "data", None))
+        return len(ctx.captured_queries), response
+
+    def _assert_constant(self, path, client=None):
+        for _ in range(2):
+            self._add_technician_with_work()
+        small, _ = self._count(path, client)
+        for _ in range(4):
+            self._add_technician_with_work()
+        large, response = self._count(path, client)
+        self.assertEqual(small, large, f"{path}: {small} consultas com 2 itens, {large} com 6")
+        return response
+
+    def test_operations_board_queries_do_not_grow_with_technicians(self):
+        response = self._assert_constant(f"/api/operations/board/?site={self.site.pk}")
+        tech = response.data["technicians"][0]
+        self.assertEqual(len(tech["current_tasks"]), 1)
+        self.assertEqual(len(tech["queue"]), 1)
+
+    def test_operations_timeline_queries_do_not_grow_with_technicians(self):
+        today = timezone.localdate().isoformat()
+        response = self._assert_constant(f"/api/operations/timeline/?site={self.site.pk}&date={today}")
+        tech = response.data["technicians"][0]
+        self.assertEqual(len(tech["blocks"]), 2)
+        self.assertEqual(len(tech["queue"]), 1)
+
+    def test_project_list_queries_do_not_grow_with_projects(self):
+        response = self._assert_constant("/api/projects/?page_size=50")
+        row = response.data["results"][0]
+        self.assertEqual(row["total_tasks"], 2)
+
+    def test_project_task_list_queries_do_not_grow_with_tasks(self):
+        self._assert_constant("/api/project-tasks/?page_size=50")
+
+    def test_my_tasks_queue_order_without_per_task_queries(self):
+        tech_user = User.objects.create_user(username="tec_escala", email="tec_escala@example.com", password="x", company=self.company)
+        tech_user.user_permissions.add(Permission.objects.get(codename="view_mytask", content_type__app_label="technical"))
+        person = Person.objects.create(name="Técnico Logado", company=self.company, user=tech_user)
+        me = Collaborator.objects.create(person=person)
+        project = Project.objects.create(company=self.company, name="Projeto Fila", client=self.client_obj, site=self.site)
+        tech_client = APIClient()
+        tech_client.force_authenticate(user=tech_user)
+
+        def add_tasks(n):
+            for i in range(n):
+                task = ProjectTask.objects.create(project=project, task=self.catalog, order=i)
+                ProjectTaskAssignment.objects.create(project_task=task, collaborator=me, queue_order=i + 1)
+
+        add_tasks(2)
+        small, _ = self._count("/api/my-tasks/", tech_client)
+        add_tasks(4)
+        large, response = self._count("/api/my-tasks/", tech_client)
+        self.assertEqual(small, large)
+        rows = response.data["results"] if "results" in response.data else response.data
+        self.assertTrue(all(row["queue_order"] is not None for row in rows))

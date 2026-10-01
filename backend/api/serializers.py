@@ -1515,7 +1515,12 @@ class ProjectSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer)
 
     def _tasks(self, obj):
         if not hasattr(obj, "_serializer_tasks_cache"):
-            obj._serializer_tasks_cache = list(obj.project_tasks.prefetch_related("assignments").all())
+            # Reaproveita o prefetch da view (project_tasks__assignments) quando existe.
+            if "project_tasks" in getattr(obj, "_prefetched_objects_cache", {}):
+                tasks = obj.project_tasks.all()
+            else:
+                tasks = obj.project_tasks.prefetch_related("assignments").all()
+            obj._serializer_tasks_cache = list(tasks)
         return obj._serializer_tasks_cache
 
     def get_total_tasks(self, obj):
@@ -1677,7 +1682,7 @@ class ProjectTaskSerializer(ClientScopedRelationsMixin, serializers.ModelSeriali
         collaborator = get_collaborator_role(request.user)
         if collaborator is None:
             return None
-        assignment = obj.assignments.filter(collaborator=collaborator).first()
+        assignment = next((a for a in obj.assignments.all() if a.collaborator_id == collaborator.id), None)
         return assignment.queue_order if assignment else None
 
     def validate(self, attrs):
