@@ -338,7 +338,7 @@ export const searchApi = {
 
 export const projectsApi = {
   list: (params?: Record<string, string>) =>
-    apiClient.get<Paginated<Project>>("/projects/", { params }).then((r) => r.data),
+    apiClient.get<Paginated<Project>>("/projects/", { params: { page_size: "500", ...params } }).then((r) => r.data),
   get: (id: number) => apiClient.get<Project>(`/projects/${id}/`).then((r) => r.data),
   create: (payload: Partial<Project>) => apiClient.post<Project>("/projects/", payload).then((r) => r.data),
   update: (id: number, payload: Partial<Project>) =>
