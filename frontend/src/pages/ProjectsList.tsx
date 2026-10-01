@@ -329,7 +329,7 @@ function KanbanCard({
 const KANBAN_COLS_BASE: { key: string | string[]; labelKey: keyof PL; statusKey: string; color: string; dropStatus: string }[] = [
   { key: "in_progress", labelKey: "kanbanActive", statusKey: "in_progress", color: "#185fa5", dropStatus: "in_progress" },
   { key: "paused", labelKey: "kanbanPaused", statusKey: "paused", color: "#854f0b", dropStatus: "paused" },
-  { key: "planning", labelKey: "kanbanPlanning", statusKey: "planning", color: "#534ab7", dropStatus: "planning" },
+  { key: ["planning", "not_started"], labelKey: "kanbanPlanning", statusKey: "planning", color: "#534ab7", dropStatus: "planning" },
   { key: ["completed", "canceled"], labelKey: "kanbanFinished", statusKey: "completed", color: "#3b6d11", dropStatus: "completed" },
 ];
 
@@ -488,7 +488,7 @@ export default function ProjectsList() {
     const statusMap: Record<TabKey, string | string[]> = {
       in_progress: "in_progress",
       paused: "paused",
-      planning: "planning",
+      planning: ["planning", "not_started"],
       completed: ["completed", "canceled"],
     };
     const target = statusMap[tab];
@@ -532,7 +532,7 @@ export default function ProjectsList() {
 
   const inProgressCount = projects.filter((p) => p.status === "in_progress").length;
   const pausedCount = projects.filter((p) => p.status === "paused").length;
-  const planningCount = projects.filter((p) => p.status === "planning").length;
+  const planningCount = projects.filter((p) => p.status === "planning" || p.status === "not_started").length;
   const completedCount = projects.filter((p) => p.status === "completed" || p.status === "canceled").length;
 
   const activeCount = viewMode === "kanban" ? kanbanBase.length : filtered.length;
