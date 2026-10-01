@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { masterDataApi, sitesMapApi } from "../../api/resources";
 import { useI18n } from "../../i18n";
+import { entityLabels } from "../../pages/cadastros/registryConfig";
 import type {
   CableAlias,
   CableSpec,
@@ -48,7 +49,8 @@ export default function EntityCrudPanel({
   initialSearch?: string;
 }) {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const el = entityLabels(entity, locale);
   const canAdd = hasPerm(user, entity.perms.add) && !entity.disableCreate;
   const canChange = hasPerm(user, entity.perms.change);
   const canDelete = hasPerm(user, entity.perms.delete);
@@ -122,7 +124,7 @@ export default function EntityCrudPanel({
         // (incorretamente) que a nova entidade estava usando o dataset
         // errado.
         setRows([]);
-        setLoadError(t.crud.erroCarregar(entity.label.toLowerCase()));
+        setLoadError(t.crud.erroCarregar(el.label.toLowerCase()));
       })
       .finally(() => setLoading(false));
   }
@@ -411,7 +413,7 @@ export default function EntityCrudPanel({
       <div className="card">
         <div className="toolbar">
           <div>
-            <div className="toolbar-title">{entity.label}</div>
+            <div className="toolbar-title">{el.label}</div>
             <div className="toolbar-subtitle">{t.crud.registrosEncontrados(filtered.length)}</div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -446,7 +448,7 @@ export default function EntityCrudPanel({
             {canAdd && (
               <button className="btn btn-primary" onClick={openCreate}>
                 <Icon name="add" style={{ fontSize: 18 }} />
-                {entity.createLabel}
+                {el.createLabel}
               </button>
             )}
           </div>
@@ -457,7 +459,7 @@ export default function EntityCrudPanel({
             <Icon name="search" />
             <input
               className="input"
-              placeholder={t.crud.buscarEm(entity.label)}
+              placeholder={t.crud.buscarEm(el.label)}
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -622,7 +624,7 @@ export default function EntityCrudPanel({
 
       {modalOpen && (editingId ? canChange : canAdd) && (
         <Modal
-          title={editingId ? t.crud.editar(entity.singular) : entity.createLabel}
+          title={editingId ? t.crud.editar(el.singular) : el.createLabel}
           onClose={() => setModalOpen(false)}
           width={620}
         >
@@ -988,7 +990,7 @@ export default function EntityCrudPanel({
 
       {csvImportOpen && canAdd && (
         <CsvImportModal
-          title={t.crud.importarTitle(entity.label)}
+          title={t.crud.importarTitle(el.label)}
           onClose={() => setCsvImportOpen(false)}
           onImport={entity.api.importCsv}
           onImported={reload}

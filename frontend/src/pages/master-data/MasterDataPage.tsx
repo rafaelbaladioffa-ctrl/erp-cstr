@@ -11,6 +11,8 @@ const TEXT = {
     noPermission: "Seu usuário não tem permissão de visualização em nenhum Cadastro Mestre. Peça a um administrador para conceder acesso no grupo de permissões.",
     comingSoon: "Em breve",
     selectItem: "Selecione um cadastro na lista ao lado.",
+    catLabels: { engenharia: "Engenharia", operacao: "Operação", infraestrutura: "Infraestrutura", planejamento: "Planejamento" },
+    toolLabels: { "task-rule-simulator": "Simulador de Regras", "sow-import": "Importar SOW", "sow-wizard": "Fluxo Guiado", "project-plan": "Plano do Projeto" },
   },
   "en-US": {
     eyebrow: "System",
@@ -19,6 +21,8 @@ const TEXT = {
     noPermission: "Your user does not have view permission on any Master Record. Ask an administrator to grant access in the permissions group.",
     comingSoon: "Coming soon",
     selectItem: "Select a record from the list on the left.",
+    catLabels: { engenharia: "Engineering", operacao: "Operations", infraestrutura: "Infrastructure", planejamento: "Planning" },
+    toolLabels: { "task-rule-simulator": "Rule Simulator", "sow-import": "Import SOW", "sow-wizard": "Guided Flow", "project-plan": "Project Plan" },
   },
   "es-ES": {
     eyebrow: "Sistema",
@@ -27,6 +31,8 @@ const TEXT = {
     noPermission: "Tu usuario no tiene permiso de visualización en ningún Dato Maestro. Pide a un administrador que otorgue acceso en el grupo de permisos.",
     comingSoon: "Próximamente",
     selectItem: "Selecciona un registro de la lista al lado.",
+    catLabels: { engenharia: "Ingeniería", operacao: "Operación", infraestrutura: "Infraestructura", planejamento: "Planificación" },
+    toolLabels: { "task-rule-simulator": "Simulador de Reglas", "sow-import": "Importar SOW", "sow-wizard": "Flujo Guiado", "project-plan": "Plan del Proyecto" },
   },
 };
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
@@ -38,7 +44,9 @@ import Icon from "../../components/ui/Icon";
 import PageHeader from "../../components/ui/PageHeader";
 import { useAuth } from "../../context/AuthContext";
 import { hasPerm } from "../../utils/permissions";
+import { useI18n } from "../../i18n";
 import type { ReferenceData } from "../cadastros/registryConfig";
+import { entityLabels } from "../cadastros/registryConfig";
 import { MASTER_DATA_CATEGORIES, type MasterDataNavItem, type ToolConfig } from "./masterDataConfig";
 
 function isToolConfig(item: MasterDataNavItem): item is ToolConfig {
@@ -65,6 +73,7 @@ const EMPTY_REFS: ReferenceData = {
 export default function MasterDataPage() {
   const { user } = useAuth();
   const p = usePageText(TEXT);
+  const { locale } = useI18n();
   // Links contextuais da tela Importar SOW ("Abrir Itens de Escopo desta
   // SOW" etc.) chegam aqui como ?focusEntity=scope-items&focusSearch=
   // SOW-IMPORT-000001 — nenhuma outra tela deste app usa querystring
@@ -199,7 +208,7 @@ export default function MasterDataPage() {
                       cursor: "pointer",
                     }}
                   >
-                    <span>{cat.label}</span>
+                    <span>{p.catLabels[cat.key as keyof typeof p.catLabels] ?? cat.label}</span>
                     <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 16 }} />
                   </button>
                   {open && cat.entities.length === 0 && (
@@ -229,7 +238,9 @@ export default function MasterDataPage() {
                         }}
                       >
                         <Icon name={entity.icon} style={{ fontSize: 16, color: isActive ? "var(--orange)" : "var(--text-faint)" }} />
-                        {entity.label}
+                        {isToolConfig(entity)
+                          ? (p.toolLabels[entity.key as keyof typeof p.toolLabels] ?? entity.label)
+                          : entityLabels(entity, locale).label}
                       </button>
                     );
                   })}

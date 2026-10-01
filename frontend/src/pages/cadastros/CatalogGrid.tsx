@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import Icon from "../../components/ui/Icon";
 import { useI18n } from "../../i18n";
-
 import type { EntityConfig } from "./registryConfig";
+import { entityLabels } from "./registryConfig";
 
 export interface RecentRecord {
   entityKey: string;
@@ -112,6 +112,7 @@ export default function CatalogGrid({
         {entities.map((entity, index) => {
           const tone = toneFor(index);
           const count = counts[entity.key];
+          const el = entityLabels(entity, locale);
           return (
             <button
               key={entity.key}
@@ -141,8 +142,8 @@ export default function CatalogGrid({
               >
                 <Icon name={entity.icon} style={{ fontSize: 20 }} />
               </div>
-              <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>{entity.label}</div>
-              <div style={{ fontSize: 12.5, color: "var(--text-muted)", flex: 1 }}>{entity.description}</div>
+              <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>{el.label}</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)", flex: 1 }}>{el.description}</div>
               <div style={{ fontSize: 12, color: "var(--text-faint)", fontWeight: 600 }}>
                 {count === null ? "—" : t.crud.contagem(count)}
               </div>

@@ -41,6 +41,16 @@ export interface FilterConfig {
   options: (refs: ReferenceData, rows: Record<string, unknown>[]) => FieldOption[];
 }
 
+/** Metadados de exibição de uma entidade por locale.
+ * Se fornecido, sobrescreve label/singular/description/createLabel no idioma
+ * selecionado; o campo raiz continua sendo o fallback em pt-BR. */
+export interface EntityLabels {
+  label: string;
+  singular: string;
+  description: string;
+  createLabel: string;
+}
+
 export interface EntityConfig<T extends { id: number; is_active?: boolean }> {
   key: string;
   label: string;
@@ -48,6 +58,8 @@ export interface EntityConfig<T extends { id: number; is_active?: boolean }> {
   singular: string;
   /** Frase curta para o card do catálogo, ex: "Cadastre e gerencie as empresas." */
   description: string;
+  /** Traduções opcionais — sobrescreve label/singular/description/createLabel no locale selecionado. */
+  labels?: Record<string, EntityLabels>;
   /** Codenames reais do Django (view/add/change/delete) para este model —
    * a UI só mostra o que o Grupo do usuário realmente permite. */
   perms: ModelPerms;
@@ -124,6 +136,16 @@ function clientOptions(refs: ReferenceData) {
   return refs.clients.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name }));
 }
 
+/** Retorna os metadados de exibição de uma entidade no locale correto. */
+export function entityLabels(entity: EntityConfig<any>, locale: string): EntityLabels {
+  return entity.labels?.[locale] ?? {
+    label: entity.label,
+    singular: entity.singular,
+    description: entity.description,
+    createLabel: entity.createLabel,
+  };
+}
+
 export const ENTITIES: EntityConfig<any>[] = [
   {
     key: "companies",
@@ -150,6 +172,10 @@ export const ENTITIES: EntityConfig<any>[] = [
     ],
     emptyValues: { trade_name: "", legal_name: "", tax_id: "", email: "", phone: "", is_active: true },
     rowLabel: (row: Company) => row.trade_name || row.legal_name,
+    labels: {
+      "en-US": { label: "Companies", singular: "Company", description: "Register and manage companies.", createLabel: "New Company" },
+      "es-ES": { label: "Empresas", singular: "Empresa", description: "Registra y gestiona las empresas.", createLabel: "Nueva Empresa" },
+    },
   } as EntityConfig<Company>,
   {
     key: "clients",
@@ -193,6 +219,10 @@ export const ENTITIES: EntityConfig<any>[] = [
       email: "", phone: "", city: "", state: "", address: "", notes: "", is_active: true,
     },
     rowLabel: (row: ClientFull) => row.trade_name || row.legal_name,
+    labels: {
+      "en-US": { label: "Clients", singular: "Client", description: "Register and manage clients.", createLabel: "New Client" },
+      "es-ES": { label: "Clientes", singular: "Cliente", description: "Registra y gestiona los clientes.", createLabel: "Nuevo Cliente" },
+    },
   } as EntityConfig<ClientFull>,
   {
     key: "sites",
@@ -232,6 +262,10 @@ export const ENTITIES: EntityConfig<any>[] = [
       manual_coordinates: false, latitude: null, longitude: null, is_active: true,
     },
     rowLabel: (row: SiteFull) => row.code || row.name,
+    labels: {
+      "en-US": { label: "Sites", singular: "Site", description: "Register and manage sites.", createLabel: "New Site" },
+      "es-ES": { label: "Sites", singular: "Site", description: "Registra y gestiona los sites.", createLabel: "Nuevo Site" },
+    },
   } as EntityConfig<SiteFull>,
   {
     key: "categories",
@@ -253,6 +287,10 @@ export const ENTITIES: EntityConfig<any>[] = [
     ],
     emptyValues: { name: "", description: "", is_active: true },
     rowLabel: (row: Category) => row.name,
+    labels: {
+      "en-US": { label: "Categories", singular: "Category", description: "Register and manage categories.", createLabel: "New Category" },
+      "es-ES": { label: "Categorías", singular: "Categoría", description: "Registra y gestiona las categorías.", createLabel: "Nueva Categoría" },
+    },
   } as EntityConfig<Category>,
   {
     key: "project-types",
@@ -284,6 +322,10 @@ export const ENTITIES: EntityConfig<any>[] = [
       extraValues: () => ({ description: "", is_active: true }),
       api: bulkCreateApi.projectTypes,
     },
+    labels: {
+      "en-US": { label: "Project Types", singular: "Project Type", description: "Register and manage project types.", createLabel: "New Project Type" },
+      "es-ES": { label: "Tipos de Proyecto", singular: "Tipo de Proyecto", description: "Registra y gestiona los tipos de proyecto.", createLabel: "Nuevo Tipo de Proyecto" },
+    },
   } as EntityConfig<ProjectType>,
   {
     key: "job-titles",
@@ -306,6 +348,10 @@ export const ENTITIES: EntityConfig<any>[] = [
     ],
     emptyValues: { name: "", company: null, description: "", is_active: true },
     rowLabel: (row: JobTitle) => row.name,
+    labels: {
+      "en-US": { label: "Job Titles", singular: "Job Title", description: "Register and manage job titles.", createLabel: "New Job Title" },
+      "es-ES": { label: "Cargos", singular: "Cargo", description: "Registra y gestiona los cargos.", createLabel: "Nuevo Cargo" },
+    },
   } as EntityConfig<JobTitle>,
   {
     key: "collaborators",
@@ -344,6 +390,10 @@ export const ENTITIES: EntityConfig<any>[] = [
       email: "", phone: "", manager: null, sites: [], is_active: true,
     },
     rowLabel: (row: CollaboratorFull) => row.name,
+    labels: {
+      "en-US": { label: "Technicians", singular: "Technician", description: "Register and manage technicians.", createLabel: "New Technician" },
+      "es-ES": { label: "Técnicos", singular: "Técnico", description: "Registra y gestiona los técnicos.", createLabel: "Nuevo Técnico" },
+    },
   } as EntityConfig<CollaboratorFull>,
   {
     key: "responsibles",
@@ -398,6 +448,10 @@ export const ENTITIES: EntityConfig<any>[] = [
     ],
     emptyValues: { kind: "cstr", name: "", company: null, client: null, job_title: "", email: "", phone: "", is_active: true },
     rowLabel: (row: ResponsibleFull) => row.name,
+    labels: {
+      "en-US": { label: "Responsibles", singular: "Responsible", description: "Register and manage responsibles — CSTR or Client.", createLabel: "New Responsible" },
+      "es-ES": { label: "Responsables", singular: "Responsable", description: "Registra y gestiona los responsables — CSTR o del Cliente.", createLabel: "Nuevo Responsable" },
+    },
   } as EntityConfig<ResponsibleFull>,
   {
     key: "tasks",
@@ -445,6 +499,10 @@ export const ENTITIES: EntityConfig<any>[] = [
       ],
       extraValues: () => ({ estimated_hours: null, project_types: [], description: "", is_active: true }),
       api: bulkCreateApi.tasks,
+    },
+    labels: {
+      "en-US": { label: "Tasks", singular: "Task", description: "Register and manage tasks.", createLabel: "New Task" },
+      "es-ES": { label: "Tareas", singular: "Tarea", description: "Registra y gestiona las tareas.", createLabel: "Nueva Tarea" },
     },
   } as EntityConfig<TaskFull>,
 ];

@@ -261,6 +261,10 @@ const cableFamilyEntity: EntityConfig<CableFamily> = {
     active: true,
   },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Cable Families", singular: "Cable Family", description: "Standardized catalog of cable families (without metering) used in scopes and tasks.", createLabel: "New Cable Family" },
+    "es-ES": { label: "Familias de Cables", singular: "Familia de Cable", description: "Catálogo normalizado de familias de cable (sin metraje) usado en alcances y tareas.", createLabel: "Nueva Familia de Cable" },
+  },
 };
 
 const cableAliasEntity: EntityConfig<CableAlias> = {
@@ -298,6 +302,10 @@ const cableAliasEntity: EntityConfig<CableAlias> = {
   ],
   emptyValues: { cable_family: null, alias: "", alias_type: "", description: "", active: true },
   rowLabel: (row) => `${row.alias} → ${row.cable_family_code}`,
+  labels: {
+    "en-US": { label: "Cable Aliases", singular: "Cable Alias", description: "Alternative spellings (SOWs, cutsheets, documents) pointing to a canonical Cable Family.", createLabel: "New Cable Alias" },
+    "es-ES": { label: "Alias de Cables", singular: "Alias de Cable", description: "Formas alternativas de escritura que apuntan a una Familia de Cable canónica.", createLabel: "Nuevo Alias de Cable" },
+  },
 };
 
 const cableSpecEntity: EntityConfig<CableSpec> = {
@@ -367,6 +375,10 @@ const cableSpecEntity: EntityConfig<CableSpec> = {
     active: true,
   },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Cable Specs", singular: "Cable Spec", description: "Manufacturer, part number and physical characteristics of a canonical Cable Family.", createLabel: "New Cable Spec" },
+    "es-ES": { label: "Especificaciones de Cables", singular: "Especificación de Cable", description: "Fabricante, número de parte y características físicas de una Familia de Cable canónica.", createLabel: "Nueva Especificación de Cable" },
+  },
 };
 
 const certificationTypeEntity: EntityConfig<CertificationType> = {
@@ -422,6 +434,10 @@ const certificationTypeEntity: EntityConfig<CertificationType> = {
     active: true,
   },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Certification Types", singular: "Certification Type", description: "Certification/validation methods used in operations (OTDR, copper, QA/QC, etc.).", createLabel: "New Certification Type" },
+    "es-ES": { label: "Tipos de Certificación", singular: "Tipo de Certificación", description: "Métodos de certificación/validación usados en la operación (OTDR, cobre, QA/QC, etc.).", createLabel: "Nuevo Tipo de Certificación" },
+  },
 };
 
 const activityEntity: EntityConfig<Activity> = {
@@ -499,6 +515,10 @@ const activityEntity: EntityConfig<Activity> = {
     active: true,
   },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Activities", singular: "Activity", description: "Canonical catalog of standardized operational actions performed in projects.", createLabel: "New Activity" },
+    "es-ES": { label: "Actividades", singular: "Actividad", description: "Catálogo canónico de acciones operativas estandarizadas ejecutadas en los proyectos.", createLabel: "Nueva Actividad" },
+  },
 };
 
 const networkEntity: EntityConfig<Network> = {
@@ -548,6 +568,10 @@ const networkEntity: EntityConfig<Network> = {
   ],
   emptyValues: { code: "", name: "", domain: "", medium: "", description: "", active: true },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Networks", singular: "Network", description: "Logical/operational function of the connection (not the physical cable type, not the project execution front).", createLabel: "New Network" },
+    "es-ES": { label: "Redes", singular: "Red", description: "Función lógica/operacional de la conexión (no el tipo físico del cable, no el frente de ejecución del proyecto).", createLabel: "Nueva Red" },
+  },
 };
 
 const workstreamEntity: EntityConfig<Workstream> = {
@@ -597,6 +621,10 @@ const workstreamEntity: EntityConfig<Workstream> = {
   ],
   emptyValues: { code: "", name: "", category: "", default_medium: "", description: "", active: true },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Workstreams", singular: "Workstream", description: "Operational execution front — how the scope is grouped for planning, tasks and tracking.", createLabel: "New Workstream" },
+    "es-ES": { label: "Workstreams", singular: "Workstream", description: "Frente operacional de ejecución — cómo el alcance se agrupa para planificación, tareas y seguimiento.", createLabel: "Nuevo Workstream" },
+  },
 };
 
 const pathEntity: EntityConfig<Path> = {
@@ -646,6 +674,10 @@ const pathEntity: EntityConfig<Path> = {
   ],
   emptyValues: { code: "", name: "", path_group: "", path_type: "", description: "", active: true },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Paths", singular: "Path", description: "Logical/operational path type used in cabling execution (e.g. Path A, Path B, Cross Connection).", createLabel: "New Path" },
+    "es-ES": { label: "Rutas / Caminos", singular: "Ruta/Camino", description: "Tipo lógico/operacional de camino usado en la ejecución del cableado (ej: Path A, Path B, Cross Connection).", createLabel: "Nueva Ruta/Camino" },
+  },
 };
 
 const masterDataSiteEntity: EntityConfig<MasterDataSite> = {
@@ -704,6 +736,10 @@ const masterDataSiteEntity: EntityConfig<MasterDataSite> = {
   ],
   emptyValues: { code: "", name: "", city: "", state: "", country: "", site_type: "", description: "", active: true },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Sites", singular: "Site", description: "Canonical catalog of sites/datacenters — the highest level of physical topology (e.g. GRU65).", createLabel: "New Site" },
+    "es-ES": { label: "Sites", singular: "Site", description: "Catálogo canónico de sites/datacenters — el nivel más alto de la topología física (ej: GRU65).", createLabel: "Nuevo Site" },
+  },
 };
 
 const locationEntity: EntityConfig<Location> = {
@@ -788,6 +824,10 @@ const locationEntity: EntityConfig<Location> = {
     active: true,
   },
   rowLabel: (row) => `${row.code} — ${row.canonical_address}`,
+  labels: {
+    "en-US": { label: "Locations", singular: "Location", description: "Physical location inside a Site (e.g. GRU65.01-01-010-55) — only WHERE something is, not what.", createLabel: "New Location" },
+    "es-ES": { label: "Ubicaciones", singular: "Ubicación", description: "Ubicación física dentro de un Site (ej: GRU65.01-01-010-55) — solo DÓNDE está algo, no qué es.", createLabel: "Nueva Ubicación" },
+  },
 };
 
 const deviceTypeEntity: EntityConfig<DeviceType> = {
@@ -843,6 +883,10 @@ const deviceTypeEntity: EntityConfig<DeviceType> = {
   ],
   emptyValues: { code: "", name: "", category: "", default_medium: "", description: "", active: true },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Device Types", singular: "Device Type", description: "Canonical catalog of device/equipment types (e.g. EUCLID_SPINE, MGMT_SWITCH) — not the physical instance.", createLabel: "New Device Type" },
+    "es-ES": { label: "Tipos de Dispositivos", singular: "Tipo de Dispositivo", description: "Catálogo canónico de tipos de dispositivo/equipo (ej: EUCLID_SPINE, MGMT_SWITCH) — no la instancia física.", createLabel: "Nuevo Tipo de Dispositivo" },
+  },
 };
 
 const taskTemplateEntity: EntityConfig<TaskTemplate> = {
@@ -892,6 +936,10 @@ const taskTemplateEntity: EntityConfig<TaskTemplate> = {
   ],
   emptyValues: { code: "", name: "", category: "", medium: "", description: "", active: true },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Task Templates", singular: "Task Template", description: "Header/classification of a standardized execution recipe for a scope type (e.g. Fiber Robust).", createLabel: "New Task Template" },
+    "es-ES": { label: "Plantillas de Tareas", singular: "Plantilla de Tarea", description: "Encabezado/clasificación de una receta de ejecución estandarizada para un tipo de alcance (ej: Fiber Robust).", createLabel: "Nueva Plantilla de Tarea" },
+  },
 };
 
 const taskTemplateStepEntity: EntityConfig<TaskTemplateStep> = {
@@ -965,6 +1013,10 @@ const taskTemplateStepEntity: EntityConfig<TaskTemplateStep> = {
     active: true,
   },
   rowLabel: (row) => `${row.task_template_code} #${row.step_order} — ${row.effective_name}`,
+  labels: {
+    "en-US": { label: "Template Steps", singular: "Template Step", description: "An activity, in an order, within a Task Template recipe.", createLabel: "New Template Step" },
+    "es-ES": { label: "Pasos de Plantilla", singular: "Paso de Plantilla", description: "Una actividad, en un orden, dentro de la receta de una Plantilla de Tarea.", createLabel: "Nuevo Paso de Plantilla" },
+  },
 };
 
 const taskTemplateRuleEntity: EntityConfig<TaskTemplateRule> = {
@@ -1063,6 +1115,10 @@ const taskTemplateRuleEntity: EntityConfig<TaskTemplateRule> = {
     active: true,
   },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Template Rules", singular: "Template Rule", description: "Determines which Task Template to use for a scope item — the base for the future automatic task generation engine.", createLabel: "New Template Rule" },
+    "es-ES": { label: "Reglas de Plantilla", singular: "Regla de Plantilla", description: "Determina qué Plantilla de Tarea usar para un ítem de alcance — base del futuro motor de generación automática.", createLabel: "Nueva Regla de Plantilla" },
+  },
 };
 
 /** Espelha ScopeItemCrudSerializer.get_operational_status no backend —
@@ -1237,6 +1293,10 @@ const scopeItemEntity: EntityConfig<ScopeItem> = {
     active: true,
   },
   rowLabel: (row) => (row.name ? `${row.code} — ${row.name}` : row.code),
+  labels: {
+    "en-US": { label: "Scope Items", singular: "Scope Item", description: "Technical item extracted from a SOW/cutsheet/scope — what the scope requests, base for automatic Task Template resolution.", createLabel: "New Scope Item" },
+    "es-ES": { label: "Ítems de Alcance", singular: "Ítem de Alcance", description: "Ítem técnico extraído de un SOW/cutsheet/alcance — lo que el alcance solicita, base para la resolución automática de Plantillas.", createLabel: "Nuevo Ítem de Alcance" },
+  },
 };
 
 /** Espelha master_data.models.GeneratedTask.STATUS_SUGGESTIONS/
@@ -1351,6 +1411,10 @@ const generatedTaskEntity: EntityConfig<GeneratedTask> = {
     active: true,
   },
   rowLabel: (row) => `${row.code} — ${row.name}`,
+  labels: {
+    "en-US": { label: "Generated Tasks", singular: "Generated Task", description: "Concrete operational task generated from a resolved Scope Item — what the team needs to execute.", createLabel: "New Generated Task" },
+    "es-ES": { label: "Tareas Generadas", singular: "Tarea Generada", description: "Tarea operacional concreta generada a partir de un Ítem de Alcance resuelto — lo que el equipo debe ejecutar.", createLabel: "Nueva Tarea Generada" },
+  },
 };
 
 const taskRuleSimulatorTool: ToolConfig = {
