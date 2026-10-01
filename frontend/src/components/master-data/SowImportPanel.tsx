@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { masterDataApi, planningApi } from "../../api/resources";
 import type { AiStatus, SowImport, SowParsedItem } from "../../api/types";
 import { useI18n, usePageText } from "../../i18n";
+import FileInput from "../ui/FileInput";
 import Icon from "../ui/Icon";
 import type { ReferenceData } from "../../pages/cadastros/registryConfig";
 
@@ -760,7 +761,7 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
 
           <div className="field-group" style={{ marginBottom: 14 }}>
             <span className="field-label">{p.ouEnvieArquivo}</span>
-            <input type="file" onChange={(e) => setSourceFile(e.target.files?.[0] || null)} />
+            <FileInput value={sourceFile} onChange={setSourceFile} />
             <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{p.avisoArquivo}</p>
           </div>
 

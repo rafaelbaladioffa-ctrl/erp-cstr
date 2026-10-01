@@ -106,6 +106,9 @@ export interface Translations {
     erroImportar: string;
     erroCadastrar: string;
     digitePorLinha: string;
+    escolherArquivo: string;
+    nenhumArquivoSelecionado: string;
+    trocarArquivo: string;
   };
   // Permissão / acesso
   permission: {

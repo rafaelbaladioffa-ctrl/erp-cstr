@@ -101,6 +101,9 @@ const ptBR: Translations = {
     erroImportar: "Não foi possível importar o arquivo.",
     erroCadastrar: "Não foi possível cadastrar os registros.",
     digitePorLinha: "Digite ou cole um nome por linha",
+    escolherArquivo: "Escolher arquivo",
+    nenhumArquivoSelecionado: "Nenhum arquivo selecionado",
+    trocarArquivo: "Trocar arquivo",
   },
   permission: {
     semAcesso: "Você não tem permissão para acessar esta área.",

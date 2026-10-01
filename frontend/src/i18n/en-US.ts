@@ -101,6 +101,9 @@ const enUS: Translations = {
     erroImportar: "Could not import the file.",
     erroCadastrar: "Could not create the records.",
     digitePorLinha: "Type or paste one name per line",
+    escolherArquivo: "Choose file",
+    nenhumArquivoSelecionado: "No file selected",
+    trocarArquivo: "Change file",
   },
   permission: {
     semAcesso: "You do not have permission to access this area.",

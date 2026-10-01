@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useI18n, usePageText } from "../../i18n";
 import Modal from "./Modal";
+import FileInput from "./FileInput";
 
 const TEXT = {
   "pt-BR": {
@@ -54,11 +55,11 @@ export default function CsvImportModal({
       <p style={{ color: "var(--text-muted)", fontSize: 12.5, marginBottom: 12 }}>
         {p.instrucao}
       </p>
-      <input
-        type="file"
+      <FileInput
+        value={file}
         accept=".csv,text/csv"
-        onChange={(e) => {
-          setFile(e.target.files?.[0] ?? null);
+        onChange={(f) => {
+          setFile(f);
           setResult(null);
           setError("");
         }}

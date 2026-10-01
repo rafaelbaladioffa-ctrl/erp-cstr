@@ -101,6 +101,9 @@ const esES: Translations = {
     erroImportar: "No se pudo importar el archivo.",
     erroCadastrar: "No se pudo crear los registros.",
     digitePorLinha: "Escriba o pegue un nombre por línea",
+    escolherArquivo: "Elegir archivo",
+    nenhumArquivoSelecionado: "Ningún archivo seleccionado",
+    trocarArquivo: "Cambiar archivo",
   },
   permission: {
     semAcesso: "No tienes permiso para acceder a esta área.",

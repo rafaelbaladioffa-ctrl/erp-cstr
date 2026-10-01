@@ -10,6 +10,7 @@ import RackPositionFormModal from "../components/projects/RackPositionFormModal"
 import TasksBulkUpdatePanel from "../components/projects/TasksBulkUpdatePanel";
 import TasksCatalogAddModal from "../components/projects/TasksCatalogAddModal";
 import BulkNamesModal from "../components/ui/BulkNamesModal";
+import FileInput from "../components/ui/FileInput";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatusBadge from "../components/ui/StatusBadge";
@@ -1158,7 +1159,7 @@ export default function ProjectDetail() {
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
                     <div className="field-group" style={{ flex: "1 1 220px" }}>
                       <span className="field-label">{p.fileLabel}</span>
-                      <input id="attachment-file-input" type="file" className="input" onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)} />
+                      <FileInput value={attachmentFile} onChange={setAttachmentFile} />
                     </div>
                     <div className="field-group" style={{ flex: "1 1 220px" }}>
                       <span className="field-label">{p.descriptionLabel}</span>

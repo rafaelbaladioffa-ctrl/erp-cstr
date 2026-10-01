@@ -5,6 +5,7 @@ import type { Collaborator, Project, ProjectTask, SowImport, SowParsedItem } fro
 import type { ReferenceData } from "../../pages/cadastros/registryConfig";
 import { usePageText } from "../../i18n";
 import Icon from "../ui/Icon";
+import FileInput from "../ui/FileInput";
 
 const TEXT = {
   "pt-BR": {
@@ -762,7 +763,7 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
           </div>
           <div className="field-group" style={{ marginBottom: 20 }}>
             <span className="field-label">{p.ouEnvieArquivo}</span>
-            <input type="file" onChange={(e) => setSourceFile(e.target.files?.[0] || null)} />
+            <FileInput value={sourceFile} onChange={setSourceFile} />
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button className="btn btn-primary" onClick={handleCreateAndProcess} disabled={creating}>
