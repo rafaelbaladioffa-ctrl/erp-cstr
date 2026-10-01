@@ -85,7 +85,7 @@ export default function DateInput({ value, onChange, style, min, disabled }: Dat
 
   return (
     <div className="daterange" ref={ref} style={style}>
-      <button className="daterange-trigger" onClick={() => !disabled && setOpen((v) => !v)} disabled={disabled}>
+      <button className="daterange-trigger" onClick={() => !disabled && setOpen((v) => !v)} disabled={disabled} style={{ whiteSpace: "nowrap" }}>
         <Icon name="calendar_month" style={{ fontSize: 17 }} />
         {displayValue ?? <span style={{ color: "var(--text-muted)" }}>—</span>}
         <Icon name="expand_more" style={{ fontSize: 16 }} />
