@@ -194,6 +194,7 @@ const esES: Translations = {
     origemQuantidade: "Origen de Cantidad",
     prioridade: "Prioridad",
     especificidade: "Especificidad",
+    adicionarVarios: "Agregar Varios",
     novoCadastro: "Nuevo registro",
     registrosRecentes: "Registros recientes",
     entidade: "Entidad",

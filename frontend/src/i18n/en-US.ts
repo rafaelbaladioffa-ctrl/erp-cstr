@@ -194,6 +194,7 @@ const enUS: Translations = {
     origemQuantidade: "Quantity Source",
     prioridade: "Priority",
     especificidade: "Specificity",
+    adicionarVarios: "Add Multiple",
     novoCadastro: "New record",
     registrosRecentes: "Recent records",
     entidade: "Entity",

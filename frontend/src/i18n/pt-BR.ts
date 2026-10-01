@@ -194,6 +194,7 @@ const ptBR: Translations = {
     origemQuantidade: "Origem da Quantidade",
     prioridade: "Prioridade",
     especificidade: "Especificidade",
+    adicionarVarios: "Adicionar Vários",
     novoCadastro: "Novo cadastro",
     registrosRecentes: "Registros recentes",
     entidade: "Entidade",

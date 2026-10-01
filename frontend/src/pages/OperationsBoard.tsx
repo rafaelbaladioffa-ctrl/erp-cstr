@@ -354,7 +354,7 @@ export default function OperationsBoard() {
       .filter((tech) => !tech.on_leave)
       .map((tech) => {
       const { blocks = [], statusEvents = [] } = timelineByTech[tech.id] || {};
-      const segments = buildTechSegments(blocks, statusEvents, nowDate, true);
+      const segments = buildTechSegments(blocks, statusEvents, nowDate, true, locale);
       const lanedSegments = assignLanes(segments);
       return {
         tech,

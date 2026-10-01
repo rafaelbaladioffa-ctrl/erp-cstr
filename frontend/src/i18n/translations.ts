@@ -205,6 +205,7 @@ export interface Translations {
     origemQuantidade: string;
     prioridade: string;
     especificidade: string;
+    adicionarVarios: string;
     // CatalogGrid
     novoCadastro: string;
     registrosRecentes: string;

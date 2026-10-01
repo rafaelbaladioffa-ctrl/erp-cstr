@@ -98,7 +98,7 @@ export default function CatalogGrid({
                       onMouseLeave={(ev) => (ev.currentTarget.style.background = "transparent")}
                     >
                       <Icon name={e.icon} style={{ fontSize: 16, color: "var(--text-muted)" }} />
-                      {e.createLabel}
+                      {entityLabels(e, locale).createLabel}
                     </button>
                   ))}
                 </div>

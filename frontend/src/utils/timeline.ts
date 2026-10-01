@@ -30,6 +30,44 @@ export const PRESENCE_LABEL: Record<string, string> = {
   off_duty: "Fim de Expediente",
 };
 
+const PRESENCE_LABELS_I18N: Record<string, Record<string, string>> = {
+  "pt-BR": PRESENCE_LABEL,
+  "en-US": {
+    not_started: "Unavailable",
+    available: "Available",
+    in_progress: "In Progress",
+    lunch: "Lunch Break",
+    personal: "Personal",
+    site_blocked: "No Site Access",
+    awaiting_release: "Awaiting Release",
+    off_duty: "Off Duty",
+  },
+  "es-ES": {
+    not_started: "No disponible",
+    available: "Disponible",
+    in_progress: "En ejecución",
+    lunch: "Descanso / Almuerzo",
+    personal: "Personal",
+    site_blocked: "Sin acceso al site",
+    awaiting_release: "Esperando liberaciones",
+    off_duty: "Fuera de turno",
+  },
+};
+
+const EM_PAUSA_I18N: Record<string, string> = {
+  "pt-BR": "Em pausa",
+  "en-US": "Paused",
+  "es-ES": "En pausa",
+};
+
+export function presenceLabel(status: string, locale: string, fallback?: string): string {
+  return (PRESENCE_LABELS_I18N[locale] ?? PRESENCE_LABEL)[status] ?? fallback ?? status;
+}
+
+export function emPausaLabel(locale: string): string {
+  return EM_PAUSA_I18N[locale] ?? "Em pausa";
+}
+
 // Status que "explicam" uma pausa — se o técnico pausou uma tarefa e trocou
 // pra um desses, a barra da pausa reflete o motivo em vez do genérico "Em pausa".
 export const AWAY_STATUSES = ["lunch", "personal", "site_blocked", "awaiting_release"];
@@ -134,7 +172,8 @@ export function buildTechSegments(
   blocks: TimelineBlock[],
   statusEvents: StatusEventLike[],
   now: Date,
-  isLive: boolean
+  isLive: boolean,
+  locale = "pt-BR"
 ): Segment[] {
   const nowMs = now.getTime();
   const segments: Segment[] = [];
@@ -186,13 +225,13 @@ export function buildTechSegments(
         if (lastStatus && AWAY_STATUSES.includes(lastStatus)) {
           segments.push({
             color: PRESENCE_COLOR[lastStatus],
-            label: `${PRESENCE_LABEL[lastStatus]} · ${b.name}`,
+            label: `${presenceLabel(lastStatus, locale)} · ${b.name}`,
             start,
             end: isLive ? null : now,
             live: false,
           });
         } else {
-          segments.push({ color: BUSY_COLOR.paused, label: `Em pausa · ${b.name}`, start, end: isLive ? null : now, live: false });
+          segments.push({ color: BUSY_COLOR.paused, label: `${emPausaLabel(locale)} · ${b.name}`, start, end: isLive ? null : now, live: false });
         }
       } else {
         segments.push({ color: BUSY_COLOR.in_progress, label: b.name, start, end: isLive ? null : now, live: isLive });
@@ -212,7 +251,7 @@ export function buildTechSegments(
       const isOpenTail = isLastEvent && piece.end === endMs;
       segments.push({
         color: PRESENCE_COLOR[ev.status] || "var(--text-faint)",
-        label: PRESENCE_LABEL[ev.status] || ev.status_display,
+        label: presenceLabel(ev.status, locale, ev.status_display),
         start: new Date(piece.start),
         end: isOpenTail && isLive ? null : new Date(piece.end),
         live: false,

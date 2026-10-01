@@ -436,7 +436,7 @@ export default function EntityCrudPanel({
             {canAdd && entity.bulkCreate && (
               <button className="btn btn-outline" onClick={() => setBulkCreateOpen(true)}>
                 <Icon name="playlist_add" style={{ fontSize: 16 }} />
-                {entity.bulkCreate.label}
+                {t.crud.adicionarVarios}
               </button>
             )}
             {canChange && entity.key === "scope-items" && (
@@ -999,7 +999,7 @@ export default function EntityCrudPanel({
 
       {bulkCreateOpen && canAdd && entity.bulkCreate && refsLoaded && (
         <BulkNamesModal
-          title={`${entity.bulkCreate.label} — ${entity.label}`}
+          title={`${t.crud.adicionarVarios} — ${el.label}`}
           helpText={entity.bulkCreate.helpText}
           extraFields={entity.bulkCreate.extraFields(refs)}
           extraValues={entity.bulkCreate.extraValues(refs)}

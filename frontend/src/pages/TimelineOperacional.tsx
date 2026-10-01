@@ -199,7 +199,7 @@ export default function TimelineOperacional() {
     technicians
       .filter((tech) => selectedTechIds.length === 0 || selectedTechIds.includes(tech.id))
       .map((tech) => {
-        const segments = buildTechSegments(tech.blocks, tech.status_events, now, isToday);
+        const segments = buildTechSegments(tech.blocks, tech.status_events, now, isToday, locale);
         const lanedSegments = assignLanes(segments);
         return {
           tech,
