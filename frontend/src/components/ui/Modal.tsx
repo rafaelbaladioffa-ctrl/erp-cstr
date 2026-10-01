@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useI18n } from "../../i18n";
 import Icon from "./Icon";
 
 export default function Modal({
@@ -14,6 +15,7 @@ export default function Modal({
   children: ReactNode;
   width?: number;
 }) {
+  const { t } = useI18n();
   return (
     <div
       style={{
@@ -49,7 +51,7 @@ export default function Modal({
           </div>
           <button
             onClick={onClose}
-            aria-label="Fechar"
+            aria-label={t.common.fechar}
             style={{
               width: 32,
               height: 32,

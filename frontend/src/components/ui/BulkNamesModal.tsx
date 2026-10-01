@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "../../i18n";
 import DynamicForm, { type FieldConfig, type FormValues } from "./DynamicForm";
 import Modal from "./Modal";
 
@@ -19,6 +20,7 @@ export default function BulkNamesModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
   const [namesText, setNamesText] = useState("");
   const [values, setValues] = useState<FormValues>(extraValues);
   const [saving, setSaving] = useState(false);
@@ -31,11 +33,11 @@ export default function BulkNamesModal({
     setError("");
     try {
       const result = await onSave(names, values);
-      alert(`${result.created} registro(s) cadastrado(s) com sucesso.`);
+      alert(t.common.registrosCadastrados(result.created));
       onSaved();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      setError(axiosErr.response?.data?.detail || "Não foi possível cadastrar os registros.");
+      setError(axiosErr.response?.data?.detail || t.common.erroCadastrar);
     } finally {
       setSaving(false);
     }
@@ -47,7 +49,7 @@ export default function BulkNamesModal({
       <textarea
         className="input"
         style={{ height: 140, marginBottom: 14 }}
-        placeholder={"Digite ou cole um nome por linha"}
+        placeholder={t.common.digitePorLinha}
         value={namesText}
         onChange={(e) => setNamesText(e.target.value)}
       />
@@ -57,10 +59,10 @@ export default function BulkNamesModal({
       {error && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{error}</p>}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
         <button className="btn btn-outline" onClick={onClose}>
-          Cancelar
+          {t.common.cancelar}
         </button>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving || !namesText.trim()}>
-          {saving ? "Salvando..." : "Salvar"}
+          {saving ? t.common.salvando : t.common.salvar}
         </button>
       </div>
     </Modal>

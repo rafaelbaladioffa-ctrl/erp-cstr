@@ -29,6 +29,20 @@ const TEXT = {
     noPermission: "Você não tem permissão para acessar esta página.",
     overdueLabel: (days: number) => `Prazo vencido há ${days} dia(s)`,
     dueIn: (days: number) => (days === 0 ? "Vence hoje" : `Vence em ${days} dia(s)`),
+    semAlerta: "Nenhum alerta no momento",
+    prazosOk: "Todos os prazos estão em dia",
+    shortcuts: [
+      { id: "projetos",     label: "Projetos",            sub: "Ver portfólio" },
+      { id: "operacoes",    label: "Operações do dia",    sub: "Central de despacho" },
+      { id: "timeline",     label: "Timeline",            sub: "Gantt operacional" },
+      { id: "relatorios",   label: "Relatórios",          sub: "Indicadores" },
+      { id: "tarefas",      label: "Minhas tarefas",      sub: "Visão do técnico" },
+      { id: "atualizacoes", label: "Atualizações diárias",sub: "Relatório ao cliente" },
+      { id: "mapa",         label: "Mapa de sites",       sub: "Localização das obras" },
+      { id: "auditoria",    label: "Auditoria",           sub: "Log de alterações" },
+      { id: "cadastros",    label: "Cadastros",           sub: "Dados mestres" },
+      { id: "dashboard",    label: "Dashboard",           sub: "Performance técnica" },
+    ],
   },
   "en-US": {
     greeting: () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; },
@@ -50,6 +64,20 @@ const TEXT = {
     noPermission: "You don't have permission to access this page.",
     overdueLabel: (days: number) => `Overdue by ${days} day(s)`,
     dueIn: (days: number) => (days === 0 ? "Due today" : `Due in ${days} day(s)`),
+    semAlerta: "No alerts at the moment",
+    prazosOk: "All deadlines are on track",
+    shortcuts: [
+      { id: "projetos",     label: "Projects",           sub: "View portfolio" },
+      { id: "operacoes",    label: "Today's operations", sub: "Dispatch center" },
+      { id: "timeline",     label: "Timeline",           sub: "Operational Gantt" },
+      { id: "relatorios",   label: "Reports",            sub: "Indicators" },
+      { id: "tarefas",      label: "My tasks",           sub: "Technician view" },
+      { id: "atualizacoes", label: "Daily updates",      sub: "Client report" },
+      { id: "mapa",         label: "Sites map",          sub: "Job site locations" },
+      { id: "auditoria",    label: "Audit",              sub: "Change log" },
+      { id: "cadastros",    label: "Registries",         sub: "Master data" },
+      { id: "dashboard",    label: "Dashboard",          sub: "Technical performance" },
+    ],
   },
   "es-ES": {
     greeting: () => { const h = new Date().getHours(); return h < 12 ? "Buenos días" : h < 18 ? "Buenas tardes" : "Buenas noches"; },
@@ -71,6 +99,20 @@ const TEXT = {
     noPermission: "No tienes permiso para acceder a esta página.",
     overdueLabel: (days: number) => `Vencido hace ${days} día(s)`,
     dueIn: (days: number) => (days === 0 ? "Vence hoy" : `Vence en ${days} día(s)`),
+    semAlerta: "Sin alertas por el momento",
+    prazosOk: "Todos los plazos están al día",
+    shortcuts: [
+      { id: "projetos",     label: "Proyectos",          sub: "Ver portafolio" },
+      { id: "operacoes",    label: "Operaciones del día",sub: "Central de despacho" },
+      { id: "timeline",     label: "Timeline",           sub: "Gantt operacional" },
+      { id: "relatorios",   label: "Informes",           sub: "Indicadores" },
+      { id: "tarefas",      label: "Mis tareas",         sub: "Vista del técnico" },
+      { id: "atualizacoes", label: "Actualizaciones",    sub: "Reporte al cliente" },
+      { id: "mapa",         label: "Mapa de sitios",     sub: "Ubicación de obras" },
+      { id: "auditoria",    label: "Auditoría",          sub: "Registro de cambios" },
+      { id: "cadastros",    label: "Registros",          sub: "Datos maestros" },
+      { id: "dashboard",    label: "Dashboard",          sub: "Performance técnica" },
+    ],
   },
 };
 
@@ -84,18 +126,18 @@ interface ShortcutDef {
   perm?: string;
 }
 
-const ALL_SHORTCUTS: ShortcutDef[] = [
-  { id: "projetos",     label: "Projetos",            sub: "Ver portfólio",        icon: "folder_open",     path: "/projetos" },
-  { id: "operacoes",    label: "Operações do dia",    sub: "Central de despacho",  icon: "manage_accounts", path: "/operacao-do-dia" },
-  { id: "timeline",     label: "Timeline",            sub: "Gantt operacional",    icon: "view_timeline",   path: "/timeline-operacional" },
-  { id: "relatorios",   label: "Relatórios",          sub: "Indicadores",          icon: "bar_chart",       path: "/relatorios-indicadores" },
-  { id: "tarefas",      label: "Minhas tarefas",      sub: "Visão do técnico",     icon: "checklist",       path: "/minhas-tarefas" },
-  { id: "atualizacoes", label: "Atualizações diárias",sub: "Relatório ao cliente", icon: "send",            path: "/atualizacoes-diarias" },
-  { id: "mapa",         label: "Mapa de sites",       sub: "Localização das obras", icon: "map",            path: "/sites/mapa" },
-  { id: "auditoria",    label: "Auditoria",           sub: "Log de alterações",    icon: "policy",          path: "/auditoria" },
-  { id: "cadastros",    label: "Cadastros",           sub: "Dados mestres",        icon: "database",        path: "/cadastros" },
-  { id: "dashboard",    label: "Dashboard",           sub: "Performance técnica",  icon: "monitoring",      path: "/dashboard" },
-];
+const SHORTCUT_META: Record<string, { icon: string; path: string }> = {
+  projetos:     { icon: "folder_open",     path: "/projetos" },
+  operacoes:    { icon: "manage_accounts", path: "/operacao-do-dia" },
+  timeline:     { icon: "view_timeline",   path: "/timeline-operacional" },
+  relatorios:   { icon: "bar_chart",       path: "/relatorios-indicadores" },
+  tarefas:      { icon: "checklist",       path: "/minhas-tarefas" },
+  atualizacoes: { icon: "send",            path: "/atualizacoes-diarias" },
+  mapa:         { icon: "map",             path: "/sites/mapa" },
+  auditoria:    { icon: "policy",          path: "/auditoria" },
+  cadastros:    { icon: "database",        path: "/cadastros" },
+  dashboard:    { icon: "monitoring",      path: "/dashboard" },
+};
 
 const DEFAULT_SHORTCUTS = ["projetos", "operacoes", "timeline", "relatorios"];
 const MAX_SHORTCUTS = 6;
@@ -139,12 +181,13 @@ type DP = typeof TEXT["pt-BR"];
 
 // ── Shortcut editor modal ────────────────────────────────────────────────────
 function ShortcutEditor({
-  selected, onSave, onClose, p,
+  selected, onSave, onClose, p, allShortcuts,
 }: {
   selected: string[];
   onSave: (ids: string[]) => void;
   onClose: () => void;
   p: DP;
+  allShortcuts: ShortcutDef[];
 }) {
   const [draft, setDraft] = useState<string[]>(selected);
 
@@ -173,7 +216,7 @@ function ShortcutEditor({
         </div>
 
         <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 6, maxHeight: 360, overflowY: "auto" }}>
-          {ALL_SHORTCUTS.map((s) => {
+          {allShortcuts.map((s) => {
             const active = draft.includes(s.id);
             const disabled = !active && draft.length >= MAX_SHORTCUTS;
             return (
@@ -225,6 +268,11 @@ export default function Dashboard() {
   const canViewProjects = hasPerm(user, PERMS.viewProject);
   const canViewTechnical = hasPerm(user, PERMS.viewCollaborator);
 
+  const allShortcuts: ShortcutDef[] = useMemo(
+    () => p.shortcuts.map((s) => ({ ...s, ...(SHORTCUT_META[s.id] ?? { icon: "link", path: "/" }) })),
+    [p.shortcuts]
+  );
+
   const userId = user?.id ?? "guest";
   const [shortcuts, setShortcuts] = useState<string[]>(() => loadShortcuts(userId));
   const [editorOpen, setEditorOpen] = useState(false);
@@ -246,8 +294,8 @@ export default function Dashboard() {
   }
 
   const activeShortcuts = useMemo(
-    () => ALL_SHORTCUTS.filter((s) => shortcuts.includes(s.id)).sort((a, b) => shortcuts.indexOf(a.id) - shortcuts.indexOf(b.id)),
-    [shortcuts]
+    () => allShortcuts.filter((s) => shortcuts.includes(s.id)).sort((a, b) => shortcuts.indexOf(a.id) - shortcuts.indexOf(b.id)),
+    [allShortcuts, shortcuts]
   );
 
   // Build alert list from projects data
@@ -279,7 +327,7 @@ export default function Dashboard() {
       });
 
     if (list.length === 0 && !loading) {
-      list.push({ id: null, name: "Nenhum alerta no momento", meta: "Todos os prazos estão em dia", level: "blue" });
+      list.push({ id: null, name: p.semAlerta, meta: p.prazosOk, level: "blue" });
     }
 
     return list.slice(0, 6);
@@ -472,6 +520,7 @@ export default function Dashboard() {
           onSave={handleSaveShortcuts}
           onClose={() => setEditorOpen(false)}
           p={p}
+          allShortcuts={allShortcuts}
         />
       )}
     </div>

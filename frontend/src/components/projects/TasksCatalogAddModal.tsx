@@ -1,7 +1,41 @@
 import { useEffect, useMemo, useState } from "react";
 import { projectsApi, registryApi } from "../../api/resources";
 import type { Project, ProjectTask, RackPosition, TaskFull } from "../../api/types";
+import { useI18n, usePageText } from "../../i18n";
 import Modal from "../ui/Modal";
+
+const TEXT = {
+  "pt-BR": {
+    titulo: "Adicionar Tarefas do Catálogo",
+    instrucaoRP: "Cada tarefa selecionada é criada uma vez para cada Rack Position marcado abaixo (que ainda não a tem).",
+    tarefasCatalogo: "Tarefas do Catálogo",
+    todasAdicionadas: "Todas as tarefas do catálogo já foram adicionadas a este projeto.",
+    adicionando: "Adicionando...",
+    adicionar: (n: number) => `Adicionar (${n})`,
+    tarefasAdicionadas: (n: number) => `${n} Tarefa(s) adicionada(s) ao Projeto.`,
+    erroAdicionar: "Não foi possível adicionar as tarefas.",
+  },
+  "en-US": {
+    titulo: "Add Catalog Tasks",
+    instrucaoRP: "Each selected task is created once per checked Rack Position below (those that don't have it yet).",
+    tarefasCatalogo: "Catalog Tasks",
+    todasAdicionadas: "All catalog tasks have already been added to this project.",
+    adicionando: "Adding...",
+    adicionar: (n: number) => `Add (${n})`,
+    tarefasAdicionadas: (n: number) => `${n} Task(s) added to the Project.`,
+    erroAdicionar: "Could not add the tasks.",
+  },
+  "es-ES": {
+    titulo: "Agregar Tareas del Catálogo",
+    instrucaoRP: "Cada tarea seleccionada se crea una vez por Rack Position marcado abajo (los que aún no la tienen).",
+    tarefasCatalogo: "Tareas del Catálogo",
+    todasAdicionadas: "Todas las tareas del catálogo ya han sido agregadas a este proyecto.",
+    adicionando: "Agregando...",
+    adicionar: (n: number) => `Agregar (${n})`,
+    tarefasAdicionadas: (n: number) => `${n} Tarea(s) agregada(s) al Proyecto.`,
+    erroAdicionar: "No se pudo agregar las tareas.",
+  },
+};
 
 export default function TasksCatalogAddModal({
   project,
@@ -16,6 +50,8 @@ export default function TasksCatalogAddModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
+  const p = usePageText(TEXT);
   const [catalogTasks, setCatalogTasks] = useState<TaskFull[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTasks, setSelectedTasks] = useState<number[]>([]);
@@ -33,14 +69,8 @@ export default function TasksCatalogAddModal({
   }, []);
 
   const availableTasks = useMemo(() => {
-    // Tarefas avulsas (sem Tarefa de catálogo) não entram nessa checagem de
-    // "catálogo já usado" — só existe uma pra tarefas vinculadas ao catálogo.
     const catalogLinked = existingTasks.filter((t): t is ProjectTask & { task: number } => t.task !== null);
     if (usesRackPositions) {
-      // Com Rack Position, uma Tarefa do catálogo só fica indisponível
-      // quando JÁ cobre todos os Rack Positions do projeto — senão ainda
-      // falta cobrir algum, então continua selecionável (o backend cria só
-      // as instâncias que faltam e ignora as que já existem).
       const coveredByTask = new Map<number, Set<number>>();
       catalogLinked.forEach((t) => {
         const set = coveredByTask.get(t.task) ?? new Set<number>();
@@ -71,30 +101,30 @@ export default function TasksCatalogAddModal({
         add_task_ids: selectedTasks,
         rack_position_ids: usesRackPositions ? selectedRackPositions : undefined,
       });
-      alert(`${result.created} Tarefa(s) adicionada(s) ao Projeto.`);
+      alert(p.tarefasAdicionadas(result.created));
       onSaved();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      setError(axiosErr.response?.data?.detail || "Não foi possível adicionar as tarefas.");
+      setError(axiosErr.response?.data?.detail || p.erroAdicionar);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal title="Adicionar Tarefas do Catálogo" onClose={onClose} width={560}>
+    <Modal title={p.titulo} onClose={onClose} width={560}>
       {loading ? (
-        <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+        <p style={{ color: "var(--text-muted)" }}>{t.common.carregando}</p>
       ) : (
         <>
           {usesRackPositions && (
             <p style={{ color: "var(--text-muted)", fontSize: 12.5, marginBottom: 10 }}>
-              Cada tarefa selecionada é criada uma vez para cada Rack Position marcado abaixo (que ainda não a tem).
+              {p.instrucaoRP}
             </p>
           )}
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             <div style={{ flex: 2, minWidth: 220 }}>
-              <span className="field-label">Tarefas do Catálogo</span>
+              <span className="field-label">{p.tarefasCatalogo}</span>
               <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8, marginTop: 6 }}>
                 {availableTasks.map((task) => (
                   <label
@@ -107,7 +137,7 @@ export default function TasksCatalogAddModal({
                 ))}
                 {availableTasks.length === 0 && (
                   <div style={{ padding: 16, color: "var(--text-muted)", fontSize: 13 }}>
-                    Todas as tarefas do catálogo já foram adicionadas a este projeto.
+                    {p.todasAdicionadas}
                   </div>
                 )}
               </div>
@@ -132,14 +162,14 @@ export default function TasksCatalogAddModal({
           {error && <p style={{ color: "var(--red)", fontSize: 13, marginTop: 10 }}>{error}</p>}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
             <button className="btn btn-outline" onClick={onClose}>
-              Cancelar
+              {t.common.cancelar}
             </button>
             <button
               className="btn btn-primary"
               onClick={handleSave}
               disabled={saving || !selectedTasks.length || (usesRackPositions && !selectedRackPositions.length)}
             >
-              {saving ? "Adicionando..." : `Adicionar (${selectedTasks.length})`}
+              {saving ? p.adicionando : p.adicionar(selectedTasks.length)}
             </button>
           </div>
         </>

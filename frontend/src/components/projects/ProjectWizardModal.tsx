@@ -2,51 +2,187 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { projectsApi, registryApi } from "../../api/resources";
 import type { Category, ClientFull, Company, Project, ProjectType, ResponsibleFull, SiteFull } from "../../api/types";
+import { useI18n, usePageText } from "../../i18n";
 import Icon from "../ui/Icon";
 import Modal from "../ui/Modal";
+
+const TEXT = {
+  "pt-BR": {
+    tituloModal: "Novo Projeto",
+    steps: ["Identificação", "Classificação", "Planejamento"],
+    statuses: {
+      planning: "Planejamento",
+      not_started: "Não Iniciado",
+      in_progress: "Ativo",
+      paused: "Pausado",
+    },
+    selecione: "— selecione —",
+    projetoRegistrado: "Projeto registrado",
+    proximosPassos: "Próximos passos",
+    irParaProjeto: "Ir para o projeto",
+    importarSow: "Importar SOW",
+    instrucaoSow: "Importe a SOW para cadastrar atividades e tarefas automaticamente",
+    fecharSemImportar: "Fechar sem importar",
+    descPasso1: "Preencha as informações essenciais para identificar o projeto.",
+    descPasso2: "Classifique o projeto para facilitar filtros e relatórios.",
+    descPasso3: "Defina responsáveis, cronograma e observações. Todos os campos são opcionais — você pode preencher depois.",
+    nomeProjeto: "Nome do Projeto",
+    placeholderNome: "Ex: GRU65 — Fase 2 — Cabeamento Óptico",
+    po: "PO",
+    placeholderPo: "Número da PO",
+    empresa: "Empresa",
+    cliente: "Cliente",
+    site: "Site",
+    tipoProjeto: "Tipo de Projeto",
+    categoria: "Categoria",
+    statusInicial: "Status inicial",
+    qtdLinks: "Quantidade de Links",
+    ativarRP: "Ativar Rack Position",
+    descRP: "Habilita controle de DH, Links e UTP por posição de rack.",
+    responsavelCstr: "Responsável CSTR",
+    responsavelCliente: "Responsável Cliente",
+    inicioPrevisto: "Início Previsto",
+    terminoPrevisto: "Término Previsto",
+    descricao: "Descrição",
+    observacoes: "Observações",
+    voltar: "Voltar",
+    continuar: "Continuar",
+    criando: "Criando...",
+    criarProjeto: "Criar Projeto",
+    erroNome: "Nome é obrigatório.",
+    erroEmpresa: "Empresa é obrigatória.",
+  },
+  "en-US": {
+    tituloModal: "New Project",
+    steps: ["Identification", "Classification", "Planning"],
+    statuses: {
+      planning: "Planning",
+      not_started: "Not Started",
+      in_progress: "Active",
+      paused: "Paused",
+    },
+    selecione: "— select —",
+    projetoRegistrado: "Project registered",
+    proximosPassos: "Next steps",
+    irParaProjeto: "Go to project",
+    importarSow: "Import SOW",
+    instrucaoSow: "Import the SOW to register activities and tasks automatically",
+    fecharSemImportar: "Close without importing",
+    descPasso1: "Fill in the essential information to identify the project.",
+    descPasso2: "Classify the project to make filtering and reporting easier.",
+    descPasso3: "Set assignees, schedule and notes. All fields are optional — you can fill them in later.",
+    nomeProjeto: "Project Name",
+    placeholderNome: "Ex: GRU65 — Phase 2 — Optical Cabling",
+    po: "PO",
+    placeholderPo: "PO Number",
+    empresa: "Company",
+    cliente: "Client",
+    site: "Site",
+    tipoProjeto: "Project Type",
+    categoria: "Category",
+    statusInicial: "Initial Status",
+    qtdLinks: "Link Count",
+    ativarRP: "Enable Rack Position",
+    descRP: "Enables DH, Links and UTP control per rack position.",
+    responsavelCstr: "CSTR Responsible",
+    responsavelCliente: "Client Responsible",
+    inicioPrevisto: "Planned Start",
+    terminoPrevisto: "Planned End",
+    descricao: "Description",
+    observacoes: "Notes",
+    voltar: "Back",
+    continuar: "Continue",
+    criando: "Creating...",
+    criarProjeto: "Create Project",
+    erroNome: "Name is required.",
+    erroEmpresa: "Company is required.",
+  },
+  "es-ES": {
+    tituloModal: "Nuevo Proyecto",
+    steps: ["Identificación", "Clasificación", "Planificación"],
+    statuses: {
+      planning: "Planificación",
+      not_started: "No Iniciado",
+      in_progress: "Activo",
+      paused: "Pausado",
+    },
+    selecione: "— seleccione —",
+    projetoRegistrado: "Proyecto registrado",
+    proximosPassos: "Próximos pasos",
+    irParaProjeto: "Ir al proyecto",
+    importarSow: "Importar SOW",
+    instrucaoSow: "Importe el SOW para registrar actividades y tareas automáticamente",
+    fecharSemImportar: "Cerrar sin importar",
+    descPasso1: "Complete la información esencial para identificar el proyecto.",
+    descPasso2: "Clasifique el proyecto para facilitar filtros e informes.",
+    descPasso3: "Defina responsables, cronograma y observaciones. Todos los campos son opcionales — puede completarlos después.",
+    nomeProjeto: "Nombre del Proyecto",
+    placeholderNome: "Ej: GRU65 — Fase 2 — Cableado Óptico",
+    po: "PO",
+    placeholderPo: "Número de PO",
+    empresa: "Empresa",
+    cliente: "Cliente",
+    site: "Site",
+    tipoProjeto: "Tipo de Proyecto",
+    categoria: "Categoría",
+    statusInicial: "Estado inicial",
+    qtdLinks: "Cantidad de Links",
+    ativarRP: "Activar Rack Position",
+    descRP: "Habilita control de DH, Links y UTP por posición de rack.",
+    responsavelCstr: "Responsable CSTR",
+    responsavelCliente: "Responsable Cliente",
+    inicioPrevisto: "Inicio Previsto",
+    terminoPrevisto: "Fin Previsto",
+    descricao: "Descripción",
+    observacoes: "Observaciones",
+    voltar: "Volver",
+    continuar: "Continuar",
+    criando: "Creando...",
+    criarProjeto: "Crear Proyecto",
+    erroNome: "El nombre es obligatorio.",
+    erroEmpresa: "La empresa es obligatoria.",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Barra de progresso
 // ---------------------------------------------------------------------------
 
-const STEPS = [
-  { n: 1, label: "Identificação" },
-  { n: 2, label: "Classificação" },
-  { n: 3, label: "Planejamento" },
-];
-
-function StepBar({ current }: { current: number }) {
+function StepBar({ current, steps }: { current: number; steps: string[] }) {
   return (
     <div style={{ display: "flex", alignItems: "center", marginBottom: 24, gap: 0 }}>
-      {STEPS.map((s, i) => (
-        <Fragment key={s.n}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
-            <div
-              style={{
-                width: 32, height: 32, borderRadius: "50%", display: "flex",
-                alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700,
-                background: s.n < current ? "var(--green)" : s.n === current ? "var(--orange)" : "var(--surface-2, #eee)",
-                color: s.n <= current ? "#fff" : "var(--text-faint)",
-                transition: "background 0.2s",
-              }}
-            >
-              {s.n < current ? <Icon name="check" style={{ fontSize: 16 }} /> : s.n}
+      {steps.map((label, i) => {
+        const n = i + 1;
+        return (
+          <Fragment key={n}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
+              <div
+                style={{
+                  width: 32, height: 32, borderRadius: "50%", display: "flex",
+                  alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700,
+                  background: n < current ? "var(--green)" : n === current ? "var(--orange)" : "var(--surface-2, #eee)",
+                  color: n <= current ? "#fff" : "var(--text-faint)",
+                  transition: "background 0.2s",
+                }}
+              >
+                {n < current ? <Icon name="check" style={{ fontSize: 16 }} /> : n}
+              </div>
+              <div
+                style={{
+                  fontSize: 11, marginTop: 4, textAlign: "center", whiteSpace: "nowrap",
+                  color: n === current ? "var(--orange)" : n < current ? "var(--green)" : "var(--text-faint)",
+                  fontWeight: n === current ? 700 : 400,
+                }}
+              >
+                {label}
+              </div>
             </div>
-            <div
-              style={{
-                fontSize: 11, marginTop: 4, textAlign: "center", whiteSpace: "nowrap",
-                color: s.n === current ? "var(--orange)" : s.n < current ? "var(--green)" : "var(--text-faint)",
-                fontWeight: s.n === current ? 700 : 400,
-              }}
-            >
-              {s.label}
-            </div>
-          </div>
-          {i < STEPS.length - 1 && (
-            <div style={{ flex: 2, height: 2, marginBottom: 18, background: s.n < current ? "var(--green)" : "var(--border, #ddd)", transition: "background 0.2s" }} />
-          )}
-        </Fragment>
-      ))}
+            {i < steps.length - 1 && (
+              <div style={{ flex: 2, height: 2, marginBottom: 18, background: n < current ? "var(--green)" : "var(--border, #ddd)", transition: "background 0.2s" }} />
+            )}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -82,13 +218,6 @@ const INITIAL: FormValues = {
   planned_start: "", planned_end: "", description: "", notes: "",
 };
 
-const STATUS_OPTIONS = [
-  { value: "planning", label: "Planejamento" },
-  { value: "not_started", label: "Não Iniciado" },
-  { value: "in_progress", label: "Ativo" },
-  { value: "paused", label: "Pausado" },
-];
-
 type ApiErrors = Record<string, string[]>;
 
 // ---------------------------------------------------------------------------
@@ -105,10 +234,10 @@ function Field({ label, required, error, children }: { label: string; required?:
   );
 }
 
-function SelectField({ label, required, error, value, onChange, options, placeholder = "— selecione —" }: {
+function SelectField({ label, required, error, value, onChange, options, placeholder }: {
   label: string; required?: boolean; error?: string;
   value: number | ""; onChange: (v: number | "") => void;
-  options: { value: number; label: string }[]; placeholder?: string;
+  options: { value: number; label: string }[]; placeholder: string;
 }) {
   return (
     <Field label={label} required={required} error={error}>
@@ -126,6 +255,10 @@ function SelectField({ label, required, error, value, onChange, options, placeho
 
 export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () => void; onSaved: (project: Project) => void }) {
   const navigate = useNavigate();
+  const { t } = useI18n();
+  const p = usePageText(TEXT);
+
+  const statusOptions = Object.entries(p.statuses).map(([value, label]) => ({ value, label }));
 
   const [step, setStep] = useState(1);
   const [values, setValues] = useState<FormValues>(INITIAL);
@@ -133,7 +266,6 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
   const [saving, setSaving] = useState(false);
   const [savedProject, setSavedProject] = useState<Project | null>(null);
 
-  // Referências
   const [companies, setCompanies] = useState<Company[]>([]);
   const [clients, setClients] = useState<ClientFull[]>([]);
   const [sites, setSites] = useState<SiteFull[]>([]);
@@ -187,11 +319,10 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
     [clientResponsibles, values.client]
   );
 
-  // Validação por passo
   function validateStep1() {
     const e: ApiErrors = {};
-    if (!values.name.trim()) e.name = ["Nome é obrigatório."];
-    if (!values.company) e.company = ["Empresa é obrigatória."];
+    if (!values.name.trim()) e.name = [p.erroNome];
+    if (!values.company) e.company = [p.erroEmpresa];
     return e;
   }
 
@@ -242,10 +373,10 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
 
   if (savedProject) {
     return (
-      <Modal title="Novo projeto" onClose={onClose} width={480}>
+      <Modal title={p.tituloModal} onClose={onClose} width={480}>
         <div style={{ padding: "4px 0 8px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--orange)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
-            Projeto registrado
+            {p.projetoRegistrado}
           </div>
           <div style={{ fontSize: 21, fontWeight: 700, letterSpacing: "-.02em", color: "var(--text)" }}>
             {savedProject.code}
@@ -256,7 +387,7 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
 
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, color: "var(--text-faint)", fontSize: 11 }}>
             <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            Próximos passos
+            {p.proximosPassos}
             <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
           </div>
 
@@ -266,7 +397,7 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
             onClick={() => navigate(`/projetos/${savedProject.id}`)}
           >
             <Icon name="open_in_new" style={{ fontSize: 15, marginRight: 6 }} />
-            Ir para o projeto
+            {p.irParaProjeto}
           </button>
           <button
             className="btn btn-primary"
@@ -278,13 +409,13 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
             }}
           >
             <Icon name="upload_file" style={{ fontSize: 15, marginRight: 6 }} />
-            Importar SOW
+            {p.importarSow}
           </button>
           <div style={{ fontSize: 11, color: "var(--text-faint)", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>
-            Importe a SOW para cadastrar atividades e tarefas automaticamente
+            {p.instrucaoSow}
           </div>
           <button className="btn btn-ghost" style={{ width: "100%", marginTop: 6, justifyContent: "center", fontSize: 12 }} onClick={onClose}>
-            Fechar sem importar
+            {p.fecharSemImportar}
           </button>
         </div>
       </Modal>
@@ -296,82 +427,74 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
   // ---------------------------------------------------------------------------
 
   return (
-    <Modal title="Novo Projeto" onClose={onClose} width={680}>
-      <StepBar current={step} />
+    <Modal title={p.tituloModal} onClose={onClose} width={680}>
+      <StepBar current={step} steps={p.steps} />
 
-      {loadingRefs && <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Carregando...</p>}
+      {loadingRefs && <p style={{ color: "var(--text-muted)", fontSize: 13 }}>{t.common.carregando}</p>}
 
       {!loadingRefs && (
         <>
-          {/* ================================================================
-              PASSO 1 — IDENTIFICAÇÃO
-          ================================================================ */}
+          {/* PASSO 1 */}
           {step === 1 && (
             <div>
-              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>
-                Preencha as informações essenciais para identificar o projeto.
-              </p>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>{p.descPasso1}</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
                 <div style={{ gridColumn: "1 / -1" }}>
-                  <Field label="Nome do Projeto" required error={errFirst("name")}>
-                    <input className="input" value={values.name} onChange={(e) => set("name", e.target.value)} placeholder="Ex: GRU65 — Fase 2 — Cabeamento Óptico" />
+                  <Field label={p.nomeProjeto} required error={errFirst("name")}>
+                    <input className="input" value={values.name} onChange={(e) => set("name", e.target.value)} placeholder={p.placeholderNome} />
                   </Field>
                 </div>
-                <Field label="PO" error={errFirst("po")}>
-                  <input className="input" value={values.po} onChange={(e) => set("po", e.target.value)} placeholder="Número da PO" />
+                <Field label={p.po} error={errFirst("po")}>
+                  <input className="input" value={values.po} onChange={(e) => set("po", e.target.value)} placeholder={p.placeholderPo} />
                 </Field>
-                <SelectField label="Empresa" required error={errFirst("company")}
-                  value={values.company}
-                  onChange={(v) => set("company", v)}
+                <SelectField label={p.empresa} required error={errFirst("company")}
+                  value={values.company} onChange={(v) => set("company", v)}
                   options={companies.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name }))}
+                  placeholder={p.selecione}
                 />
-                <SelectField label="Cliente" error={errFirst("client")}
-                  value={values.client}
-                  onChange={(v) => set("client", v)}
+                <SelectField label={p.cliente} error={errFirst("client")}
+                  value={values.client} onChange={(v) => set("client", v)}
                   options={clients.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name }))}
+                  placeholder={p.selecione}
                 />
-                <SelectField label="Site" error={errFirst("site")}
-                  value={values.site}
-                  onChange={(v) => set("site", v)}
+                <SelectField label={p.site} error={errFirst("site")}
+                  value={values.site} onChange={(v) => set("site", v)}
                   options={filteredSites.map((s) => ({ value: s.id, label: s.code || s.name }))}
+                  placeholder={p.selecione}
                 />
               </div>
             </div>
           )}
 
-          {/* ================================================================
-              PASSO 2 — CLASSIFICAÇÃO
-          ================================================================ */}
+          {/* PASSO 2 */}
           {step === 2 && (
             <div>
-              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>
-                Classifique o projeto para facilitar filtros e relatórios.
-              </p>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>{p.descPasso2}</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-                <SelectField label="Tipo de Projeto" error={errFirst("project_type")}
-                  value={values.project_type}
-                  onChange={(v) => set("project_type", v)}
-                  options={projectTypes.map((p) => ({ value: p.id, label: p.name }))}
+                <SelectField label={p.tipoProjeto} error={errFirst("project_type")}
+                  value={values.project_type} onChange={(v) => set("project_type", v)}
+                  options={projectTypes.map((pt) => ({ value: pt.id, label: pt.name }))}
+                  placeholder={p.selecione}
                 />
-                <SelectField label="Categoria" error={errFirst("category")}
-                  value={values.category}
-                  onChange={(v) => set("category", v)}
+                <SelectField label={p.categoria} error={errFirst("category")}
+                  value={values.category} onChange={(v) => set("category", v)}
                   options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                  placeholder={p.selecione}
                 />
-                <Field label="Status inicial" error={errFirst("status")}>
+                <Field label={p.statusInicial} error={errFirst("status")}>
                   <select className="select" value={values.status} onChange={(e) => set("status", e.target.value)}>
-                    {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </Field>
-                <Field label="Quantidade de Links" error={errFirst("link_count")}>
+                <Field label={p.qtdLinks} error={errFirst("link_count")}>
                   <input className="input" type="number" min={0} value={values.link_count} onChange={(e) => set("link_count", e.target.value ? Number(e.target.value) : "")} />
                 </Field>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                     <input type="checkbox" checked={values.has_rack_positions} onChange={(e) => set("has_rack_positions", e.target.checked)} />
                     <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>Ativar Rack Position</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Habilita controle de DH, Links e UTP por posição de rack.</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{p.ativarRP}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{p.descRP}</div>
                     </div>
                   </label>
                 </div>
@@ -379,38 +502,34 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
             </div>
           )}
 
-          {/* ================================================================
-              PASSO 3 — PLANEJAMENTO
-          ================================================================ */}
+          {/* PASSO 3 */}
           {step === 3 && (
             <div>
-              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>
-                Defina responsáveis, cronograma e observações. Todos os campos são opcionais — você pode preencher depois.
-              </p>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>{p.descPasso3}</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-                <SelectField label="Responsável CSTR" error={errFirst("responsible_cstr")}
-                  value={values.responsible_cstr}
-                  onChange={(v) => set("responsible_cstr", v)}
+                <SelectField label={p.responsavelCstr} error={errFirst("responsible_cstr")}
+                  value={values.responsible_cstr} onChange={(v) => set("responsible_cstr", v)}
                   options={responsibles.map((r) => ({ value: r.id, label: r.name }))}
+                  placeholder={p.selecione}
                 />
-                <SelectField label="Responsável Cliente" error={errFirst("responsible_client")}
-                  value={values.responsible_client}
-                  onChange={(v) => set("responsible_client", v)}
+                <SelectField label={p.responsavelCliente} error={errFirst("responsible_client")}
+                  value={values.responsible_client} onChange={(v) => set("responsible_client", v)}
                   options={filteredClientResp.map((r) => ({ value: r.id, label: r.name }))}
+                  placeholder={p.selecione}
                 />
-                <Field label="Início Previsto" error={errFirst("planned_start")}>
+                <Field label={p.inicioPrevisto} error={errFirst("planned_start")}>
                   <input className="input" type="date" value={values.planned_start} onChange={(e) => set("planned_start", e.target.value)} />
                 </Field>
-                <Field label="Término Previsto" error={errFirst("planned_end")}>
+                <Field label={p.terminoPrevisto} error={errFirst("planned_end")}>
                   <input className="input" type="date" value={values.planned_end} onChange={(e) => set("planned_end", e.target.value)} />
                 </Field>
                 <div style={{ gridColumn: "1 / -1" }}>
-                  <Field label="Descrição" error={errFirst("description")}>
+                  <Field label={p.descricao} error={errFirst("description")}>
                     <textarea className="input" rows={3} value={values.description} onChange={(e) => set("description", e.target.value)} />
                   </Field>
                 </div>
                 <div style={{ gridColumn: "1 / -1" }}>
-                  <Field label="Observações" error={errFirst("notes")}>
+                  <Field label={p.observacoes} error={errFirst("notes")}>
                     <textarea className="input" rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} />
                   </Field>
                 </div>
@@ -421,24 +540,22 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
             </div>
           )}
 
-          {/* ================================================================
-              BARRA DE AÇÃO
-          ================================================================ */}
+          {/* BARRA DE AÇÃO */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
             {step > 1 ? (
               <button className="btn btn-outline btn-sm" onClick={() => { setErrors({}); setStep((s) => s - 1); }}>
-                <Icon name="arrow_back" style={{ fontSize: 15, marginRight: 6 }} />Voltar
+                <Icon name="arrow_back" style={{ fontSize: 15, marginRight: 6 }} />{p.voltar}
               </button>
             ) : (
-              <button className="btn btn-outline btn-sm" onClick={onClose}>Cancelar</button>
+              <button className="btn btn-outline btn-sm" onClick={onClose}>{t.common.cancelar}</button>
             )}
             {step < 3 ? (
               <button className="btn btn-primary btn-sm" onClick={goNext}>
-                Continuar <Icon name="arrow_forward" style={{ fontSize: 15, marginLeft: 6 }} />
+                {p.continuar} <Icon name="arrow_forward" style={{ fontSize: 15, marginLeft: 6 }} />
               </button>
             ) : (
               <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-                {saving ? "Criando..." : <><Icon name="check" style={{ fontSize: 15, marginRight: 6 }} />Criar Projeto</>}
+                {saving ? p.criando : <><Icon name="check" style={{ fontSize: 15, marginRight: 6 }} />{p.criarProjeto}</>}
               </button>
             )}
           </div>

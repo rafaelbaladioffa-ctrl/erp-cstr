@@ -98,6 +98,14 @@ export interface Translations {
     salvando: string;
     removendo: string;
     remover: string;
+    fecharAba: string;
+    importando: string;
+    importar: string;
+    registrosCadastrados: (n: number) => string;
+    registrosImportados: (n: number) => string;
+    erroImportar: string;
+    erroCadastrar: string;
+    digitePorLinha: string;
   };
   // Permissão / acesso
   permission: {

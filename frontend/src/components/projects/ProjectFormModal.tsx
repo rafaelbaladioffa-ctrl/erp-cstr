@@ -9,19 +9,86 @@ import type {
   ResponsibleFull,
   SiteFull,
 } from "../../api/types";
+import { useI18n, usePageText } from "../../i18n";
 import DynamicForm, { type FieldConfig, type FormValues } from "../ui/DynamicForm";
 import Modal from "../ui/Modal";
 
-const STATUS_OPTIONS = [
-  { value: "planning", label: "Planejamento" },
-  { value: "not_started", label: "Não Iniciado" },
-  { value: "in_progress", label: "Ativo" },
-  { value: "paused", label: "Pausado" },
-  { value: "completed", label: "Concluído" },
-  { value: "canceled", label: "Cancelado" },
-];
-
 type ApiErrors = Record<string, string[]>;
+
+const TEXT = {
+  "pt-BR": {
+    editar: (code: string) => `Editar Projeto — ${code}`,
+    novo: "Novo Projeto",
+    nomeLabel: "Nome do Projeto",
+    po: "PO",
+    qtdLinks: "Quantidade de Links",
+    rackPos: "Rack Position",
+    rackPosTip: "Ativar controle de Rack Position (DH, Links, UTP)",
+    empresa: "Empresa",
+    statusLabel: "Status",
+    cliente: "Cliente",
+    site: "Site",
+    tipoProjeto: "Tipo de Projeto",
+    categoria: "Categoria",
+    responsavelCstr: "Responsável CSTR",
+    responsavelCliente: "Responsável Cliente",
+    inicioPrevisto: "Início Previsto",
+    terminoPrevisto: "Término Previsto",
+    descricao: "Descrição",
+    observacoes: "Observações",
+    situacao: "Situação",
+    instrucaoRP: "Depois de salvar, cadastre as Rack Positions (individualmente ou em massa, com DH/Links/UTP) e aloque as tarefas por Rack Position na tela de edição do projeto no Admin.",
+    statuses: { planning: "Planejamento", not_started: "Não Iniciado", in_progress: "Ativo", paused: "Pausado", completed: "Concluído", canceled: "Cancelado" },
+  },
+  "en-US": {
+    editar: (code: string) => `Edit Project — ${code}`,
+    novo: "New Project",
+    nomeLabel: "Project Name",
+    po: "PO",
+    qtdLinks: "Link Count",
+    rackPos: "Rack Position",
+    rackPosTip: "Enable Rack Position tracking (DH, Links, UTP)",
+    empresa: "Company",
+    statusLabel: "Status",
+    cliente: "Client",
+    site: "Site",
+    tipoProjeto: "Project Type",
+    categoria: "Category",
+    responsavelCstr: "CSTR Responsible",
+    responsavelCliente: "Client Responsible",
+    inicioPrevisto: "Planned Start",
+    terminoPrevisto: "Planned End",
+    descricao: "Description",
+    observacoes: "Notes",
+    situacao: "Status",
+    instrucaoRP: "After saving, register the Rack Positions (individually or in bulk, with DH/Links/UTP) and allocate tasks per Rack Position in the project edit screen.",
+    statuses: { planning: "Planning", not_started: "Not Started", in_progress: "Active", paused: "Paused", completed: "Completed", canceled: "Canceled" },
+  },
+  "es-ES": {
+    editar: (code: string) => `Editar Proyecto — ${code}`,
+    novo: "Nuevo Proyecto",
+    nomeLabel: "Nombre del Proyecto",
+    po: "PO",
+    qtdLinks: "Cantidad de Links",
+    rackPos: "Rack Position",
+    rackPosTip: "Activar control de Rack Position (DH, Links, UTP)",
+    empresa: "Empresa",
+    statusLabel: "Estado",
+    cliente: "Cliente",
+    site: "Site",
+    tipoProjeto: "Tipo de Proyecto",
+    categoria: "Categoría",
+    responsavelCstr: "Responsable CSTR",
+    responsavelCliente: "Responsable Cliente",
+    inicioPrevisto: "Inicio Previsto",
+    terminoPrevisto: "Fin Previsto",
+    descricao: "Descripción",
+    observacoes: "Observaciones",
+    situacao: "Situación",
+    instrucaoRP: "Tras guardar, registre los Rack Positions (individualmente o en masa, con DH/Links/UTP) y asigne las tareas por Rack Position.",
+    statuses: { planning: "Planificación", not_started: "No Iniciado", in_progress: "Activo", paused: "Pausado", completed: "Completado", canceled: "Cancelado" },
+  },
+};
 
 export default function ProjectFormModal({
   project,
@@ -32,6 +99,11 @@ export default function ProjectFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
+  const p = usePageText(TEXT);
+
+  const statusOptions = Object.entries(p.statuses).map(([value, label]) => ({ value, label }));
+
   const [companies, setCompanies] = useState<Company[]>([]);
   const [clients, setClients] = useState<ClientFull[]>([]);
   const [sites, setSites] = useState<SiteFull[]>([]);
@@ -54,10 +126,6 @@ export default function ProjectFormModal({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    // Promise.allSettled (em vez de Promise.all): se o usuário não tiver
-    // permissão de visualização em um desses models (ex: sem
-    // core.view_responsible), só aquele dropdown fica vazio — os demais,
-    // para os quais ele tem permissão, continuam carregando normalmente.
     Promise.allSettled([
       registryApi.companies.list({ page_size: "200" } as never),
       registryApi.clients.list({ page_size: "500" } as never),
@@ -82,43 +150,37 @@ export default function ProjectFormModal({
   const fields: FieldConfig[] = useMemo(() => {
     const selectedClientId = values.client as number | null;
     return [
-      { name: "name", label: "Nome do Projeto", type: "text", required: true, span: 2 },
-      { name: "po", label: "PO", type: "text" },
-      { name: "link_count", label: "Quantidade de Links", type: "number" },
-      {
-        name: "has_rack_positions",
-        label: "Rack Position",
-        type: "checkbox",
-        placeholder: "Ativar controle de Rack Position (DH, Links, UTP)",
-        span: 2,
-      },
-      { name: "company", label: "Empresa", type: "select", required: true, options: companies.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
-      { name: "status", label: "Status", type: "select", required: true, options: STATUS_OPTIONS },
-      { name: "client", label: "Cliente", type: "select", options: clients.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
+      { name: "name", label: p.nomeLabel, type: "text", required: true, span: 2 },
+      { name: "po", label: p.po, type: "text" },
+      { name: "link_count", label: p.qtdLinks, type: "number" },
+      { name: "has_rack_positions", label: p.rackPos, type: "checkbox", placeholder: p.rackPosTip, span: 2 },
+      { name: "company", label: p.empresa, type: "select", required: true, options: companies.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
+      { name: "status", label: p.statusLabel, type: "select", required: true, options: statusOptions },
+      { name: "client", label: p.cliente, type: "select", options: clients.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
       {
         name: "site",
-        label: "Site",
+        label: p.site,
         type: "select",
         options: sites
           .filter((s) => !selectedClientId || s.client === selectedClientId)
           .map((s) => ({ value: s.id, label: s.code || s.name })),
       },
-      { name: "project_type", label: "Tipo de Projeto", type: "select", options: projectTypes.map((p) => ({ value: p.id, label: p.name })) },
-      { name: "category", label: "Categoria", type: "select", options: categories.map((c) => ({ value: c.id, label: c.name })) },
-      { name: "responsible_cstr", label: "Responsável CSTR", type: "select", options: responsibles.map((r) => ({ value: r.id, label: r.name })) },
+      { name: "project_type", label: p.tipoProjeto, type: "select", options: projectTypes.map((pt) => ({ value: pt.id, label: pt.name })) },
+      { name: "category", label: p.categoria, type: "select", options: categories.map((cat) => ({ value: cat.id, label: cat.name })) },
+      { name: "responsible_cstr", label: p.responsavelCstr, type: "select", options: responsibles.map((r) => ({ value: r.id, label: r.name })) },
       {
         name: "responsible_client",
-        label: "Responsável Cliente",
+        label: p.responsavelCliente,
         type: "select",
         options: clientResponsibles.filter((r) => !selectedClientId || r.client === selectedClientId).map((r) => ({ value: r.id, label: r.name })),
       },
-      { name: "planned_start", label: "Início Previsto", type: "date" },
-      { name: "planned_end", label: "Término Previsto", type: "date" },
-      { name: "description", label: "Descrição", type: "textarea", span: 2 },
-      { name: "notes", label: "Observações", type: "textarea", span: 2 },
-      { name: "is_active", label: "Situação", type: "checkbox", placeholder: "Ativo", span: 2 },
+      { name: "planned_start", label: p.inicioPrevisto, type: "date" },
+      { name: "planned_end", label: p.terminoPrevisto, type: "date" },
+      { name: "description", label: p.descricao, type: "textarea", span: 2 },
+      { name: "notes", label: p.observacoes, type: "textarea", span: 2 },
+      { name: "is_active", label: p.situacao, type: "checkbox", placeholder: t.common.ativo, span: 2 },
     ];
-  }, [companies, clients, sites, categories, projectTypes, responsibles, clientResponsibles, values.client]);
+  }, [companies, clients, sites, categories, projectTypes, responsibles, clientResponsibles, values.client, p, t, statusOptions]);
 
   async function handleSave() {
     setSaving(true);
@@ -141,9 +203,9 @@ export default function ProjectFormModal({
   }
 
   return (
-    <Modal title={project ? `Editar Projeto — ${project.code}` : "Novo Projeto"} onClose={onClose} width={720}>
+    <Modal title={project ? p.editar(project.code) : p.novo} onClose={onClose} width={720}>
       {loadingRefs ? (
-        <p style={{ color: "var(--text-muted)" }}>Carregando...</p>
+        <p style={{ color: "var(--text-muted)" }}>{t.common.carregando}</p>
       ) : (
         <>
           <DynamicForm
@@ -154,11 +216,6 @@ export default function ProjectFormModal({
               setValues((prev) => {
                 const next = { ...prev, [name]: value };
                 if (name === "client") {
-                  // Trocar o Cliente invalida qualquer Site/Responsável do
-                  // Cliente já selecionado que pertença a outro cliente —
-                  // sem isso, o valor antigo ficava "preso" no formulário
-                  // (visualmente sumia da lista, mas ainda era enviado ao
-                  // salvar, causando erro de validação no backend).
                   const newClientId = value as number | null;
                   const currentSite = sites.find((s) => s.id === prev.site);
                   if (currentSite && currentSite.client !== newClientId) {
@@ -175,8 +232,7 @@ export default function ProjectFormModal({
           />
           {values.has_rack_positions && (
             <p style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: -6, marginBottom: 12 }}>
-              Depois de salvar, cadastre as Rack Positions (individualmente ou em massa, com DH/Links/UTP) e
-              aloque as tarefas por Rack Position na tela de edição do projeto no Admin.
+              {p.instrucaoRP}
             </p>
           )}
           {errors.non_field_errors && (
@@ -184,10 +240,10 @@ export default function ProjectFormModal({
           )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
             <button className="btn btn-outline" onClick={onClose}>
-              Cancelar
+              {t.common.cancelar}
             </button>
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Salvando..." : "Salvar"}
+              {saving ? t.common.salvando : t.common.salvar}
             </button>
           </div>
         </>

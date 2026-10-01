@@ -1,10 +1,12 @@
 import { useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTabs } from "../context/TabsContext";
+import { useI18n } from "../i18n";
 import Icon from "./ui/Icon";
 
 export default function TabBar() {
   const { tabs, closeTab, reorderTabs } = useTabs();
+  const { t } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
   const dragId = useRef<string | null>(null);
@@ -53,7 +55,7 @@ export default function TabBar() {
             <span className="gtab-label">{tab.label}</span>
             <button
               className="gtab-close"
-              aria-label="Fechar aba"
+              aria-label={t.common.fecharAba}
               onClick={(e) => {
                 e.stopPropagation();
                 closeTab(tab.id);

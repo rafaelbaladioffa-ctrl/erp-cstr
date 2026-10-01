@@ -1,16 +1,86 @@
 import { useMemo, useState } from "react";
 import { projectsApi } from "../../api/resources";
 import type { CollaboratorFull, Project, RackPosition } from "../../api/types";
+import { useI18n, usePageText } from "../../i18n";
 import Icon from "../ui/Icon";
 
-const STATUS_OPTIONS = [
-  { value: "", label: "Manter status atual" },
-  { value: "not_started", label: "Não Iniciada" },
-  { value: "in_progress", label: "Em Andamento" },
-  { value: "paused", label: "Pausada" },
-  { value: "completed", label: "Concluída" },
-  { value: "canceled", label: "Cancelada" },
-];
+const TEXT = {
+  "pt-BR": {
+    titulo: (n: number) => `${n} tarefa(s) selecionada(s) — Ações em Massa`,
+    limparSelecao: "Limpar seleção",
+    statusLabel: "Status",
+    inicio: "Início",
+    termino: "Término",
+    horas: "Horas",
+    responsaveis: "Responsáveis (substitui os atuais)",
+    rackPositions: "Rack Positions (substitui os atuais)",
+    atualizar: "Atualizar selecionadas",
+    excluir: "Excluir selecionadas",
+    confirmarExcluir: (n: number) => `Excluir ${n} tarefa(s) selecionada(s)?`,
+    tarefasAtualizadas: (n: number) => `${n} Tarefa(s) atualizada(s) em massa.`,
+    tarefasExcluidas: (n: number) => `${n} Tarefa(s) excluída(s) do Projeto.`,
+    erroAtualizar: "Não foi possível atualizar as tarefas selecionadas.",
+    erroExcluir: "Não foi possível excluir as tarefas selecionadas.",
+    statuses: {
+      "": "Manter status atual",
+      not_started: "Não Iniciada",
+      in_progress: "Em Andamento",
+      paused: "Pausada",
+      completed: "Concluída",
+      canceled: "Cancelada",
+    },
+  },
+  "en-US": {
+    titulo: (n: number) => `${n} task(s) selected — Bulk Actions`,
+    limparSelecao: "Clear selection",
+    statusLabel: "Status",
+    inicio: "Start",
+    termino: "End",
+    horas: "Hours",
+    responsaveis: "Assignees (replaces current)",
+    rackPositions: "Rack Positions (replaces current)",
+    atualizar: "Update selected",
+    excluir: "Delete selected",
+    confirmarExcluir: (n: number) => `Delete ${n} selected task(s)?`,
+    tarefasAtualizadas: (n: number) => `${n} Task(s) bulk-updated.`,
+    tarefasExcluidas: (n: number) => `${n} Task(s) deleted from the Project.`,
+    erroAtualizar: "Could not update the selected tasks.",
+    erroExcluir: "Could not delete the selected tasks.",
+    statuses: {
+      "": "Keep current status",
+      not_started: "Not Started",
+      in_progress: "In Progress",
+      paused: "Paused",
+      completed: "Completed",
+      canceled: "Canceled",
+    },
+  },
+  "es-ES": {
+    titulo: (n: number) => `${n} tarea(s) seleccionada(s) — Acciones en Masa`,
+    limparSelecao: "Limpiar selección",
+    statusLabel: "Estado",
+    inicio: "Inicio",
+    termino: "Fin",
+    horas: "Horas",
+    responsaveis: "Responsables (reemplaza los actuales)",
+    rackPositions: "Rack Positions (reemplaza los actuales)",
+    atualizar: "Actualizar seleccionadas",
+    excluir: "Eliminar seleccionadas",
+    confirmarExcluir: (n: number) => `¿Eliminar ${n} tarea(s) seleccionada(s)?`,
+    tarefasAtualizadas: (n: number) => `${n} Tarea(s) actualizada(s) en masa.`,
+    tarefasExcluidas: (n: number) => `${n} Tarea(s) eliminada(s) del Proyecto.`,
+    erroAtualizar: "No se pudo actualizar las tareas seleccionadas.",
+    erroExcluir: "No se pudo eliminar las tareas seleccionadas.",
+    statuses: {
+      "": "Mantener estado actual",
+      not_started: "No Iniciada",
+      in_progress: "En Progreso",
+      paused: "Pausada",
+      completed: "Completada",
+      canceled: "Cancelada",
+    },
+  },
+};
 
 export default function TasksBulkUpdatePanel({
   project,
@@ -27,6 +97,11 @@ export default function TasksBulkUpdatePanel({
   onClear: () => void;
   onApplied: () => void;
 }) {
+  const { t } = useI18n();
+  const p = usePageText(TEXT);
+
+  const statusOptions = Object.entries(p.statuses).map(([value, label]) => ({ value, label }));
+
   const [status, setStatus] = useState("");
   const [plannedStart, setPlannedStart] = useState("");
   const [plannedEnd, setPlannedEnd] = useState("");
@@ -55,27 +130,27 @@ export default function TasksBulkUpdatePanel({
         collaborator_ids: collaboratorIds,
         rack_position_ids: rackPositionIds,
       });
-      alert(`${result.updated} Tarefa(s) atualizada(s) em massa.`);
+      alert(p.tarefasAtualizadas(result.updated));
       onApplied();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      setError(axiosErr.response?.data?.detail || "Não foi possível atualizar as tarefas selecionadas.");
+      setError(axiosErr.response?.data?.detail || p.erroAtualizar);
     } finally {
       setSaving(false);
     }
   }
 
   async function applyDelete() {
-    if (!confirm(`Excluir ${selectedIds.length} tarefa(s) selecionada(s)?`)) return;
+    if (!confirm(p.confirmarExcluir(selectedIds.length))) return;
     setSaving(true);
     setError("");
     try {
       const result = await projectsApi.tasksBulk(project.id, { action: "delete", task_ids: selectedIds });
-      alert(`${result.deleted} Tarefa(s) excluída(s) do Projeto.`);
+      alert(p.tarefasExcluidas(result.deleted));
       onApplied();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
-      setError(axiosErr.response?.data?.detail || "Não foi possível excluir as tarefas selecionadas.");
+      setError(axiosErr.response?.data?.detail || p.erroExcluir);
     } finally {
       setSaving(false);
     }
@@ -84,18 +159,18 @@ export default function TasksBulkUpdatePanel({
   return (
     <div className="card" style={{ padding: 16, marginBottom: 16, border: "1px solid var(--orange)" }}>
       <div className="section-header-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
-        <strong style={{ fontSize: 13.5 }}>{selectedIds.length} tarefa(s) selecionada(s) — Ações em Massa</strong>
+        <strong style={{ fontSize: 13.5 }}>{p.titulo(selectedIds.length)}</strong>
         <button className="btn btn-outline btn-sm" onClick={onClear}>
           <Icon name="close" style={{ fontSize: 14 }} />
-          Limpar seleção
+          {p.limparSelecao}
         </button>
       </div>
 
       <div className="dynamic-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
         <div className="field-group">
-          <span className="field-label">Status</span>
+          <span className="field-label">{p.statusLabel}</span>
           <select className="select" value={status} onChange={(e) => setStatus(e.target.value)}>
-            {STATUS_OPTIONS.map((opt) => (
+            {statusOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -103,19 +178,19 @@ export default function TasksBulkUpdatePanel({
           </select>
         </div>
         <div className="field-group">
-          <span className="field-label">Início</span>
+          <span className="field-label">{p.inicio}</span>
           <input type="date" className="input" value={plannedStart} onChange={(e) => setPlannedStart(e.target.value)} />
         </div>
         <div className="field-group">
-          <span className="field-label">Término</span>
+          <span className="field-label">{p.termino}</span>
           <input type="date" className="input" value={plannedEnd} onChange={(e) => setPlannedEnd(e.target.value)} />
         </div>
         <div className="field-group">
-          <span className="field-label">Horas</span>
+          <span className="field-label">{p.horas}</span>
           <input type="number" className="input" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} />
         </div>
         <div className="field-group" style={{ gridColumn: "1 / 3" }}>
-          <span className="field-label">Responsáveis (substitui os atuais)</span>
+          <span className="field-label">{p.responsaveis}</span>
           <select
             multiple
             className="input"
@@ -132,7 +207,7 @@ export default function TasksBulkUpdatePanel({
         </div>
         {project.has_rack_positions && (
           <div className="field-group" style={{ gridColumn: "3 / 5" }}>
-            <span className="field-label">Rack Positions (substitui os atuais)</span>
+            <span className="field-label">{p.rackPositions}</span>
             <select
               multiple
               className="input"
@@ -154,10 +229,10 @@ export default function TasksBulkUpdatePanel({
 
       <div style={{ display: "flex", gap: 10 }}>
         <button className="btn btn-primary" onClick={applyUpdate} disabled={saving}>
-          Atualizar selecionadas
+          {p.atualizar}
         </button>
         <button className="btn btn-outline" onClick={applyDelete} disabled={saving} style={{ color: "var(--red)" }}>
-          Excluir selecionadas
+          {t.common.excluir !== "Excluir" ? t.common.excluir : p.excluir}
         </button>
       </div>
     </div>
