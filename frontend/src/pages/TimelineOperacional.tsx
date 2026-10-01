@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsTimeline } from "../api/types";
+import DateInput from "../components/ui/DateInput";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import { useI18n, usePageText } from "../i18n";
@@ -222,7 +223,7 @@ export default function TimelineOperacional() {
           <button className="tl-nav-btn" onClick={() => setDate((d) => shiftDate(d, -1))} aria-label={p.prevDay}>
             <Icon name="chevron_left" style={{ fontSize: 18 }} />
           </button>
-          <input type="date" className="input" style={{ width: 150 }} value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} style={{ width: 150 }} />
           <button className="tl-nav-btn" onClick={() => setDate((d) => shiftDate(d, 1))} aria-label={p.nextDay}>
             <Icon name="chevron_right" style={{ fontSize: 18 }} />
           </button>

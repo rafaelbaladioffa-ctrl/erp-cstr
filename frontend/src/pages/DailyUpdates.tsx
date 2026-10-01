@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import DateRangeCalendar, { type DateRange } from "../components/ui/DateRangeCalendar";
+import DateInput from "../components/ui/DateInput";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { useI18n, usePageText } from "../i18n";
 import { PERMS, hasPerm } from "../utils/permissions";
@@ -273,7 +274,7 @@ export default function DailyUpdates() {
           <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginLeft: "auto", flexWrap: "wrap" }}>
             <div className="field-group">
               <span className="field-label">{p.consolidatedPdfLabel}</span>
-              <input type="date" className="input" value={consolidatedDate} onChange={(e) => setConsolidatedDate(e.target.value)} />
+              <DateInput value={consolidatedDate} onChange={setConsolidatedDate} />
             </div>
             <button className="btn btn-outline" onClick={handleDownloadConsolidated} disabled={downloadingId === "consolidated"}>
               <Icon name="picture_as_pdf" style={{ fontSize: 16 }} />
@@ -335,24 +336,19 @@ export default function DailyUpdates() {
               <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
                 <div className="field-group" style={{ flex: 1, minWidth: 140 }}>
                   <label className="form-label">{p.dateFrom}</label>
-                  <input
-                    type="date"
-                    className="input"
+                  <DateInput
                     value={row.dateFrom}
-                    onChange={(e) => {
-                      const val = e.target.value;
+                    onChange={(val) => {
                       updateAllocationRow(index, { dateFrom: val, dateTo: val > row.dateTo ? val : row.dateTo });
                     }}
                   />
                 </div>
                 <div className="field-group" style={{ flex: 1, minWidth: 140 }}>
                   <label className="form-label">{p.dateTo}</label>
-                  <input
-                    type="date"
-                    className="input"
+                  <DateInput
                     value={row.dateTo}
                     min={row.dateFrom}
-                    onChange={(e) => updateAllocationRow(index, { dateTo: e.target.value })}
+                    onChange={(val) => updateAllocationRow(index, { dateTo: val })}
                   />
                 </div>
               </div>

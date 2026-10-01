@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { collaboratorsApi, planningApi, projectTasksApi, projectsApi } from "../../api/resources";
 import type { Collaborator, Project, ProjectPlan, ProjectTask, SowImport } from "../../api/types";
 import { usePageText } from "../../i18n";
+import DateInput from "../ui/DateInput";
 import Icon from "../ui/Icon";
 
 const TEXT = {
@@ -509,7 +510,7 @@ export default function ProjectPlanPanel() {
               </div>
               <div className="field-group">
                 <span className="field-label">{p.prazo}</span>
-                <input className="input" type="date" value={assignDeadline} onChange={(e) => setAssignDeadline(e.target.value)} />
+                <DateInput value={assignDeadline} onChange={setAssignDeadline} />
               </div>
               <div className="field-group">
                 <span className="field-label">{p.prioridade}</span>

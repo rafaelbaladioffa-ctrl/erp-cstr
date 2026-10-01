@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsBoard as OperationsBoardData, OperationsBoardTechnician, StatusEvent, TimelineBlock } from "../api/types";
 import TechnicianAbsenceFormModal from "../components/projects/TechnicianAbsenceFormModal";
+import DateInput from "../components/ui/DateInput";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatCard from "../components/ui/StatCard";
@@ -251,7 +252,6 @@ export default function OperationsBoard() {
   const [now, setNow] = useState(() => Date.now());
   const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number } | null>(null);
   const todPopupRef = useRef<HTMLDivElement>(null);
-  const dateInputRef = useRef<HTMLInputElement>(null);
   const [poolOpen, setPoolOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
   const [othersOpen, setOthersOpen] = useState(false);
@@ -446,22 +446,12 @@ export default function OperationsBoard() {
               >
                 <Icon name="chevron_left" style={{ fontSize: 16 }} />
               </button>
-              <button
+              <DateInput
+                value={selectedDate}
+                onChange={(v) => setSelectedDate(v || todayStr)}
                 className="btn btn-outline btn-sm"
-                style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 130, justifyContent: "center" }}
-                onClick={() => dateInputRef.current?.showPicker?.()}
-              >
-                <Icon name="calendar_today" style={{ fontSize: 14 }} />
-                <span>{new Date(selectedDate + "T12:00:00").toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
-                <input
-                  ref={dateInputRef}
-                  type="date"
-                  value={selectedDate}
-                  max={todayStr}
-                  onChange={(e) => setSelectedDate(e.target.value || todayStr)}
-                  style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
-                />
-              </button>
+                style={{ minWidth: 130 }}
+              />
               <button
                 className="btn btn-outline btn-sm"
                 style={{ padding: "4px 8px" }}

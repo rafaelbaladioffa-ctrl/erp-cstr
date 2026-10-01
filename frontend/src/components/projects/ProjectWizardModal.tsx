@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { projectsApi, registryApi } from "../../api/resources";
 import type { Category, ClientFull, Company, Project, ProjectType, ResponsibleFull, SiteFull } from "../../api/types";
 import { useI18n, usePageText } from "../../i18n";
+import DateInput from "../ui/DateInput";
 import Icon from "../ui/Icon";
 import Modal from "../ui/Modal";
 
@@ -518,10 +519,10 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
                   placeholder={p.selecione}
                 />
                 <Field label={p.inicioPrevisto} error={errFirst("planned_start")}>
-                  <input className="input" type="date" value={values.planned_start} onChange={(e) => set("planned_start", e.target.value)} />
+                  <DateInput value={values.planned_start} onChange={(v) => set("planned_start", v)} />
                 </Field>
                 <Field label={p.terminoPrevisto} error={errFirst("planned_end")}>
-                  <input className="input" type="date" value={values.planned_end} onChange={(e) => set("planned_end", e.target.value)} />
+                  <DateInput value={values.planned_end} onChange={(v) => set("planned_end", v)} />
                 </Field>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <Field label={p.descricao} error={errFirst("description")}>

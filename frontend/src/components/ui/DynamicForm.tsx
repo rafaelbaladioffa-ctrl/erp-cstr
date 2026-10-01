@@ -1,5 +1,6 @@
 import { useI18n } from "../../i18n";
 import { formatBrazilPhone } from "../../utils/formatPhone";
+import DateInput from "./DateInput";
 
 export type FieldOption = { value: string | number; label: string };
 
@@ -122,11 +123,9 @@ function renderInput(field: FieldConfig, value: unknown, onChange: (name: string
       );
     case "date":
       return (
-        <input
-          type="date"
-          className="input"
+        <DateInput
           value={(value as string) ?? ""}
-          onChange={(e) => onChange(field.name, e.target.value || null)}
+          onChange={(v) => onChange(field.name, v || null)}
         />
       );
     case "datetime":

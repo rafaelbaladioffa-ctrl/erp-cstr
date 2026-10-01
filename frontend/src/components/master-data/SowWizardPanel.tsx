@@ -4,8 +4,9 @@ import { collaboratorsApi, masterDataApi, planningApi, projectsApi, projectTasks
 import type { Collaborator, Project, ProjectTask, SowImport, SowParsedItem } from "../../api/types";
 import type { ReferenceData } from "../../pages/cadastros/registryConfig";
 import { usePageText } from "../../i18n";
-import Icon from "../ui/Icon";
+import DateInput from "../ui/DateInput";
 import FileInput from "../ui/FileInput";
+import Icon from "../ui/Icon";
 
 const TEXT = {
   "pt-BR": {
@@ -1091,7 +1092,7 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
                 </div>
                 <div className="field-group">
                   <span className="field-label">{p.prazo}</span>
-                  <input className="input" type="date" value={assignDeadline} onChange={(e) => setAssignDeadline(e.target.value)} />
+                  <DateInput value={assignDeadline} onChange={setAssignDeadline} />
                 </div>
                 <div className="field-group">
                   <span className="field-label">{p.prioridade}</span>

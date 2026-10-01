@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { projectsApi } from "../../api/resources";
 import type { CollaboratorFull, Project, RackPosition } from "../../api/types";
 import { useI18n, usePageText } from "../../i18n";
+import DateInput from "../ui/DateInput";
 import Icon from "../ui/Icon";
 
 const TEXT = {
@@ -179,11 +180,11 @@ export default function TasksBulkUpdatePanel({
         </div>
         <div className="field-group">
           <span className="field-label">{p.inicio}</span>
-          <input type="date" className="input" value={plannedStart} onChange={(e) => setPlannedStart(e.target.value)} />
+          <DateInput value={plannedStart} onChange={setPlannedStart} />
         </div>
         <div className="field-group">
           <span className="field-label">{p.termino}</span>
-          <input type="date" className="input" value={plannedEnd} onChange={(e) => setPlannedEnd(e.target.value)} />
+          <DateInput value={plannedEnd} onChange={setPlannedEnd} />
         </div>
         <div className="field-group">
           <span className="field-label">{p.horas}</span>

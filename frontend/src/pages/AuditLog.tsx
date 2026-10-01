@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { auditLogApi } from "../api/resources";
 import type { AuditLogEntry } from "../api/types";
 import { useI18n, usePageText } from "../i18n";
+import DateInput from "../components/ui/DateInput";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
@@ -152,11 +153,11 @@ export default function AuditLog() {
           </div>
           <div className="field-group">
             <span className="field-label">{p.dateFrom}</span>
-            <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <DateInput value={dateFrom} onChange={setDateFrom} />
           </div>
           <div className="field-group">
             <span className="field-label">{p.dateTo}</span>
-            <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <DateInput value={dateTo} onChange={setDateTo} />
           </div>
         </div>
 

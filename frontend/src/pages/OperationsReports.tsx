@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsReports } from "../api/types";
+import DateInput from "../components/ui/DateInput";
 import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
 import { useI18n, usePageText } from "../i18n";
@@ -346,9 +347,9 @@ export default function OperationsReportsPage() {
         subtitle={p.subtitle}
         actions={
           <div className="ops-toolbar">
-            <input type="date" className="input" style={{ width: 150 }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <DateInput value={dateFrom} onChange={setDateFrom} style={{ width: 150 }} />
             <span style={{ color: "var(--text-faint)", fontSize: 12.5 }}>{p.ate}</span>
-            <input type="date" className="input" style={{ width: 150 }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <DateInput value={dateTo} onChange={setDateTo} style={{ width: 150 }} />
             <select className="select" value={siteId} onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}>
               <option value="all">{p.todosSites}</option>
               {sites.map((s) => (
