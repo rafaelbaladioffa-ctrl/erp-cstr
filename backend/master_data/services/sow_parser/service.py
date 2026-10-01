@@ -12,7 +12,7 @@ import os
 from django.utils import timezone
 
 from .ai_parser import AiSowParserError, get_ai_sow_parser
-from .deterministic_parser import PARSER_VERSION, parse_line, resolve_cable_family_by_text, resolve_part_number, split_sow_text_into_lines
+from .deterministic_parser import PARSER_VERSION, extract_sow_lines, parse_line, resolve_cable_family_by_text, resolve_part_number
 from .normalizer import build_warning, normalize_parsed_item
 
 logger = logging.getLogger("master_data.sow_import")
@@ -68,24 +68,39 @@ class FinalizeBlockedError(Exception):
 
 
 def extract_text_from_file(uploaded_file):
-    """Tenta decodificar o arquivo como texto UTF-8 simples — a única
-    extração automática suportada nesta primeira versão (PDF/DOCX/imagem
-    binários exigiriam uma dependência nova, que o pedido original
-    explicitamente permite adiar: "retornar mensagem clara e manter
-    arquitetura preparada"). Levanta UnsupportedSourceTypeError com uma
-    mensagem clara quando o conteúdo não é texto puro."""
+    """Texto do arquivo enviado: PDF com texto selecionável (via pypdf) ou
+    texto UTF-8 simples. Levanta UnsupportedSourceTypeError com mensagem clara
+    para DOCX, imagem ou PDF escaneado."""
     try:
         raw = uploaded_file.read()
     finally:
         uploaded_file.seek(0)
+    if raw[:5] == b"%PDF-":
+        return _extract_pdf_text(raw)
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
         raise UnsupportedSourceTypeError(
-            "Não foi possível extrair texto deste arquivo automaticamente nesta versão "
-            "(suporte a PDF/DOCX/imagem ainda não implementado). Cole o texto do SOW diretamente "
-            "no campo de texto."
+            "Não foi possível extrair texto deste arquivo automaticamente (só texto simples e PDF "
+            "são lidos; DOCX/imagem ainda não). Cole o texto do SOW diretamente no campo de texto."
         )
+
+
+def _extract_pdf_text(raw):
+    import io
+
+    from pypdf import PdfReader
+
+    try:
+        reader = PdfReader(io.BytesIO(raw))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception as exc:  # arquivo enviado pelo usuário: qualquer PDF corrompido vira mensagem clara
+        raise UnsupportedSourceTypeError(f"Não foi possível ler o PDF: {exc}")
+    if not text.strip():
+        raise UnsupportedSourceTypeError(
+            "O PDF não tem texto selecionável (provavelmente é uma imagem escaneada). Cole o texto do SOW diretamente."
+        )
+    return text
 
 
 def build_master_data_context():
@@ -155,7 +170,18 @@ def _merge_draft(det_draft, ai_item):
         "fiber_count": det_draft.get("fiber_count"),
         "warnings": [],
         "conflict_warnings": [],
-        "normalization_metadata": {"deterministic": {"candidate_text": candidate_text}},
+        "normalization_metadata": {
+            "deterministic": {"candidate_text": candidate_text},
+            "sow_context": {
+                key: value
+                for key, value in {
+                    **(det_draft.get("sow_context") or {}),
+                    "origin": det_draft.get("origin"),
+                    "destination": det_draft.get("destination"),
+                }.items()
+                if value
+            },
+        },
     }
 
     if ai_item is None:
@@ -205,11 +231,11 @@ def _run_parsing(sow_import):
     sow_import.save(update_fields=("status", "processing_started_at", "error_message", "updated_at"))
 
     try:
-        lines = split_sow_text_into_lines(sow_import.source_text)
+        lines = extract_sow_lines(sow_import.source_text)
         if not lines:
             raise SowProcessingError("Nenhum texto para processar — informe o texto do SOW.")
 
-        deterministic_drafts = [parse_line(line) for line in lines]
+        deterministic_drafts = [{**parse_line(line), "sow_context": context} for line, context in lines]
 
         ai_items = None
         ai_provider_label = ""

@@ -31,6 +31,11 @@ _LENGTH_PATTERNS = (
 
 _PATH_RE = re.compile(r"\(?\s*\b(route|path|rota)\s+([ab])\b\s*\)?", re.IGNORECASE)
 _FROM_TO_RE = re.compile(r"\bfrom\s+\S+\s+to\s+\S+\b", re.IGNORECASE)
+# "from ORIGEM to DESTINO", ou "ORIGEM to DESTINO" quando a origem parece
+# posição de rack (ex. GRU65.01-02-020-50) — sem isso, nomes de família com
+# "to" ("MPO to 4xLC Breakout") seriam partidos. O destino pode ter espaços.
+_FROM_ORIGIN_DESTINATION_RE = re.compile(r"\bfrom\s+(\S+)\s+to\s+(.+?)\s*$", re.IGNORECASE)
+_RACK_ORIGIN_DESTINATION_RE = re.compile(r"(\S*\d\S*\.\S*\d\S*)\s+to\s+(.+?)\s*$", re.IGNORECASE)
 _PRETERMINATED_RE = re.compile(r"\bpr[eé][- ]?terminat(?:ed|ed|o|a|os|as)\b", re.IGNORECASE)
 
 _COLOR_WORDS = (
@@ -63,6 +68,53 @@ def split_sow_text_into_lines(text):
     """Cada linha não vazia do texto do SOW é candidata a um item — mesma
     convenção usada no critério de aceite (3 linhas coladas -> 3 itens)."""
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
+
+
+_CONNECTIONS_HEADER_RE = re.compile(r"^\s*connections\s*&\s*cable\s+types\s*:?\s*$", re.IGNORECASE)
+_SECTION_END_RE = re.compile(
+    r"^\s*(AWS STANDARD GUIDELINES|PROJECT RISK ASSESSMENT|GENERAL REQUIREMENTS|BID INSTRUCTION|REVISION HISTORY)\b"
+)
+_PAGE_FOOTER_RE = re.compile(r"^\s*(Note: This SOW is Amazon Confidential|disclosed, in whole or in part)", re.IGNORECASE)
+_GROUP_RE = re.compile(r"^\s*==\s*(.+?)\s*==\s*$")
+_ROOM_RE = re.compile(r"^\s*(room\s+[\w-]+)\s*$", re.IGNORECASE)
+_CONNECTION_LINE_RE = re.compile(r"^\s*\d+\s*[xX]\s+\S")
+
+
+def extract_sow_lines(text):
+    """Linhas de item do SOW, cada uma com seu contexto ({"group", "room"}).
+
+    Quando o texto traz a seção "Connections & Cable Types" (SOWs de cabling
+    da AWS), só as linhas de ligação dessa seção viram item — o texto
+    contratual, datas e contatos são ignorados; "== Grupo ==" e "Room X-Y"
+    viram contexto, e uma linha quebrada pelo PDF é reemendada à anterior.
+    Sem essa seção, cada linha não vazia vira item (listas coladas à mão)."""
+    raw_lines = (text or "").splitlines()
+    start = next((i for i, line in enumerate(raw_lines) if _CONNECTIONS_HEADER_RE.match(line)), None)
+    if start is None:
+        return [(line, {}) for line in split_sow_text_into_lines(text)]
+
+    items = []
+    group = room = None
+    for line in raw_lines[start + 1 :]:
+        stripped = line.strip()
+        if _SECTION_END_RE.match(stripped):
+            break
+        if not stripped or _PAGE_FOOTER_RE.match(stripped):
+            continue
+        group_match = _GROUP_RE.match(stripped)
+        if group_match:
+            group, room = group_match.group(1), None
+            continue
+        room_match = _ROOM_RE.match(stripped)
+        if room_match:
+            room = room_match.group(1).title()
+            continue
+        if _CONNECTION_LINE_RE.match(stripped):
+            items.append((stripped, {"group": group, "room": room}))
+        elif items:
+            previous_line, context = items[-1]
+            items[-1] = (f"{previous_line} {stripped}", context)
+    return items
 
 
 def _extract_quantity(text):
@@ -234,6 +286,11 @@ def parse_line(raw_text):
     quantity, remainder = _extract_quantity(remainder)
     length_type, length_m, remainder = _extract_length(remainder)
     path_code, remainder = _extract_path(remainder)
+    origin = destination = None
+    od_match = _FROM_ORIGIN_DESTINATION_RE.search(remainder) or _RACK_ORIGIN_DESTINATION_RE.search(remainder)
+    if od_match:
+        origin, destination = od_match.group(1), od_match.group(2).strip(" .")
+        remainder = remainder[: od_match.start()]
     fiber_count = _extract_fiber_count(remainder)
     color = _extract_color(remainder)
     preterminated = _extract_preterminated(remainder) or None
@@ -252,4 +309,6 @@ def parse_line(raw_text):
         "color": color,
         "preterminated": preterminated,
         "medium_guess": medium_guess,
+        "origin": origin,
+        "destination": destination,
     }

@@ -5168,6 +5168,85 @@ class SowImportTests(TestCase):
         self.assertTrue(sow_import.error_message)
         self.assertTrue(sow_import.source_file)
 
+    # --- SOW no formato AWS (seção "Connections & Cable Types") ---
+    AWS_SOW_TEXT = """Infrastructure Delivery
+Cabling Scope of Work
+Project Name: teste
+Vendor will use the information contained in this SOW to bid.
+Connections & Cable Types:
+== Management ==
+Room 1-1
+1x 2F LC-LC (22m) from GRU65.01-01-002-53 to GRU65.01-01-001-19
+Note: This SOW is Amazon Confidential Information subject to the Nondisclosure Agreement between the parties and shall not be
+disclosed, in whole or in part, to any third parties without Amazon's advance written consent
+== Console ==
+1x Cat6 UTP Orange (22m) GRU65.01-02-020-50 to GRU65.01-02-020-14
+== Brick to Spine ==
+Room 1-2
+5x 36F LC-LC (75m) from GRU65.01-01-020-47 to GRU65.01-01-001-19 (Path A)
+48x 8F LC-LC (2m) from GRU65.01-01-020-47 to Patch Rack Left
+AWS STANDARD GUIDELINES
+Cabling:
+1x this line must be ignored
+"""
+
+    def test_aws_sow_only_connection_lines_become_items_with_context(self):
+        from master_data.models import SowParsedItem
+
+        data = self.create_import(self.AWS_SOW_TEXT)
+        self.process(data["id"])
+        items = list(SowParsedItem.objects.filter(sow_import_id=data["id"]).order_by("sequence"))
+        self.assertEqual(len(items), 4)
+
+        first = items[0]
+        self.assertEqual(first.suggested_cable_family.name, "2F LC-LC")
+        self.assertEqual(first.length_m, Decimal("22"))
+        self.assertEqual(
+            first.normalization_metadata["sow_context"],
+            {"group": "Management", "room": "Room 1-1", "origin": "GRU65.01-01-002-53", "destination": "GRU65.01-01-001-19"},
+        )
+
+        cat6 = items[1]
+        self.assertEqual(cat6.suggested_cable_family.name, "CAT6 UTP")
+        self.assertEqual(cat6.color, "ORANGE")
+        self.assertEqual(cat6.normalization_metadata["sow_context"]["origin"], "GRU65.01-02-020-50")
+
+        trunk = items[2]
+        self.assertEqual((trunk.quantity, trunk.fiber_count), (5, 36))
+        self.assertEqual(list(trunk.suggested_paths.values_list("code", flat=True)), ["PATH-A"])
+        self.assertEqual(items[3].normalization_metadata["sow_context"]["destination"], "Patch Rack Left")
+
+    def test_aws_sow_pdf_upload_is_read_and_parsed(self):
+        import io
+
+        from reportlab.pdfgen import canvas
+
+        buffer = io.BytesIO()
+        pdf = canvas.Canvas(buffer)
+        y = 800
+        for line in self.AWS_SOW_TEXT.splitlines():
+            pdf.drawString(30, y, line)
+            y -= 14
+        pdf.save()
+        upload = SimpleUploadedFile("sow.pdf", buffer.getvalue(), content_type="application/pdf")
+        response = self.client_api.post(
+            "/api/planning/sow-imports/",
+            {"title": "PDF AWS", "source_type": "PDF", "source_file": upload},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        sow_import = SowImport.objects.get(pk=response.data["id"])
+        self.assertIn("Connections & Cable Types", sow_import.source_text)
+        self.process(sow_import.pk)
+        self.assertEqual(sow_import.parsed_items.count(), 4)
+
+    def test_family_names_containing_to_are_not_split_into_origin_destination(self):
+        from master_data.services.sow_parser.deterministic_parser import parse_line
+
+        draft = parse_line("2x MPO to 4xLC Breakout (3m)")
+        self.assertEqual(draft["candidate_text"], "MPO to 4xLC Breakout")
+        self.assertIsNone(draft["origin"])
+
     # --- idempotência de processamento / bloqueio de reprocessamento ---
     def test_process_twice_is_blocked_use_reprocess_instead(self):
         data = self.create_import("10x CAT6 UTP up to 60m")
