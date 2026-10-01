@@ -832,8 +832,13 @@ class ScopeItemCrudSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("code", "created_at", "updated_at")
 
+    @staticmethod
+    def _has_generated_tasks(obj):
+        annotated = getattr(obj, "generated_tasks_exist", None)
+        return obj.generated_tasks.exists() if annotated is None else annotated
+
     def get_has_generated_tasks(self, obj):
-        return obj.generated_tasks.exists()
+        return self._has_generated_tasks(obj)
 
     def get_operational_status(self, obj):
         # Ordem importa: revisão pendente/sem match têm prioridade sobre
@@ -846,7 +851,7 @@ class ScopeItemCrudSerializer(serializers.ModelSerializer):
             return "NO_MATCH"
         if obj.rule_resolution_status != "RESOLVED":
             return "AWAITING_RESOLUTION"
-        if obj.generated_tasks.exists():
+        if self._has_generated_tasks(obj):
             return "TASKS_GENERATED"
         return "READY_TO_GENERATE"
 
@@ -1964,7 +1969,9 @@ class ProjectDailyUpdateSerializer(ClientScopedRelationsMixin, serializers.Model
         return str(client) if client else None
 
     def get_preview(self, obj):
-        if not obj.pk:
+        # Montar o e-mail é caro; a lista não exibe a prévia (o editor busca o detalhe).
+        view = self.context.get("view")
+        if not obj.pk or getattr(view, "action", None) == "list":
             return None
         return build_project_update_body(obj)
 

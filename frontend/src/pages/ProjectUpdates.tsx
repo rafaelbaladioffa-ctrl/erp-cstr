@@ -3,6 +3,7 @@ import { collaboratorsApi, projectsApi, projectUpdatesApi, usersApi } from "../a
 import type { Collaborator, Project, ProjectDailyUpdate, UserOption } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import DateRangeCalendar, { type DateRange } from "../components/ui/DateRangeCalendar";
+import DateInput from "../components/ui/DateInput";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
@@ -176,6 +177,14 @@ export default function ProjectUpdates() {
   const [statusFilter, setStatusFilter] = useState<"all" | "sent" | "pending">("all");
   const [range, setRange] = useState<DateRange | null>(null);
 
+  function openUpdate(update: ProjectDailyUpdate) {
+    setSelected(update);
+    projectUpdatesApi.get(update.id).then((detail) => {
+      setSelected((current) => (current?.id === detail.id ? detail : current));
+      setUpdates((prev) => prev.map((item) => (item.id === detail.id ? detail : item)));
+    });
+  }
+
   function reload() {
     setLoading(true);
     projectUpdatesApi
@@ -308,7 +317,7 @@ export default function ProjectUpdates() {
           </select>
 
           <label className="form-label">{p.formDate}</label>
-          <input type="date" className="input" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+          <DateInput value={newDate} onChange={setNewDate} />
 
           <label className="form-label">{p.formNotes}</label>
           <textarea className="input" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} style={{ height: 80 }} />
@@ -335,7 +344,7 @@ export default function ProjectUpdates() {
             return (
               <div key={update.id} className="card" style={{ padding: 16 }}>
                 <div
-                  onClick={() => setSelected(expanded ? null : update)}
+                  onClick={() => (expanded ? setSelected(null) : openUpdate(update))}
                   style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", flexWrap: "wrap", gap: 8 }}
                 >
                   <div style={{ minWidth: 0 }}>

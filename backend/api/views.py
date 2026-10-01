@@ -1330,6 +1330,8 @@ class ScopeItemViewSet(RequireChangePermissionForActions, RegistryViewSet):
         "resolved_template",
         "created_by",
         "updated_by",
+    ).prefetch_related("paths").annotate(
+        generated_tasks_exist=models.Exists(GeneratedTask.objects.filter(scope_item=models.OuterRef("pk")))
     ).order_by("code")
     serializer_class = ScopeItemCrudSerializer
     search_fields = (

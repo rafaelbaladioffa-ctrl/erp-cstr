@@ -6135,3 +6135,30 @@ class QueryScalingTests(TestCase):
         large, response = self._count(path)
         self.assertEqual(small, large)
         self.assertEqual(len(response.data), 6)
+
+    def test_scope_item_list_queries_do_not_grow_with_items(self):
+        def add_items(n):
+            for i in range(n):
+                ScopeItem.objects.create(raw_text=f"texto {self._seq}-{i}", item_type="CABLE")
+            self._seq += 1
+
+        add_items(2)
+        path = "/api/master-data/scope-items/?page_size=50"
+        self._count(path)
+        small, _ = self._count(path)
+        add_items(4)
+        large, response = self._count(path)
+        self.assertEqual(small, large)
+        self.assertTrue(all(row["has_generated_tasks"] is False for row in response.data["results"]))
+
+    def test_project_update_list_omits_preview_detail_includes_it(self):
+        from updates.models import ProjectDailyUpdate
+
+        project = Project.objects.create(company=self.company, name="Projeto Prévia", client=self.client_obj, site=self.site)
+        update = ProjectDailyUpdate.objects.create(project=project, date=timezone.localdate())
+        listed = self.api.get("/api/project-updates/")
+        self.assertEqual(listed.status_code, 200)
+        self.assertIsNone(listed.data["results"][0]["preview"])
+        detail = self.api.get(f"/api/project-updates/{update.pk}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertTrue(detail.data["preview"])
