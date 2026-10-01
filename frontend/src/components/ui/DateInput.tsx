@@ -37,7 +37,6 @@ interface DateInputProps {
   className?: string;
   style?: React.CSSProperties;
   min?: string;
-  placeholder?: string;
   disabled?: boolean;
 }
 
@@ -93,10 +92,13 @@ export default function DateInput({ value, onChange, className, style, min, disa
           textAlign: "left",
           width: "100%",
           fontWeight: "normal",
+          minWidth: 130,
         }}
       >
-        <span style={{ flex: 1, color: value ? "inherit" : "var(--text-muted)" }}>{displayValue}</span>
-        <span style={{ fontSize: 15, color: "var(--text-muted)" }}>📅</span>
+        <span style={{ flex: 1, color: value ? "var(--text)" : "var(--text-muted)" }}>
+          {displayValue}
+        </span>
+        <span style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1 }}>▾</span>
       </button>
 
       {open && (
@@ -104,57 +106,72 @@ export default function DateInput({ value, onChange, className, style, min, disa
           position: "absolute",
           top: "calc(100% + 4px)",
           left: 0,
-          zIndex: 999,
-          background: "var(--surface-2)",
-          border: "0.5px solid var(--border-strong)",
+          zIndex: 1000,
+          background: "var(--white)",
+          border: "1px solid var(--border)",
           borderRadius: 10,
           padding: 12,
-          width: 224,
-          boxShadow: "0 4px 16px rgba(0,0,0,.12)",
+          width: 230,
+          boxShadow: "0 4px 16px rgba(0,0,0,.15)",
         }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          {/* cabeçalho mês/ano */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <button
               type="button"
               onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--text-secondary)", padding: "0 4px" }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--text-muted)", padding: "0 6px", lineHeight: 1 }}
             >‹</button>
-            <strong style={{ fontSize: 13, textTransform: "capitalize", color: "var(--text-primary)" }}>{monthYearLabel}</strong>
+            <strong style={{ fontSize: 13, textTransform: "capitalize", color: "var(--text)" }}>
+              {monthYearLabel}
+            </strong>
             <button
               type="button"
               onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--text-secondary)", padding: "0 4px" }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "var(--text-muted)", padding: "0 6px", lineHeight: 1 }}
             >›</button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
-            {weekdays.map((w) => (
-              <span key={w} style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", padding: "2px 0 4px" }}>{w}</span>
+          {/* nomes dos dias da semana */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1, marginBottom: 4 }}>
+            {weekdays.map((w, i) => (
+              <span key={i} style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", padding: "2px 0" }}>
+                {w.slice(0, 2)}
+              </span>
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+          {/* dias */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}>
             {days.map((day) => {
               const iso = toIso(day);
               const outside = day.getMonth() !== viewDate.getMonth();
               const selected = iso === value;
               const isToday = iso === today;
-              const disabled_ = !!(min && iso < min);
+              const isDisabled = !!(min && iso < min);
               return (
                 <button
                   key={iso}
                   type="button"
-                  onClick={() => handleDayClick(day)}
-                  disabled={disabled_}
+                  onClick={() => !isDisabled && handleDayClick(day)}
                   style={{
                     fontSize: 12,
                     textAlign: "center",
-                    padding: "5px 2px",
+                    padding: "5px 0",
                     borderRadius: "50%",
                     border: "none",
-                    cursor: disabled_ ? "default" : "pointer",
-                    background: selected ? "var(--blue)" : isToday && !selected ? "var(--orange-soft, #fff3e0)" : "transparent",
-                    color: selected ? "#fff" : outside || disabled_ ? "var(--text-muted)" : "var(--text-primary)",
-                    fontWeight: isToday ? 600 : 400,
+                    cursor: isDisabled ? "default" : "pointer",
+                    background: selected
+                      ? "var(--orange)"
+                      : isToday && !selected
+                      ? "var(--orange-soft, #fff3e0)"
+                      : "transparent",
+                    color: selected
+                      ? "#fff"
+                      : outside || isDisabled
+                      ? "var(--text-muted)"
+                      : "var(--text)",
+                    fontWeight: isToday && !selected ? 600 : 400,
+                    opacity: isDisabled ? 0.4 : 1,
                   }}
                 >
                   {day.getDate()}
