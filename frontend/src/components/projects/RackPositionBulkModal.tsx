@@ -7,7 +7,7 @@ const TEXT = {
   "pt-BR": {
     titulo: "Adicionar Rack Positions em Massa",
     instrucao: "Um Rack Position por linha, no formato",
-    instrucaoOpcional: "(DH, Links e UTP são opcionais — ex.: apenas "RACK03" também é válido).",
+    instrucaoOpcional: '(DH, Links e UTP são opcionais — ex.: apenas "RACK03" também é válido).',
     cadastrado: (n: number) => `${n} Rack Position(s) cadastrado(s) em massa.`,
     ignorado: (n: number) => ` ${n} já existia(m) e foi(ram) ignorado(s).`,
     erro: "Não foi possível importar os Rack Positions.",
@@ -15,7 +15,7 @@ const TEXT = {
   "en-US": {
     titulo: "Bulk Add Rack Positions",
     instrucao: "One Rack Position per line, in the format",
-    instrucaoOpcional: "(DH, Links and UTP are optional — e.g. just "RACK03" is also valid).",
+    instrucaoOpcional: '(DH, Links and UTP are optional — e.g. just "RACK03" is also valid).',
     cadastrado: (n: number) => `${n} Rack Position(s) bulk-created.`,
     ignorado: (n: number) => ` ${n} already existed and were skipped.`,
     erro: "Could not import the Rack Positions.",
@@ -23,7 +23,7 @@ const TEXT = {
   "es-ES": {
     titulo: "Agregar Rack Positions en Masa",
     instrucao: "Un Rack Position por línea, en el formato",
-    instrucaoOpcional: "(DH, Links y UTP son opcionales — ej.: solo "RACK03" también es válido).",
+    instrucaoOpcional: '(DH, Links y UTP son opcionales — ej.: solo "RACK03" también es válido).',
     cadastrado: (n: number) => `${n} Rack Position(s) creado(s) en masa.`,
     ignorado: (n: number) => ` ${n} ya existía(n) y fue(ron) ignorado(s).`,
     erro: "No se pudo importar los Rack Positions.",
