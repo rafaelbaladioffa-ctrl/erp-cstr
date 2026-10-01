@@ -453,11 +453,14 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
     def tasks(self, request, pk=None):
         project = self.get_object()
         tasks = (
-            project.project_tasks.select_related("task")
-            .prefetch_related("collaborators", "rack_positions")
+            project.project_tasks.select_related(
+                "task", "project", "generated_task__activity", "generated_task__path",
+                "generated_task__scope_item", "generated_task__task_template",
+            )
+            .prefetch_related("collaborators__person", "rack_positions", "assignments")
             .order_by("order", "id")
         )
-        serializer = ProjectTaskSerializer(tasks, many=True)
+        serializer = ProjectTaskSerializer(tasks, many=True, context=self.get_serializer_context())
         return Response(serializer.data)
 
     @action(detail=True, methods=["get"], url_path="hours-by-collaborator")

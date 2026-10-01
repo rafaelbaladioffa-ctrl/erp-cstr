@@ -6117,3 +6117,21 @@ class QueryScalingTests(TestCase):
         self.assertEqual(small, large)
         rows = response.data["results"] if "results" in response.data else response.data
         self.assertTrue(all(row["queue_order"] is not None for row in rows))
+
+    def test_project_tasks_action_queries_do_not_grow_with_tasks(self):
+        project = Project.objects.create(company=self.company, name="Projeto Aba", client=self.client_obj, site=self.site)
+        collaborator = make_collaborator(self.company, "Técnico Aba")
+
+        def add_tasks(n):
+            for i in range(n):
+                task = ProjectTask.objects.create(project=project, task=self.catalog, order=i)
+                ProjectTaskAssignment.objects.create(project_task=task, collaborator=collaborator)
+
+        add_tasks(2)
+        path = f"/api/projects/{project.pk}/tasks/"
+        self._count(path)
+        small, _ = self._count(path)
+        add_tasks(4)
+        large, response = self._count(path)
+        self.assertEqual(small, large)
+        self.assertEqual(len(response.data), 6)
