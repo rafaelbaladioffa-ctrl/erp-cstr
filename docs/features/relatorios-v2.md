@@ -44,7 +44,10 @@ Objetivo da v2: **números confiáveis e com definição única**, qualidade do 
   | 70–100% | verde | Normal |
   | > 100% | cinza + ícone de alerta | **Dado suspeito** (não é "sobrecarga") — revisar apontamento |
 
-- **RN-09 — Dia sem "Fim de Expediente".** *(Decisão pendente — padrão recomendado.)* Se o último status do dia não for `off_duty`, a contagem daquele status termina em `checked_in_at + 9h` (jornada + almoço) ou na meia-noite, o que vier primeiro, e o dia é marcado como **incompleto**. Dias incompletos aparecem como contador por técnico.
+- **RN-09 — Dia sem "Fim de Expediente".** *(Aprovada em 2026-10-02.)* Quando o último status do dia não é `off_duty`:
+  - **Se o último status for `in_progress`** (execução de fato): **não há corte**. A contagem segue até o próximo evento ou até a meia-noite, e o dia **não** é marcado como incompleto. O status de presença `in_progress` só é definido pelo sistema enquanto uma tarefa está rodando; ao pausar, a presença volta para `available` — portanto tarefa **pausada não conta** como execução.
+  - **Em qualquer outro status** (`available`, `site_blocked`, `awaiting_release`, `lunch`, `personal`, inclusive com tarefa pausada): a contagem daquele status termina em `checked_in_at + 9h` (jornada + almoço) ou na meia-noite, o que vier primeiro, e o dia é marcado como **incompleto**.
+  - Dias incompletos aparecem como contador por técnico.
 - **RN-10 — Fuso.** Todas as datas e cortes de dia em UTC−3. No frontend, "hoje" e "30 dias atrás" são calculados na data local do Brasil, nunca com `toISOString()`.
 
 ### 3.3 Improdutivo
@@ -210,7 +213,9 @@ Fase 1 no frontend (mesmo padrão de `exportCsv` em `ProjectsList.tsx`), um bot�
 3. **Utilização suspeita.** Dado um técnico com utilização > 100%, então a barra aparece cinza com ícone de alerta e rótulo "Dado suspeito", nunca vermelho de "sobrecarga".
 4. **Utilização baixa.** Dado um técnico com 30% de utilização, então ele aparece em vermelho.
 5. **Meta por pessoa.** Dado 3 técnicos com 4h produtivas cada hoje, então o cartão mostra média de 4h por técnico (67% da meta de 6h), não 12h/200%.
-6. **Dia sem Fim de Expediente.** Dado um técnico com check-in às 8h e último status "Disponível" às 17h, sem Fim de Expediente, então o ocioso daquele dia termina às 17h (8h + 9h) e o dia conta como incompleto.
+6. **Dia sem Fim de Expediente.** Dado um técnico com check-in às 8h e último status "Disponível" às 15h, sem Fim de Expediente, então o ocioso daquele dia termina às 17h (8h + 9h) e o dia conta como incompleto.
+6b. **Execução de fato não é cortada.** Dado um técnico com check-in às 8h que iniciou uma tarefa às 16h e não a pausou nem finalizou até as 19h (próximo evento), então as 3h contam como produtivas, sem corte às 17h, e o dia não é marcado como incompleto.
+6c. **Tarefa pausada é cortada.** Dado o mesmo técnico, mas com a tarefa pausada às 16h30 (presença volta para "Disponível") e sem novos eventos, então o ocioso termina às 17h e o dia conta como incompleto.
 7. **Improdutivo consistente.** Dado qualquer filtro, então a soma de bloqueio externo dos técnicos é igual ao cartão de bloqueio externo, e o mesmo para ocioso interno.
 8. **Filtro de período.** Quando mudo o período, então todos os cartões e tabelas da seção "Período" mudam; o bloco "Hoje" não muda.
 9. **Fuso.** Dado que são 22h em Brasília, quando abro a tela, então o filtro padrão termina na data de hoje (Brasil), não amanhã.
@@ -228,6 +233,7 @@ Fase 1 no frontend (mesmo padrão de `exportCsv` em `ProjectsList.tsx`), um bot�
 | Números caem bruscamente após a correção (ex.: utilização de 250% para 60%) e geram desconfiança | Nota de versão na tela por 2 semanas: "Cálculo corrigido em DD/MM — veja o que mudou" com link para esta spec |
 | Pouco histórico vinculado ao catálogo → muitas linhas "dados insuficientes" | Esperado no início; o contador de exclusões mostra o caminho (usar mais SOW via catálogo) |
 | Técnicos não marcam Fim de Expediente | RN-09 limita o dano; contador de dias incompletos por técnico permite cobrança; Fase 3 pode lembrar via WhatsApp |
+| Tarefa esquecida em execução (não pausada) passa da meia-noite sem corte (RN-09) | Fase 2: exceção "tarefa em execução há mais de 10h" na lista de exceções e na Central de Operações |
 | Mediana instável em atividades com poucas execuções | Amostra mínima (RN-21) e exibição de P25–P75 |
 | Performance (agregação em Python sobre o período) | Limitar período máximo a 180 dias na Fase 1; avaliar agregação SQL se passar de ~2 s |
 
@@ -238,13 +244,13 @@ Fase 1 no frontend (mesmo padrão de `exportCsv` em `ProjectsList.tsx`), um bot�
 - Pelo menos 10 combinações atividade × cabo com amostra suficiente.
 - Comercial/planejamento usando o CSV de produtividade em ao menos uma proposta.
 
-## Decisões pendentes
+## Decisões (todas aprovadas em 2026-10-02)
 
 | # | Decisão | Padrão adotado até resposta |
 |---|---|---|
-| D-1 | Corte do dia sem Fim de Expediente (RN-09) | check-in + 9h, dia marcado como incompleto |
-| D-2 | Faixas de utilização (RN-08) | < 50 / 50–69 / 70–100 / > 100 |
-| D-3 | Amostra mínima (RN-21) | 5 execuções |
+| D-1 | Corte do dia sem Fim de Expediente (RN-09) | **Aprovada:** check-in + 9h e dia incompleto, exceto quando o último status é execução de fato (`in_progress`, não pausada) |
+| D-2 | Faixas de utilização (RN-08) | **Aprovada:** < 50 vermelho / 50–69 / 70–100 / > 100 "dado suspeito" |
+| D-3 | Amostra mínima (RN-21) | **Aprovada:** 5 execuções |
 
 ---
 
@@ -290,7 +296,7 @@ Fase 1 no frontend (mesmo padrão de `exportCsv` em `ProjectsList.tsx`), um bot�
 - **`OperationsReportsView` (`backend/api/operations.py`):**
   - Horas do técnico pela RN-04 (eventos `in_progress` via `_presence_durations_by_collaborator`), não por intervalo `assignment_start → assignment_end` sem desconto de pausa (linhas ~513–516 atuais).
   - HH por `assignment.actual_hours` / `ProjectTask.real_man_hours` (RN-01), substituindo `hours * num_assignees` (linha ~534).
-  - `_presence_durations_by_collaborator`: aplicar o corte da RN-09 (hoje o último status vai até 23:59:59) e devolver contagem de dias incompletos.
+  - `_presence_durations_by_collaborator`: aplicar o corte da RN-09 (hoje o último status vai até 23:59:59) e devolver contagem de dias incompletos. O corte só se aplica quando o último evento do dia **não** é `in_progress`; precisa do `checked_in_at` de `TechnicianDailyPresence` do dia. Não aplicar ao dia corrente (ele já termina em `now`).
   - Improdutivo do período (não só do mês corrente) e com `category` external/internal (RN-11, RN-14).
   - Nova agregação `activity_productivity` por `generated_task.activity` × `generated_task.scope_item.cable_family`, com `select_related("generated_task__activity", "generated_task__scope_item__cable_family")`; mediana/P25/P75 com `statistics` da stdlib.
   - `_log_entries`: incluir `type` em cada entrada.
