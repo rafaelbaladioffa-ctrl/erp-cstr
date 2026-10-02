@@ -78,6 +78,7 @@ _PAGE_FOOTER_RE = re.compile(r"^\s*(Note: This SOW is Amazon Confidential|disclo
 _GROUP_RE = re.compile(r"^\s*==\s*(.+?)\s*==\s*$")
 _ROOM_RE = re.compile(r"^\s*(room\s+[\w-]+)\s*$", re.IGNORECASE)
 _CONNECTION_LINE_RE = re.compile(r"^\s*\d+\s*[xX]\s+\S")
+_SOW_DOCUMENT_RE = re.compile(r"scope\s+of\s+work|infrastructure\s+delivery|bid\s+instruction", re.IGNORECASE)
 
 
 def extract_sow_lines(text):
@@ -87,11 +88,26 @@ def extract_sow_lines(text):
     da AWS), só as linhas de ligação dessa seção viram item — o texto
     contratual, datas e contatos são ignorados; "== Grupo ==" e "Room X-Y"
     viram contexto, e uma linha quebrada pelo PDF é reemendada à anterior.
-    Sem essa seção, cada linha não vazia vira item (listas coladas à mão)."""
+    Sem essa seção, tenta os modelos antigos (legacy_formats); se nada for
+    reconhecido, cada linha não vazia vira item (listas coladas à mão)."""
+    from .legacy_formats import extract_legacy_lines
+
+    items = _extract_connections_section(text)
+    if items:
+        return items
+    items = extract_legacy_lines(text)
+    if items or _SOW_DOCUMENT_RE.search(text or ""):
+        # Documento de SOW sem nenhuma ligação reconhecida (ex. só instalação
+        # de bridges/racks): nada vira item, em vez de cada parágrafo.
+        return items
+    return [(line, {}) for line in split_sow_text_into_lines(text)]
+
+
+def _extract_connections_section(text):
     raw_lines = (text or "").splitlines()
     start = next((i for i, line in enumerate(raw_lines) if _CONNECTIONS_HEADER_RE.match(line)), None)
     if start is None:
-        return [(line, {}) for line in split_sow_text_into_lines(text)]
+        return []
 
     items = []
     group = room = None
@@ -169,6 +185,7 @@ def _extract_preterminated(text):
 
 def _clean_candidate(text):
     text = _FROM_TO_RE.sub(" ", text)
+    text = re.sub(r"\b(around|approx\.?|approximately|aprox\.?|cerca de)\b", " ", text, flags=re.IGNORECASE)
     text = re.sub(r"[,;]", " ", text)
     text = re.sub(r"\s+", " ", text).strip(" -")
     return text

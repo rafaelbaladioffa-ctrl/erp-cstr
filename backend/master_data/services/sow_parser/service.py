@@ -222,6 +222,22 @@ def _merge_draft(det_draft, ai_item):
     return merged, dict(ai_item)
 
 
+def _draft_from_line(line, context):
+    """parse_line + contexto do extrator. Nos modelos antigos a linha é uma
+    versão canônica montada pelo extrator; o item guarda a linha original do
+    SOW (`raw`) e a origem/destino já separados por ele."""
+    context = dict(context)
+    draft = parse_line(line)
+    raw = context.pop("raw", None)
+    if raw:
+        draft["raw_text"] = raw
+    for key in ("origin", "destination"):
+        if context.get(key):
+            draft[key] = context.pop(key)
+    draft["sow_context"] = context
+    return draft
+
+
 def _run_parsing(sow_import):
     from master_data.models import SowParsedItem
 
@@ -235,7 +251,7 @@ def _run_parsing(sow_import):
         if not lines:
             raise SowProcessingError("Nenhum texto para processar — informe o texto do SOW.")
 
-        deterministic_drafts = [{**parse_line(line), "sow_context": context} for line, context in lines]
+        deterministic_drafts = [_draft_from_line(line, context) for line, context in lines]
 
         ai_items = None
         ai_provider_label = ""

@@ -6242,3 +6242,74 @@ class QueryScalingTests(TestCase):
         detail = self.api.get(f"/api/project-updates/{update.pk}/")
         self.assertEqual(detail.status_code, 200)
         self.assertTrue(detail.data["preview"])
+
+
+class LegacySowFormatTests(TestCase):
+    """Modelos de SOW anteriores à seção "Connections & Cable Types"."""
+
+    def extract(self, text):
+        from master_data.services.sow_parser.deterministic_parser import extract_sow_lines, parse_line
+
+        return [(parse_line(line), context) for line, context in extract_sow_lines(text)]
+
+    def test_brick_heading_with_arrow_rows(self):
+        text = """Scope of Work
+Euclid Brick to Euclid Spines: 08x Fiber Trunks 36F SM LC/LC.
+01x PR017-53 --> PR003-58: 76 meters - Route ANote: This SOW is Amazon Confidential Information subject to the
+whole or in part, to any third parties without Amazon's advance written consent.
+Euclid Brick to Euclid Patch Rack: 32x Breakout Fiber 8F SM MPO/LC.
+32x PR017-53 --> NR017-56: 2.5 meters (side by side)
+Euclid Brick to Fusion rack: 04x Cable UTP CAT6.
+03x NR017-56 --> NR020-68: 14 meters - Route A (green)
+"""
+        items = self.extract(text)
+        self.assertEqual(len(items), 3)
+        trunk, ctx = items[0]
+        self.assertEqual((trunk["quantity"], trunk["candidate_text"], trunk["length_m"], trunk["path_code"]), (1, "36F SM LC/LC", Decimal("76"), "PATH-A"))
+        self.assertEqual((ctx["origin"], ctx["destination"], ctx["group"]), ("PR017-53", "PR003-58", "Euclid Brick to Euclid Spines"))
+        self.assertEqual(items[1][0]["candidate_text"], "8F SM MPO/LC")
+        self.assertEqual(items[1][0]["length_m"], Decimal("2.5"))
+        self.assertEqual((items[2][0]["quantity"], items[2][0]["color"]), (3, "GREEN"))
+
+    def test_two_routes_in_one_row_split_quantity(self):
+        text = """Scope of Work
+BFC Brick to Spine: 08x trunk 72F SM MPO/MPO
+2x NR01-01-009-56 <--> NR01-01-003-74 (Route A - 62m / Route B - 48m)
+Cabling Priority:
+NR01-01-009-56 <--> NR01-01-003-74
+"""
+        items = self.extract(text)
+        self.assertEqual([(d["quantity"], d["length_m"], d["path_code"]) for d, _ in items], [(1, Decimal("62"), "PATH-A"), (1, Decimal("48"), "PATH-B")])
+        self.assertEqual(items[0][0]["candidate_text"], "72F SM MPO/MPO")
+
+    def test_inline_cable_with_units_and_multi_hop(self):
+        text = """Scope of Work
+038-68 --> 040-68: 02un. 2F fiber LC/LC 52 meters (route A).
+038-68 --> 018-39 --> 003-32 --> 002-53: 02un. 2F fiber LC/LC 90 and 36 meters (route A).
+"""
+        items = self.extract(text)
+        self.assertEqual((items[0][0]["quantity"], items[0][0]["candidate_text"], items[0][0]["length_m"]), (2, "2F fiber LC/LC", Decimal("52")))
+        hop, ctx = items[1]
+        self.assertIsNone(hop["length_m"])
+        self.assertEqual((ctx["via"], ctx["segments_m"]), ("018-39 → 003-32", "90 + 36"))
+
+    def test_qty_and_labelled_lists(self):
+        text = """Scope of Work
+Consultimer vendor will install 1x MR rack & 2x v-panels in location 01-02-020-11
+MN_FIBER:
+QTY: 32 - 8F LC-LC Trunk -
+CONSOLE_COPPER: 40x GREEN RJ45 & 1x ORANGE RJ45
+"""
+        items = self.extract(text)
+        self.assertEqual([(d["quantity"], d["candidate_text"]) for d, _ in items], [(32, "8F LC-LC Trunk"), (40, "RJ45"), (1, "RJ45")])
+        self.assertEqual(items[1][1]["group"], "CONSOLE_COPPER")
+
+    def test_loose_lines_old_aws_table(self):
+        items = self.extract("Infrastructure Delivery\n1        x        8F LC<>LC        with        48m\n- 3x SMF LC-LC DUPLEX 2F around 4m\n")
+        self.assertEqual([(d["quantity"], d["candidate_text"], d["length_m"]) for d, _ in items], [(1, "8F LC<>LC", Decimal("48")), (3, "SMF LC-LC DUPLEX 2F", Decimal("4"))])
+
+    def test_sow_document_without_cables_yields_no_items(self):
+        self.assertEqual(self.extract("Scope Of Work\nINTRODUCTION\n- Install 96 Autobahn Bridges on fiber trail\n"), [])
+
+    def test_plain_pasted_list_keeps_line_per_item_fallback(self):
+        self.assertEqual(len(self.extract("2F robust fiber 40m\nCAT6 azul 30m\n")), 2)
