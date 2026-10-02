@@ -134,19 +134,19 @@ def extract_legacy_lines(text):
                 items.append((canonical, {"group": group, "raw": line, **context}))
             continue
 
-        paren = _PAREN_HEADING_RE.match(line)
-        heading = _HEADING_RE.match(line)
-        if paren or (heading and not _LOOSE_ITEM_RE.match(line)):
-            match = paren or heading
-            group, heading_desc = match.group("group").strip(), match.group("desc")
-            continue
-
         label = _LABEL_RE.match(line)
         parts = [line]
         if label:
             group = label.group("label")
             line = label.group("rest")
             parts = re.split(r"\s*&\s*", line)
+        else:
+            paren = _PAREN_HEADING_RE.match(line)
+            heading = _HEADING_RE.match(line)
+            if paren or (heading and not _LOOSE_ITEM_RE.match(line)):
+                match = paren or heading
+                group, heading_desc = match.group("group").strip(), match.group("desc")
+                continue
 
         qty_line = _QTY_LINE_RE.match(line)
         if qty_line:
