@@ -60,6 +60,7 @@ const EMPTY_REFS: ReferenceData = {
   clients: [],
   projectTypes: [],
   collaborators: [],
+  regions: [],
   cableFamilies: [],
   masterDataSites: [],
   activities: [],
