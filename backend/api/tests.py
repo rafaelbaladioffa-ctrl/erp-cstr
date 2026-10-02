@@ -4362,7 +4362,7 @@ class GeneratedTaskApiTests(TestCase):
     def test_quantity_meterage(self):
         self.generate()
         task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_meterage)
-        self.assertEqual(task.quantity, Decimal("42.50"))
+        self.assertEqual(task.quantity, Decimal("45"))
 
     def test_quantity_project(self):
         self.generate()
@@ -4393,7 +4393,7 @@ class GeneratedTaskApiTests(TestCase):
     def test_snapshot_name_and_step_order(self):
         self.generate()
         task = GeneratedTask.objects.get(scope_item=self.scope_item, activity=self.act_scope_item)
-        self.assertEqual(task.name, f"{self.step_scope_item.effective_name} {self.family.name} 42.50m")
+        self.assertEqual(task.name, f"{self.step_scope_item.effective_name} {self.family.name} 45m")
         self.assertEqual(task.step_order, 10)
 
     def test_required_and_repeatable_snapshot(self):

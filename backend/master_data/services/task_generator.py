@@ -71,7 +71,8 @@ def _scope_item_identity(scope_item):
     concatenado ao nome da GeneratedTask/ProjectTask para não perder
     rastreabilidade quando várias tarefas do mesmo tipo de atividade (ex:
     "Lançar cabeamento") existem lado a lado no mesmo projeto, uma por
-    ScopeItem (ex: "Lançar cabeamento Fibra MPO 32m"). Cai para um recorte
+    ScopeItem (ex: "Lançar cabeamento Fibra MPO 35m", metragem já
+    arredondada para o múltiplo de 5, igual à quantidade). Cai para um recorte
     de `raw_text` só quando nem tipo nem metragem estão disponíveis (ex:
     item ainda sem cable_family/cable_spec resolvido)."""
     parts = []
@@ -80,7 +81,7 @@ def _scope_item_identity(scope_item):
     elif scope_item.cable_family_id:
         parts.append(scope_item.cable_family.name)
     if scope_item.length_m:
-        parts.append(f"{scope_item.length_m}m")
+        parts.append(f"{_round_up_to_5(scope_item.length_m):.0f}m")
     if parts:
         return " ".join(str(part) for part in parts)
     text = scope_item.raw_text.strip()
