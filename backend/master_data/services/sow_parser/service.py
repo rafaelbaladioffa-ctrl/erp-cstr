@@ -249,7 +249,10 @@ def _run_parsing(sow_import):
     try:
         lines = extract_sow_lines(sow_import.source_text)
         if not lines:
-            raise SowProcessingError("Nenhum texto para processar — informe o texto do SOW.")
+            raise SowProcessingError(
+                "Nenhuma ligação de cabo foi encontrada neste SOW (ex.: escopo só de instalação de "
+                "bridges/racks). Se houver cabos, cole as linhas de cabeamento no campo de texto."
+            )
 
         deterministic_drafts = [_draft_from_line(line, context) for line, context in lines]
 
