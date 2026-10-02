@@ -26,6 +26,7 @@ from .models import (
     Notification,
     Person,
     ProjectType,
+    Region,
     Responsible,
     Site,
     Task,
@@ -96,6 +97,13 @@ class CompanyScopedAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePa
     readonly_fields = ("created_at", "updated_at")
 
 
+@admin.register(Region)
+class RegionAdmin(ModelAdmin):
+    list_display = ("code", "name", "country", "is_active")
+    list_filter = ("country", "is_active")
+    search_fields = ("code", "name")
+
+
 @admin.register(Site)
 class SiteAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
     change_list_template = "admin/core/site/change_list.html"
@@ -123,10 +131,10 @@ class SiteAdmin(CSVImportExportMixin, PhoneMaskAdminMixin, SelectablePageSizeAdm
 
     def has_delete_permission(self, request, obj=None):
         return super().has_delete_permission(request, obj) and self._site_accessible(request, obj)
-    list_display = ("code", "name", "client", "city", "state", "geocode_status", "is_active")
-    list_filter = ("client", "is_active")
+    list_display = ("code", "name", "client", "city", "state", "region", "geocode_status", "is_active")
+    list_filter = ("client", "region", "is_active")
     search_fields = ("code", "name", "city")
-    autocomplete_fields = ("client",)
+    autocomplete_fields = ("client", "region")
     readonly_fields = ("created_at", "updated_at")
     actions = ("regeocode_selected",)
     fieldsets = (

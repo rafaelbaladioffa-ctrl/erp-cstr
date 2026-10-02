@@ -14,6 +14,7 @@ router.register("project-occurrences", views.ProjectOccurrenceViewSet, basename=
 router.register("project-attachments", views.ProjectAttachmentViewSet, basename="project-attachment")
 router.register("notifications", views.NotificationViewSet, basename="notification")
 router.register("push-subscriptions", views.PushSubscriptionViewSet, basename="push-subscription")
+router.register("regions", views.RegionViewSet, basename="region")
 router.register("clients", views.ClientViewSet, basename="client")
 router.register("sites", views.SiteViewSet, basename="site")
 router.register("collaborators", views.CollaboratorViewSet, basename="collaborator")

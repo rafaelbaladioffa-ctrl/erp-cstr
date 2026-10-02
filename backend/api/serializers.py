@@ -11,6 +11,7 @@ from core.models import (
     JobTitle,
     Notification,
     ProjectType,
+    Region,
     Responsible,
     Site,
     Task,
@@ -77,10 +78,22 @@ class ClientSerializer(serializers.ModelSerializer):
         return str(obj)
 
 
+class RegionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Region
+        fields = ("id", "code", "name", "country", "country_display")
+
+    country_display = serializers.CharField(source="get_country_display", read_only=True)
+
+
 class SiteSerializer(serializers.ModelSerializer):
+    region_name = serializers.CharField(source="region.name", read_only=True, default=None)
+    region_code = serializers.CharField(source="region.code", read_only=True, default=None)
+    country = serializers.CharField(source="region.country", read_only=True, default=None)
+
     class Meta:
         model = Site
-        fields = ("id", "name", "code", "city", "state")
+        fields = ("id", "name", "code", "city", "state", "region", "region_name", "region_code", "country")
 
 
 def _get_or_create_person(*, name="", email="", phone="", company=None):
@@ -1325,17 +1338,24 @@ class JobTitleCrudSerializer(serializers.ModelSerializer):
 
 class SiteCrudSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer):
     client_name = serializers.SerializerMethodField()
+    region_name = serializers.SerializerMethodField()
+    region_code = serializers.CharField(source="region.code", read_only=True, default=None)
+    country = serializers.CharField(source="region.country", read_only=True, default=None)
 
     class Meta:
         model = Site
         fields = (
             "id", "client", "client_name", "name", "code", "address", "city", "state",
+            "region", "region_name", "region_code", "country",
             "manual_coordinates", "latitude", "longitude", "is_active", "created_at", "updated_at",
         )
         read_only_fields = ("created_at", "updated_at")
 
     def get_client_name(self, obj):
         return str(obj.client) if obj.client_id else None
+
+    def get_region_name(self, obj):
+        return str(obj.region) if obj.region_id else None
 
 
 class ClientCrudSerializer(serializers.ModelSerializer):

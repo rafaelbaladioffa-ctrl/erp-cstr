@@ -29,6 +29,7 @@ from core.models import (
     Notification,
     ProjectType,
     PushSubscription,
+    Region,
     Responsible,
     Site,
     Task,
@@ -147,6 +148,7 @@ from .serializers import (
     ProjectTypeCrudSerializer,
     RackPositionBulkCreateSerializer,
     RackPositionSerializer,
+    RegionSerializer,
     ResponsibleCrudSerializer,
     SiteCrudSerializer,
     SiteSerializer,
@@ -404,8 +406,14 @@ class ClientViewSet(viewsets.ReadOnlyModelViewSet):
         return scope_client_queryset(super().get_queryset(), self.request.user)
 
 
+class RegionViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Region.objects.filter(is_active=True).order_by("country", "name")
+    serializer_class = RegionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
 class SiteViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Site.objects.filter(is_active=True).order_by("name")
+    queryset = Site.objects.filter(is_active=True).select_related("region").order_by("name")
     serializer_class = SiteSerializer
     permission_classes = [ViewAwareModelPermissions]
 

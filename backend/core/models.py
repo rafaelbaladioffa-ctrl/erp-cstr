@@ -65,6 +65,32 @@ class ActiveCompanyModel(TimestampedModel):
         abstract = True
 
 
+class Region(TimestampedModel):
+    COUNTRY_BR = "BR"
+    COUNTRY_US = "US"
+    COUNTRY_CL = "CL"
+    COUNTRY_MX = "MX"
+    COUNTRY_CHOICES = (
+        (COUNTRY_BR, "Brasil"),
+        (COUNTRY_US, "EUA"),
+        (COUNTRY_CL, "Chile"),
+        (COUNTRY_MX, "México"),
+    )
+
+    country = models.CharField("país", max_length=2, choices=COUNTRY_CHOICES, default=COUNTRY_BR)
+    name = models.CharField("nome", max_length=100)
+    code = models.CharField("código", max_length=20, unique=True)
+    is_active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "região"
+        verbose_name_plural = "regiões"
+        ordering = ("country", "name")
+
+    def __str__(self):
+        return f"{self.get_country_display()} · {self.name}"
+
+
 class Site(TimestampedModel):
     client = models.ForeignKey(
         "Client",
@@ -78,6 +104,14 @@ class Site(TimestampedModel):
     address = models.CharField("endereço", max_length=255, blank=True)
     city = models.CharField("cidade", max_length=100, blank=True)
     state = models.CharField("UF", max_length=2, blank=True)
+    region = models.ForeignKey(
+        Region,
+        verbose_name="região",
+        on_delete=models.SET_NULL,
+        related_name="sites",
+        null=True,
+        blank=True,
+    )
     manual_coordinates = models.BooleanField(
         "coordenadas manuais",
         default=False,
