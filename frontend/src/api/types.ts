@@ -693,6 +693,14 @@ export interface JobTitle {
   is_active: boolean;
 }
 
+export interface Region {
+  id: number;
+  code: string;
+  name: string;
+  country: string;
+  country_display: string;
+}
+
 export interface SiteFull {
   id: number;
   client: number | null;
@@ -702,6 +710,10 @@ export interface SiteFull {
   address: string;
   city: string;
   state: string;
+  region: number | null;
+  region_name: string | null;
+  region_code: string | null;
+  country: string | null;
   manual_coordinates: boolean;
   latitude: string | null;
   longitude: string | null;

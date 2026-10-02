@@ -41,6 +41,7 @@ import type {
   TechnicalPerformanceData,
   TechnicianPresence,
   UserOption,
+  Region,
   SiteFull,
   SiteMapData,
   GeneratedTask,
@@ -257,6 +258,11 @@ export const taskRuleSimulatorApi = {
 export const auditLogApi = {
   list: (params?: Record<string, string>) =>
     apiClient.get<Paginated<AuditLogEntry>>("/audit-logs/", { params }).then((r) => r.data),
+};
+
+export const regionsApi = {
+  list: (params?: Record<string, string>) =>
+    apiClient.get<Paginated<Region>>("/regions/", { params }).then((r) => r.data),
 };
 
 export const sitesMapApi = {

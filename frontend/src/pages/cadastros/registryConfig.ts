@@ -13,6 +13,7 @@ import type {
   Paginated,
   Path,
   ProjectType,
+  Region,
   ResponsibleFull,
   SiteFull,
   TaskFull,
@@ -109,6 +110,7 @@ export interface ReferenceData {
   clients: ClientFull[];
   projectTypes: ProjectType[];
   collaborators: CollaboratorFull[];
+  regions: Region[];
   /** Só usado por Cadastros Mestres (ex: seletor de família em Aliases de
    * Cabo) — vazio para quem só usa Cadastros Gerais. */
   cableFamilies: CableFamily[];
@@ -238,11 +240,18 @@ export const ENTITIES: EntityConfig<any>[] = [
       { key: "name", label: "Nome" },
       { key: "client_name", label: "Cliente" },
       { key: "city", label: "Cidade" },
+      { key: "region_name", label: "Regional" },
     ],
     fields: (refs) => [
       { name: "code", label: "Código", type: "text", required: true },
       { name: "name", label: "Nome", type: "text" },
       { name: "client", label: "Cliente", type: "select", required: true, options: clientOptions(refs) },
+      {
+        name: "region",
+        label: "Regional",
+        type: "select",
+        options: refs.regions.map((r) => ({ value: r.id, label: `${r.country_display} · ${r.name}` })),
+      },
       { name: "city", label: "Cidade", type: "text" },
       { name: "state", label: "UF", type: "text" },
       { name: "address", label: "Endereço", type: "text", span: 2 },
@@ -258,7 +267,7 @@ export const ENTITIES: EntityConfig<any>[] = [
       { name: "is_active", label: "Situação", type: "checkbox", placeholder: "Ativo", span: 2 },
     ],
     emptyValues: {
-      code: "", name: "", client: null, city: "", state: "", address: "",
+      code: "", name: "", client: null, region: null, city: "", state: "", address: "",
       manual_coordinates: false, latitude: null, longitude: null, is_active: true,
     },
     rowLabel: (row: SiteFull) => row.code || row.name,

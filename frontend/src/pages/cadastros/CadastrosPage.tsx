@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { registryApi } from "../../api/resources";
+import { regionsApi, registryApi } from "../../api/resources";
 import EntityCrudPanel from "../../components/cadastros/EntityCrudPanel";
 import { useAuth } from "../../context/AuthContext";
 import { usePageText } from "../../i18n";
@@ -31,8 +31,8 @@ export default function CadastrosPage() {
   const [activeKey, setActiveKey] = useState(visibleEntities[0]?.key ?? "");
   const [quickCreateSignal, setQuickCreateSignal] = useState<{ key: string; nonce: number } | null>(null);
   const [refs, setRefs] = useState<ReferenceData>({
-    companies: [], jobTitles: [], sites: [], clients: [], projectTypes: [], collaborators: [], cableFamilies: [], masterDataSites: [],
-    activities: [], taskTemplates: [], cableSpecs: [], networks: [], workstreams: [], paths: [],
+    companies: [], jobTitles: [], sites: [], clients: [], projectTypes: [], collaborators: [], regions: [],
+    cableFamilies: [], masterDataSites: [], activities: [], taskTemplates: [], cableSpecs: [], networks: [], workstreams: [], paths: [],
   });
   const [refsLoaded, setRefsLoaded] = useState(false);
 
@@ -56,8 +56,9 @@ export default function CadastrosPage() {
       registryApi.clients.list({ page_size: "500" } as never),
       registryApi.projectTypes.list({ page_size: "200" } as never),
       registryApi.collaborators.list({ page_size: "500" } as never),
+      regionsApi.list({ page_size: "100" }),
     ])
-      .then(([companies, jobTitles, sites, clients, projectTypes, collaborators]) => {
+      .then(([companies, jobTitles, sites, clients, projectTypes, collaborators, regions]) => {
         setRefs({
           companies: companies.status === "fulfilled" ? companies.value.results : [],
           jobTitles: jobTitles.status === "fulfilled" ? jobTitles.value.results : [],
@@ -65,6 +66,7 @@ export default function CadastrosPage() {
           clients: clients.status === "fulfilled" ? clients.value.results : [],
           projectTypes: projectTypes.status === "fulfilled" ? projectTypes.value.results : [],
           collaborators: collaborators.status === "fulfilled" ? collaborators.value.results : [],
+          regions: regions.status === "fulfilled" ? regions.value.results : [],
           cableFamilies: [],
           masterDataSites: [],
           activities: [],
