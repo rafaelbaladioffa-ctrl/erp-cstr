@@ -6301,7 +6301,10 @@ QTY: 32 - 8F LC-LC Trunk -
 CONSOLE_COPPER: 40x GREEN RJ45 & 1x ORANGE RJ45
 """
         items = self.extract(text)
-        self.assertEqual([(d["quantity"], d["candidate_text"]) for d, _ in items], [(32, "8F LC-LC Trunk"), (40, "RJ45"), (1, "RJ45")])
+        self.assertEqual(
+            [(d["quantity"], d["candidate_text"], d["color"]) for d, _ in items],
+            [(32, "8F LC-LC Trunk", None), (40, "GREEN RJ45", "GREEN"), (1, "ORANGE RJ45", "ORANGE")],
+        )
         self.assertEqual(items[1][1]["group"], "CONSOLE_COPPER")
 
     def test_loose_lines_old_aws_table(self):
