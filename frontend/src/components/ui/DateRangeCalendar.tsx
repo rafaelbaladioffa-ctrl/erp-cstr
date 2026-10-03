@@ -1,19 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../../i18n";
+import { brazilTodayIso, fromIsoDate as fromIso, toLocalIsoDate as toIso } from "../../utils/date";
 import Icon from "./Icon";
 
 export interface DateRange {
   start: string;
   end: string;
-}
-
-function toIso(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-function fromIso(s: string) {
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d);
 }
 
 function buildMonthGrid(viewDate: Date) {
@@ -42,10 +34,14 @@ export default function DateRangeCalendar({
   value,
   onChange,
   maxDays = 7,
+  emitPartial = true,
 }: {
   value: DateRange | null;
   onChange: (range: DateRange | null) => void;
   maxDays?: number;
+  /** Quando false, só chama onChange depois que o intervalo é concluído
+   *  (evita uma consulta intermediária de um dia só ao escolher o 1º dia). */
+  emitPartial?: boolean;
 }) {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
@@ -70,10 +66,11 @@ export default function DateRangeCalendar({
     setWarning("");
     if (!pendingStart) {
       setPendingStart(iso);
-      onChange({ start: iso, end: iso });
+      if (emitPartial) onChange({ start: iso, end: iso });
       return;
     }
     if (iso === pendingStart) {
+      if (!emitPartial) onChange({ start: iso, end: iso });
       setPendingStart(null);
       setOpen(false);
       return;
@@ -119,7 +116,7 @@ export default function DateRangeCalendar({
 
   const weekdays = getWeekdayNames(locale);
   const days = buildMonthGrid(viewDate);
-  const today = toIso(new Date());
+  const today = brazilTodayIso();
 
   const label = value
     ? value.start === value.end

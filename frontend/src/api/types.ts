@@ -953,30 +953,95 @@ export interface OperationsTimeline {
   technicians: TimelineTechnician[];
 }
 
+/** Faixa de utilização (RN-08). "suspect" = acima de 100% (dado a revisar). */
+export type UtilizationBand = "low" | "attention" | "normal" | "suspect";
+
 export interface ReportsStats {
-  avg_utilization_pct: number;
-  productive_hours: number;
-  completed_count: number;
-  today_productive_hours: number;
-  today_unproductive_hours: number;
-  completed_this_month: number;
+  period_completed_count: number;
+  tracked_completed_count: number;
+  tracking_rate_pct: number | null;
+  man_hours_total: number;
+  productive_hours_total: number;
+  journey_hours_total: number;
+  utilization_pct: number | null;
+  utilization_band: UtilizationBand | null;
+  external_block_hours: number;
+  internal_idle_hours: number;
+  incomplete_days: number;
+  internal_idle_limit_hours: number;
+  technicians_over_idle_limit: number;
+  // Campos v1 (legados) — mantidos pelo backend durante a transição.
+  avg_utilization_pct?: number;
+  productive_hours?: number;
+  completed_count?: number;
+  today_productive_hours?: number;
+  today_unproductive_hours?: number;
+  completed_this_month?: number;
+}
+
+export interface ReportsToday {
+  technicians_checked_in: number;
+  productive_hours_total: number;
+  productive_hours_avg_per_tech: number | null;
+  productive_target_hours: number;
+  external_block_hours: number;
+  internal_idle_hours: number;
+  internal_idle_limit_hours: number;
+  technicians_over_idle_limit: number;
 }
 
 export interface ReportsTechnician {
   id: number;
   name: string;
   site_name: string;
-  worked_hours: number;
-  completed_count: number;
+  productive_hours: number;
+  /** @deprecated v1 — usar productive_hours. */
+  worked_hours?: number;
+  man_hours: number;
   journey_hours: number;
   utilization_pct: number | null;
+  utilization_band: UtilizationBand | null;
+  completed_count: number;
+  untracked_count: number;
+  tracking_rate_pct: number | null;
+  external_block_hours: number;
+  internal_idle_hours: number;
+  internal_idle_avg_per_day: number | null;
+  idle_limit_exceeded: boolean;
+  incomplete_days: number;
 }
 
+/** @deprecated v1 — usar ReportsActivityProductivity. */
 export interface ReportsActivity {
   name: string;
   executions: number;
   avg_hours: number;
   best_hours: number;
+  ignored_count?: number;
+}
+
+export interface ReportsDistribution {
+  median: number;
+  p25: number;
+  p75: number;
+}
+
+export interface ReportsActivityProductivity {
+  activity_code: string;
+  activity_name: string;
+  cable_family_code: string | null;
+  cable_family_name: string | null;
+  unit: string;
+  executions_total: number;
+  executions_used: number;
+  excluded: { untracked: number; partial_or_blocked: number; no_quantity: number };
+  sufficient_sample: boolean;
+  median_man_hours: number | null;
+  median_duration_hours: number | null;
+  avg_crew_size: number | null;
+  total_quantity: number;
+  hh_per_unit: ReportsDistribution | null;
+  hh_per_meter: (ReportsDistribution & { total_meters: number }) | null;
 }
 
 export interface ReportsTechnicianToday {
@@ -986,20 +1051,29 @@ export interface ReportsTechnicianToday {
   journey_hours: number;
   active_hours: number;
   available_hours: number;
+  internal_idle_hours: number;
+  idle_limit_exceeded: boolean;
   break_hours: number;
-  unproductive_hours: number;
+  external_block_hours: number;
+  /** @deprecated v1 — igual a external_block_hours. */
+  unproductive_hours?: number;
   utilization_pct: number | null;
+  utilization_band: UtilizationBand | null;
 }
 
 export interface ReportsUnproductiveReason {
   status: string;
   status_display: string;
+  category: "external" | "internal";
   hours: number;
 }
+
+export type ReportsLogType = "dispatch" | "start" | "complete" | "pause" | "available" | "checkin" | "status";
 
 export interface ReportsLogEntry {
   at: string;
   name: string;
+  type: ReportsLogType;
   text: string;
 }
 
@@ -1007,8 +1081,12 @@ export interface OperationsReports {
   date_from: string;
   date_to: string;
   stats: ReportsStats;
+  today: ReportsToday;
   technicians: ReportsTechnician[];
-  activities: ReportsActivity[];
+  activity_productivity: ReportsActivityProductivity[];
+  activity_excluded_no_catalog: number;
+  /** @deprecated v1 — usar activity_productivity. */
+  activities?: ReportsActivity[];
   today_technicians: ReportsTechnicianToday[];
   unproductive_by_reason: ReportsUnproductiveReason[];
   log_entries: ReportsLogEntry[];

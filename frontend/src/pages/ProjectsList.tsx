@@ -12,6 +12,7 @@ import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { useTabs } from "../context/TabsContext";
 import { useI18n, usePageText } from "../i18n";
+import { downloadCsv } from "../utils/csv";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 const TEXT = {
@@ -127,10 +128,6 @@ function daysDiff(value: string | null): number | null {
   return Math.round((target - today.getTime()) / 86400000);
 }
 
-function neutralizeFormula(value: string): string {
-  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
-}
-
 function exportCsv(projects: Project[]) {
   const header = ["Codigo", "Projeto", "Site", "Cliente", "Categoria", "Horas", "Tarefas", "Progresso", "Status", "Prazo"];
   const rows = projects.map((p) => [
@@ -145,16 +142,7 @@ function exportCsv(projects: Project[]) {
     p.status_display,
     p.planned_end || "",
   ]);
-  const csv = [header, ...rows]
-    .map((row) => row.map((cell) => `"${neutralizeFormula(String(cell)).replace(/"/g, '""')}"`).join(";"))
-    .join("\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "projetos.csv";
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadCsv("projetos.csv", [header, ...rows]);
 }
 
 function DeadlineLabel({ planned_end, noDeadline, overdue, today, days }: {
