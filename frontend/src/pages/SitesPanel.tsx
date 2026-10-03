@@ -70,6 +70,7 @@ const TEXT = {
     presentOf: (p: number, t: number) => `${p} presentes de ${t}`,
     noTechs: "Nenhum técnico no dia",
     techLegend: { executing: "em execução", unproductive: "improdutivo", break: "pausa", off_duty: "encerrou", on_leave: "ausente", no_checkin: "sem check-in" } as Record<string, string>,
+    statusAll: "Todos",
     statusShort: { active: "Ativos", paused: "Pausados", planning: "Planej.", finished: "Finaliz." } as Record<StatusKey, string>,
     lateCount: (n: number) => (n === 1 ? "1 atrasado" : `${n} atrasados`),
     riskCount: (n: number) => `${n} em risco`,
@@ -133,6 +134,7 @@ const TEXT = {
     presentOf: (p: number, t: number) => `${p} present of ${t}`,
     noTechs: "No technicians today",
     techLegend: { executing: "executing", unproductive: "unproductive", break: "break", off_duty: "finished", on_leave: "absent", no_checkin: "no check-in" } as Record<string, string>,
+    statusAll: "All",
     statusShort: { active: "Active", paused: "Paused", planning: "Planning", finished: "Finished" } as Record<StatusKey, string>,
     lateCount: (n: number) => `${n} late`,
     riskCount: (n: number) => `${n} at risk`,
@@ -196,6 +198,7 @@ const TEXT = {
     presentOf: (p: number, t: number) => `${p} presentes de ${t}`,
     noTechs: "Ningún técnico hoy",
     techLegend: { executing: "en ejecución", unproductive: "improductivo", break: "pausa", off_duty: "terminó", on_leave: "ausente", no_checkin: "sin check-in" } as Record<string, string>,
+    statusAll: "Todos",
     statusShort: { active: "Activos", paused: "Pausados", planning: "Planif.", finished: "Finaliz." } as Record<StatusKey, string>,
     lateCount: (n: number) => (n === 1 ? "1 atrasado" : `${n} atrasados`),
     riskCount: (n: number) => `${n} en riesgo`,
@@ -412,20 +415,7 @@ export default function SitesPanel() {
             </option>
           ))}
         </select>
-        <div className="sp-segmented sp-multi" role="group" aria-label={p.status}>
-          <span className="sp-filter-label">{p.status}</span>
-          {STATUS_KEYS.map((key) => (
-            <button
-              key={key}
-              className={statusKeys.includes(key) ? "active" : ""}
-              aria-pressed={statusKeys.includes(key)}
-              onClick={() => toggleStatus(key)}
-            >
-              {statusKeys.includes(key) && <Icon name="check" style={{ fontSize: 14 }} />}
-              {p.statusOptions[key]}
-            </button>
-          ))}
-        </div>
+        <StatusDropdown p={p} selected={statusKeys} onToggle={toggleStatus} />
         <label className="sp-toggle">
           <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} />
           {p.onlyAlerts}
@@ -500,6 +490,77 @@ export default function SitesPanel() {
           showTeam={!!data?.include_technicians}
           onClose={() => setSelectedProjectId(null)}
         />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Filtro de status (dropdown com checkbox)
+// ---------------------------------------------------------------------------
+
+function StatusDropdown({
+  p,
+  selected,
+  onToggle,
+}: {
+  p: PanelText;
+  selected: StatusKey[];
+  onToggle: (key: StatusKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const ordered = STATUS_KEYS.filter((k) => selected.includes(k));
+  const summary =
+    ordered.length === STATUS_KEYS.length
+      ? p.statusAll
+      : ordered.length <= 2
+        ? ordered.map((k) => p.statusOptions[k]).join(", ")
+        : `${p.statusOptions[ordered[0]]} +${ordered.length - 1}`;
+
+  return (
+    <div className="sp-dropdown" ref={ref}>
+      <button
+        type="button"
+        className="sp-select sp-dropdown-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="sp-muted">{p.status}:</span> {summary}
+        <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 18 }} />
+      </button>
+      {open && (
+        <div className="sp-dropdown-menu" role="listbox" aria-multiselectable="true">
+          {STATUS_KEYS.map((key) => {
+            const checked = selected.includes(key);
+            const locked = checked && selected.length === 1;
+            return (
+              <label key={key} className={`sp-dropdown-option${locked ? " locked" : ""}`}>
+                <input type="checkbox" checked={checked} disabled={locked} onChange={() => onToggle(key)} />
+                <span>
+                  {p.statusOptions[key]}
+                  <small>{p.statusHints[key]}</small>
+                </span>
+              </label>
+            );
+          })}
+        </div>
       )}
     </div>
   );
