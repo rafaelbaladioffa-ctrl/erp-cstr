@@ -848,7 +848,7 @@ function AnalysisTab({
             <tbody key={group.key}>
               <tr className="sp-group-row">
                 <td colSpan={10}>
-                  <b>{group.label}</b>
+                  <b className="sp-group-label">{group.label}</b>
                   <span className="sp-muted"> · {rows.length}</span>
                   {group.alerts.late + group.alerts.risk > 0 && (
                     <span style={{ color: HEALTH_COLOR[group.alerts.late ? "late" : "risk"], marginLeft: 12, fontWeight: 600 }}>

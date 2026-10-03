@@ -4478,9 +4478,15 @@ button.sp-card:hover {
 }
 
 .sp-group-row td {
-  background: var(--surface);
+  background: var(--bg);
   font-size: 12.5px;
-  font-weight: 600;
+}
+
+.sp-group-label {
+  background: var(--surface);
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
 }
 
 .sp-row {
