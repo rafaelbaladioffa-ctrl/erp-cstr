@@ -91,6 +91,7 @@ const TEXT = {
     confirmUndispatch: "Remover o despacho dessa tarefa? Os técnicos voltam a ficar disponíveis pro pool.",
     absenceTitle: "Ausências planejadas (férias, atestado, folga)",
     noTechLinked: "Nenhum técnico vinculado a este site.",
+    noTechLoggedIn: "Nenhum técnico fez login nesta data.",
     loading: "Carregando...",
   },
   "en-US": {
@@ -157,6 +158,7 @@ const TEXT = {
     confirmUndispatch: "Remove the dispatch for this task? Technicians will return to the pool.",
     absenceTitle: "Planned absences (vacation, sick leave, day off)",
     noTechLinked: "No technician linked to this site.",
+    noTechLoggedIn: "No technician has logged in on this date.",
     loading: "Loading...",
   },
   "es-ES": {
@@ -223,6 +225,7 @@ const TEXT = {
     confirmUndispatch: "¿Eliminar el despacho de esta tarea? Los técnicos volverán a estar disponibles en el grupo.",
     absenceTitle: "Ausencias planificadas (vacaciones, baja médica, día libre)",
     noTechLinked: "Ningún técnico vinculado a este sitio.",
+    noTechLoggedIn: "Ningún técnico inició sesión en esta fecha.",
     loading: "Cargando...",
   },
 };
@@ -352,7 +355,7 @@ export default function OperationsBoard() {
   const nowPct = pct(nowDate, base);
   const techRows = reorderRowsByPair(
     technicians
-      .filter((tech) => !tech.on_leave)
+      .filter((tech) => !tech.on_leave && tech.presence_status !== "not_started")
       .map((tech) => {
       const { blocks = [], statusEvents = [] } = timelineByTech[tech.id] || {};
       const segments = buildTechSegments(blocks, statusEvents, nowDate, true, locale);
@@ -877,7 +880,9 @@ export default function OperationsBoard() {
                   );
                 })}
               </div>
-              {techRows.length === 0 && <div className="empty-state">{p.noTechLinked}</div>}
+              {techRows.length === 0 && (
+                <div className="empty-state">{technicians.length === 0 ? p.noTechLinked : p.noTechLoggedIn}</div>
+              )}
               <div className="tl-legend-row tod-legend-row">
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: DONE_COLOR }} />
