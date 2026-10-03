@@ -6428,6 +6428,26 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(row["internal_idle_hours"], 1.0)
         self.assertEqual(row["incomplete_days"], 0)
 
+    def test_internal_idle_limit_is_30_minutes_per_day(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(8, 20)),
+            (P.STATUS_OFF_DUTY, self.at(17)),
+        ])
+        self.check_in(self.tech_b, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(9)),
+            (P.STATUS_OFF_DUTY, self.at(17)),
+        ])
+        data = self.get()
+        self.assertFalse(self.tech_row(data, self.tech_a)["idle_limit_exceeded"])
+        row_b = self.tech_row(data, self.tech_b)
+        self.assertEqual(row_b["internal_idle_avg_per_day"], 1.0)
+        self.assertTrue(row_b["idle_limit_exceeded"])
+        self.assertEqual(data["stats"]["technicians_over_idle_limit"], 1)
+        self.assertEqual(data["stats"]["internal_idle_limit_hours"], 0.5)
+
     # --- Dia sem Fim de Expediente (RN-09) -------------------------------
 
     def test_day_without_off_duty_is_cut_at_checkin_plus_9h(self):

@@ -30,6 +30,7 @@ MAX_PERIOD_DAYS = 180
 INCOMPLETE_DAY_CUTOFF_HOURS = TechnicianDailyPresence.STANDARD_WORKDAY_HOURS + 1
 MIN_SAMPLE_SIZE = 5  # RN-21
 TODAY_PRODUCTIVE_TARGET_HOURS = 6  # meta diária por técnico (RN-13)
+INTERNAL_IDLE_LIMIT_HOURS = 0.5  # limite de ocioso interno por técnico por dia (RN-26)
 
 EXTERNAL_BLOCK_STATUSES = (
     TechnicianDailyPresence.STATUS_SITE_BLOCKED,
@@ -301,6 +302,9 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn):
         journey = days_worked.get(collaborator_id, 0) * TechnicianDailyPresence.STANDARD_WORKDAY_HOURS
         productive_hours = round(productive.get(collaborator_id, 0.0), 2)
         utilization = _pct(productive_hours, journey)
+        idle_hours = internal_idle.get(collaborator_id, 0.0)
+        worked_days = days_worked.get(collaborator_id, 0)
+        idle_per_day = round(idle_hours / worked_days, 2) if worked_days else None
         completed = entry["completed_count"]
         technicians.append(
             {
@@ -317,7 +321,9 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn):
                 "untracked_count": entry["untracked_count"],
                 "tracking_rate_pct": _pct(completed - entry["untracked_count"], completed),
                 "external_block_hours": round(external_block.get(collaborator_id, 0.0), 2),
-                "internal_idle_hours": round(internal_idle.get(collaborator_id, 0.0), 2),
+                "internal_idle_hours": round(idle_hours, 2),
+                "internal_idle_avg_per_day": idle_per_day,
+                "idle_limit_exceeded": idle_per_day is not None and idle_per_day > INTERNAL_IDLE_LIMIT_HOURS,
                 "incomplete_days": incomplete_days.get(collaborator_id, 0),
             }
         )
@@ -423,6 +429,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn):
                 "active_hours": round(active, 2),
                 "available_hours": round(available, 2),
                 "internal_idle_hours": round(available, 2),
+                "idle_limit_exceeded": available > INTERNAL_IDLE_LIMIT_HOURS,
                 "break_hours": round(breaks, 2),
                 "unproductive_hours": round(blocked, 2),  # compatibilidade v1 (= bloqueio externo)
                 "external_block_hours": round(blocked, 2),
@@ -455,6 +462,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn):
         "external_block_hours": round(sum(t["external_block_hours"] for t in technicians), 2),
         "internal_idle_hours": round(sum(t["internal_idle_hours"] for t in technicians), 2),
         "incomplete_days": sum(t["incomplete_days"] for t in technicians),
+        "internal_idle_limit_hours": INTERNAL_IDLE_LIMIT_HOURS,
+        "technicians_over_idle_limit": sum(1 for t in technicians if t["idle_limit_exceeded"]),
         # Campos v1 mantidos durante a transição do frontend.
         "avg_utilization_pct": utilization_total or 0,
         "productive_hours": round(total_productive, 1),
@@ -471,6 +480,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn):
         "productive_target_hours": TODAY_PRODUCTIVE_TARGET_HOURS,
         "external_block_hours": round(today_block, 2),
         "internal_idle_hours": round(today_idle, 2),
+        "internal_idle_limit_hours": INTERNAL_IDLE_LIMIT_HOURS,
+        "technicians_over_idle_limit": sum(1 for t in today_technicians if t["idle_limit_exceeded"]),
     }
 
     log_entries = [

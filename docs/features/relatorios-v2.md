@@ -56,6 +56,7 @@ Objetivo da v2: **números confiáveis e com definição única**, qualidade do 
   - **Bloqueio externo** (site/cliente): `site_blocked` (Sem Acesso ao Site) + `awaiting_release` (Aguardando Liberações). É a evidência para conversa com o cliente.
   - **Ocioso interno**: `available` (Disponível sem tarefa). É falha de despacho/planejamento.
   - `lunch` e `personal` são neutros e não entram em nenhuma das duas.
+- **RN-26 — Limite de ocioso interno.** *(Aprovada em 2026-10-02.)* 30 minutos por técnico por dia. No período, compara a média diária (ocioso interno ÷ dias com check-in); no bloco Hoje, compara o ocioso do dia. Acima do limite, o técnico entra na lista de exceções. Bloqueio externo não tem limite (não é falha interna).
 - **RN-12 — Mesma definição em toda a tela.** Cartões, barras por técnico e gráfico por motivo usam RN-11.
 - **RN-13 — Metas são por pessoa.** Qualquer meta diária (ex.: horas produtivas) é comparada com **média por técnico com check-in**, nunca com a soma da equipe.
 
@@ -251,6 +252,8 @@ Fase 1 no frontend (mesmo padrão de `exportCsv` em `ProjectsList.tsx`), um bot�
 | D-1 | Corte do dia sem Fim de Expediente (RN-09) | **Aprovada:** check-in + 9h e dia incompleto, exceto quando o último status é execução de fato (`in_progress`, não pausada) |
 | D-2 | Faixas de utilização (RN-08) | **Aprovada:** < 50 vermelho / 50–69 / 70–100 / > 100 "dado suspeito" |
 | D-3 | Amostra mínima (RN-21) | **Aprovada:** 5 execuções |
+| D-4 | Ordem das seções | **Aprovada:** bloco Hoje antes da seção Período (coordenadores usam a tela pelo dia corrente) |
+| D-5 | Limite de ocioso interno (RN-26) | **Aprovada:** 30 min por técnico por dia |
 
 ---
 

@@ -26,25 +26,27 @@
 
 Princípio: **escopo de filtro = escopo visual**. O filtro de site (RN-15, vale para tudo) fica no cabeçalho da página; o filtro de período (RN-14) fica **dentro** do cabeçalho da seção "Período", que é a única coisa que ele altera. O bloco "Hoje" tem cabeçalho próprio, sem controle de período.
 
-Ordem (segue a prioridade do briefing: exceção → período → técnicos → atividades → improdutivo → hoje):
+> **Decisão do Rafael (2026-10-02):** os coordenadores usam a tela principalmente pelo dia corrente — **a Seção Hoje vem antes da Seção Período**. Os wireframes da §2 mostram a ordem antiga; na implementação, troque a ordem dos dois `<section>` (nenhum componente muda) e o atalho do cabeçalho passa a ser "Ir para Período". Limite de ocioso interno aprovado: **30 min por técnico por dia** (RN-26 da spec) — ver §4.2.
+
+Ordem (Hoje primeiro; dentro de cada seção, exceção antes de contexto):
 
 | # | Bloco | Título (pt-BR) | O que mostra | Fonte no contrato |
 |---|---|---|---|---|
-| 0 | Cabeçalho da página | Relatórios e Indicadores | Eyebrow, título, subtítulo; filtro **Site** (global); atalho âncora "Ir para Hoje". | `PageHeader` |
+| 0 | Cabeçalho da página | Relatórios e Indicadores | Eyebrow, título, subtítulo; filtro **Site** (global); atalho âncora "Ir para Período". | `PageHeader` |
 | 1 | Aviso temporário | — | Banner "Cálculo corrigido em DD/MM" (até DD/MM + 14 dias, dispensável). | constante no frontend (ver §5.7) |
 | 2 | **Seção Período** — cabeçalho | Período | Título + intervalo (DateRangeCalendar, máx. 180 dias) + atalhos 7 / 30 / 90 dias + texto de escopo "Afeta todos os blocos desta seção". | `date_from`, `date_to` |
-| 2.1 | Exceções | Requer atenção | Contadores clicáveis: utilização baixa (< 50%), dado suspeito (> 100%), técnicos com dias incompletos, rastreamento < 90% (total e por técnico). Clique filtra a tabela 2.3. | derivado de `technicians[]` e `stats` |
+| 2.1 | Exceções | Requer atenção | Contadores clicáveis: utilização baixa (< 50%), dado suspeito (> 100%), ocioso interno acima de 30 min/dia (`idle_limit_exceeded`), técnicos com dias incompletos, rastreamento < 90% (total e por técnico). Clique filtra a tabela 2.3. | derivado de `technicians[]` e `stats` |
 | 2.2 | KPIs do período | (sem título; os 6 cartões) | Utilização · HH consumido · Bloqueio externo · Ocioso interno · Taxa de rastreamento · Concluídas no período. | `stats.*` |
 | 2.3 | Tabela de técnicos | Técnicos no período | Uma linha por técnico, exceções primeiro, linha de total. CSV. | `technicians[]`, `stats` |
 | 2.4 | Improdutivo por motivo | Improdutivo por motivo | Dois grupos lado a lado: Bloqueio externo (cliente/site) × Ocioso interno, cada um com subtotal e % da jornada. CSV. | `unproductive_by_reason[]` (`category`) |
 | 2.5 | Base de estimativa | Produtividade por atividade | Atividade × família de cabo, HH por unidade (mediana, P25–P75), exclusões. CSV. | `activity_productivity[]`, `activity_excluded_no_catalog` |
 | 3 | **Seção Hoje** — cabeçalho | Hoje · qua, 02/10 | Data local Brasil (RN-10), "Não muda com o filtro de período", botão Atualizar. | — |
 | 3.1 | KPIs de hoje | (4 cartões compactos) | Técnicos com check-in · Produtivo médio por técnico vs. meta 6h (RN-13) · Bloqueio externo hoje · Ocioso interno hoje. | `today.*` |
-| 3.2 | Barra do dia por técnico | Dia por técnico | Barra empilhada por técnico: execução / bloqueio externo / ocioso interno / intervalos; ordenada por ocioso interno. | `today_technicians[]` |
+| 3.2 | Barra do dia por técnico | Dia por técnico | Barra empilhada por técnico: execução / bloqueio externo / ocioso interno / intervalos; ordenada por ocioso interno. Técnico com ocioso hoje > 30 min recebe selo vermelho "Ocioso acima do limite". | `today_technicians[]` |
 | 3.3 | Log do dia | Log do dia | Feed com filtros por `type`. | `log_entries[]` |
 | — | Fase 2 (não desenhar agora) | — | Seção de projetos (HH real × orçado) entraria entre 2.2 e 2.3, só com `projects.view_project`; tendência diária substituiria 3.3. | — |
 
-**Por que "Hoje" fica embaixo:** o briefing coloca o bloco Hoje em 6º na prioridade, e a ação operacional imediata (realocar técnico ocioso agora) acontece na Central de Operações. O atalho "Ir para Hoje" no cabeçalho resolve o acesso rápido do coordenador. **Ponto para validar com o Rafael:** se os coordenadores abrirem esta tela principalmente pelo bloco Hoje, inverter a ordem (Hoje em cima, compacto) não muda nenhum componente — só a ordem dos dois `<section>`.
+**(Superado pela decisão acima — mantido como histórico.)** Por que "Hoje" ficava embaixo: o briefing coloca o bloco Hoje em 6º na prioridade, e a ação operacional imediata (realocar técnico ocioso agora) acontece na Central de Operações. O atalho "Ir para Hoje" no cabeçalho resolve o acesso rápido do coordenador. **Ponto para validar com o Rafael:** se os coordenadores abrirem esta tela principalmente pelo bloco Hoje, inverter a ordem (Hoje em cima, compacto) não muda nenhum componente — só a ordem dos dois `<section>`.
 
 ---
 
@@ -328,7 +330,7 @@ Duas cores de **categoria**, iguais em toda a tela (KPI, colunas da tabela, grup
 | Execução (só barra do dia) | `--green` | Tempo produtivo. | rótulo "Execução" |
 | Intervalos (almoço/pessoal, só barra do dia) | `--border` / `--text-faint` | Neutro (RN-11): não é improdutivo. | rótulo "Intervalos" |
 
-Os valores numéricos de bloqueio e ocioso ficam em `--text` (não há limiar aprovado; colorir o número inventaria um). O % da jornada (`horas ÷ stats.journey_hours_total`) é exibido como contexto, sem cor.
+Os valores numéricos de bloqueio externo ficam em `--text` (não há limiar aprovado). **Ocioso interno tem limite aprovado de 30 min por técnico por dia (RN-26):** quando `idle_limit_exceeded` é verdadeiro (por técnico no período ou em `today_technicians`), o valor ganha selo vermelho com ícone `warning` e tooltip "Média de X por dia — limite 30 min". No KPI do período, mostrar "N técnicos acima do limite" como dica; o total em horas fica sem cor. O % da jornada (`horas ÷ stats.journey_hours_total`) é exibido como contexto, sem cor.
 
 ### 4.3 Taxa de rastreamento (RN-24)
 
@@ -638,5 +640,5 @@ Unidade do HH no en-US: o briefing usa "MH" — manter consistente em todos os r
 2. **RN-10 no seletor de período:** `DateRangeCalendar` e `OperationsReports.tsx` usam `toISOString()` para datas (`toIso`, `todayISO`, `daysAgoISO`). Precisam passar a usar a data local; senão o critério 9 falha às 21h+ em Brasília. Afeta também `DailyUpdates` e `ProjectUpdates`, que usam o mesmo componente.
 3. **Rótulo traduzido de unidade** (cabo/porta/link): depende de existir mapeamento de `unit` no i18n; sem ele, mostrar o código cru.
 4. **Ordem Hoje × Período:** proposta segue o briefing (Período primeiro). Validar com coordenadores.
-5. **Limiares removidos** ("Limite recomendado: 30min", alerta "> 40h improdutivas") não estão na spec v2. Se o negócio quiser um limite para ocioso interno, ele precisa ser aprovado como RN antes de ganhar cor.
+5. **Limiares:** o alerta "> 40h improdutivas" foi removido. **Ocioso interno: limite aprovado de 30 min por técnico por dia (RN-26)** — ver §4.2.
 6. **Fase 2** (projetos HH × orçado, lista de exceções expandida, tendência diária) fica fora deste layout; os lugares estão indicados na §1.
