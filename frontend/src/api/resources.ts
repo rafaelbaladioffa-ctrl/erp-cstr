@@ -441,7 +441,7 @@ export const clientsApi = {
 };
 
 export const sitesApi = {
-  list: () => apiClient.get<Paginated<Site>>("/sites/").then((r) => r.data),
+  list: () => apiClient.get<Paginated<Site>>("/sites/", { params: { page_size: "500" } }).then((r) => r.data),
 };
 
 export const collaboratorsApi = {
