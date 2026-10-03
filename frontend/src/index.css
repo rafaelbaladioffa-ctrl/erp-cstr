@@ -77,6 +77,7 @@
   --teal-soft: #e2f4f1;
   --border: #e8edf2;
   --bg: #f5f7fa;
+  --group-label-bg: #e1e6ee;
   --text: #111820;
   --text-muted: #6b7a90;
   --text-faint: #9aa3b2;
@@ -106,6 +107,7 @@
   --teal-soft: #0d2623;
   --border: #2e3140;
   --bg: #0e1016;
+  --group-label-bg: #22252f;
   --text: #dde3ef;
   --text-muted: #8b96aa;
   --text-faint: #565f74;
@@ -4483,7 +4485,7 @@ button.sp-card:hover {
 }
 
 .sp-group-label {
-  background: var(--surface);
+  background: var(--group-label-bg);
   padding: 2px 6px;
   border-radius: 4px;
   display: inline-block;
