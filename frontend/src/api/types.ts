@@ -1366,7 +1366,7 @@ export interface SitesPanelGroup {
   label: string;
   sublabel: string;
   health: SitesPanelHealth;
-  projects: { in_progress: number; paused: number; planning: number };
+  projects: { in_progress: number; paused: number; planning: number; finished: number };
   alerts: { late: number; risk: number; no_data: number };
   technicians: SitesPanelTechCounts | null;
   occurrences_open: number;
@@ -1401,11 +1401,13 @@ export interface SitesPanelException {
 export interface SitesPanelData {
   date: string;
   group_by: SitesPanelGroupBy;
+  status_filters: string[];
   include_technicians: boolean;
   summary: {
     in_progress: number;
     paused: number;
     planning: number;
+    finished: number;
     starting_soon: number;
     late: number;
     risk: number;

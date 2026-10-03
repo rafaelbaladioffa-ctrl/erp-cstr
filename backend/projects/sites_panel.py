@@ -2,8 +2,10 @@
 api/sites_panel.py. Visão de negócio e decisões em
 docs/painel-gestao-sites.md; resumo das regras implementadas aqui:
 
-- Carteira: projetos ativos (`is_active`) com status Planejamento, Não
-  Iniciado, Ativo ou Pausado.
+- Carteira: projetos ativos (`is_active`) filtrados pelas mesmas abas da
+  lista de projetos — Ativos, Pausados, Planejamentos, Finalizados — em
+  qualquer combinação (padrão: as três primeiras). Finalizados nunca
+  geram alerta.
 - Avanço real/planejado IGNORAM tarefas canceladas (decisão 3) — por isso o
   % daqui pode diferir do resto do sistema. Planejado = % das tarefas cujo
   término previsto já passou; vira "sem base" (None) quando muitas tarefas
@@ -44,14 +46,25 @@ DEFAULT_THRESHOLDS = {
 }
 DEFAULT_EXCLUDED_JOB_TITLE_KEYWORDS = ("Supervisor", "Coordenador", "Gerente")
 
-PORTFOLIO_STATUSES = (
-    Project.STATUS_PLANNING,
-    Project.STATUS_NOT_STARTED,
-    Project.STATUS_IN_PROGRESS,
-    Project.STATUS_PAUSED,
-)
 EXECUTION_STATUSES = (Project.STATUS_IN_PROGRESS, Project.STATUS_PAUSED)
 PLANNING_STATUSES = (Project.STATUS_PLANNING, Project.STATUS_NOT_STARTED)
+FINISHED_STATUSES = (Project.STATUS_COMPLETED, Project.STATUS_CANCELED)
+
+# Mesmas abas da lista de projetos (Ativos, Pausados, Planejamentos,
+# Finalizados) — o filtro aceita qualquer combinação, ex. "active,paused".
+STATUS_FILTERS = {
+    "active": (Project.STATUS_IN_PROGRESS,),
+    "paused": (Project.STATUS_PAUSED,),
+    "planning": PLANNING_STATUSES,
+    "finished": FINISHED_STATUSES,
+}
+DEFAULT_STATUS_FILTERS = ("active", "paused", "planning")
+
+
+def parse_status_filters(value):
+    """'active,paused' → ['active', 'paused']; vazio/inválido → padrão."""
+    keys = [k.strip() for k in (value or "").split(",") if k.strip() in STATUS_FILTERS]
+    return list(dict.fromkeys(keys)) or list(DEFAULT_STATUS_FILTERS)
 
 HEALTH_LATE = "late"
 HEALTH_RISK = "risk"
@@ -140,7 +153,9 @@ def compute_project_health(project, tasks, occurrences, today, now, thresholds=N
         reasons.append({"level": level, "code": code, "text": text})
 
     in_execution = project.status in EXECUTION_STATUSES
-    if project.status in PLANNING_STATUSES:
+    if project.status in FINISHED_STATUSES:
+        pass  # finalizado: sem alertas de prazo/avanço
+    elif project.status in PLANNING_STATUSES:
         if project.planned_start and project.planned_start < today:
             add(HEALTH_RISK, "start_late", f"Início previsto para {_fmt(project.planned_start)} e o projeto não iniciou")
         if project.planned_end and project.planned_end < today:
@@ -401,7 +416,9 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
     today = today or timezone.localdate()
     now = timezone.now()
 
-    projects_qs = Project.objects.filter(is_active=True, status__in=PORTFOLIO_STATUSES)
+    status_keys = parse_status_filters(filters.get("status"))
+    statuses = [st for key in status_keys for st in STATUS_FILTERS[key]]
+    projects_qs = Project.objects.filter(is_active=True, status__in=statuses)
     projects_qs = scope_project_queryset(projects_qs, user)
     if filters.get("country"):
         projects_qs = projects_qs.filter(site__region__country=filters["country"])
@@ -413,10 +430,6 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
         projects_qs = projects_qs.filter(site_id=filters["site"])
     if filters.get("responsible"):
         projects_qs = projects_qs.filter(responsible_cstr_id=filters["responsible"])
-    if filters.get("status") == "execution":
-        projects_qs = projects_qs.filter(status__in=EXECUTION_STATUSES)
-    elif filters.get("status") == "planning":
-        projects_qs = projects_qs.filter(status__in=PLANNING_STATUSES)
 
     trend_from = today - timedelta(days=7)
     projects = list(
@@ -454,7 +467,9 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
     if include_technicians:
         if filters.get("site"):
             site_scope = {int(filters["site"])}
-        elif any(filters.get(k) for k in ("country", "region", "client", "responsible", "status")):
+        elif any(filters.get(k) for k in ("country", "region", "client", "responsible")) or set(status_keys) != set(
+            DEFAULT_STATUS_FILTERS
+        ):
             site_scope = {p.site_id for p in projects if p.site_id}
         else:
             site_scope = None
@@ -523,7 +538,7 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
         if key not in groups:
             groups[key] = {
                 "key": key, "label": label, "sublabel": sublabel, "health": HEALTH_OK,
-                "projects": {"in_progress": 0, "paused": 0, "planning": 0},
+                "projects": {"in_progress": 0, "paused": 0, "planning": 0, "finished": 0},
                 "alerts": {"late": 0, "risk": 0, "no_data": 0},
                 "technicians": _empty_tech_counts() if include_technicians else None,
                 "occurrences_open": 0, "updates_pending": 0, "responsibles": set(), "project_ids": [],
@@ -538,6 +553,8 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
             g["projects"]["in_progress"] += 1
         elif p.status == Project.STATUS_PAUSED:
             g["projects"]["paused"] += 1
+        elif p.status in FINISHED_STATUSES:
+            g["projects"]["finished"] += 1
         else:
             g["projects"]["planning"] += 1
         if row["health"] != HEALTH_OK:
@@ -597,7 +614,7 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
         )
         if p.status in EXECUTION_STATUSES:
             s["in_execution"] += 1
-        else:
+        elif p.status in PLANNING_STATUSES:
             s["planning"] += 1
         if row["health"] == HEALTH_LATE:
             s["late"] += 1
@@ -620,6 +637,7 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
         "in_progress": sum(1 for p in projects if p.status == Project.STATUS_IN_PROGRESS),
         "paused": sum(1 for p in projects if p.status == Project.STATUS_PAUSED),
         "planning": sum(1 for p in projects if p.status in PLANNING_STATUSES),
+        "finished": sum(1 for p in projects if p.status in FINISHED_STATUSES),
         "starting_soon": sum(
             1 for p in projects
             if p.status in PLANNING_STATUSES and p.planned_start and today <= p.planned_start <= starting_soon_limit
@@ -651,6 +669,7 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
     return {
         "date": today,
         "group_by": group_by,
+        "status_filters": status_keys,
         "include_technicians": include_technicians,
         "summary": summary,
         "groups": group_list,

@@ -27,6 +27,16 @@ import { PERMS, hasPerm } from "../utils/permissions";
 
 type Tab = "overview" | "analysis" | "exceptions";
 type ExceptionFilter = "all" | SitesPanelException["kind"];
+// Mesmas abas da lista de projetos; combináveis.
+type StatusKey = "active" | "paused" | "planning" | "finished";
+const STATUS_KEYS: StatusKey[] = ["active", "paused", "planning", "finished"];
+const DEFAULT_STATUS: StatusKey[] = ["active", "paused", "planning"];
+const GROUP_COUNT_FIELD: Record<StatusKey, "in_progress" | "paused" | "planning" | "finished"> = {
+  active: "in_progress",
+  paused: "paused",
+  planning: "planning",
+  finished: "finished",
+};
 
 const TEXT = {
   "pt-BR": {
@@ -38,11 +48,12 @@ const TEXT = {
     groupByOptions: { site: "Site", region: "Regional", client: "Cliente", responsible: "Responsável" } as Record<SitesPanelGroupBy, string>,
     country: "País", allCountries: "Todos os países",
     countries: { BR: "Brasil", US: "EUA", CL: "Chile", MX: "México" } as Record<string, string>,
-    status: "Status", statusAll: "Execução + planejamento", statusExecution: "Somente execução", statusPlanning: "Somente planejamento",
+    status: "Status",
+    statusOptions: { active: "Ativos", paused: "Pausados", planning: "Planejamentos", finished: "Finalizados" } as Record<StatusKey, string>,
+    statusHints: { active: "em andamento", paused: "aguardando retomada", planning: "em preparação", finished: "concluídos ou cancelados" } as Record<StatusKey, string>,
     onlyAlerts: "Somente com alerta",
     tabs: { overview: "Visão geral", analysis: "Análise de projetos", exceptions: "Regionais e exceções" } as Record<Tab, string>,
-    kpiExecution: "Em execução", kpiPaused: (n: number) => (n ? `+${n} pausado(s)` : "nenhum pausado"),
-    kpiPlanning: "Em planejamento", kpiStartingSoon: (n: number) => `${n} iniciam em até 7 dias`,
+    kpiStartingSoon: (n: number) => `${n} iniciam em até 7 dias`,
     kpiLate: "Atrasados", kpiLateHint: (n: number) => `em ${n} grupo(s)`,
     kpiRisk: "Risco de atraso", kpiRiskHint: (n: number) => (n ? `${n} com início atrasado` : "real abaixo do planejado"),
     kpiPresent: "Técnicos presentes", kpiPresentHint: (n: number) => `${n} em execução agora`,
@@ -55,11 +66,13 @@ const TEXT = {
     healthProject: { late: "Atrasado", risk: "Risco", ok: "No prazo", no_data: "Sem dados" } as Record<SitesPanelHealth, string>,
     legend: "Legenda",
     sortedBy: (n: number) => `${n} grupo(s) · ordenados por criticidade`,
-    cExecution: "Execução", cPlanning: "Planejamento", cLate: "Atrasados",
+    cExecution: "Execução", cPlanning: "Planejamento",
     presentOf: (p: number, t: number) => `${p} presentes de ${t}`,
     noTechs: "Nenhum técnico no dia",
     techLegend: { executing: "em execução", unproductive: "improdutivo", break: "pausa", off_duty: "encerrou", on_leave: "ausente", no_checkin: "sem check-in" } as Record<string, string>,
-    alerts: (n: number) => (n === 1 ? "1 projeto com alerta" : `${n} projetos com alerta`),
+    statusShort: { active: "Ativos", paused: "Pausados", planning: "Planej.", finished: "Finaliz." } as Record<StatusKey, string>,
+    lateCount: (n: number) => (n === 1 ? "1 atrasado" : `${n} atrasados`),
+    riskCount: (n: number) => `${n} em risco`,
     noAlerts: "Nenhum alerta",
     occurrences: "Ocorrências", updatesPending: "Update pendente",
     seeProjects: "Ver projetos",
@@ -98,11 +111,12 @@ const TEXT = {
     groupByOptions: { site: "Site", region: "Region", client: "Client", responsible: "Owner" } as Record<SitesPanelGroupBy, string>,
     country: "Country", allCountries: "All countries",
     countries: { BR: "Brazil", US: "USA", CL: "Chile", MX: "Mexico" } as Record<string, string>,
-    status: "Status", statusAll: "Execution + planning", statusExecution: "Execution only", statusPlanning: "Planning only",
+    status: "Status",
+    statusOptions: { active: "Active", paused: "Paused", planning: "Planning", finished: "Finished" } as Record<StatusKey, string>,
+    statusHints: { active: "in progress", paused: "awaiting resumption", planning: "in preparation", finished: "completed or canceled" } as Record<StatusKey, string>,
     onlyAlerts: "Only with alerts",
     tabs: { overview: "Overview", analysis: "Project analysis", exceptions: "Regions & exceptions" } as Record<Tab, string>,
-    kpiExecution: "In execution", kpiPaused: (n: number) => (n ? `+${n} paused` : "none paused"),
-    kpiPlanning: "In planning", kpiStartingSoon: (n: number) => `${n} start within 7 days`,
+    kpiStartingSoon: (n: number) => `${n} start within 7 days`,
     kpiLate: "Late", kpiLateHint: (n: number) => `in ${n} group(s)`,
     kpiRisk: "At risk", kpiRiskHint: (n: number) => (n ? `${n} with late start` : "actual below plan"),
     kpiPresent: "Technicians present", kpiPresentHint: (n: number) => `${n} executing now`,
@@ -115,11 +129,13 @@ const TEXT = {
     healthProject: { late: "Late", risk: "At risk", ok: "On track", no_data: "No data" } as Record<SitesPanelHealth, string>,
     legend: "Legend",
     sortedBy: (n: number) => `${n} group(s) · sorted by severity`,
-    cExecution: "Execution", cPlanning: "Planning", cLate: "Late",
+    cExecution: "Execution", cPlanning: "Planning",
     presentOf: (p: number, t: number) => `${p} present of ${t}`,
     noTechs: "No technicians today",
     techLegend: { executing: "executing", unproductive: "unproductive", break: "break", off_duty: "finished", on_leave: "absent", no_checkin: "no check-in" } as Record<string, string>,
-    alerts: (n: number) => (n === 1 ? "1 project with alert" : `${n} projects with alerts`),
+    statusShort: { active: "Active", paused: "Paused", planning: "Planning", finished: "Finished" } as Record<StatusKey, string>,
+    lateCount: (n: number) => `${n} late`,
+    riskCount: (n: number) => `${n} at risk`,
     noAlerts: "No alerts",
     occurrences: "Occurrences", updatesPending: "Update pending",
     seeProjects: "See projects",
@@ -158,11 +174,12 @@ const TEXT = {
     groupByOptions: { site: "Sitio", region: "Regional", client: "Cliente", responsible: "Responsable" } as Record<SitesPanelGroupBy, string>,
     country: "País", allCountries: "Todos los países",
     countries: { BR: "Brasil", US: "EE. UU.", CL: "Chile", MX: "México" } as Record<string, string>,
-    status: "Estado", statusAll: "Ejecución + planificación", statusExecution: "Solo ejecución", statusPlanning: "Solo planificación",
+    status: "Estado",
+    statusOptions: { active: "Activos", paused: "Pausados", planning: "Planificación", finished: "Finalizados" } as Record<StatusKey, string>,
+    statusHints: { active: "en curso", paused: "en espera de reanudación", planning: "en preparación", finished: "concluidos o cancelados" } as Record<StatusKey, string>,
     onlyAlerts: "Solo con alerta",
     tabs: { overview: "Vista general", analysis: "Análisis de proyectos", exceptions: "Regionales y excepciones" } as Record<Tab, string>,
-    kpiExecution: "En ejecución", kpiPaused: (n: number) => (n ? `+${n} pausado(s)` : "ninguno pausado"),
-    kpiPlanning: "En planificación", kpiStartingSoon: (n: number) => `${n} inician en hasta 7 días`,
+    kpiStartingSoon: (n: number) => `${n} inician en hasta 7 días`,
     kpiLate: "Atrasados", kpiLateHint: (n: number) => `en ${n} grupo(s)`,
     kpiRisk: "Riesgo de atraso", kpiRiskHint: (n: number) => (n ? `${n} con inicio atrasado` : "real por debajo de lo planificado"),
     kpiPresent: "Técnicos presentes", kpiPresentHint: (n: number) => `${n} en ejecución ahora`,
@@ -175,11 +192,13 @@ const TEXT = {
     healthProject: { late: "Atrasado", risk: "Riesgo", ok: "En plazo", no_data: "Sin datos" } as Record<SitesPanelHealth, string>,
     legend: "Leyenda",
     sortedBy: (n: number) => `${n} grupo(s) · ordenados por criticidad`,
-    cExecution: "Ejecución", cPlanning: "Planificación", cLate: "Atrasados",
+    cExecution: "Ejecución", cPlanning: "Planificación",
     presentOf: (p: number, t: number) => `${p} presentes de ${t}`,
     noTechs: "Ningún técnico hoy",
     techLegend: { executing: "en ejecución", unproductive: "improductivo", break: "pausa", off_duty: "terminó", on_leave: "ausente", no_checkin: "sin check-in" } as Record<string, string>,
-    alerts: (n: number) => (n === 1 ? "1 proyecto con alerta" : `${n} proyectos con alerta`),
+    statusShort: { active: "Activos", paused: "Pausados", planning: "Planif.", finished: "Finaliz." } as Record<StatusKey, string>,
+    lateCount: (n: number) => (n === 1 ? "1 atrasado" : `${n} atrasados`),
+    riskCount: (n: number) => `${n} en riesgo`,
     noAlerts: "Ninguna alerta",
     occurrences: "Ocurrencias", updatesPending: "Update pendiente",
     seeProjects: "Ver proyectos",
@@ -242,7 +261,7 @@ const EXCEPTION_COLOR: Record<SitesPanelException["level"], string> = {
 
 const STORAGE_KEY = "sites-panel:prefs";
 
-function loadPrefs(): { tab?: Tab; groupBy?: SitesPanelGroupBy } {
+function loadPrefs(): { tab?: Tab; groupBy?: SitesPanelGroupBy; status?: StatusKey[] } {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
   } catch {
@@ -250,7 +269,7 @@ function loadPrefs(): { tab?: Tab; groupBy?: SitesPanelGroupBy } {
   }
 }
 
-function savePrefs(prefs: { tab: Tab; groupBy: SitesPanelGroupBy }) {
+function savePrefs(prefs: { tab: Tab; groupBy: SitesPanelGroupBy; status: StatusKey[] }) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
   } catch {
@@ -289,7 +308,11 @@ export default function SitesPanel() {
   const [tab, setTab] = useState<Tab>(prefs.tab ?? "overview");
   const [groupBy, setGroupBy] = useState<SitesPanelGroupBy>(prefs.groupBy ?? "site");
   const [country, setCountry] = useState("");
-  const [status, setStatus] = useState("");
+  const [statusKeys, setStatusKeys] = useState<StatusKey[]>(() => {
+    const saved = (prefs.status ?? []).filter((k) => STATUS_KEYS.includes(k));
+    return saved.length ? saved : DEFAULT_STATUS;
+  });
+  const statusParam = STATUS_KEYS.filter((k) => statusKeys.includes(k)).join(",");
   const [onlyAlerts, setOnlyAlerts] = useState(false);
   const [focusGroup, setFocusGroup] = useState<SitesPanelGroup | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
@@ -303,7 +326,7 @@ export default function SitesPanel() {
     setError(false);
     const params: Record<string, string> = { group_by: groupBy };
     if (country) params.country = country;
-    if (status) params.status = status;
+    params.status = statusParam;
     dashboardApi
       .sites(params)
       .then((result) => {
@@ -312,20 +335,20 @@ export default function SitesPanel() {
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [groupBy, country, status]);
+  }, [groupBy, country, statusParam]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   useEffect(() => {
-    savePrefs({ tab, groupBy });
-  }, [tab, groupBy]);
+    savePrefs({ tab, groupBy, status: statusKeys });
+  }, [tab, groupBy, statusKeys]);
 
   // Ao trocar agrupamento/filtros, o grupo em foco deixa de existir.
   useEffect(() => {
     setFocusGroup(null);
-  }, [groupBy, country, status]);
+  }, [groupBy, country, statusParam]);
 
   const projectsById = useMemo(() => new Map((data?.projects ?? []).map((pr) => [pr.id, pr])), [data]);
   const selectedProject = selectedProjectId != null ? projectsById.get(selectedProjectId) ?? null : null;
@@ -340,6 +363,13 @@ export default function SitesPanel() {
     if (onlyAlerts) rows = rows.filter((r) => r.health === "late" || r.health === "risk");
     return rows;
   }, [data, focusGroup, onlyAlerts]);
+
+  function toggleStatus(key: StatusKey) {
+    // Combinação livre, mas sempre com pelo menos um status marcado.
+    setStatusKeys((current) =>
+      current.includes(key) ? (current.length > 1 ? current.filter((k) => k !== key) : current) : [...current, key],
+    );
+  }
 
   function openGroup(group: SitesPanelGroup) {
     setFocusGroup(group);
@@ -382,11 +412,20 @@ export default function SitesPanel() {
             </option>
           ))}
         </select>
-        <select className="sp-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label={p.status}>
-          <option value="">{p.statusAll}</option>
-          <option value="execution">{p.statusExecution}</option>
-          <option value="planning">{p.statusPlanning}</option>
-        </select>
+        <div className="sp-segmented sp-multi" role="group" aria-label={p.status}>
+          <span className="sp-filter-label">{p.status}</span>
+          {STATUS_KEYS.map((key) => (
+            <button
+              key={key}
+              className={statusKeys.includes(key) ? "active" : ""}
+              aria-pressed={statusKeys.includes(key)}
+              onClick={() => toggleStatus(key)}
+            >
+              {statusKeys.includes(key) && <Icon name="check" style={{ fontSize: 14 }} />}
+              {p.statusOptions[key]}
+            </button>
+          ))}
+        </div>
         <label className="sp-toggle">
           <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} />
           {p.onlyAlerts}
@@ -406,7 +445,7 @@ export default function SitesPanel() {
       {data && (
         <>
           {/* ---- Parte fixa: indicadores ---- */}
-          <KpiStrip data={data} p={p} />
+          <KpiStrip data={data} p={p} statusKeys={statusKeys} />
           {!data.include_technicians && <p className="sp-note">{p.noTechPermission}</p>}
 
           {/* ---- Abas ---- */}
@@ -423,7 +462,7 @@ export default function SitesPanel() {
             {data.projects.length === 0 ? (
               <div className="card sp-message">{p.empty}</div>
             ) : tab === "overview" ? (
-              <OverviewTab data={data} groups={visibleGroups} p={p} onOpenGroup={openGroup} />
+              <OverviewTab data={data} groups={visibleGroups} p={p} onOpenGroup={openGroup} statusKeys={statusKeys} />
             ) : tab === "analysis" ? (
               <AnalysisTab
                 projects={visibleProjects}
@@ -470,12 +509,17 @@ export default function SitesPanel() {
 // Indicadores (parte fixa)
 // ---------------------------------------------------------------------------
 
-function KpiStrip({ data, p }: { data: SitesPanelData; p: PanelText }) {
+function KpiStrip({ data, p, statusKeys }: { data: SitesPanelData; p: PanelText; statusKeys: StatusKey[] }) {
   const s = data.summary;
   const t = s.technicians;
-  const tiles: { label: string; value: string | number; total?: number; hint: string; color: string }[] = [
-    { label: p.kpiExecution, value: s.in_progress, hint: p.kpiPaused(s.paused), color: "var(--blue)" },
-    { label: p.kpiPlanning, value: s.planning, hint: p.kpiStartingSoon(s.starting_soon), color: "var(--purple)" },
+  const statusTiles: Record<StatusKey, { value: number; hint: string; color: string }> = {
+    active: { value: s.in_progress, hint: p.statusHints.active, color: "var(--blue)" },
+    paused: { value: s.paused, hint: p.statusHints.paused, color: "var(--amber)" },
+    planning: { value: s.planning, hint: p.kpiStartingSoon(s.starting_soon), color: "var(--purple)" },
+    finished: { value: s.finished, hint: p.statusHints.finished, color: "var(--green)" },
+  };
+  const tiles: { label: string; value: string | number; total?: number; hint: string; color: string; neutral?: boolean }[] = [
+    ...STATUS_KEYS.filter((k) => statusKeys.includes(k)).map((k) => ({ label: p.statusOptions[k], ...statusTiles[k], neutral: true })),
     { label: p.kpiLate, value: s.late, hint: p.kpiLateHint(s.groups_with_late), color: "var(--red)" },
     { label: p.kpiRisk, value: s.risk, hint: p.kpiRiskHint(s.start_late), color: "var(--amber)" },
   ];
@@ -492,7 +536,7 @@ function KpiStrip({ data, p }: { data: SitesPanelData; p: PanelText }) {
         <div key={tile.label} className="sp-kpi" style={{ borderLeftColor: tile.color }}>
           <div className="stat-label">{tile.label}</div>
           <div className="sp-kpi-value">
-            <span style={{ color: tile.color === "var(--blue)" || tile.color === "var(--purple)" ? "var(--text)" : tile.color }}>
+            <span style={{ color: tile.neutral ? "var(--text)" : tile.color }}>
               {tile.value}
             </span>
             {tile.total != null && <small> / {tile.total}</small>}
@@ -526,12 +570,15 @@ function OverviewTab({
   groups,
   p,
   onOpenGroup,
+  statusKeys,
 }: {
   data: SitesPanelData;
   groups: SitesPanelGroup[];
   p: PanelText;
   onOpenGroup: (g: SitesPanelGroup) => void;
+  statusKeys: StatusKey[];
 }) {
+  const shownStatus = STATUS_KEYS.filter((k) => statusKeys.includes(k));
   const dq = data.summary.data_quality;
   const dqItems = Object.entries(dq).filter(([key, value]) => key !== "total" && value);
   return (
@@ -560,19 +607,13 @@ function OverviewTab({
                 </div>
                 <HealthBadge health={g.health} label={p.health[g.health]} />
               </div>
-              <div className="sp-counts">
-                <div>
-                  <b>{g.projects.in_progress + g.projects.paused}</b>
-                  <span>{p.cExecution}</span>
-                </div>
-                <div>
-                  <b>{g.projects.planning}</b>
-                  <span>{p.cPlanning}</span>
-                </div>
-                <div>
-                  <b style={{ color: g.alerts.late ? "var(--red)" : undefined }}>{g.alerts.late}</b>
-                  <span>{p.cLate}</span>
-                </div>
+              <div className="sp-counts" style={{ gridTemplateColumns: `repeat(${shownStatus.length}, 1fr)` }}>
+                {shownStatus.map((k) => (
+                  <div key={k}>
+                    <b>{g.projects[GROUP_COUNT_FIELD[k]]}</b>
+                    <span>{shownStatus.length >= 4 ? p.statusShort[k] : p.statusOptions[k]}</span>
+                  </div>
+                ))}
               </div>
               {g.technicians && (
                 <div className="sp-card-techs">
@@ -592,8 +633,16 @@ function OverviewTab({
                 </div>
               )}
               <div className="sp-card-foot">
-                <span style={{ color: alerts ? HEALTH_COLOR[g.alerts.late ? "late" : "risk"] : "var(--green)", fontWeight: 600 }}>
-                  {alerts ? p.alerts(alerts) : p.noAlerts}
+                <span style={{ fontWeight: 600 }}>
+                  {alerts ? (
+                    <>
+                      <span style={{ color: g.alerts.late ? HEALTH_COLOR.late : "var(--text-faint)" }}>{p.lateCount(g.alerts.late)}</span>
+                      {" · "}
+                      <span style={{ color: g.alerts.risk ? HEALTH_COLOR.risk : "var(--text-faint)" }}>{p.riskCount(g.alerts.risk)}</span>
+                    </>
+                  ) : (
+                    <span style={{ color: "var(--green)" }}>{p.noAlerts}</span>
+                  )}
                 </span>
                 <span>
                   {p.occurrences} <b>{g.occurrences_open}</b> · {p.updatesPending} <b>{g.updates_pending}</b>

@@ -281,3 +281,24 @@ class SitesPanelApiTests(TestCase):
         first = data["exceptions"][0]
         self.assertEqual(first["level"], HEALTH_LATE)
         self.assertEqual(first["action"], {"type": "project", "project_id": self.project_1.id})
+
+    def test_default_status_filter_excludes_finished(self):
+        self._login_superuser()
+        data = self.api.get(reverse("dashboard-sites")).json()
+        self.assertEqual(data["status_filters"], ["active", "paused", "planning"])
+        self.assertNotIn("Concluído", [p["name"] for p in data["projects"]])
+        self.assertEqual(data["summary"]["finished"], 0)
+
+    def test_status_filter_combination(self):
+        self._login_superuser()
+        data = self.api.get(reverse("dashboard-sites"), {"status": "planning,finished"}).json()
+        self.assertEqual(data["status_filters"], ["planning", "finished"])
+        self.assertEqual(sorted(p["name"] for p in data["projects"]), ["Concluído", "Cross-connect"])
+        self.assertEqual(data["summary"]["finished"], 1)
+        finished = next(p for p in data["projects"] if p["name"] == "Concluído")
+        self.assertEqual(finished["health"], HEALTH_OK)
+
+    def test_invalid_status_filter_falls_back_to_default(self):
+        self._login_superuser()
+        data = self.api.get(reverse("dashboard-sites"), {"status": "xyz"}).json()
+        self.assertEqual(data["status_filters"], ["active", "paused", "planning"])
