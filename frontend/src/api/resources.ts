@@ -38,6 +38,7 @@ import type {
   ProjectType,
   RackPosition,
   ResponsibleFull,
+  SitesPanelData,
   TechnicalPerformanceData,
   TechnicianPresence,
   UserOption,
@@ -431,6 +432,8 @@ export const dashboardApi = {
     apiClient.get<ProjectsPerformanceData>("/dashboard/projects/", { params }).then((r) => r.data),
   technical: (params?: Record<string, string>) =>
     apiClient.get<TechnicalPerformanceData>("/dashboard/technical/", { params }).then((r) => r.data),
+  sites: (params?: Record<string, string>) =>
+    apiClient.get<SitesPanelData>("/dashboard/sites/", { params }).then((r) => r.data),
 };
 
 export const clientsApi = {

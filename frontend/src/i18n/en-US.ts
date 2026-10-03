@@ -3,6 +3,7 @@ import type { Translations } from "./translations";
 const enUS: Translations = {
   nav: {
     centralOperacoes: "Operations Center",
+    gestaoSites: "Sites Management",
     operacaoDoDia: "Daily Operations",
     timelineOperacional: "Operational Timeline",
     relatoriosIndicadores: "Reports & Indicators",

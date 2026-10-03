@@ -2,6 +2,7 @@ export interface Translations {
   // Layout — navegação
   nav: {
     centralOperacoes: string;
+    gestaoSites: string;
     operacaoDoDia: string;
     timelineOperacional: string;
     relatoriosIndicadores: string;

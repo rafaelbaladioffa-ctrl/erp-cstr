@@ -1226,3 +1226,129 @@ export interface ProjectDailyUpdate {
   created_at: string;
   updated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Painel de Gestão de Sites (GET /api/dashboard/sites/)
+// ---------------------------------------------------------------------------
+
+export type SitesPanelGroupBy = "site" | "region" | "client" | "responsible";
+export type SitesPanelHealth = "late" | "risk" | "ok" | "no_data";
+export type SitesPanelTechCategory = "executing" | "unproductive" | "break" | "off_duty" | "on_leave" | "no_checkin";
+
+export interface SitesPanelTechCounts {
+  total: number;
+  present: number;
+  executing: number;
+  unproductive: number;
+  break: number;
+  off_duty: number;
+  on_leave: number;
+  no_checkin: number;
+  no_dispatch: number;
+}
+
+export interface SitesPanelReason {
+  level: "late" | "risk" | "no_data";
+  code: string;
+  text: string;
+}
+
+export interface SitesPanelProject {
+  id: number;
+  code: string;
+  name: string;
+  status: string;
+  status_display: string;
+  group_key: string;
+  group_label: string;
+  site: { id: number; name: string; code: string } | null;
+  region: { id: number; name: string; country: string } | null;
+  client: { id: number; name: string } | null;
+  responsible_cstr: { id: number; name: string } | null;
+  project_type: string;
+  planned_start: string | null;
+  planned_end: string | null;
+  real_pct: number | null;
+  planned_pct: number | null;
+  deviation_pp: number | null;
+  tasks_total: number;
+  tasks_completed: number;
+  tasks_overdue: number;
+  health: SitesPanelHealth;
+  reasons: SitesPanelReason[];
+  occurrences_open: number;
+  occurrences_severe: number;
+  update_status: "sent" | "draft" | "missing" | null;
+  trend: { date: string; percent: number }[];
+  technicians_today: { id: number; name: string; category: SitesPanelTechCategory; status_display: string }[];
+}
+
+export interface SitesPanelGroup {
+  key: string;
+  label: string;
+  sublabel: string;
+  health: SitesPanelHealth;
+  projects: { in_progress: number; paused: number; planning: number };
+  alerts: { late: number; risk: number; no_data: number };
+  technicians: SitesPanelTechCounts | null;
+  occurrences_open: number;
+  updates_pending: number;
+  responsibles: string[];
+  project_ids: number[];
+}
+
+export interface SitesPanelSitePoint {
+  id: number;
+  label: string;
+  lat: number;
+  lng: number;
+  region: string;
+  health: SitesPanelHealth;
+  in_execution: number;
+  planning: number;
+  late: number;
+  risk: number;
+  technicians_present: number;
+  technicians_total: number;
+}
+
+export interface SitesPanelException {
+  level: "late" | "risk" | "info" | "neutral";
+  kind: "deadline" | "team" | "client" | "mobilization";
+  title: string;
+  detail: string;
+  action: { type: "project" | "operations" | "updates"; project_id?: number };
+}
+
+export interface SitesPanelData {
+  date: string;
+  group_by: SitesPanelGroupBy;
+  include_technicians: boolean;
+  summary: {
+    in_progress: number;
+    paused: number;
+    planning: number;
+    starting_soon: number;
+    late: number;
+    risk: number;
+    no_data: number;
+    groups_with_late: number;
+    start_late: number;
+    occurrences_open: number;
+    updates_pending: number;
+    technicians: SitesPanelTechCounts | null;
+    data_quality: {
+      sites_without_region: number;
+      projects_without_end: number;
+      projects_without_site: number;
+      executing_without_tasks: number;
+      technicians_without_job_title: number | null;
+      total: number;
+    };
+  };
+  groups: SitesPanelGroup[];
+  projects: SitesPanelProject[];
+  sites: SitesPanelSitePoint[];
+  unplaced_technicians: unknown[];
+  exceptions: SitesPanelException[];
+}

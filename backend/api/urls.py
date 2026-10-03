@@ -5,6 +5,7 @@ from . import views
 from .auth_views import LogoutView, ThrottledTokenObtainPairView, ThrottledTokenRefreshView
 from .dashboard import ProjectsPerformanceView, TechnicalPerformanceView
 from .operations import OperationsBoardView, OperationsReportsView, OperationsTimelineView
+from .sites_panel import SitesPanelView
 
 router = DefaultRouter()
 router.register("projects", views.ProjectViewSet, basename="project")
@@ -77,6 +78,7 @@ urlpatterns = [
     ),
     path("dashboard/projects/", ProjectsPerformanceView.as_view(), name="dashboard-projects"),
     path("dashboard/technical/", TechnicalPerformanceView.as_view(), name="dashboard-technical"),
+    path("dashboard/sites/", SitesPanelView.as_view(), name="dashboard-sites"),
     path("operations/board/", OperationsBoardView.as_view(), name="operations-board"),
     path("operations/timeline/", OperationsTimelineView.as_view(), name="operations-timeline"),
     path("operations/reports/", OperationsReportsView.as_view(), name="operations-reports"),

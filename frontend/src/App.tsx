@@ -21,6 +21,7 @@ import ProjectDetail from "./pages/ProjectDetail";
 import ProjectsList from "./pages/ProjectsList";
 import ProjectUpdates from "./pages/ProjectUpdates";
 import SitesMap from "./pages/SitesMap";
+import SitesPanel from "./pages/SitesPanel";
 import { CADASTROS_PERMS, MASTER_DATA_PERMS, PERMS, hasAnyPerm, hasPerm } from "./utils/permissions";
 
 function RequireSuperuser({ children }: { children: ReactNode }) {
@@ -88,6 +89,14 @@ export default function App() {
             element={
               <RequirePermission permission={PERMS.viewOperationsBoard}>
                 <OperationsReportsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/gestao-sites"
+            element={
+              <RequirePermission permission={PERMS.viewProject}>
+                <SitesPanel />
               </RequirePermission>
             }
           />

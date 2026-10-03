@@ -27,6 +27,7 @@ function buildNavGroups(t: Translations): { title: string; items: NavItem[] }[] 
     {
       title: t.nav.centralOperacoes,
       items: [
+        { to: "/gestao-sites", label: t.nav.gestaoSites, icon: "space_dashboard", permission: PERMS.viewProject },
         { to: "/operacao-do-dia", label: t.nav.operacaoDoDia, icon: "alt_route", permission: PERMS.viewOperationsBoard },
         { to: "/timeline-operacional", label: t.nav.timelineOperacional, icon: "schedule", permission: PERMS.viewOperationsBoard },
         { to: "/relatorios-indicadores", label: t.nav.relatoriosIndicadores, icon: "bar_chart", permission: PERMS.viewOperationsBoard },
@@ -67,6 +68,7 @@ function buildNavGroups(t: Translations): { title: string; items: NavItem[] }[] 
 
 function currentBreadcrumb(pathname: string, search: string, t: Translations) {
   const areaLabels: Record<string, { area: string; areaHref: string; page: string }> = {
+    "/gestao-sites": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.gestaoSites },
     "/operacao-do-dia": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.operacaoDoDia },
     "/timeline-operacional": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.timelineOperacional },
     "/relatorios-indicadores": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.relatoriosIndicadores },
