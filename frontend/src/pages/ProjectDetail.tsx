@@ -123,6 +123,7 @@ const TEXT = {
     pendingTask: "Tarefa pendente",
     pendingTasks: "Tarefas pendentes",
     hoursWorked: "Horas trabalhadas",
+    historicalHours: "históricas (planilha)",
     occurrencesLabel: "Ocorrências",
     timeline: "Linha do tempo",
     timelineStart: "Início: ",
@@ -242,6 +243,7 @@ const TEXT = {
     pendingTask: "Pending task",
     pendingTasks: "Pending tasks",
     hoursWorked: "Hours worked",
+    historicalHours: "historical (spreadsheet)",
     occurrencesLabel: "Occurrences",
     timeline: "Timeline",
     timelineStart: "Start: ",
@@ -361,6 +363,7 @@ const TEXT = {
     pendingTask: "Tarea pendiente",
     pendingTasks: "Tareas pendientes",
     hoursWorked: "Horas trabajadas",
+    historicalHours: "históricas (planilla)",
     occurrencesLabel: "Ocurrencias",
     timeline: "Línea de tiempo",
     timelineStart: "Inicio: ",
@@ -1454,6 +1457,11 @@ function OverviewSection({
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{project.worked_hours}h</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>{p.hoursWorked}</div>
+          {project.historical_hours > 0 && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+              + {project.historical_hours}h {p.historicalHours}
+            </div>
+          )}
         </div>
         <div className="card" style={{ padding: "18px 20px" }}>
           <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{occurrencesCount}</div>

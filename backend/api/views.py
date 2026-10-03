@@ -1,6 +1,7 @@
 import csv
 
 from django.db import models
+from django.db.models.functions import Coalesce
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework import mixins, permissions, viewsets
@@ -79,7 +80,16 @@ from master_data.services.task_rule_resolver import (
     apply_resolution_to_scope_item,
     simulate_task_template,
 )
-from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition, merged_worked_hours
+from projects.models import (
+    Project,
+    ProjectAttachment,
+    ProjectHourEntry,
+    ProjectOccurrence,
+    ProjectTask,
+    ProjectTaskAssignment,
+    RackPosition,
+    merged_worked_hours,
+)
 from projects.services import (
     BulkActionError,
     add_custom_tasks_to_project,
@@ -446,7 +456,18 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
     change_permission_actions = ("tasks_bulk", "import_tasks", "rack_positions_bulk", "tasks_create", "tasks_create_custom")
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().annotate(
+            historical_hours_total=Coalesce(
+                models.Subquery(
+                    ProjectHourEntry.objects.filter(project=models.OuterRef("pk"))
+                    .values("project")
+                    .annotate(total=models.Sum("total_hours"))
+                    .values("total")[:1]
+                ),
+                models.Value(0),
+                output_field=models.DecimalField(max_digits=10, decimal_places=2),
+            )
+        )
         status_param = self.request.query_params.get("status")
         if status_param:
             queryset = queryset.filter(status=status_param)

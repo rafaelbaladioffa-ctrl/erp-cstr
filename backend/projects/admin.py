@@ -19,7 +19,17 @@ from core.admin_mixins import SelectablePageSizeAdminMixin
 from core.csv_io import MAX_CSV_UPLOAD_BYTES, neutralize_formula
 from core.models import Category, Client, Collaborator, Company, ProjectType, Responsible, Site, Task
 from .analytics import build_projects_performance, build_technical_performance, parse_date
-from .models import DashboardProxy, Project, ProjectAttachment, ProjectHistory, ProjectOccurrence, ProjectTask, ProjectTaskAssignment, RackPosition
+from .models import (
+    DashboardProxy,
+    Project,
+    ProjectAttachment,
+    ProjectHistory,
+    ProjectHourEntry,
+    ProjectOccurrence,
+    ProjectTask,
+    ProjectTaskAssignment,
+    RackPosition,
+)
 from .services import (
     BulkActionError,
     add_tasks_to_project,
@@ -1079,3 +1089,12 @@ class ProjectAttachmentAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     def get_model_perms(self, request):
         """Mantém as rotas para os links internos, mas oculta o submódulo do menu."""
         return {}
+
+
+@admin.register(ProjectHourEntry)
+class ProjectHourEntryAdmin(ModelAdmin):
+    list_display = ("project", "work_date", "person_name", "total_hours", "work_location", "source")
+    list_filter = ("source", "work_location")
+    search_fields = ("project__code", "project__name", "project__po", "person_name")
+    date_hierarchy = "work_date"
+    autocomplete_fields = ("project",)

@@ -6590,3 +6590,31 @@ class OperationsReportsV2Tests(TestCase):
         self.check_in(self.tech_a, [(P.STATUS_AVAILABLE, now - timedelta(minutes=10)), (P.STATUS_SITE_BLOCKED, now)], day=today)
         types = {e["type"] for e in self.get()["log_entries"]}
         self.assertEqual(types, {"checkin", "status"})
+
+
+class ProjectHourEntryTests(TestCase):
+    """Horas históricas: só total do projeto, nunca métricas de técnico."""
+
+    def setUp(self):
+        from projects.models import ProjectHourEntry
+
+        self.api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(company=self.company, name="Projeto Histórico")
+        self.other = Project.objects.create(company=self.company, name="Projeto Sem Histórico")
+        for day, hours in ((1, "8.80"), (2, "10.50")):
+            ProjectHourEntry.objects.create(
+                project=self.project, work_date=datetime(2026, 3, day).date(), person_name="FULANO", total_hours=Decimal(hours)
+            )
+        self.api.force_authenticate(user=User.objects.create_superuser(username="hist_admin", email="hist@example.com", password="x"))
+
+    def test_historical_hours_in_project_list_and_detail(self):
+        rows = {row["name"]: row for row in self.api.get("/api/projects/?page_size=50").data["results"]}
+        self.assertEqual(rows["Projeto Histórico"]["historical_hours"], 19.3)
+        self.assertEqual(rows["Projeto Sem Histórico"]["historical_hours"], 0)
+        self.assertEqual(self.api.get(f"/api/projects/{self.project.pk}/").data["historical_hours"], 19.3)
+
+    def test_historical_hours_do_not_feed_technician_metrics(self):
+        detail = self.api.get(f"/api/projects/{self.project.pk}/").data
+        self.assertEqual((detail["worked_hours"], detail["real_man_hours"]), (0, 0))
+        self.assertEqual(self.api.get(f"/api/projects/{self.project.pk}/hours-by-collaborator/").data, [])

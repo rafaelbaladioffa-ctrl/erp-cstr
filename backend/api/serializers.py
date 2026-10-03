@@ -1480,6 +1480,7 @@ class ProjectSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer)
     completed_tasks = serializers.SerializerMethodField()
     worked_hours = serializers.SerializerMethodField()
     real_man_hours = serializers.SerializerMethodField()
+    historical_hours = serializers.SerializerMethodField()
     untracked_tasks_count = serializers.SerializerMethodField()
     tracking_rate = serializers.SerializerMethodField()
     progress_percent = serializers.SerializerMethodField()
@@ -1518,6 +1519,7 @@ class ProjectSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer)
             "completed_tasks",
             "worked_hours",
             "real_man_hours",
+            "historical_hours",
             "untracked_tasks_count",
             "tracking_rate",
             "progress_percent",
@@ -1559,6 +1561,15 @@ class ProjectSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer)
 
     def get_real_man_hours(self, obj):
         return round(sum(t.real_man_hours for t in self._tasks(obj)), 2)
+
+    def get_historical_hours(self, obj):
+        """Horas históricas (planilhas) do projeto — só total do projeto."""
+        total = getattr(obj, "historical_hours_total", None)
+        if total is None:
+            from django.db.models import Sum
+
+            total = obj.hour_entries.aggregate(total=Sum("total_hours"))["total"]
+        return float(total or 0)
 
     def get_untracked_tasks_count(self, obj):
         return sum(

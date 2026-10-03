@@ -620,3 +620,32 @@ class ProjectProgressSnapshot(TimestampedModel):
 
     def __str__(self):
         return f"{self.project} - {self.date} - {self.percent}%"
+
+
+class ProjectHourEntry(TimestampedModel):
+    """Horas históricas lançadas por projeto (ex.: planilha de apontamento dos
+    supervisores). Entram SOMENTE no total de horas do projeto — nunca em
+    produtividade, utilização, ranking ou estimativa por técnico/atividade,
+    que continuam vindo só do apontamento por tarefa (ProjectTaskAssignment).
+    `person_name` é texto livre, só para rastreabilidade."""
+
+    project = models.ForeignKey(Project, verbose_name="projeto", on_delete=models.CASCADE, related_name="hour_entries")
+    work_date = models.DateField("data")
+    person_name = models.CharField("pessoa", max_length=150, blank=True)
+    hours_normal = models.DecimalField("horas normais", max_digits=6, decimal_places=2, default=0)
+    hours_50 = models.DecimalField("horas 50%", max_digits=6, decimal_places=2, default=0)
+    hours_100 = models.DecimalField("horas 100%", max_digits=6, decimal_places=2, default=0)
+    total_hours = models.DecimalField("total de horas", max_digits=6, decimal_places=2, default=0)
+    work_location = models.CharField("local", max_length=50, blank=True)
+    comments = models.TextField("comentários", blank=True)
+    source = models.CharField("origem", max_length=50, default="PLANILHA_SUPERVISOR")
+    source_reference = models.CharField("referência na origem", max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = "Hora histórica do projeto"
+        verbose_name_plural = "Horas históricas dos projetos"
+        ordering = ("-work_date", "id")
+        indexes = [models.Index(fields=("project", "work_date"), name="proj_hourentry_proj_date_idx")]
+
+    def __str__(self):
+        return f"{self.project} - {self.work_date} - {self.total_hours}h"

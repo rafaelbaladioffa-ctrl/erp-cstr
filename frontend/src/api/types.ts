@@ -48,6 +48,7 @@ export interface Project {
   total_tasks: number;
   completed_tasks: number;
   worked_hours: number;
+  historical_hours: number;
   progress_percent: number;
 }
 
