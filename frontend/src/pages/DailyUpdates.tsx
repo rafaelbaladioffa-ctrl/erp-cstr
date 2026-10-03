@@ -182,21 +182,30 @@ export default function DailyUpdates() {
     setSavingCreate(true);
     setCreateError("");
     try {
-      // Para cada projeto, agrupa os técnicos por dia do intervalo e envia
-      // registros separados por data. Registros do mesmo dia de projetos
-      // diferentes são enviados em paralelo.
-      const allRequests: Promise<unknown>[] = [];
+      // Uma única atualização por data, concentrando todos os projetos
+      // selecionados naquele dia. Se o mesmo projeto aparece em mais de uma
+      // linha para a mesma data, os técnicos são unidos (há restrição de
+      // um projeto por atualização).
+      const byDate = new Map<string, Map<number, Set<number>>>();
       for (const row of validRows) {
-        const dates = getDatesInRange(row.dateFrom, row.dateTo);
-        for (const d of dates) {
-          allRequests.push(
-            dailyUpdatesApi.create({
-              allocation_date: d,
-              allocations: [{ project: Number(row.projectId), collaborator_ids: row.collaboratorIds }],
-            } as never)
-          );
+        for (const d of getDatesInRange(row.dateFrom, row.dateTo)) {
+          const projectsOfDay = byDate.get(d) ?? new Map<number, Set<number>>();
+          const projectId = Number(row.projectId);
+          const techs = projectsOfDay.get(projectId) ?? new Set<number>();
+          row.collaboratorIds.forEach((id) => techs.add(id));
+          projectsOfDay.set(projectId, techs);
+          byDate.set(d, projectsOfDay);
         }
       }
+      const allRequests = Array.from(byDate.entries()).map(([d, projectsOfDay]) =>
+        dailyUpdatesApi.create({
+          allocation_date: d,
+          allocations: Array.from(projectsOfDay.entries()).map(([project, techs]) => ({
+            project,
+            collaborator_ids: Array.from(techs),
+          })),
+        } as never)
+      );
       await Promise.all(allRequests);
       setCreating(false);
       setAllocationRows([emptyRow()]);
