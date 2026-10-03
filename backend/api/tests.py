@@ -6316,3 +6316,277 @@ CONSOLE_COPPER: 40x GREEN RJ45 & 1x ORANGE RJ45
 
     def test_plain_pasted_list_keeps_line_per_item_fallback(self):
         self.assertEqual(len(self.extract("2F robust fiber 40m\nCAT6 azul 30m\n")), 2)
+
+
+class OperationsReportsV2Tests(TestCase):
+    """Relatórios e Indicadores v2 — regras de docs/features/relatorios-v2.md
+    (HH por assignment, horas produtivas por status, corte de dia sem Fim de
+    Expediente, improdutivo por categoria, base de estimativa por atividade)."""
+
+    def setUp(self):
+        from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
+
+        self.Presence = TechnicianDailyPresence
+        self.StatusEvent = TechnicianStatusEvent
+        self.client_api = APIClient()
+        self.admin = User.objects.create_superuser(username="reports_admin", email="reports@example.com", password="x")
+        self.client_api.force_authenticate(user=self.admin)
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(company=self.company, name="Projeto Relatórios")
+        self.day = timezone.localdate() - timedelta(days=3)
+        self.tech_a = make_collaborator(self.company, "Técnico A")
+        self.tech_b = make_collaborator(self.company, "Técnico B")
+        self.tech_c = make_collaborator(self.company, "Técnico C")
+        self._seq = 0
+
+    def at(self, hour, minute=0, day=None):
+        return timezone.make_aware(datetime.combine(day or self.day, datetime.min.time()).replace(hour=hour, minute=minute))
+
+    def get(self, **params):
+        query = {"site": "all", "date_from": str(self.day - timedelta(days=7)), "date_to": str(timezone.localdate())}
+        query.update(params)
+        response = self.client_api.get("/api/operations/reports/", query)
+        self.assertEqual(response.status_code, 200, getattr(response, "data", None))
+        return response.json()
+
+    def tech_row(self, data, collaborator):
+        return next(t for t in data["technicians"] if t["id"] == collaborator.pk)
+
+    def make_task(self, start, end, hours, assignments, generated=None, outcome="", quantity=None):
+        self._seq += 1
+        task = ProjectTask.objects.create(
+            project=self.project,
+            custom_name=f"Tarefa {self._seq}",
+            order=self._seq,
+            status=ProjectTask.STATUS_COMPLETED,
+            actual_start=start,
+            actual_end=end,
+            actual_hours=Decimal(str(hours)) if hours is not None else None,
+            generated_task=generated,
+            completion_outcome=outcome,
+            quantity_planned=quantity,
+        )
+        for collaborator, a_start, a_end, a_hours in assignments:
+            ProjectTaskAssignment.objects.create(
+                project_task=task,
+                collaborator=collaborator,
+                assignment_start=a_start,
+                assignment_end=a_end,
+                actual_hours=Decimal(str(a_hours)) if a_hours is not None else None,
+            )
+        return task
+
+    def check_in(self, collaborator, events, day=None):
+        day = day or self.day
+        self.Presence.objects.create(collaborator=collaborator, date=day, status=events[-1][0], checked_in_at=events[0][1])
+        for status, changed_at in events:
+            self.StatusEvent.objects.create(collaborator=collaborator, date=day, status=status, changed_at=changed_at)
+
+    # --- HH e horas produtivas -------------------------------------------
+
+    def test_man_hours_sum_individual_assignment_hours(self):
+        self.make_task(
+            self.at(8), self.at(11), 3,
+            [
+                (self.tech_a, self.at(8), self.at(11), 3),
+                (self.tech_b, self.at(8), self.at(11), 3),
+                (self.tech_c, self.at(10), self.at(11), 1),
+            ],
+        )
+        data = self.get()
+        self.assertEqual(data["stats"]["man_hours_total"], 7.0)
+        self.assertEqual(self.tech_row(data, self.tech_a)["man_hours"], 3.0)
+        self.assertEqual(self.tech_row(data, self.tech_c)["man_hours"], 1.0)
+
+    def test_long_paused_task_does_not_inflate_utilization(self):
+        monday = self.day - timedelta(days=4)
+        self.make_task(
+            self.at(8, day=monday), self.at(16), 6,
+            [(self.tech_a, self.at(8, day=monday), self.at(16), 6)],
+        )
+        self.Presence.objects.create(
+            collaborator=self.tech_a, date=self.day, status=self.Presence.STATUS_OFF_DUTY, checked_in_at=self.at(8)
+        )
+        row = self.tech_row(self.get(), self.tech_a)
+        self.assertEqual(row["productive_hours"], 6.0)
+        self.assertEqual(row["journey_hours"], 8.0)
+        self.assertEqual(row["utilization_pct"], 75)
+        self.assertEqual(row["utilization_band"], "normal")
+
+    def test_productive_hours_come_from_execution_status(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(9)),
+            (P.STATUS_SITE_BLOCKED, self.at(12)),
+            (P.STATUS_IN_PROGRESS, self.at(13)),
+            (P.STATUS_OFF_DUTY, self.at(17)),
+        ])
+        row = self.tech_row(self.get(), self.tech_a)
+        self.assertEqual(row["productive_hours"], 7.0)
+        self.assertEqual(row["external_block_hours"], 1.0)
+        self.assertEqual(row["internal_idle_hours"], 1.0)
+        self.assertEqual(row["incomplete_days"], 0)
+
+    # --- Dia sem Fim de Expediente (RN-09) -------------------------------
+
+    def test_day_without_off_duty_is_cut_at_checkin_plus_9h(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(9)),
+            (P.STATUS_AVAILABLE, self.at(15)),
+        ])
+        row = self.tech_row(self.get(), self.tech_a)
+        self.assertEqual(row["productive_hours"], 6.0)
+        self.assertEqual(row["internal_idle_hours"], 3.0)  # 8–9h + 15–17h
+        self.assertEqual(row["incomplete_days"], 1)
+
+    def test_real_execution_at_end_of_day_is_not_cut(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(16)),
+        ])
+        row = self.tech_row(self.get(), self.tech_a)
+        self.assertEqual(row["productive_hours"], 8.0)  # 16h até a meia-noite
+        self.assertEqual(row["incomplete_days"], 0)
+
+    def test_paused_task_at_end_of_day_is_cut(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(16)),
+            (P.STATUS_AVAILABLE, self.at(16, 30)),
+        ])
+        row = self.tech_row(self.get(), self.tech_a)
+        self.assertEqual(row["productive_hours"], 0.5)
+        self.assertEqual(row["internal_idle_hours"], 8.5)  # 8–16h + 16h30–17h
+        self.assertEqual(row["incomplete_days"], 1)
+
+    # --- Improdutivo consistente (RN-11/12) ------------------------------
+
+    def test_unproductive_categories_are_consistent(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [
+            (P.STATUS_SITE_BLOCKED, self.at(8)),
+            (P.STATUS_AVAILABLE, self.at(10)),
+            (P.STATUS_OFF_DUTY, self.at(11)),
+        ])
+        self.check_in(self.tech_b, [
+            (P.STATUS_AWAITING_RELEASE, self.at(8)),
+            (P.STATUS_OFF_DUTY, self.at(9)),
+        ])
+        data = self.get()
+        self.assertEqual(data["stats"]["external_block_hours"], 3.0)
+        self.assertEqual(data["stats"]["internal_idle_hours"], 1.0)
+        self.assertEqual(sum(t["external_block_hours"] for t in data["technicians"]), 3.0)
+        categories = {r["status"]: r["category"] for r in data["unproductive_by_reason"]}
+        self.assertEqual(categories, {"site_blocked": "external", "awaiting_release": "external", "available": "internal"})
+
+    # --- Base de estimativa por atividade (RN-16..21) --------------------
+
+    def setup_catalog(self):
+        self.family = CableFamily.objects.create(code="TST-RPT-CAT6A", name="Cat6A teste", medium="COPPER")
+        self.activity = Activity.objects.create(code="TST-RPT-RUN", name="Lançar cabo", category="INSTALLATION", default_unit="CABLE")
+        self.template = TaskTemplate.objects.create(code="TST-RPT-TPL", name="Template", category="TEST")
+        self.step = TaskTemplateStep.objects.create(task_template=self.template, activity=self.activity, step_order=10)
+
+    def make_generated(self, quantity, length_m=None):
+        self._seq += 1
+        scope_item = ScopeItem.objects.create(
+            raw_text=f"item {self._seq}", item_type="CABLE", cable_family=self.family, quantity=quantity, length_m=length_m
+        )
+        return GeneratedTask.objects.create(
+            scope_item=scope_item,
+            task_template=self.template,
+            task_template_step=self.step,
+            activity=self.activity,
+            step_order=10,
+            name=f"Lançar {length_m}m",
+            quantity=Decimal(quantity),
+            unit="CABLE",
+        )
+
+    def test_activity_grouped_by_activity_and_cable_family(self):
+        self.setup_catalog()
+        for i in range(5):
+            generated = self.make_generated(10, length_m=Decimal(50 + i * 10))
+            self.make_task(
+                self.at(8), self.at(10), 2,
+                [(self.tech_a, self.at(8), self.at(10), 2), (self.tech_b, self.at(8), self.at(10), 2)],
+                generated=generated,
+            )
+        data = self.get()
+        self.assertEqual(len(data["activity_productivity"]), 1)
+        row = data["activity_productivity"][0]
+        self.assertEqual(row["activity_code"], "TST-RPT-RUN")
+        self.assertEqual(row["cable_family_code"], "TST-RPT-CAT6A")
+        self.assertEqual(row["executions_used"], 5)
+        self.assertTrue(row["sufficient_sample"])
+        self.assertEqual(row["median_man_hours"], 4.0)
+        self.assertEqual(row["median_duration_hours"], 2.0)
+        self.assertEqual(row["avg_crew_size"], 2.0)
+        self.assertEqual(row["hh_per_unit"]["median"], 0.4)  # 4 HH / 10 cabos
+        self.assertEqual(row["hh_per_meter"]["median"], 0.0057)  # 4 HH / 700 m (mediana)
+        self.assertEqual(data["activity_excluded_no_catalog"], 0)
+
+    def test_activity_with_small_sample_has_no_reference(self):
+        self.setup_catalog()
+        for _ in range(3):
+            generated = self.make_generated(10)
+            self.make_task(self.at(8), self.at(10), 2, [(self.tech_a, self.at(8), self.at(10), 2)], generated=generated)
+        row = self.get()["activity_productivity"][0]
+        self.assertFalse(row["sufficient_sample"])
+        self.assertIsNone(row["hh_per_unit"])
+        self.assertEqual(row["executions_used"], 3)
+
+    def test_activity_exclusions_are_counted(self):
+        self.setup_catalog()
+        generated = self.make_generated(10)
+        self.make_task(self.at(8), self.at(10), 2, [(self.tech_a, self.at(8), self.at(10), 2)], generated=generated, outcome="partial")
+        generated = self.make_generated(10)
+        self.make_task(None, self.at(10), None, [(self.tech_a, None, None, None)], generated=generated)
+        self.make_task(self.at(8), self.at(10), 2, [(self.tech_a, self.at(8), self.at(10), 2)])
+        data = self.get()
+        row = data["activity_productivity"][0]
+        self.assertEqual(row["executions_total"], 2)
+        self.assertEqual(row["excluded"], {"untracked": 1, "partial_or_blocked": 1, "no_quantity": 0})
+        self.assertEqual(data["activity_excluded_no_catalog"], 1)
+
+    # --- Qualidade do dado, validações e log -----------------------------
+
+    def test_tracking_rate(self):
+        self.make_task(self.at(8), self.at(9), 1, [(self.tech_a, self.at(8), self.at(9), 1)])
+        self.make_task(None, self.at(10), None, [(self.tech_a, None, None, None)])
+        data = self.get()
+        self.assertEqual(data["stats"]["tracking_rate_pct"], 50)
+        self.assertEqual(self.tech_row(data, self.tech_a)["tracking_rate_pct"], 50)
+
+    def test_utilization_bands(self):
+        from api.reports import utilization_band
+
+        self.assertEqual(utilization_band(30), "low")
+        self.assertEqual(utilization_band(60), "attention")
+        self.assertEqual(utilization_band(85), "normal")
+        self.assertEqual(utilization_band(140), "suspect")
+        self.assertIsNone(utilization_band(None))
+
+    def test_invalid_period_is_rejected(self):
+        today = timezone.localdate()
+        too_long = self.client_api.get(
+            "/api/operations/reports/", {"date_from": str(today - timedelta(days=200)), "date_to": str(today)}
+        )
+        self.assertEqual(too_long.status_code, 400)
+        inverted = self.client_api.get(
+            "/api/operations/reports/", {"date_from": str(today), "date_to": str(today - timedelta(days=1))}
+        )
+        self.assertEqual(inverted.status_code, 400)
+
+    def test_log_entries_have_type(self):
+        P = self.Presence
+        today = timezone.localdate()
+        now = timezone.now()
+        self.check_in(self.tech_a, [(P.STATUS_AVAILABLE, now - timedelta(minutes=10)), (P.STATUS_SITE_BLOCKED, now)], day=today)
+        types = {e["type"] for e in self.get()["log_entries"]}
+        self.assertEqual(types, {"checkin", "status"})
