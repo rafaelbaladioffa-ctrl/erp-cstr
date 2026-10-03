@@ -254,6 +254,7 @@ Fase 1 no frontend (mesmo padrão de `exportCsv` em `ProjectsList.tsx`), um bot�
 | D-3 | Amostra mínima (RN-21) | **Aprovada:** 5 execuções |
 | D-4 | Ordem das seções | **Aprovada:** bloco Hoje antes da seção Período (coordenadores usam a tela pelo dia corrente) |
 | D-5 | Limite de ocioso interno (RN-26) | **Aprovada:** 30 min por técnico por dia |
+| D-6 | Tarefa com apontamento real mas sem técnico vinculado (assignment) | **Aprovada (2026-10-03):** não gera HH nem entra na base de estimativa — sem técnico não há HH confiável. Não assumir equipe de 1 pessoa. |
 
 ---
 
