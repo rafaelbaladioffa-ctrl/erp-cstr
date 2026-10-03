@@ -4,7 +4,7 @@ from unfold.admin import ModelAdmin
 from core.admin import PhoneMaskAdminMixin
 from core.admin_mixins import SelectablePageSizeAdminMixin
 
-from .models import BotSubscriber
+from .models import BotMessageTemplate, BotSubscriber
 
 
 @admin.register(BotSubscriber)
@@ -27,3 +27,10 @@ class BotSubscriberAdmin(PhoneMaskAdminMixin, SelectablePageSizeAdminMixin, Mode
         "receives_operations_print",
     )
     search_fields = ("name", "phone")
+
+
+@admin.register(BotMessageTemplate)
+class BotMessageTemplateAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("message_type", "title", "is_active", "updated_at")
+    list_filter = ("message_type", "is_active")
+    search_fields = ("title", "intro_text", "footer_text")

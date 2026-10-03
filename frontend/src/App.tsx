@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { TabsProvider } from "./context/TabsContext";
 import { useI18n } from "./i18n";
 import AuditLog from "./pages/AuditLog";
+import BotWhatsApp from "./pages/BotWhatsApp";
 import ResetPassword from "./pages/ResetPassword";
 import CadastrosPage from "./pages/cadastros/CadastrosPage";
 import Dashboard from "./pages/Dashboard";
@@ -162,6 +163,14 @@ export default function App() {
               <RequireAnyPermission permissions={MASTER_DATA_PERMS}>
                 <MasterDataPage />
               </RequireAnyPermission>
+            }
+          />
+          <Route
+            path="/bot-whatsapp"
+            element={
+              <RequirePermission permission={PERMS.viewBotMessageTemplate}>
+                <BotWhatsApp />
+              </RequirePermission>
             }
           />
           <Route

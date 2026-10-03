@@ -1432,3 +1432,20 @@ export interface SitesPanelData {
   unplaced_technicians: unknown[];
   exceptions: SitesPanelException[];
 }
+
+export interface BotMessageFieldDefinition {
+  key: string;
+  label: string;
+}
+
+export interface BotMessageTemplate {
+  id?: number;
+  message_type: "daily_tasks" | "project_updates" | "operations_print" | "daily_project_report";
+  title: string;
+  intro_text: string;
+  footer_text: string;
+  enabled_fields: Record<string, boolean>;
+  is_active: boolean;
+  field_definitions: BotMessageFieldDefinition[];
+  updated_at?: string;
+}

@@ -4,6 +4,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 
 from api.operations import build_board_data
 from core.models import Collaborator, Site
@@ -12,7 +13,8 @@ from projects.models import Project, ProjectAttachment, ProjectOccurrence, Proje
 from updates.models import DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import WORKDAY_END, WORKDAY_START, compute_progress_defaults
 
-from .models import BotSubscriber
+from .message_templates import FIELD_DEFINITIONS, get_effective_template, preview_for_template
+from .models import BotMessageTemplate, BotSubscriber
 from .permissions import BotSharedSecretPermission
 
 
@@ -591,3 +593,59 @@ class BotDailyProjectReportBroadcastView(APIView):
                 "recipients": _active_subscribers("receives_daily_project_report"),
             }
         )
+
+
+class BotMessageTemplatesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.has_perm("bot.view_botmessagetemplate"):
+            return Response({"detail": "Sem permissão."}, status=403)
+        return Response([get_effective_template(message_type) for message_type in FIELD_DEFINITIONS])
+
+    def patch(self, request):
+        if not request.user.has_perm("bot.change_botmessagetemplate"):
+            return Response({"detail": "Sem permissão."}, status=403)
+        message_type = request.data.get("message_type")
+        if message_type not in FIELD_DEFINITIONS:
+            return Response({"detail": "Tipo de mensagem inválido."}, status=400)
+        allowed_fields = {key for key, _label in FIELD_DEFINITIONS[message_type]}
+        enabled_fields = {
+            key: bool(value)
+            for key, value in (request.data.get("enabled_fields") or {}).items()
+            if key in allowed_fields
+        }
+        template, _created = BotMessageTemplate.objects.update_or_create(
+            message_type=message_type,
+            defaults={
+                "title": request.data.get("title", ""),
+                "intro_text": request.data.get("intro_text", ""),
+                "footer_text": request.data.get("footer_text", ""),
+                "enabled_fields": enabled_fields,
+                "is_active": bool(request.data.get("is_active", True)),
+            },
+        )
+        return Response(get_effective_template(template.message_type))
+
+
+class BotMessageTemplatePreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not request.user.has_perm("bot.view_botmessagetemplate"):
+            return Response({"detail": "Sem permissão."}, status=403)
+        message_type = request.data.get("message_type")
+        if message_type not in FIELD_DEFINITIONS:
+            return Response({"detail": "Tipo de mensagem inválido."}, status=400)
+        return Response({"preview": preview_for_template(request.data)})
+
+
+class BotMessageTemplateRuntimeView(APIView):
+    permission_classes = [BotSharedSecretPermission]
+    authentication_classes = []
+
+    def get(self, request):
+        message_type = request.query_params.get("message_type")
+        if message_type not in FIELD_DEFINITIONS:
+            return Response({"detail": "Tipo de mensagem inválido."}, status=400)
+        return Response(get_effective_template(message_type))

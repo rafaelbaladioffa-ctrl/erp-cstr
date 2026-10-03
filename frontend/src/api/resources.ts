@@ -65,6 +65,7 @@ import type {
   TaskTemplateStep,
   TechnicianAbsence,
   Workstream,
+  BotMessageTemplate,
 } from "./types";
 
 function crud<T extends { id: number }>(basePath: string) {
@@ -519,4 +520,12 @@ export const operationsApi = {
         params: { site: String(siteId), ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) },
       })
       .then((r) => r.data),
+};
+
+export const botMessagesApi = {
+  list: () => apiClient.get<BotMessageTemplate[]>("/bot/message-templates/").then((r) => r.data),
+  update: (payload: BotMessageTemplate) =>
+    apiClient.patch<BotMessageTemplate>("/bot/message-templates/", payload).then((r) => r.data),
+  preview: (payload: BotMessageTemplate) =>
+    apiClient.post<{ preview: string }>("/bot/message-templates/preview/", payload).then((r) => r.data),
 };

@@ -53,6 +53,7 @@ function buildNavGroups(t: Translations): { title: string; items: NavItem[] }[] 
         { to: "/dashboard", label: t.nav.dashboard, icon: "dashboard", permissions: [PERMS.viewProject, PERMS.viewCollaborator] },
         { to: "/cadastros", label: t.nav.cadastrosGerais, icon: "inventory_2", permissions: CADASTROS_PERMS },
         { to: "/cadastros-mestres", label: t.nav.cadastrosMestres, icon: "schema", permissions: MASTER_DATA_PERMS },
+        { to: "/bot-whatsapp", label: "Bot WhatsApp", icon: "smart_toy", permission: PERMS.viewBotMessageTemplate },
       ],
     },
     {
@@ -77,6 +78,7 @@ function currentBreadcrumb(pathname: string, search: string, t: Translations) {
     "/atualizacoes-projeto": { area: t.nav.atualizacoes, areaHref: "/atualizacoes-diarias", page: t.nav.atualizacoesProjetos },
     "/cadastros": { area: t.nav.sistema, areaHref: "/cadastros", page: t.nav.cadastrosGerais },
     "/cadastros-mestres": { area: t.nav.sistema, areaHref: "/cadastros-mestres", page: t.nav.cadastrosMestres },
+    "/bot-whatsapp": { area: t.nav.sistema, areaHref: "/bot-whatsapp", page: "Bot WhatsApp" },
     "/minhas-tarefas": { area: t.nav.tecnico, areaHref: "/minhas-tarefas", page: t.nav.minhasTarefas },
     "/auditoria": { area: t.nav.seguranca, areaHref: "/auditoria", page: t.nav.log },
   };

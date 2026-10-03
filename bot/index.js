@@ -60,6 +60,32 @@ async function botGet(path, params) {
   return data;
 }
 
+async function fetchMessageTemplate(messageType) {
+  try {
+    return await botGet("/bot/message-template/", { message_type: messageType });
+  } catch (err) {
+    console.error(`Template ${messageType}: usando padrão por falha ao consultar configuração:`, err.message);
+    return null;
+  }
+}
+
+function templateEnabled(template, field) {
+  if (!template || template.is_active === false) return true;
+  return template.enabled_fields?.[field] !== false;
+}
+
+function renderTemplatedLines(template, fallbackTitle, rows) {
+  if (!template || template.is_active === false) return null;
+  const lines = [];
+  const title = template.title || fallbackTitle;
+  if (title) lines.push(`*${title}*`);
+  if (template.intro_text) lines.push("", template.intro_text);
+  const body = rows.filter(([key]) => templateEnabled(template, key)).map(([, line]) => line).filter(Boolean);
+  if (body.length) lines.push("", ...body);
+  if (template.footer_text) lines.push("", template.footer_text);
+  return lines.join("\n").trim();
+}
+
 async function fetchAllocationByName(name) {
   const data = await botGet("/bot/allocation/", { name });
 
@@ -259,18 +285,42 @@ async function runDailyTasksBroadcast(sock) {
     console.log(`Tarefas do dia (10h): nenhum projeto alocado em ${data.date}, nada a enviar.`);
     return;
   }
+  const template = await fetchMessageTemplate("daily_tasks");
   const blocks = data.projects.map((p) => {
-    const lines = [`*${p.code ? `${p.code} - ` : ""}${p.project}* — Site: ${p.site || "não informado"}`];
-    lines.push(`Técnicos: ${p.collaborators.join(", ") || "não informado"}`);
-    lines.push(p.tasks.length ? `Tarefas:\n${p.tasks.map((t) => `• ${t}`).join("\n")}` : "Sem tarefas pendentes cadastradas.");
+    const titleParts = [];
+    if (templateEnabled(template, "project_code") && p.code) titleParts.push(p.code);
+    if (templateEnabled(template, "project_name")) titleParts.push(p.project);
+    const lines = titleParts.length ? [`*${titleParts.join(" - ")}*`] : [];
+    if (templateEnabled(template, "site")) lines.push(`Site: ${p.site || "n�o informado"}`);
+    if (templateEnabled(template, "collaborators")) lines.push(`T�cnicos: ${p.collaborators.join(", ") || "n�o informado"}`);
+    if (templateEnabled(template, "pending_tasks")) {
+      lines.push(p.tasks.length ? `Tarefas:\n${p.tasks.map((t) => `� ${t}`).join("\n")}` : "Sem tarefas pendentes cadastradas.");
+    }
     return lines.join("\n");
-  });
-  const text = `📅 Tarefas alocadas para hoje (${formatDate(data.date)}):\n\n${blocks.join("\n\n")}`;
-  console.log(`Tarefas do dia (10h): enviando ${data.projects.length} projeto(s) para ${data.recipients.length} destinatário(s).`);
+  }).filter(Boolean);
+  const text =
+    renderTemplatedLines(template, `Tarefas alocadas para hoje (${formatDate(data.date)})`, [["projects", blocks.join("\n\n")]]) ||
+    `Tarefas alocadas para hoje (${formatDate(data.date)}):\n\n${blocks.join("\n\n")}`;
+  console.log(`Tarefas do dia (10h): enviando ${data.projects.length} projeto(s) para ${data.recipients.length} destinat�rio(s).`);
   await sendToRecipients(sock, data.recipients, text, "Tarefas do dia (10h)");
 }
 
-function formatProjectDailyUpdate(p, date, workdayStart, workdayEnd) {
+function formatProjectDailyUpdate(p, date, workdayStart, workdayEnd, template) {
+  const templated = renderTemplatedLines(template, "Atualização Diária de Projeto", [
+    ["project_name", `Nome do Projeto: ${p.project}`],
+    ["po", `PO: ${p.po || "Não informada"}`],
+    ["responsible_client", `Responsável AWS: ${p.responsible_client || "Não informado"}`],
+    ["responsible_cstr", `Responsável CSTR: ${p.responsible_cstr || "Não informado"}`],
+    ["collaborators", `Colaboradores: ${p.collaborators.length ? p.collaborators.join(", ") : "Não informados"}`],
+    ["date", `Data: ${formatDate(date)}`],
+    ["work_hours", `Hora de início: ${workdayStart}\nHora de término: ${workdayEnd}`],
+    ["completion_percent", `Percentual de Conclusão: ${p.completion_percent}%`],
+    ["activities_text", `Atividades Executadas:\n${p.activities_text || "Nenhuma atividade concluída registrada nesta data."}`],
+    ["certification_done", `Certificação Finalizada: ${p.certification_done ? "Sim" : "Não"}`],
+    ["project_finished", `Projeto finalizado: ${p.project_finished ? "Sim" : "Não"}`],
+    ["summary", `Observações:\n${p.summary || "Nenhuma observação."}`],
+  ]);
+  if (templated) return templated;
   const lines = [
     "📋 Atualização Diária de Projeto",
     "",
@@ -299,7 +349,7 @@ function formatProjectDailyUpdate(p, date, workdayStart, workdayEnd) {
   return lines.join("\n");
 }
 
-function formatDailyProjectReport(p, date) {
+function formatDailyProjectReport(p, date, template) {
   // Sem retrato anterior (primeiro envio do projeto) não há delta honesto a
   // mostrar — melhor omitir o número do que inventar um "+0%".
   const deltaLine =
@@ -312,6 +362,22 @@ function formatDailyProjectReport(p, date) {
     p.occurrences && p.occurrences.length
       ? p.occurrences.map((o) => `* ${o}`).join("\n")
       : "Nenhum bloqueio relevante identificado no período";
+
+  const templated = renderTemplatedLines(template, "ATUALIZAÇÃO DIÁRIA DE PROJETO", [
+    ["project_name", `Projeto: ${p.project}`],
+    ["po", `PO: ${p.po || "Não informado"}`],
+    ["site", `Site: ${p.site || "Não informado"}`],
+    ["responsible_cstr", `Responsável CSTR: ${p.responsible_cstr || "Não informado"}`],
+    ["responsible_client", `Responsável A100: ${p.responsible_client || ""}`],
+    ["completion_percent", `* Avanço atual: ${p.completion_percent}%`],
+    ["daily_delta", deltaLine],
+    ["status", "* Status: Em andamento"],
+    ["planned_end", `* Previsão de término: ${p.planned_end ? formatDate(p.planned_end) : "Não informada"}`],
+    ["certification", `* Certificação: ${p.certification_label}`],
+    ["project_finished", `* Projeto finalizado: ${p.project_finished ? "Sim" : "Não"}`],
+    ["occurrences", `Riscos / Bloqueios\n${risksBlock}`],
+  ]);
+  if (templated) return templated;
 
   const lines = [
     "*ATUALIZAÇÃO DIÁRIA DE PROJETO*",
@@ -344,6 +410,7 @@ async function runDailyProjectReportBroadcast(sock, overridePhone) {
     return;
   }
   const recipients = overridePhone ? [{ name: "Teste", phone: overridePhone }] : data.recipients;
+  const template = await fetchMessageTemplate("daily_project_report");
   console.log(`Atualização diária de projeto (15h): enviando ${data.projects.length} projeto(s) para ${recipients.length} destinatário(s).`);
   for (const r of recipients) {
     const jid = recipientToJid(r);
@@ -353,7 +420,7 @@ async function runDailyProjectReportBroadcast(sock, overridePhone) {
     }
     for (const p of data.projects) {
       try {
-        await sock.sendMessage(jid, { text: formatDailyProjectReport(p, data.date) });
+        await sock.sendMessage(jid, { text: formatDailyProjectReport(p, data.date, template) });
         // Delay de 800ms entre mensagens pra evitar rate limit do WhatsApp
         await new Promise((resolve) => setTimeout(resolve, 800));
       } catch (err) {
@@ -418,6 +485,7 @@ async function runProjectUpdatesBroadcast(sock) {
     return;
   }
   console.log(`Atualização de projetos (17h): enviando ${data.projects.length} projeto(s) para ${data.recipients.length} destinatário(s).`);
+  const template = await fetchMessageTemplate("project_updates");
   for (const r of data.recipients) {
     const jid = recipientToJid(r);
     if (!jid) {
@@ -426,7 +494,7 @@ async function runProjectUpdatesBroadcast(sock) {
     }
     for (const p of data.projects) {
       try {
-        await sock.sendMessage(jid, { text: formatProjectDailyUpdate(p, data.date, data.workday_start, data.workday_end) });
+        await sock.sendMessage(jid, { text: formatProjectDailyUpdate(p, data.date, data.workday_start, data.workday_end, template) });
         await new Promise((resolve) => setTimeout(resolve, 800));
       } catch (err) {
         console.error(`Atualização de projetos (17h): erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
@@ -473,7 +541,10 @@ async function runOperationsPrintBroadcast(sock, overridePhone) {
 
   console.log(`${label}: capturando imagem da Central de Operações...`);
   const image = await captureOperationsPrint();
-  const caption = `📸 Operação do Dia — ${formatBrazilDateTime(new Date())}`;
+  const template = await fetchMessageTemplate("operations_print");
+  const caption =
+    renderTemplatedLines(template, "Opera��o do Dia", [["caption_datetime", formatBrazilDateTime(new Date())]]) ||
+    `📸 Operação do Dia — ${formatBrazilDateTime(new Date())}`;
 
   console.log(`${label}: enviando para ${recipients.length} destinatário(s).`);
   for (const r of recipients) {

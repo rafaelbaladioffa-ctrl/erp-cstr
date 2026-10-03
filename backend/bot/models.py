@@ -61,3 +61,32 @@ class BotSubscriber(PhoneNormalizedModel, TimestampedModel):
 
     def __str__(self):
         return f"{self.name} ({self.group_jid or self.phone})"
+
+
+class BotMessageTemplate(TimestampedModel):
+    TYPE_DAILY_TASKS = "daily_tasks"
+    TYPE_PROJECT_UPDATES = "project_updates"
+    TYPE_OPERATIONS_PRINT = "operations_print"
+    TYPE_DAILY_PROJECT_REPORT = "daily_project_report"
+
+    MESSAGE_TYPE_CHOICES = (
+        (TYPE_DAILY_TASKS, "Tarefas do dia"),
+        (TYPE_PROJECT_UPDATES, "Atualização de projetos"),
+        (TYPE_OPERATIONS_PRINT, "Print da Operação do Dia"),
+        (TYPE_DAILY_PROJECT_REPORT, "Relatório diário de projeto"),
+    )
+
+    message_type = models.CharField("tipo de mensagem", max_length=40, choices=MESSAGE_TYPE_CHOICES, unique=True)
+    title = models.CharField("título", max_length=180, blank=True)
+    intro_text = models.TextField("texto inicial", blank=True)
+    footer_text = models.TextField("texto final", blank=True)
+    enabled_fields = models.JSONField("campos habilitados", default=dict, blank=True)
+    is_active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Modelo de mensagem do Bot"
+        verbose_name_plural = "Modelos de mensagem do Bot"
+        ordering = ("message_type",)
+
+    def __str__(self):
+        return self.get_message_type_display()

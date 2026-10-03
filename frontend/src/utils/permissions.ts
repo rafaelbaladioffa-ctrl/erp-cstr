@@ -91,6 +91,8 @@ export const PERMS = {
   addSowImport: "master_data.add_sowimport",
   changeSowImport: "master_data.change_sowimport",
   changeSowParsedItem: "master_data.change_sowparseditem",
+  viewBotMessageTemplate: "bot.view_botmessagetemplate",
+  changeBotMessageTemplate: "bot.change_botmessagetemplate",
 };
 
 export const MASTER_DATA_PERMS = [

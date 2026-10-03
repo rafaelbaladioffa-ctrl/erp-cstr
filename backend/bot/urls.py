@@ -15,6 +15,9 @@ urlpatterns = [
     path("tech-status/", views.BotTechStatusView.as_view(), name="bot-tech-status"),
     path("projects/", views.BotProjectsView.as_view(), name="bot-projects"),
     path("project-update/", views.BotProjectUpdateView.as_view(), name="bot-project-update"),
+    path("message-templates/", views.BotMessageTemplatesView.as_view(), name="bot-message-templates"),
+    path("message-templates/preview/", views.BotMessageTemplatePreviewView.as_view(), name="bot-message-template-preview"),
+    path("message-template/", views.BotMessageTemplateRuntimeView.as_view(), name="bot-message-template-runtime"),
     path(
         "broadcasts/daily-tasks/",
         views.BotDailyTasksBroadcastView.as_view(),
