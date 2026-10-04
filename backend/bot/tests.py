@@ -161,8 +161,8 @@ class BotBroadcastRuleTests(TestCase):
         self.api = APIClient()
         self.bot_headers = {"HTTP_X_BOT_SECRET": "test-bot-secret"}
         self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
-        self.client_a = Client.objects.create(legal_name="Cliente A")
-        self.client_b = Client.objects.create(legal_name="Cliente B")
+        self.client_a = Client.objects.create(company=self.company, legal_name="Cliente A")
+        self.client_b = Client.objects.create(company=self.company, legal_name="Cliente B")
         self.cat_x = Category.objects.create(name="Categoria X")
         self.cat_y = Category.objects.create(name="Categoria Y")
         self.match = Project.objects.create(
