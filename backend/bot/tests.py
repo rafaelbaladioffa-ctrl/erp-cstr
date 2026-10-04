@@ -260,6 +260,7 @@ class BotBroadcastRuleTests(TestCase):
         response = self.api.post("/api/bot/broadcast-rules/test/", {"rule": rule}, format="json")
         self.assertEqual(response.status_code, 400)
         # validação do rascunho e limpeza: regra temporária não pode sobrar
+        before = BotBroadcastRule.objects.count()
         invalid = self.api.post("/api/bot/broadcast-rules/test/", {"to": "11999998888", "rule": {"name": "x"}}, format="json")
         self.assertEqual(invalid.status_code, 400)
-        self.assertEqual(BotBroadcastRule.objects.count(), 0)
+        self.assertEqual(BotBroadcastRule.objects.count(), before)
