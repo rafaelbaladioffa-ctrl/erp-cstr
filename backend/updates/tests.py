@@ -184,7 +184,10 @@ class WeeklyUpdateTests(TestCase):
         ]
         person = Person.objects.create(name="CONTATO CLIENTE", email="contato@cliente.com")
         Responsible.objects.create(person=person, kind=Responsible.KIND_CLIENT, client=self.client_record)
-        self.client.force_login(self.user)
+        from rest_framework.test import APIClient
+
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
         self.today = timezone.localdate()
 
     def post(self, **extra):
@@ -195,7 +198,7 @@ class WeeklyUpdateTests(TestCase):
             "language": "pt",
             **extra,
         }
-        return self.client.post("/api/project-updates/send-weekly/", payload, content_type="application/json")
+        return self.api.post("/api/project-updates/send-weekly/", payload, format="json")
 
     def test_sends_single_email_with_all_projects(self):
         from django.core import mail
