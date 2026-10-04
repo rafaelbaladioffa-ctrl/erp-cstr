@@ -203,6 +203,7 @@ export const ENTITIES: EntityConfig<any>[] = [
       { key: "city", label: "Cidade" },
     ],
     fields: (refs) => [
+      { name: "number_code", label: "Nº do Cadastro", type: "text", readOnly: true, placeholder: "Gerado ao salvar" },
       { name: "trade_name", label: "Nome Fantasia", type: "text", required: true },
       { name: "legal_name", label: "Razão Social", type: "text", span: 2 },
       { name: "company", label: "Empresa", type: "select", required: true, options: companyOptions(refs) },

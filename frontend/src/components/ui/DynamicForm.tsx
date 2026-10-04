@@ -18,6 +18,8 @@ export interface FieldConfig {
    * formulários "com Tipo" onde só um subconjunto de campos se aplica
    * (ex: Responsável CSTR usa Empresa, Responsável Cliente usa Cliente). */
   visibleIf?: (values: FormValues) => boolean;
+  /** Mostra o valor em um campo desabilitado (gerado pelo sistema). */
+  readOnly?: boolean;
 }
 
 export type FormValues = Record<string, unknown>;
@@ -61,6 +63,9 @@ export default function DynamicForm({
 }
 
 function renderInput(field: FieldConfig, value: unknown, onChange: (name: string, value: unknown) => void, t: ReturnType<typeof useI18n>["t"]) {
+  if (field.readOnly) {
+    return <input className="input" disabled value={(value as string) || field.placeholder || ""} />;
+  }
   switch (field.type) {
     case "textarea":
       return (

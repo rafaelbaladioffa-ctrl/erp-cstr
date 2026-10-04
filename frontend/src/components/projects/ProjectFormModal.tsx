@@ -160,7 +160,7 @@ export default function ProjectFormModal({
       { name: "has_rack_positions", label: p.rackPos, type: "checkbox", placeholder: p.rackPosTip, span: 2 },
       { name: "company", label: p.empresa, type: "select", required: true, options: companies.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
       { name: "status", label: p.statusLabel, type: "select", required: true, options: statusOptions },
-      { name: "client", label: p.cliente, type: "select", options: clients.map((c) => ({ value: c.id, label: c.trade_name || c.legal_name })) },
+      { name: "client", label: p.cliente, type: "select", options: clients.map((c) => ({ value: c.id, label: `${c.number_code ? c.number_code + " · " : ""}${c.trade_name || c.legal_name}` })) },
       {
         name: "site",
         label: p.site,
