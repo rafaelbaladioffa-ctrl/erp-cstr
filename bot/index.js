@@ -430,7 +430,7 @@ async function runDailyProjectReportBroadcast(sock, overridePhone) {
   }
 }
 
-async function captureDailyProjectReportPrint(date, projectLimit) {
+async function captureDailyProjectReportPrint(date, projectLimit, ruleId) {
   const browser = await puppeteer.launch({
     executablePath: CHROMIUM_PATH,
     headless: true,
@@ -443,7 +443,7 @@ async function captureDailyProjectReportPrint(date, projectLimit) {
     // A captura full-page usa a largura do documento. Um viewport estreito
     // evita que o JPEG inclua uma faixa vazia à direita da arte compacta.
     await page.setViewport({ width: 780, height: 1200, deviceScaleFactor: 1 });
-    const limitQuery = projectLimit ? `&limit=${encodeURIComponent(projectLimit)}` : "";
+    const limitQuery = (projectLimit ? `&limit=${encodeURIComponent(projectLimit)}` : "") + (ruleId ? `&rule=${encodeURIComponent(ruleId)}` : "");
     await page.goto(`${API_URL}/bot/daily-project-report-print/?date=${encodeURIComponent(date)}${limitQuery}`, { waitUntil: "networkidle0", timeout: 30000 });
     const shot = await page.screenshot({ type: "jpeg", quality: 88, fullPage: true });
     return Buffer.isBuffer(shot) ? shot : Buffer.from(shot);
@@ -562,6 +562,88 @@ async function runOperationsPrintBroadcast(sock, overridePhone) {
   }
 }
 
+// Destino do envio de teste: grupo (JID @g.us) ou telefone.
+function overrideToRecipient(to) {
+  return String(to).endsWith("@g.us")
+    ? { name: "Teste", group_jid: String(to) }
+    : { name: "Teste", phone: String(to) };
+}
+
+// Executa uma regra de envio configurada na web (BotBroadcastRule). Com
+// overrideTo, manda só para esse destino (teste). Retorna uma mensagem
+// resumindo o resultado, usada na resposta do envio de teste.
+async function runBroadcastRule(sock, ruleId, overrideTo) {
+  const label = `Regra de envio #${ruleId}`;
+  const data = await botGet(`/bot/broadcasts/rule/${ruleId}/`);
+  const rule = data.rule;
+  if (!data.projects.length) {
+    const msg = `Nenhum projeto atende aos filtros da regra "${rule.name}" — nada enviado.`;
+    console.log(`${label}: ${msg}`);
+    return msg;
+  }
+  const recipients = overrideTo ? [overrideToRecipient(overrideTo)] : data.recipients;
+  if (!recipients.length) {
+    const msg = `Regra "${rule.name}" sem destinatários — nada enviado.`;
+    console.log(`${label}: ${msg}`);
+    return msg;
+  }
+  let sent = 0;
+  if (rule.content_type === "image") {
+    const image = await captureDailyProjectReportPrint(data.date, undefined, rule.id);
+    const caption = rule.image_caption || `Status de Projetos AZ4 - ${formatDate(data.date)}`;
+    for (const r of recipients) {
+      const jid = recipientToJid(r);
+      if (!jid) continue;
+      try {
+        await sock.sendMessage(jid, { image, caption, mimetype: "image/jpeg" });
+        sent += 1;
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      } catch (err) {
+        console.error(`${label}: erro ao enviar imagem para ${r.name}:`, err.message);
+      }
+    }
+  } else {
+    const template = await fetchMessageTemplate("daily_project_report");
+    for (const r of recipients) {
+      const jid = recipientToJid(r);
+      if (!jid) {
+        console.error(`${label}: destino inválido para ${r.name}, pulando.`);
+        continue;
+      }
+      for (const p of data.projects) {
+        try {
+          await sock.sendMessage(jid, { text: formatDailyProjectReport(p, data.date, template) });
+          sent += 1;
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        } catch (err) {
+          console.error(`${label}: erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
+        }
+      }
+    }
+  }
+  const msg = `Regra "${rule.name}": ${sent} mensagem(ns) enviada(s) para ${recipients.length} destino(s).`;
+  console.log(`${label}: ${msg}`);
+  return msg;
+}
+
+// Agendador das regras: a cada minuto consulta as regras ativas e dispara as
+// que batem com o horário de Brasília (UTC-3 fixo) e o dia da semana.
+const lastRuleRunKey = {};
+async function checkBroadcastRules(sock) {
+  const brt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const hhmm = `${String(brt.getUTCHours()).padStart(2, "0")}:${String(brt.getUTCMinutes()).padStart(2, "0")}`;
+  const weekday = (brt.getUTCDay() + 6) % 7; // 0 = segunda, como no Django
+  const dateKey = brt.toISOString().slice(0, 10);
+  const rules = await botGet("/bot/broadcasts/rules/");
+  for (const rule of rules) {
+    if (rule.send_time !== hhmm) continue;
+    if (rule.weekdays.length && !rule.weekdays.includes(weekday)) continue;
+    if (lastRuleRunKey[rule.id] === dateKey) continue;
+    lastRuleRunKey[rule.id] = dateKey;
+    runBroadcastRule(sock, rule.id).catch((err) => console.error(`Erro na regra de envio ${rule.id}:`, err.message));
+  }
+}
+
 let currentSock = null;
 // Separado de currentSock: só vira true 45s após a conexão abrir, tempo
 // suficiente para as "init queries" do Baileys (chaves E2E, sync de estado)
@@ -577,8 +659,9 @@ let lastQrAt = 0;
 // precisa do pacote tzdata, nem sempre presente em imagens slim).
 const SCHEDULED_BROADCASTS = [
   { key: "daily-tasks", hourUTC: 13, minuteUTC: 0, run: runDailyTasksBroadcast }, // 10h
-  { key: "daily-project-report", hourUTC: 18, minuteUTC: 0, run: runDailyProjectReportBroadcast }, // 15h
-  { key: "daily-project-report-image", hourUTC: 18, minuteUTC: 1, run: runDailyProjectReportImageBroadcast }, // 15h01
+  // Os dois abaixo agora são regras configuráveis pela web (BotBroadcastRule); ficam só como disparo manual.
+  { key: "daily-project-report", hourUTC: 18, minuteUTC: 0, run: runDailyProjectReportBroadcast, scheduled: false },
+  { key: "daily-project-report-image", hourUTC: 18, minuteUTC: 1, run: runDailyProjectReportImageBroadcast, scheduled: false },
   { key: "allocation", hourUTC: 21, minuteUTC: 0, run: runAllocationBroadcast }, // 18h
   { key: "project-updates", hourUTC: 20, minuteUTC: 0, run: runProjectUpdatesBroadcast }, // 17h
   // Print da Operação do Dia — 6x ao dia (8h, 10h, 12h, 14h, 16h, 18h). Cada
@@ -690,6 +773,24 @@ http
       return;
     }
 
+    // Envio de uma regra configurada na web; com ?to= manda só para esse
+    // destino (botão "Enviar teste" da tela Bot WhatsApp).
+    if (url.pathname === "/trigger-rule") {
+      const ruleId = Number.parseInt(url.searchParams.get("rule"), 10);
+      const to = url.searchParams.get("to") || undefined;
+      if (!Number.isInteger(ruleId)) {
+        res.writeHead(400).end("Parâmetro rule inválido.\n");
+        return;
+      }
+      runBroadcastRule(currentSock, ruleId, to)
+        .then((message) => {
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true, message }));
+        })
+        .catch((err) => res.writeHead(500).end(`Erro: ${err.message}\n`));
+      return;
+    }
+
     const broadcast = SCHEDULED_BROADCASTS.find((b) => url.pathname === `/trigger-${b.key}`);
     if (!broadcast) {
       res.writeHead(404).end();
@@ -708,11 +809,13 @@ setInterval(() => {
   const now = new Date();
   const dateKey = now.toISOString().slice(0, 10);
   for (const b of SCHEDULED_BROADCASTS) {
+    if (b.scheduled === false) continue;
     if (now.getUTCHours() === b.hourUTC && now.getUTCMinutes() === b.minuteUTC && lastRunDateKey[b.key] !== dateKey) {
       lastRunDateKey[b.key] = dateKey;
       b.run(currentSock).catch((err) => console.error(`Erro no envio automático (${b.key}):`, err.message));
     }
   }
+  checkBroadcastRules(currentSock).catch((err) => console.error("Erro ao verificar regras de envio:", err.message));
 }, 60000);
 
 async function start() {

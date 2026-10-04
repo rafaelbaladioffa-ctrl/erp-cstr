@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { botMessagesApi } from "../api/resources";
 import type { BotMessageTemplate } from "../api/types";
+import BroadcastRules from "../components/bot/BroadcastRules";
 import Icon from "../components/ui/Icon";
 
 const LABELS: Record<BotMessageTemplate["message_type"], { title: string; subtitle: string; icon: string }> = {
@@ -19,6 +20,7 @@ export default function BotWhatsApp() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [showRules, setShowRules] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -88,10 +90,12 @@ export default function BotWhatsApp() {
             Configure visualmente quais informações pré-codadas entram nas mensagens automáticas.
           </p>
         </div>
+        {!showRules && (
         <button className="btn btn-primary" onClick={save} disabled={saving || !draft}>
           <Icon name="save" style={{ fontSize: 17 }} />
           {saving ? "Salvando..." : "Salvar"}
         </button>
+        )}
       </div>
 
       {error && <p style={{ color: "var(--red)", fontSize: 13 }}>{error}</p>}
@@ -101,12 +105,15 @@ export default function BotWhatsApp() {
         <div className="card" style={{ padding: 10 }}>
           {templates.map((template) => {
             const meta = LABELS[template.message_type];
-            const active = template.message_type === selectedType;
+            const active = !showRules && template.message_type === selectedType;
             return (
               <button
                 key={template.message_type}
                 type="button"
-                onClick={() => setSelectedType(template.message_type)}
+                onClick={() => {
+                  setShowRules(false);
+                  setSelectedType(template.message_type);
+                }}
                 style={{
                   width: "100%",
                   border: active ? "1px solid var(--orange)" : "1px solid transparent",
@@ -128,9 +135,39 @@ export default function BotWhatsApp() {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setShowRules(true)}
+            style={{
+              width: "100%",
+              border: showRules ? "1px solid var(--orange)" : "1px solid transparent",
+              background: showRules ? "rgba(255, 111, 32, 0.08)" : "transparent",
+              borderRadius: 8,
+              padding: 12,
+              display: "flex",
+              gap: 10,
+              textAlign: "left",
+              cursor: "pointer",
+              color: "var(--text)",
+              marginTop: 6,
+              borderTop: showRules ? undefined : "1px solid var(--border)",
+            }}
+          >
+            <Icon name="schedule" style={{ fontSize: 20, color: showRules ? "var(--orange)" : "var(--text-muted)" }} />
+            <span>
+              <b style={{ display: "block", fontSize: 13 }}>Regras de envio</b>
+              <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Horário, filtros, destinatários e teste</span>
+            </span>
+          </button>
         </div>
 
-        {draft && activeMeta && (
+        {showRules && (
+          <div style={{ gridColumn: "2 / 4", minWidth: 0 }}>
+            <BroadcastRules />
+          </div>
+        )}
+
+        {!showRules && draft && activeMeta && (
           <div className="card" style={{ padding: 18 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
               <div>
@@ -166,6 +203,7 @@ export default function BotWhatsApp() {
           </div>
         )}
 
+        {!showRules && (
         <div className="card" style={{ padding: 18, position: "sticky", top: 88 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <Icon name="chat" style={{ fontSize: 18, color: "var(--green)" }} />
@@ -175,6 +213,7 @@ export default function BotWhatsApp() {
             {preview || "Selecione os campos para gerar uma prévia."}
           </pre>
         </div>
+        )}
       </div>
     </div>
   );

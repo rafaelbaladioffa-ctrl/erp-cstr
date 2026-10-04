@@ -1,8 +1,9 @@
 """Página de impressão do resumo dinâmico enviado no relatório das 15h."""
 
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from rest_framework.views import APIView
 
+from .models import BotBroadcastRule
 from .permissions import BotSharedSecretPermission
 from .views import _parse_target_date, build_daily_project_report_projects
 
@@ -18,7 +19,9 @@ class ProjectReportPrintView(APIView):
         if error:
             return error
 
-        projects = build_daily_project_report_projects(target_date)
+        rule_id = request.query_params.get("rule")
+        rule = get_object_or_404(BotBroadcastRule, pk=rule_id) if rule_id else None
+        projects = build_daily_project_report_projects(target_date, rule=rule)
         # Uso exclusivo dos testes de arte: preserva a ordem normal dos
         # projetos ativos, exibindo somente os primeiros N quando solicitado.
         limit_value = request.query_params.get("limit")

@@ -498,18 +498,45 @@ class BotProjectUpdatesBroadcastView(APIView):
         )
 
 
-def build_daily_project_report_projects(target_date):
+def _rule_projects_queryset(rule):
+    """Projetos que entram numa regra de envio. Filtro vazio = não filtra
+    por aquela dimensão. O cliente pode estar direto no projeto ou herdado
+    do site."""
+    qs = Project.objects.filter(is_active=True)
+    if rule.statuses:
+        qs = qs.filter(status__in=rule.statuses)
+    client_ids = list(rule.clients.values_list("pk", flat=True))
+    if client_ids:
+        qs = qs.filter(Q(client_id__in=client_ids) | Q(site__client_id__in=client_ids))
+    category_ids = list(rule.categories.values_list("pk", flat=True))
+    if category_ids:
+        qs = qs.filter(category_id__in=category_ids)
+    site_ids = list(rule.sites.values_list("pk", flat=True))
+    if site_ids:
+        qs = qs.filter(site_id__in=site_ids)
+    return qs
+
+
+def build_daily_project_report_projects(target_date, rule=None):
     """Dados compartilhados entre o texto e a imagem do relatório das 15h.
 
     A imagem não depende de um layout fixo: esta função sempre calcula a
     lista atual de projetos e as mesmas condicionais usadas no texto.
+    Com `rule`, os filtros vêm da regra de envio; sem ela, mantém o filtro
+    histórico (cliente A100, categoria GND).
     """
-    # O relatório das 15h é exclusivo de projetos do cliente A100, categoria "Projetos GND".
-    # O cliente pode estar direto no projeto ou herdado do site.
-    _A100 = Q(client__trade_name__icontains="A100") | Q(client__legal_name__icontains="A100") | Q(site__client__trade_name__icontains="A100") | Q(site__client__legal_name__icontains="A100")
-    projects_qs = Project.objects.filter(
-            status=Project.STATUS_IN_PROGRESS, is_active=True, category__name__icontains="GND"
-        ).filter(_A100).select_related("site", "site__client", "client", "category", "responsible_client__person", "responsible_cstr__person").order_by("name")
+    if rule is not None:
+        projects_qs = (
+            _rule_projects_queryset(rule)
+            .select_related("site", "site__client", "client", "category", "responsible_client__person", "responsible_cstr__person")
+            .order_by("name")
+        )
+    else:
+        # O relatório das 15h (legado) é exclusivo de projetos do cliente A100, categoria "Projetos GND".
+        _A100 = Q(client__trade_name__icontains="A100") | Q(client__legal_name__icontains="A100") | Q(site__client__trade_name__icontains="A100") | Q(site__client__legal_name__icontains="A100")
+        projects_qs = Project.objects.filter(
+                status=Project.STATUS_IN_PROGRESS, is_active=True, category__name__icontains="GND"
+            ).filter(_A100).select_related("site", "site__client", "client", "category", "responsible_client__person", "responsible_cstr__person").order_by("name")
 
     project_ids = [p.id for p in projects_qs]
 

@@ -148,3 +148,112 @@ class BotSubscriberValidationTests(TestCase):
     def test_accepts_group_without_phone(self):
         subscriber = BotSubscriber(name="Grupo Obra", group_jid="120363111111111111@g.us")
         subscriber.full_clean()  # não deve levantar
+
+
+@override_settings(WHATSAPP_BOT_SECRET="test-bot-secret")
+class BotBroadcastRuleTests(TestCase):
+    """Regras de envio configuráveis: filtros de projeto, destinatários,
+    agendamento e envio de teste."""
+
+    def setUp(self):
+        from core.models import Category, Client
+
+        self.api = APIClient()
+        self.bot_headers = {"HTTP_X_BOT_SECRET": "test-bot-secret"}
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.client_a = Client.objects.create(legal_name="Cliente A")
+        self.client_b = Client.objects.create(legal_name="Cliente B")
+        self.cat_x = Category.objects.create(name="Categoria X")
+        self.cat_y = Category.objects.create(name="Categoria Y")
+        self.match = Project.objects.create(
+            company=self.company, name="Casa", status=Project.STATUS_IN_PROGRESS, client=self.client_a, category=self.cat_x
+        )
+        Project.objects.create(
+            company=self.company, name="Outro cliente", status=Project.STATUS_IN_PROGRESS, client=self.client_b, category=self.cat_x
+        )
+        Project.objects.create(
+            company=self.company, name="Outra categoria", status=Project.STATUS_IN_PROGRESS, client=self.client_a, category=self.cat_y
+        )
+        Project.objects.create(
+            company=self.company, name="Pausado", status=Project.STATUS_PAUSED, client=self.client_a, category=self.cat_x
+        )
+
+    def make_rule(self, **kwargs):
+        from datetime import time
+
+        from bot.models import BotBroadcastRule
+
+        rule = BotBroadcastRule.objects.create(
+            name=kwargs.pop("name", "Regra"), send_time=kwargs.pop("send_time", time(15, 0)),
+            statuses=kwargs.pop("statuses", ["in_progress"]), **kwargs,
+        )
+        rule.clients.set([self.client_a])
+        rule.categories.set([self.cat_x])
+        return rule
+
+    def test_rule_filters_projects_by_client_category_and_status(self):
+        rule = self.make_rule()
+        response = self.api.get(f"/api/bot/broadcasts/rule/{rule.pk}/", **self.bot_headers)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([p["project"] for p in response.data["projects"]], ["Casa"])
+
+    def test_empty_filters_do_not_restrict(self):
+        rule = self.make_rule()
+        rule.clients.clear()
+        rule.categories.clear()
+        response = self.api.get(f"/api/bot/broadcasts/rule/{rule.pk}/", **self.bot_headers)
+        self.assertEqual(len(response.data["projects"]), 3)  # só o pausado fica de fora
+
+    def test_recipients_fall_back_to_report_subscribers_when_rule_has_none(self):
+        BotSubscriber.objects.create(name="Gestor", phone="11999998888", receives_daily_project_report=True)
+        specific = BotSubscriber.objects.create(name="Só esta regra", phone="11988887777", receives_daily_project_report=False)
+        rule = self.make_rule()
+        response = self.api.get(f"/api/bot/broadcasts/rule/{rule.pk}/", **self.bot_headers)
+        self.assertEqual([r["name"] for r in response.data["recipients"]], ["Gestor"])
+        rule.recipients.set([specific])
+        response = self.api.get(f"/api/bot/broadcasts/rule/{rule.pk}/", **self.bot_headers)
+        self.assertEqual([r["name"] for r in response.data["recipients"]], ["Só esta regra"])
+
+    def test_schedule_lists_only_active_rules(self):
+        self.make_rule(name="Ativa")
+        self.make_rule(name="Inativa", is_active=False)
+        response = self.api.get("/api/bot/broadcasts/rules/", **self.bot_headers)
+        self.assertEqual([r["name"] for r in response.data], ["Ativa"])
+        self.assertEqual(response.data[0]["send_time"], "15:00")
+
+    def test_runtime_endpoints_require_secret(self):
+        rule = self.make_rule()
+        self.assertEqual(self.api.get("/api/bot/broadcasts/rules/").status_code, 403)
+        self.assertEqual(self.api.get(f"/api/bot/broadcasts/rule/{rule.pk}/").status_code, 403)
+
+    def test_crud_requires_permission_and_validates(self):
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        user = User.objects.create_user(username="semperm", password="x")
+        self.api.force_authenticate(user)
+        self.assertEqual(self.api.get("/api/bot/broadcast-rules/").status_code, 403)
+
+        admin = User.objects.create_superuser(username="admin", password="x", email="a@a.com")
+        self.api.force_authenticate(admin)
+        payload = {
+            "name": "Nova", "content_type": "image", "send_time": "15:01", "weekdays": [0, 2],
+            "statuses": ["in_progress"], "client_ids": [self.client_a.pk], "category_ids": [self.cat_x.pk],
+        }
+        created = self.api.post("/api/bot/broadcast-rules/", payload, format="json")
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data["send_time"], "15:01")
+        bad = self.api.post("/api/bot/broadcast-rules/", {**payload, "weekdays": [9]}, format="json")
+        self.assertEqual(bad.status_code, 400)
+        options = self.api.get("/api/bot/broadcast-rules/options/")
+        self.assertEqual(options.status_code, 200)
+        self.assertIn("clients", options.data)
+
+    def test_test_send_requires_target(self):
+        from django.contrib.auth import get_user_model
+
+        admin = get_user_model().objects.create_superuser(username="admin2", password="x", email="b@b.com")
+        self.api.force_authenticate(admin)
+        rule = self.make_rule()
+        response = self.api.post(f"/api/bot/broadcast-rules/{rule.pk}/test/", {}, format="json")
+        self.assertEqual(response.status_code, 400)

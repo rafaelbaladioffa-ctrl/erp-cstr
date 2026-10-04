@@ -90,3 +90,45 @@ class BotMessageTemplate(TimestampedModel):
 
     def __str__(self):
         return self.get_message_type_display()
+
+
+class BotBroadcastRule(TimestampedModel):
+    """Regra de envio do relatório diário de projeto: define QUANDO envia
+    (horário/dias), QUAIS projetos entram (filtros), PARA QUEM vai e em que
+    formato (texto por projeto ou imagem). Várias regras podem coexistir,
+    ex.: 15h texto de um cliente/categoria e 15h01 print."""
+
+    CONTENT_TEXT = "text"
+    CONTENT_IMAGE = "image"
+    CONTENT_CHOICES = ((CONTENT_TEXT, "Texto (uma mensagem por projeto)"), (CONTENT_IMAGE, "Imagem (print)"))
+
+    name = models.CharField("nome", max_length=150)
+    is_active = models.BooleanField("ativa", default=True)
+    message_type = models.CharField("tipo de mensagem", max_length=40, default="daily_project_report", editable=False)
+    content_type = models.CharField("formato", max_length=10, choices=CONTENT_CHOICES, default=CONTENT_TEXT)
+    send_time = models.TimeField("horário de envio (Brasília)")
+    weekdays = models.JSONField(
+        "dias da semana", default=list, blank=True, help_text="0=segunda ... 6=domingo. Vazio = todos os dias."
+    )
+    clients = models.ManyToManyField("core.Client", verbose_name="clientes", blank=True, related_name="+")
+    categories = models.ManyToManyField("core.Category", verbose_name="categorias", blank=True, related_name="+")
+    sites = models.ManyToManyField("core.Site", verbose_name="sites", blank=True, related_name="+")
+    statuses = models.JSONField(
+        "status do projeto", default=list, blank=True, help_text="Vazio = qualquer status."
+    )
+    recipients = models.ManyToManyField(
+        BotSubscriber,
+        verbose_name="destinatários",
+        blank=True,
+        related_name="broadcast_rules",
+        help_text="Vazio = todos os destinatários que recebem a atualização diária de projeto.",
+    )
+    image_caption = models.CharField("legenda da imagem", max_length=250, blank=True)
+
+    class Meta:
+        verbose_name = "Regra de envio do Bot"
+        verbose_name_plural = "Regras de envio do Bot"
+        ordering = ("send_time", "id")
+
+    def __str__(self):
+        return f"{self.name} ({self.send_time:%H:%M})"

@@ -1,10 +1,18 @@
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import SimpleRouter
 
 from . import views
 from .operations_print import OperationsPrintView
 from .project_report_print import ProjectReportPrintView
+from .rules import BotBroadcastRuleViewSet, BotRuleBroadcastView, BotRulesScheduleView
+
+router = SimpleRouter()
+router.register("broadcast-rules", BotBroadcastRuleViewSet, basename="bot-broadcast-rule")
 
 urlpatterns = [
+    path("", include(router.urls)),
+    path("broadcasts/rules/", BotRulesScheduleView.as_view(), name="bot-broadcast-rules-schedule"),
+    path("broadcasts/rule/<int:pk>/", BotRuleBroadcastView.as_view(), name="bot-broadcast-rule"),
     path("operations-print/", OperationsPrintView.as_view(), name="bot-operations-print"),
     path("daily-project-report-print/", ProjectReportPrintView.as_view(), name="bot-daily-project-report-print"),
     path("allocation/", views.BotAllocationView.as_view(), name="bot-allocation"),

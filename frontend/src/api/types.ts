@@ -1449,3 +1449,26 @@ export interface BotMessageTemplate {
   field_definitions: BotMessageFieldDefinition[];
   updated_at?: string;
 }
+
+export interface BotBroadcastRule {
+  id?: number;
+  name: string;
+  is_active: boolean;
+  content_type: "text" | "image";
+  send_time: string;
+  weekdays: number[];
+  statuses: string[];
+  client_ids: number[];
+  category_ids: number[];
+  site_ids: number[];
+  recipient_ids: number[];
+  image_caption: string;
+}
+
+export interface BotBroadcastRuleOptions {
+  clients: { id: number; name: string }[];
+  categories: { id: number; name: string }[];
+  sites: { id: number; name: string }[];
+  statuses: { id: string; name: string }[];
+  subscribers: { id: number; name: string; target: string }[];
+}

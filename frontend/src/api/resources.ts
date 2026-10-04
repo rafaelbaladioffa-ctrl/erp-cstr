@@ -65,6 +65,8 @@ import type {
   TaskTemplateStep,
   TechnicianAbsence,
   Workstream,
+  BotBroadcastRule,
+  BotBroadcastRuleOptions,
   BotMessageTemplate,
 } from "./types";
 
@@ -528,4 +530,15 @@ export const botMessagesApi = {
     apiClient.patch<BotMessageTemplate>("/bot/message-templates/", payload).then((r) => r.data),
   preview: (payload: BotMessageTemplate) =>
     apiClient.post<{ preview: string }>("/bot/message-templates/preview/", payload).then((r) => r.data),
+};
+
+export const botRulesApi = {
+  list: () => apiClient.get<BotBroadcastRule[]>("/bot/broadcast-rules/").then((r) => r.data),
+  options: () => apiClient.get<BotBroadcastRuleOptions>("/bot/broadcast-rules/options/").then((r) => r.data),
+  create: (payload: BotBroadcastRule) => apiClient.post<BotBroadcastRule>("/bot/broadcast-rules/", payload).then((r) => r.data),
+  update: (id: number, payload: BotBroadcastRule) =>
+    apiClient.put<BotBroadcastRule>(`/bot/broadcast-rules/${id}/`, payload).then((r) => r.data),
+  remove: (id: number) => apiClient.delete(`/bot/broadcast-rules/${id}/`),
+  test: (id: number, to: string) =>
+    apiClient.post<{ detail: string }>(`/bot/broadcast-rules/${id}/test/`, { to }, { timeout: 130000 }).then((r) => r.data),
 };
