@@ -1,6 +1,6 @@
 """Layout do e-mail do Update Semanal (vários projetos num só e-mail).
 
-Pensado para leitura em desktop (largura de 880px): indicadores da semana e uma
+Pensado para leitura em desktop (largura de 1100px): indicadores da semana e uma
 única tabela com uma linha por projeto (progresso, site, PO, responsáveis,
 certificação e finalização); as observações aparecem numa linha própria logo
 abaixo do projeto, só quando existem. Só tabelas e estilos inline (compatível
@@ -13,7 +13,7 @@ from html import escape
 from core.email_texts import tr
 from core.emailing import COLOR_ACCENT, COLOR_BORDER, COLOR_MUTED, COLOR_TEXT
 
-WEEKLY_WIDTH = 880
+WEEKLY_WIDTH = 1100
 BAR_BG = "#e4e4e7"
 ADVANCE_COLOR = COLOR_ACCENT
 HEAD_STYLE = (
@@ -130,7 +130,7 @@ def render_weekly_body(lang, projects):
             + _cell(name)
             + _cell(escape(p["site"]), nowrap=True)
             + _cell(escape(p["po"]), nowrap=True)
-            + _cell(escape(p["responsible_client"]))
+            + _cell(escape(p["responsible_client"]), nowrap=True)
             + _cell(f'{p["percent"]}%', bold=True)
             + _cell(advance)
             + _cell(_pill(lang, p["certification"]), align="center")
