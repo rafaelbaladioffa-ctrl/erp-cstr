@@ -297,7 +297,7 @@ def _weekly_project_data(project_update, lang, start):
 
 def build_weekly_update_message(project_updates, recipient_email, start, end, lang="pt"):
     """Um único e-mail com todos os projetos (Update Semanal), sem anexo."""
-    from .weekly_layout import render_weekly_body
+    from .weekly_layout import WEEKLY_WIDTH, render_weekly_body
 
     lang = normalize_language(lang)
     period = f"{fmt_date(lang, start)} – {fmt_date(lang, end)}"
@@ -308,6 +308,7 @@ def build_weekly_update_message(project_updates, recipient_email, start, end, la
         intro=tr(lang, "weekly_intro", start=fmt_date(lang, start), end=fmt_date(lang, end)),
         raw_html=render_weekly_body(lang, projects),
         lang=lang,
+        width=WEEKLY_WIDTH,
     )
     yes_no = lambda value: tr(lang, "yes" if value else "no")  # noqa: E731
     text_lines = [tr(lang, "weekly_title").upper(), period, ""]

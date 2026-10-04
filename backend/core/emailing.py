@@ -121,7 +121,7 @@ def _body_parts(highlight, summary, sections):
     return parts
 
 
-def render_html(*, title, intro="", summary=None, highlight=None, sections=None, raw_html="", button=None, note="", logo=True, lang="pt"):
+def render_html(*, title, intro="", summary=None, highlight=None, sections=None, raw_html="", button=None, note="", logo=True, lang="pt", width=600):
     """summary: lista de (rótulo, valor). highlight: (rótulo, valor) em destaque.
     sections: lista de (título, texto). raw_html: HTML já montado (e escapado) pelo chamador,
     inserido depois dos demais blocos. button: (rótulo, url)."""
@@ -161,7 +161,7 @@ def render_html(*, title, intro="", summary=None, highlight=None, sections=None,
 <style>{DARK_CSS}</style></head>
 <body class="c-bg" style="margin:0;padding:0;background:{COLOR_BG};font-family:Segoe UI,Helvetica,Arial,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="c-bg" style="background:{COLOR_BG};padding:24px 12px;"><tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" class="c-card" style="width:100%;max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden;">
+<table role="presentation" width="{width}" cellpadding="0" cellspacing="0" class="c-card" style="width:100%;max-width:{width}px;background:#ffffff;border-radius:8px;overflow:hidden;">
 <tr><td class="c-hdr" bgcolor="{COLOR_HEADER}" style="background:{COLOR_HEADER};padding:18px 28px;">{logo_html}</td></tr>
 <tr><td style="background:{COLOR_ACCENT};height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
 <tr><td style="padding:28px 28px 8px;">
