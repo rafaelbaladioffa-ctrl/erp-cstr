@@ -328,7 +328,7 @@ def build_weekly_update_message(project_updates, recipient_email, start, end, la
         text_lines += [
             f"{p['name'].upper()} — {p['percent']}% ({tr(lang, 'weekly_col_advance')}: +{p['advance']}%)",
             f"{tr(lang, 'code')}: {p['code']} | {tr(lang, 'site')}: {p['site']} | {tr(lang, 'po')}: {p['po']}",
-            f"{p['responsible_client_label']}: {p['responsible_client']} | {tr(lang, 'responsible_company')}: {p['responsible_cstr']}",
+            f"{p['responsible_client_label']}: {p['responsible_client']}",
             f"{tr(lang, 'certification')}: {yes_no(p['certification'])} | {tr(lang, 'finished')}: {yes_no(p['finished'])}",
         ]
         if p["notes"]:

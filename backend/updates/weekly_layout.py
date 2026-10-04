@@ -15,7 +15,7 @@ from core.emailing import COLOR_ACCENT, COLOR_BORDER, COLOR_MUTED, COLOR_TEXT
 
 WEEKLY_WIDTH = 880
 BAR_BG = "#e4e4e7"
-ADVANCE_COLOR = "#16a34a"
+ADVANCE_COLOR = COLOR_ACCENT
 HEAD_STYLE = (
     f"padding:8px 8px 8px 0;border-bottom:2px solid {COLOR_BORDER};font-size:11px;font-weight:600;"
     f"text-transform:uppercase;letter-spacing:.05em;color:{COLOR_MUTED};text-align:left;"
@@ -78,7 +78,7 @@ def _cell(content, width=None, align="left", muted=False, bold=False, nowrap=Fal
 
 def render_weekly_body(lang, projects):
     """`projects`: lista de dicts (name, code, site, po, responsible_client,
-    responsible_cstr, percent, advance, certification, finished, notes)."""
+    percent, advance, certification, finished, notes)."""
     total = len(projects)
     average = round(sum(p["percent"] for p in projects) / total) if total else 0
     finished = sum(1 for p in projects if p["finished"])
@@ -102,13 +102,12 @@ def render_weekly_body(lang, projects):
 
     header = (
         "<tr>"
-        + _head(tr(lang, "weekly_col_project"), "23%")
-        + _head(tr(lang, "site"), "8%")
-        + _head(tr(lang, "po"), "11%")
-        + _head(tr(lang, "weekly_col_resp_client"), "10%")
-        + _head(tr(lang, "weekly_col_resp_cstr"), "11%")
+        + _head(tr(lang, "weekly_col_project"), "27%")
+        + _head(tr(lang, "site"), "9%")
+        + _head(tr(lang, "po"), "12%")
+        + _head(tr(lang, "weekly_col_resp_client"), "12%")
         + _head(tr(lang, "weekly_col_progress"), "9%")
-        + _head(tr(lang, "weekly_col_advance"), "15%")
+        + _head(tr(lang, "weekly_col_advance"), "17%")
         + _head(tr(lang, "weekly_col_cert"), "7%", "center")
         + _head(tr(lang, "weekly_col_done"), "7%", "center")
         + "</tr>"
@@ -132,7 +131,6 @@ def render_weekly_body(lang, projects):
             + _cell(escape(p["site"]), nowrap=True)
             + _cell(escape(p["po"]), nowrap=True)
             + _cell(escape(p["responsible_client"]))
-            + _cell(escape(p["responsible_cstr"]))
             + _cell(f'{p["percent"]}%', bold=True)
             + _cell(advance)
             + _cell(_pill(lang, p["certification"]), align="center")
@@ -141,7 +139,7 @@ def render_weekly_body(lang, projects):
         )
         if p["notes"]:
             rows.append(
-                f'<tr><td colspan="9" class="c-brd" style="padding:0 0 10px;border-bottom:1px solid {COLOR_BORDER};">'
+                f'<tr><td colspan="8" class="c-brd" style="padding:0 0 10px;border-bottom:1px solid {COLOR_BORDER};">'
                 f'<div class="c-hl c-mut" style="background:#f4f4f5;border-left:3px solid {COLOR_ACCENT};padding:8px 12px;font-size:12px;line-height:1.5;color:{COLOR_MUTED};">'
                 f'<b>{escape(tr(lang, "observations"))}:</b> {escape(p["notes"]).replace(chr(10), "<br>")}</div></td></tr>'
             )
