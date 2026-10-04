@@ -26,7 +26,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from core.access_scope import get_scope_for_user, scope_project_queryset
-from core.collaborator_scope import scope_collaborators
+from core.collaborator_scope import is_supervisor_user, scope_collaborators, scope_supervisor_projects
 from core.models import Collaborator, Site
 from dispatch.models import TechnicianAbsence, TechnicianDailyPresence
 from updates.models import ProjectDailyUpdate
@@ -421,6 +421,8 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
     statuses = [st for key in status_keys for st in STATUS_FILTERS[key]]
     projects_qs = Project.objects.filter(is_active=True, status__in=statuses)
     projects_qs = scope_project_queryset(projects_qs, user)
+    # Supervisor só enxerga os projetos em que é Responsável CSTR.
+    projects_qs = scope_supervisor_projects(projects_qs, user)
     if filters.get("country"):
         projects_qs = projects_qs.filter(site__region__country=filters["country"])
     if filters.get("region"):
@@ -468,8 +470,10 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
     if include_technicians:
         if filters.get("site"):
             site_scope = {int(filters["site"])}
-        elif any(filters.get(k) for k in ("country", "region", "client", "responsible")) or set(status_keys) != set(
-            DEFAULT_STATUS_FILTERS
+        elif (
+            any(filters.get(k) for k in ("country", "region", "client", "responsible"))
+            or set(status_keys) != set(DEFAULT_STATUS_FILTERS)
+            or is_supervisor_user(user)
         ):
             site_scope = {p.site_id for p in projects if p.site_id}
         else:

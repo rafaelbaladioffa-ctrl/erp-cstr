@@ -45,3 +45,20 @@ class DashboardProjectsScopeTests(TestCase):
 
     def test_without_user_everything_is_listed(self):
         self.assertEqual(self.project_ids(), {self.mine.pk, self.other.pk})
+
+
+class SitesPanelSupervisorScopeTests(DashboardProjectsScopeTests):
+    """Gestão de Sites: mesma regra do dashboard (supervisor só vê os projetos em que é Responsável CSTR)."""
+
+    def panel_ids(self, user):
+        from projects.sites_panel import build_sites_panel
+
+        data = build_sites_panel(user, include_technicians=False)
+        return {row["id"] for row in data["projects"]}
+
+    def test_supervisor_sees_only_own_projects_in_sites_panel(self):
+        self.assertEqual(self.panel_ids(self.user), {self.mine.pk})
+
+    def test_non_supervisor_sees_all_projects_in_sites_panel(self):
+        admin = User.objects.create_superuser(username="adm", email="adm@x.com", password="x")
+        self.assertEqual(self.panel_ids(admin), {self.mine.pk, self.other.pk})
