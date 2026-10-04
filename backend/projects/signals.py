@@ -91,3 +91,33 @@ def notify_task_assignment(sender, instance, action, pk_set, **kwargs):
             project_id=instance.project_id,
             project_code=instance.project.code,
         )
+
+
+@receiver(pre_save, sender=ProjectTask)
+def capture_old_task_status(sender, instance, **kwargs):
+    instance._old_status = (
+        ProjectTask.objects.filter(pk=instance.pk).values_list("status", flat=True).first() if instance.pk else None
+    )
+
+
+@receiver(post_save, sender=ProjectTask)
+def notify_task_completed(sender, instance, created, **kwargs):
+    """Avisa o responsável CSTR do projeto quando uma tarefa passa a Concluída."""
+    if instance.status != ProjectTask.STATUS_COMPLETED:
+        return
+    if getattr(instance, "_old_status", None) == ProjectTask.STATUS_COMPLETED:
+        return
+    user = _responsible_user(instance.project, "responsible_cstr")
+    if not user:
+        return
+    names = ", ".join(
+        c.person.name for c in instance.collaborators.select_related("person").order_by("person__name") if c.person_id
+    )
+    notify_user(
+        user,
+        title="Tarefa finalizada",
+        message=f'{names or "Um técnico"} finalizou a tarefa "{instance.display_name}" no projeto "{instance.project.name}".',
+        url=f"/projetos/{instance.project_id}",
+        project_id=instance.project_id,
+        project_code=instance.project.code,
+    )
