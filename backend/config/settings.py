@@ -227,6 +227,16 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "apikey")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "atualizacoes@consultimer.com")
 
+# Segundo remetente, exclusivo para e-mails de autenticação (recuperação de
+# senha). Qualquer variável AUTH_EMAIL_* vazia herda a do remetente principal
+# acima (atualizações diárias e de projeto), então a conta separada é opcional.
+AUTH_EMAIL_HOST = os.getenv("AUTH_EMAIL_HOST") or EMAIL_HOST
+AUTH_EMAIL_PORT = int(os.getenv("AUTH_EMAIL_PORT") or EMAIL_PORT)
+AUTH_EMAIL_USE_TLS = (os.getenv("AUTH_EMAIL_USE_TLS") or ("1" if EMAIL_USE_TLS else "0")) == "1"
+AUTH_EMAIL_HOST_USER = os.getenv("AUTH_EMAIL_HOST_USER") or EMAIL_HOST_USER
+AUTH_EMAIL_HOST_PASSWORD = os.getenv("AUTH_EMAIL_HOST_PASSWORD") or EMAIL_HOST_PASSWORD
+AUTH_FROM_EMAIL = os.getenv("AUTH_FROM_EMAIL") or DEFAULT_FROM_EMAIL
+
 # Segredo compartilhado usado pelo bot do WhatsApp para chamar a API sem
 # fazer login normal (ver api/views.BotSharedSecretPermission).
 WHATSAPP_BOT_SECRET = os.getenv("WHATSAPP_BOT_SECRET", "")

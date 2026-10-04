@@ -2601,7 +2601,8 @@ class PasswordResetRequestView(APIView):
         import secrets
 
         from django.contrib.auth.tokens import default_token_generator
-        from django.core.mail import send_mail
+        from django.conf import settings
+        from django.core.mail import get_connection, send_mail
         from django.utils.encoding import force_bytes
         from django.utils.http import urlsafe_base64_encode
 
@@ -2631,9 +2632,16 @@ class PasswordResetRequestView(APIView):
                 f"O link expira em 24 horas. Se você não solicitou, ignore este e-mail.\n\n"
                 f"Equipe Consultimer"
             ),
-            from_email=None,
+            from_email=settings.AUTH_FROM_EMAIL,
             recipient_list=[user.email],
             fail_silently=False,
+            connection=get_connection(
+                host=settings.AUTH_EMAIL_HOST,
+                port=settings.AUTH_EMAIL_PORT,
+                username=settings.AUTH_EMAIL_HOST_USER,
+                password=settings.AUTH_EMAIL_HOST_PASSWORD,
+                use_tls=settings.AUTH_EMAIL_USE_TLS,
+            ),
         )
         return Response({"detail": "Se o e-mail estiver cadastrado, você receberá as instruções em breve."})
 
