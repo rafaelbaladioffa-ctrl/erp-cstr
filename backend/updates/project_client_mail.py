@@ -80,10 +80,17 @@ def build_project_update_body(project_update):
     project_update.refresh_from_tasks()
     project = project_update.project
 
-    responsible_aws = project.responsible_client.person.name if project.responsible_client_id else "Não informado"
-    responsible_cstr = project.responsible_cstr.person.name if project.responsible_cstr_id else "Não informado"
+    responsible_aws = (
+        format_person_name(project.responsible_client.person.name) if project.responsible_client_id else "Não informado"
+    )
+    responsible_cstr = (
+        format_person_name(project.responsible_cstr.person.name) if project.responsible_cstr_id else "Não informado"
+    )
     collaborators_line = (
-        ", ".join(project_update.collaborators.order_by("person__name").values_list("person__name", flat=True))
+        ", ".join(
+            format_person_name(name)
+            for name in project_update.collaborators.order_by("person__name").values_list("person__name", flat=True)
+        )
         or "Não informados"
     )
 
