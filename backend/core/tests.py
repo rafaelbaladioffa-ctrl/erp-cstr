@@ -256,7 +256,8 @@ class EmailLanguageTests(TestCase):
         from core.emailing import build_email, render_html
 
         html = render_html(title="Teste", lang="en")
-        self.assertIn("Structured cabling", html)
+        self.assertIn("Consultimer Group", html)
+        self.assertIn("project management system", html)
         message = build_email(subject="s", to=["a@b.com"], text="t", html=html)
         self.assertEqual(message.alternatives[0][1], "text/html")
         self.assertTrue(any(part.get("Content-ID") == "<consultimer-logo>" for part in message.attachments))

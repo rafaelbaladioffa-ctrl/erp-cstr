@@ -30,16 +30,16 @@ DEFAULT_LANGUAGE = "pt"
 
 FOOTER_LINES = {
     "pt": (
-        "Consultimer — Cabeamento estruturado para data centers",
-        "Esta é uma mensagem automática enviada pelo sistema de gestão de obras.",
+        "Consultimer Group",
+        "Esta é uma mensagem automática enviada pelo sistema de gestão de projetos.",
     ),
     "en": (
-        "Consultimer — Structured cabling for data centers",
+        "Consultimer Group",
         "This is an automatic message sent by the project management system.",
     ),
     "es": (
-        "Consultimer — Cableado estructurado para data centers",
-        "Este es un mensaje automático enviado por el sistema de gestión de obras.",
+        "Consultimer Group",
+        "Este es un mensaje automático enviado por el sistema de gestión de proyectos.",
     ),
 }
 BUTTON_FALLBACK = {
