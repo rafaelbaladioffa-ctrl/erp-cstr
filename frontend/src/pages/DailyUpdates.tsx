@@ -30,6 +30,10 @@ const TEXT = {
     saving: "Salvando...", save: "Salvar",
     noUpdate: "Nenhuma atualização registrada.",
     pdf: "PDF", sendEmail: "Enviar e-mail",
+    deleteUpdate: "Excluir",
+    confirmDelete: (date: string) => `Excluir a Atualização Diária de ${date}? Essa ação não pode ser desfeita.`,
+    deleted: "Atualização excluída.",
+    errDelete: "Não foi possível excluir a atualização.",
     errNoRows: "Adicione ao menos um projeto com técnico(s) selecionado(s).",
     errInvalidPeriod: "Um ou mais projetos têm período inválido (data inicial > data final).",
     errSave: "Não foi possível salvar a atualização.",
@@ -54,6 +58,10 @@ const TEXT = {
     saving: "Saving...", save: "Save",
     noUpdate: "No updates recorded.",
     pdf: "PDF", sendEmail: "Send email",
+    deleteUpdate: "Delete",
+    confirmDelete: (date: string) => `Delete the Daily Update of ${date}? This cannot be undone.`,
+    deleted: "Update deleted.",
+    errDelete: "Could not delete the update.",
     errNoRows: "Add at least one project with technician(s) selected.",
     errInvalidPeriod: "One or more projects have an invalid period (start date > end date).",
     errSave: "Could not save the update.",
@@ -78,6 +86,10 @@ const TEXT = {
     saving: "Guardando...", save: "Guardar",
     noUpdate: "Sin actualizaciones registradas.",
     pdf: "PDF", sendEmail: "Enviar correo",
+    deleteUpdate: "Eliminar",
+    confirmDelete: (date: string) => `¿Eliminar la Actualización Diaria del ${date}? Esta acción no se puede deshacer.`,
+    deleted: "Actualización eliminada.",
+    errDelete: "No fue posible eliminar la actualización.",
     errNoRows: "Agrega al menos un proyecto con técnico(s) seleccionado(s).",
     errInvalidPeriod: "Uno o más proyectos tienen período inválido (fecha inicial > fecha final).",
     errSave: "No fue posible guardar la actualización.",
@@ -109,6 +121,7 @@ export default function DailyUpdates() {
   const { locale } = useI18n();
   const canCreate = hasPerm(user, PERMS.addDailyUpdate);
   const canSend = hasPerm(user, PERMS.changeDailyUpdate);
+  const canDelete = hasPerm(user, PERMS.deleteDailyUpdate);
   const [updates, setUpdates] = useState<DailyUpdate[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
@@ -222,6 +235,18 @@ export default function DailyUpdates() {
   async function handleSendEmail(id: number) {
     const result = await dailyUpdatesApi.sendEmail(id);
     setFeedback(`${result.sent.length} e-mail(s) enviado(s).${result.skipped.length ? ` Sem e-mail: ${result.skipped.join(", ")}` : ""}`);
+  }
+
+  async function handleDelete(id: number, date: string) {
+    const label = new Date(date + "T00:00:00").toLocaleDateString(locale);
+    if (!window.confirm(p.confirmDelete(label))) return;
+    try {
+      await dailyUpdatesApi.remove(id);
+      setUpdates((prev) => prev.filter((u) => u.id !== id));
+      setFeedback(p.deleted);
+    } catch {
+      alert(p.errDelete);
+    }
   }
 
   async function handleDownloadPdf(id: number, date: string) {
@@ -376,7 +401,7 @@ export default function DailyUpdates() {
                 onChange={(e) =>
                   updateAllocationRow(index, { collaboratorIds: Array.from(e.target.selectedOptions).map((o) => Number(o.value)) })
                 }
-                style={{ height: 100 }}
+                style={{ height: 200 }}
               >
                 {collaborators.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -417,18 +442,32 @@ export default function DailyUpdates() {
                 <strong style={{ color: "var(--text)" }}>
                   {new Date(update.allocation_date + "T00:00:00").toLocaleDateString(locale)}
                 </strong>
-                {canSend && (
+                {(canSend || canDelete) && (
                   <div className="section-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => handleDownloadPdf(update.id, update.allocation_date)}
-                      disabled={downloadingId === update.id}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      {downloadingId === update.id ? p.generating : p.pdf}
-                    </button>
-                    <button onClick={() => handleSendEmail(update.id)} className="btn btn-primary btn-sm">
-                      {p.sendEmail}
-                    </button>
+                    {canDelete && (
+                      <button
+                        onClick={() => handleDelete(update.id, update.allocation_date)}
+                        className="btn btn-outline btn-sm"
+                        style={{ color: "var(--red)", borderColor: "var(--red)" }}
+                      >
+                        <Icon name="delete" style={{ fontSize: 15 }} />
+                        {p.deleteUpdate}
+                      </button>
+                    )}
+                    {canSend && (
+                      <>
+                        <button
+                          onClick={() => handleDownloadPdf(update.id, update.allocation_date)}
+                          disabled={downloadingId === update.id}
+                          className="btn btn-secondary btn-sm"
+                        >
+                          {downloadingId === update.id ? p.generating : p.pdf}
+                        </button>
+                        <button onClick={() => handleSendEmail(update.id)} className="btn btn-primary btn-sm">
+                          {p.sendEmail}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

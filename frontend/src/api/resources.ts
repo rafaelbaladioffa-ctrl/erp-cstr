@@ -451,7 +451,8 @@ export const sitesApi = {
 
 export const collaboratorsApi = {
   list: (params?: Record<string, string>) =>
-    apiClient.get<Paginated<Collaborator>>("/collaborators/", { params }).then((r) => r.data),
+    // page_size alto: a API pagina de 25 em 25 e há mais técnicos que isso.
+    apiClient.get<Paginated<Collaborator>>("/collaborators/", { params: { page_size: "500", ...params } }).then((r) => r.data),
 };
 
 export const dailyUpdatesApi = {
@@ -462,6 +463,7 @@ export const dailyUpdatesApi = {
     apiClient.post<DailyUpdate>("/daily-updates/", payload).then((r) => r.data),
   update: (id: number, payload: Partial<DailyUpdate>) =>
     apiClient.put<DailyUpdate>(`/daily-updates/${id}/`, payload).then((r) => r.data),
+  remove: (id: number) => apiClient.delete(`/daily-updates/${id}/`),
   sendEmail: (id: number) =>
     apiClient.post<{ sent: string[]; skipped: string[] }>(`/daily-updates/${id}/send-email/`).then((r) => r.data),
   pdfPath: (id: number) => `/daily-updates/${id}/pdf/`,

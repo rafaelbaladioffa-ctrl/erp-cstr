@@ -52,6 +52,7 @@ export const PERMS = {
   viewDailyUpdate: "updates.view_dailyupdate",
   addDailyUpdate: "updates.add_dailyupdate",
   changeDailyUpdate: "updates.change_dailyupdate",
+  deleteDailyUpdate: "updates.delete_dailyupdate",
   viewProjectUpdate: "updates.view_projectdailyupdate",
   addProjectUpdate: "updates.add_projectdailyupdate",
   changeProjectUpdate: "updates.change_projectdailyupdate",
