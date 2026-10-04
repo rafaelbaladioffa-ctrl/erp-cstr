@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { dashboardApi, projectUpdatesApi } from "../../api/resources";
 import type { Project, SitesPanelData, SitesPanelGroupBy, SitesPanelHealth, SitesPanelProject, UserOption } from "../../api/types";
 import DateRangeCalendar, { type DateRange } from "../ui/DateRangeCalendar";
+import Icon from "../ui/Icon";
 import EmailLanguageSelect, { defaultEmailLanguage, type EmailLanguage } from "../ui/EmailLanguageSelect";
 import { useI18n, usePageText } from "../../i18n";
 import { addDaysIso, brazilTodayIso } from "../../utils/date";
@@ -25,6 +26,7 @@ const TEXT = {
     status: "Status",
     statusOptions: { active: "Ativos", paused: "Pausados", planning: "Planejamentos", finished: "Finalizados" } as Record<StatusKey, string>,
     onlyAlerts: "Somente com alerta",
+    statusAll: "Todos",
     search: "Buscar projeto, código ou PO...",
     selectAll: "Marcar todos os filtrados",
     clear: "Limpar seleção",
@@ -56,6 +58,7 @@ const TEXT = {
     status: "Status",
     statusOptions: { active: "Active", paused: "Paused", planning: "Planning", finished: "Finished" } as Record<StatusKey, string>,
     onlyAlerts: "Only with alerts",
+    statusAll: "All",
     search: "Search project, code or PO...",
     selectAll: "Select all filtered",
     clear: "Clear selection",
@@ -87,6 +90,7 @@ const TEXT = {
     status: "Estado",
     statusOptions: { active: "Activos", paused: "Pausados", planning: "Planificación", finished: "Finalizados" } as Record<StatusKey, string>,
     onlyAlerts: "Solo con alerta",
+    statusAll: "Todos",
     search: "Buscar proyecto, código o PO...",
     selectAll: "Marcar todos los filtrados",
     clear: "Limpiar selección",
@@ -128,6 +132,68 @@ interface RowGroup {
   label: string;
   sublabel: string;
   rows: Row[];
+}
+
+function StatusDropdown({
+  label,
+  allLabel,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  allLabel: string;
+  options: Record<StatusKey, string>;
+  selected: StatusKey[];
+  onToggle: (key: StatusKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const ordered = STATUS_KEYS.filter((k) => selected.includes(k));
+  const summary =
+    ordered.length === STATUS_KEYS.length
+      ? allLabel
+      : ordered.length <= 2
+        ? ordered.map((k) => options[k]).join(", ")
+        : `${options[ordered[0]]} +${ordered.length - 1}`;
+
+  return (
+    <div className="sp-dropdown" ref={ref}>
+      <button type="button" className="sp-select sp-dropdown-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className="sp-muted">{label}:</span> {summary}
+        <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 18 }} />
+      </button>
+      {open && (
+        <div className="sp-dropdown-menu" role="listbox" aria-multiselectable="true">
+          {STATUS_KEYS.map((key) => {
+            const checked = selected.includes(key);
+            const locked = checked && selected.length === 1;
+            return (
+              <label key={key} className={`sp-dropdown-option${locked ? " locked" : ""}`}>
+                <input type="checkbox" checked={checked} disabled={locked} onChange={() => onToggle(key)} />
+                <span>{options[key]}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function WeeklyUpdatePanel({ projects, userOptions }: { projects: Project[]; userOptions: UserOption[] }) {
@@ -275,14 +341,13 @@ export default function WeeklyUpdatePanel({ projects, userOptions }: { projects:
 
       {showFilters && (
         <div className="sp-filters" style={{ margin: "0 0 10px" }}>
-          <div className="sp-segmented" role="group" aria-label={p.groupBy}>
-            <span className="sp-filter-label">{p.groupBy}</span>
+          <select className="sp-select" value={groupBy} onChange={(e) => setGroupBy(e.target.value as SitesPanelGroupBy)} aria-label={p.groupBy}>
             {GROUP_KEYS.map((key) => (
-              <button key={key} type="button" className={groupBy === key ? "active" : ""} onClick={() => setGroupBy(key)}>
-                {p.groupByOptions[key]}
-              </button>
+              <option key={key} value={key}>
+                {p.groupBy}: {p.groupByOptions[key]}
+              </option>
             ))}
-          </div>
+          </select>
           <select className="sp-select" value={country} onChange={(e) => setCountry(e.target.value)} aria-label={p.country}>
             <option value="">{p.allCountries}</option>
             {Object.entries(p.countries).map(([code, label]) => (
@@ -291,14 +356,7 @@ export default function WeeklyUpdatePanel({ projects, userOptions }: { projects:
               </option>
             ))}
           </select>
-          <div className="sp-segmented" role="group" aria-label={p.status}>
-            <span className="sp-filter-label">{p.status}</span>
-            {STATUS_KEYS.map((key) => (
-              <button key={key} type="button" className={statusKeys.includes(key) ? "active" : ""} onClick={() => toggleStatus(key)}>
-                {p.statusOptions[key]}
-              </button>
-            ))}
-          </div>
+          <StatusDropdown label={p.status} allLabel={p.statusAll} options={p.statusOptions} selected={statusKeys} onToggle={toggleStatus} />
           <label className="sp-toggle">
             <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} />
             {p.onlyAlerts}
