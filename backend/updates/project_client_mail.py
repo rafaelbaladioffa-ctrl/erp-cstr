@@ -268,62 +268,61 @@ def send_project_daily_update_email(project_update, extra_recipients=None, lang=
     return sent, skipped
 
 
-def _weekly_block(project_update, lang, start):
-    """Bloco de um projeto no Update Semanal (mesmos dados do e-mail individual)."""
+def _weekly_project_data(project_update, lang, start):
+    """Dados de um projeto no Update Semanal (mesma fonte do e-mail individual)."""
     project_update.refresh_from_tasks()
     project = project_update.project
     client_label = (
         (project.client.trade_name or project.client.legal_name) if project.client_id else tr(lang, "client_fallback")
     )
     not_informed = tr(lang, "not_informed")
-    yes_no = lambda value: tr(lang, "yes" if value else "no")  # noqa: E731
-    summary = [
-        (tr(lang, "code"), project.code or "—"),
-        (tr(lang, "site"), (project.site.name or project.site.code) if project.site_id else not_informed),
-        (tr(lang, "po"), project.po or tr(lang, "po_missing")),
-        (
-            tr(lang, "responsible", client=client_label),
-            format_person_name(project.responsible_client.person.name) if project.responsible_client_id else not_informed,
-        ),
-        (
-            tr(lang, "responsible_company"),
-            format_person_name(project.responsible_cstr.person.name) if project.responsible_cstr_id else not_informed,
-        ),
-        (tr(lang, "certification"), yes_no(project_update.certification_done)),
-        (tr(lang, "finished"), yes_no(project_update.project_finished)),
-    ]
-    observations = build_occurrence_notes(project_update, lang, start=start) or tr(lang, "no_observations")
     return {
-        "title": project.name,
-        "highlight": (tr(lang, "completion"), f"{project_update.completion_percent}%"),
-        "summary": summary,
-        "sections": [(tr(lang, "observations"), observations)],
+        "name": project.name,
+        "code": project.code or "—",
+        "site": (project.site.name or project.site.code) if project.site_id else not_informed,
+        "po": project.po or tr(lang, "po_missing"),
+        "responsible_client_label": tr(lang, "responsible", client=client_label),
+        "responsible_client": format_person_name(project.responsible_client.person.name)
+        if project.responsible_client_id
+        else not_informed,
+        "responsible_cstr": format_person_name(project.responsible_cstr.person.name)
+        if project.responsible_cstr_id
+        else not_informed,
+        "percent": project_update.completion_percent,
+        "certification": project_update.certification_done,
+        "finished": project_update.project_finished,
+        "notes": build_occurrence_notes(project_update, lang, start=start),
     }
 
 
 def build_weekly_update_message(project_updates, recipient_email, start, end, lang="pt"):
-    """Um único e-mail com um bloco por projeto (Update Semanal), sem anexo."""
+    """Um único e-mail com todos os projetos (Update Semanal), sem anexo."""
+    from .weekly_layout import render_weekly_body
+
     lang = normalize_language(lang)
     period = f"{fmt_date(lang, start)} – {fmt_date(lang, end)}"
-    blocks = [_weekly_block(pu, lang, start) for pu in project_updates]
-    overview = [(pu.project.name, f"{pu.completion_percent}%") for pu in project_updates]
+    projects = [_weekly_project_data(pu, lang, start) for pu in project_updates]
 
     html = render_html(
         title=tr(lang, "weekly_title"),
         intro=tr(lang, "weekly_intro", start=fmt_date(lang, start), end=fmt_date(lang, end)),
-        summary=overview,
-        blocks=blocks,
+        raw_html=render_weekly_body(lang, projects),
         lang=lang,
     )
+    yes_no = lambda value: tr(lang, "yes" if value else "no")  # noqa: E731
     text_lines = [tr(lang, "weekly_title").upper(), period, ""]
-    for block in blocks:
-        text_lines += [block["title"].upper(), f"{block['highlight'][0]}: {block['highlight'][1]}"]
-        text_lines += [f"{label}: {value}" for label, value in block["summary"]]
-        for heading, body in block["sections"]:
-            text_lines += [heading.upper() + ":", body]
+    for p in projects:
+        text_lines += [
+            f"{p['name'].upper()} — {p['percent']}%",
+            f"{tr(lang, 'code')}: {p['code']} | {tr(lang, 'site')}: {p['site']} | {tr(lang, 'po')}: {p['po']}",
+            f"{p['responsible_client_label']}: {p['responsible_client']} | {tr(lang, 'responsible_company')}: {p['responsible_cstr']}",
+            f"{tr(lang, 'certification')}: {yes_no(p['certification'])} | {tr(lang, 'finished')}: {yes_no(p['finished'])}",
+        ]
+        if p["notes"]:
+            text_lines += [f"{tr(lang, 'observations')}:", p["notes"]]
         text_lines.append("")
     text_lines.append("Consultimer")
-    subject = f"{tr(lang, 'weekly_subject')} | {period} | {len(blocks)} {tr(lang, 'weekly_projects')}"
+    subject = f"{tr(lang, 'weekly_subject')} | {period} | {len(projects)} {tr(lang, 'weekly_projects')}"
     return build_email(subject=subject, to=[recipient_email], text=NEWLINE.join(text_lines), html=html)
 
 

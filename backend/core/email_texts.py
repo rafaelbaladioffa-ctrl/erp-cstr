@@ -38,6 +38,10 @@ TEXTS = {
         "weekly_title": "Update Semanal",
         "weekly_intro": "Segue o update semanal dos projetos, referente ao período de {start} a {end}.",
         "weekly_overview": "Visão geral",
+        "weekly_stat_projects": "Projetos",
+        "weekly_stat_avg": "Conclusão média",
+        "weekly_stat_done": "Finalizados",
+        "weekly_details": "Detalhes por projeto",
         "weekly_projects": "projetos",
     },
     "en": {
@@ -74,6 +78,10 @@ TEXTS = {
         "weekly_title": "Weekly Update",
         "weekly_intro": "Please find the weekly update for the projects below, covering {start} to {end}.",
         "weekly_overview": "Overview",
+        "weekly_stat_projects": "Projects",
+        "weekly_stat_avg": "Average completion",
+        "weekly_stat_done": "Completed",
+        "weekly_details": "Project details",
         "weekly_projects": "projects",
     },
     "es": {
@@ -110,6 +118,10 @@ TEXTS = {
         "weekly_title": "Update Semanal",
         "weekly_intro": "A continuación el update semanal de los proyectos, correspondiente al período del {start} al {end}.",
         "weekly_overview": "Resumen general",
+        "weekly_stat_projects": "Proyectos",
+        "weekly_stat_avg": "Avance promedio",
+        "weekly_stat_done": "Finalizados",
+        "weekly_details": "Detalle por proyecto",
         "weekly_projects": "proyectos",
     },
 }

@@ -37,7 +37,10 @@ DARK_CSS = (
     ".c-hl,.c-ftr{background:#1f1f22 !important}"
     ".c-txt{color:#f4f4f5 !important}"
     ".c-mut{color:#a1a1aa !important}"
-    ".c-brd{border-color:#3f3f46 !important}}"
+    ".c-brd{border-color:#3f3f46 !important}"
+    ".c-track{background:#3f3f46 !important}"
+    ".c-ok{background:#14532d !important;color:#bbf7d0 !important}"
+    ".c-no{background:#3f3f46 !important;color:#d4d4d8 !important}}"
     "[data-ogsb] .c-bg{background:#18181b !important}"
     "[data-ogsb] .c-card{background:#27272a !important}"
     "[data-ogsb] .c-hdr{background:#0f0f10 !important}"
@@ -45,6 +48,11 @@ DARK_CSS = (
     "[data-ogsc] .c-txt{color:#f4f4f5 !important}"
     "[data-ogsc] .c-mut{color:#a1a1aa !important}"
     "[data-ogsc] .c-brd{border-color:#3f3f46 !important}"
+    "[data-ogsb] .c-track{background:#3f3f46 !important}"
+    "[data-ogsb] .c-ok{background:#14532d !important}"
+    "[data-ogsb] .c-no{background:#3f3f46 !important}"
+    "[data-ogsc] .c-ok{color:#bbf7d0 !important}"
+    "[data-ogsc] .c-no{color:#d4d4d8 !important}"
 )
 
 LANGUAGES = ("pt", "en", "es")
@@ -113,10 +121,10 @@ def _body_parts(highlight, summary, sections):
     return parts
 
 
-def render_html(*, title, intro="", summary=None, highlight=None, sections=None, blocks=None, button=None, note="", logo=True, lang="pt"):
+def render_html(*, title, intro="", summary=None, highlight=None, sections=None, raw_html="", button=None, note="", logo=True, lang="pt"):
     """summary: lista de (rótulo, valor). highlight: (rótulo, valor) em destaque.
-    sections: lista de (título, texto). blocks: lista de dicts {title, highlight,
-    summary, sections} renderizados em sequência. button: (rótulo, url)."""
+    sections: lista de (título, texto). raw_html: HTML já montado (e escapado) pelo chamador,
+    inserido depois dos demais blocos. button: (rótulo, url)."""
     parts = []
 
     if intro:
@@ -124,15 +132,8 @@ def render_html(*, title, intro="", summary=None, highlight=None, sections=None,
 
     parts += _body_parts(highlight, summary, sections)
 
-    for block in blocks or []:
-        # Um bloco por item (ex.: um projeto no Update Semanal), separado por linha e título.
-        parts.append(
-            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 18px;">'
-            f'<tr><td class="c-brd" style="border-top:2px solid {COLOR_BORDER};padding:18px 0 0;">'
-            f'<h2 class="c-txt" style="margin:0;font-size:17px;color:{COLOR_TEXT};">{escape(block["title"])}</h2>'
-            f"</td></tr></table>"
-        )
-        parts += _body_parts(block.get("highlight"), block.get("summary"), block.get("sections"))
+    if raw_html:
+        parts.append(raw_html)
 
     if button:
         label, url = button
