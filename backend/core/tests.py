@@ -271,3 +271,32 @@ class EmailLanguageTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].subject, "Consultimer · Password reset")
         self.assertIn("Reset password", mail.outbox[0].alternatives[0][0])
+
+
+class ProjectUpdateEmailContentTests(TestCase):
+    def test_subject_has_site_and_project_and_observations_come_from_occurrences(self):
+        from datetime import date
+
+        from projects.models import Project, ProjectOccurrence
+        from updates.models import ProjectDailyUpdate
+        from updates.project_client_mail import build_project_update_message
+
+        company = Company.objects.create(legal_name="Empresa", trade_name="Empresa")
+        client = Client.objects.create(company=company, trade_name="Cliente")
+        site = Site.objects.create(client=client, name="Site 65", code="GRU65")
+        project = Project.objects.create(company=company, name="Projeto X", client=client, site=site)
+        ProjectOccurrence.objects.create(project=project, title="Falta de acesso", description="Porta trancada", occurred_at=date(2026, 10, 4))
+        ProjectOccurrence.objects.create(
+            project=project, title="Cancelada", status=ProjectOccurrence.STATUS_CANCELED, occurred_at=date(2026, 10, 4)
+        )
+        update = ProjectDailyUpdate.objects.create(project=project, date=date(2026, 10, 4))
+
+        message = build_project_update_message(update, "a@b.com", b"pdf", "x.pdf", "pt")
+
+        self.assertEqual(message.subject, "Atualização de Projeto | GRU65 | Projeto X")
+        html = message.alternatives[0][0]
+        self.assertIn("Atualização de Projeto", html)
+        self.assertIn("Falta de acesso", html)
+        self.assertIn("Porta trancada", html)
+        self.assertNotIn("Cancelada", html)
+        self.assertNotIn("Atividades executadas", html)

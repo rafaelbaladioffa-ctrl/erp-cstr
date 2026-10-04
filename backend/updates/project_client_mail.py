@@ -1,9 +1,10 @@
+from django.db.models import Q
 from django.utils import timezone
 
-from core.email_texts import fmt_date, tr
-from core.emailing import branded_subject, build_email, normalize_language, render_html
+from core.email_texts import TEXTS, fmt_date, tr
+from core.emailing import build_email, normalize_language, render_html
 from core.models import Responsible
-from projects.models import ProjectTask
+from projects.models import ProjectOccurrence, ProjectTask
 
 NEWLINE = chr(10)
 WORKDAY_START = "07:30"
@@ -105,6 +106,31 @@ def build_project_update_body(project_update):
     return "\n".join(lines)
 
 
+def build_occurrence_notes(project_update, lang):
+    """Observações do e-mail: anotação manual da atualização (se houver) mais as
+    ocorrências do projeto em aberto/em andamento e as ocorridas ou resolvidas na
+    data da atualização. Ocorrências canceladas ficam de fora."""
+    project = project_update.project
+    date = project_update.date
+    open_statuses = (ProjectOccurrence.STATUS_OPEN, ProjectOccurrence.STATUS_IN_PROGRESS)
+    occurrences = (
+        project.occurrences.exclude(status=ProjectOccurrence.STATUS_CANCELED)
+        .filter(Q(status__in=open_statuses) | Q(occurred_at=date) | Q(resolved_at=date))
+        .order_by("occurred_at", "id")
+    )
+    statuses = TEXTS[lang]["occ_status"]
+    lines = []
+    manual = project_update.summary.strip()
+    if manual:
+        lines.append(manual)
+    for occurrence in occurrences:
+        line = f"• {fmt_date(lang, occurrence.occurred_at)} — {occurrence.title} ({statuses[occurrence.status]})"
+        if occurrence.description.strip():
+            line += f": {occurrence.description.strip()}"
+        lines.append(line)
+    return NEWLINE.join(lines)
+
+
 def build_project_update_message(project_update, recipient_email, pdf_bytes, pdf_filename, lang="pt"):
     """Monta o e-mail corporativo (HTML + texto) da Atualização de Projeto."""
     lang = normalize_language(lang)
@@ -134,9 +160,8 @@ def build_project_update_message(project_update, recipient_email, pdf_bytes, pdf
         (tr(lang, "certification"), yes_no(project_update.certification_done)),
         (tr(lang, "finished"), yes_no(project_update.project_finished)),
     ]
-    activities = project_update.activities_text.strip() or tr(lang, "no_activities")
-    observations = project_update.summary.strip() or tr(lang, "no_observations")
-    sections = [(tr(lang, "activities"), activities), (tr(lang, "observations"), observations)]
+    observations = build_occurrence_notes(project_update, lang) or tr(lang, "no_observations")
+    sections = [(tr(lang, "observations"), observations)]
     percent = f"{project_update.completion_percent}%"
 
     html = render_html(
@@ -153,9 +178,8 @@ def build_project_update_message(project_update, recipient_email, pdf_bytes, pdf
     for heading, body in sections:
         text_lines += [heading.upper(), body, ""]
     text_lines.append(f"Consultimer — {tr(lang, 'attachment_note')}")
-    subject = branded_subject(
-        tr(lang, "project_subject"), project.code or project.name, fmt_date(lang, project_update.date)
-    )
+    site_label = (project.site.code or project.site.name) if project.site_id else tr(lang, "not_informed")
+    subject = f"{tr(lang, 'project_subject')} | {site_label} | {project.name}"
     return build_email(
         subject=subject,
         to=[recipient_email],
