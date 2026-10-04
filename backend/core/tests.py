@@ -240,3 +240,34 @@ class ConsultimerProjectTypeTests(TestCase):
         item = ConsultimerProjectType.objects.create(name="Deployment", code=" dp ")
         self.assertEqual(item.code, "DP")
 
+
+
+class EmailLanguageTests(TestCase):
+    def test_normalize_language_accepts_locales_and_defaults_to_portuguese(self):
+        from core.emailing import normalize_language
+
+        self.assertEqual(normalize_language("en-US"), "en")
+        self.assertEqual(normalize_language("ES"), "es")
+        self.assertEqual(normalize_language("pt-BR"), "pt")
+        self.assertEqual(normalize_language(None), "pt")
+        self.assertEqual(normalize_language("fr"), "pt")
+
+    def test_html_email_uses_selected_language_footer_and_inline_logo(self):
+        from core.emailing import build_email, render_html
+
+        html = render_html(title="Teste", lang="en")
+        self.assertIn("Structured cabling", html)
+        message = build_email(subject="s", to=["a@b.com"], text="t", html=html)
+        self.assertEqual(message.alternatives[0][1], "text/html")
+        self.assertTrue(any(part.get("Content-ID") == "<consultimer-logo>" for part in message.attachments))
+
+    def test_password_reset_email_is_always_english(self):
+        from django.core import mail
+
+        company = Company.objects.create(legal_name="Empresa", trade_name="Empresa")
+        User.objects.create_user(username="reset", email="reset@example.com", password="x")
+        response = self.client.post("/api/password-reset/request/", {"email": "reset@example.com"}, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Consultimer · Password reset")
+        self.assertIn("Reset password", mail.outbox[0].alternatives[0][0])

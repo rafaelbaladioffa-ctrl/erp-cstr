@@ -466,8 +466,10 @@ export const dailyUpdatesApi = {
   update: (id: number, payload: Partial<DailyUpdate>) =>
     apiClient.put<DailyUpdate>(`/daily-updates/${id}/`, payload).then((r) => r.data),
   remove: (id: number) => apiClient.delete(`/daily-updates/${id}/`),
-  sendEmail: (id: number) =>
-    apiClient.post<{ sent: string[]; skipped: string[] }>(`/daily-updates/${id}/send-email/`).then((r) => r.data),
+  sendEmail: (id: number, language?: string) =>
+    apiClient
+      .post<{ sent: string[]; skipped: string[] }>(`/daily-updates/${id}/send-email/`, { language })
+      .then((r) => r.data),
   pdfPath: (id: number) => `/daily-updates/${id}/pdf/`,
   consolidatedPdfPath: (date: string) => `/daily-updates/pdf-consolidado/?date=${date}`,
 };
@@ -480,7 +482,7 @@ export const projectUpdatesApi = {
     apiClient.post<ProjectDailyUpdate>("/project-updates/", payload).then((r) => r.data),
   update: (id: number, payload: Partial<ProjectDailyUpdate>) =>
     apiClient.patch<ProjectDailyUpdate>(`/project-updates/${id}/`, payload).then((r) => r.data),
-  sendEmail: (id: number, payload?: { user_ids?: number[]; emails?: string[] }) =>
+  sendEmail: (id: number, payload?: { user_ids?: number[]; emails?: string[]; language?: string }) =>
     apiClient
       .post<{ sent: string[]; skipped: string[]; detail?: string }>(`/project-updates/${id}/send-email/`, payload || {})
       .then((r) => r.data),

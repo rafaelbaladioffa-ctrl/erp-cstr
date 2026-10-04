@@ -1,10 +1,11 @@
-from django.conf import settings
-from django.core.mail import EmailMessage
 from django.utils import timezone
 
+from core.email_texts import fmt_date, tr
+from core.emailing import branded_subject, build_email, normalize_language, render_html
 from core.models import Responsible
 from projects.models import ProjectTask
 
+NEWLINE = chr(10)
 WORKDAY_START = "07:30"
 WORKDAY_END = "16:40"
 
@@ -104,7 +105,67 @@ def build_project_update_body(project_update):
     return "\n".join(lines)
 
 
-def send_project_daily_update_email(project_update, extra_recipients=None):
+def build_project_update_message(project_update, recipient_email, pdf_bytes, pdf_filename, lang="pt"):
+    """Monta o e-mail corporativo (HTML + texto) da Atualização de Projeto."""
+    lang = normalize_language(lang)
+    project_update.refresh_from_tasks()
+    project = project_update.project
+
+    client_label = (
+        (project.client.trade_name or project.client.legal_name) if project.client_id else tr(lang, "client_fallback")
+    )
+    responsible_client = (
+        project.responsible_client.person.name if project.responsible_client_id else tr(lang, "not_informed")
+    )
+    responsible_cstr = project.responsible_cstr.person.name if project.responsible_cstr_id else tr(lang, "not_informed")
+    collaborators = ", ".join(
+        project_update.collaborators.order_by("person__name").values_list("person__name", flat=True)
+    ) or tr(lang, "not_informed_pl")
+    yes_no = lambda value: tr(lang, "yes" if value else "no")  # noqa: E731
+    summary = [
+        (tr(lang, "project"), project.name),
+        (tr(lang, "code"), project.code or "—"),
+        (tr(lang, "site"), (project.site.name or project.site.code) if project.site_id else tr(lang, "not_informed")),
+        (tr(lang, "po"), project.po or tr(lang, "po_missing")),
+        (tr(lang, "responsible", client=client_label), responsible_client),
+        (tr(lang, "responsible_company"), responsible_cstr),
+        (tr(lang, "date"), fmt_date(lang, project_update.date)),
+        (tr(lang, "team"), collaborators),
+        (tr(lang, "certification"), yes_no(project_update.certification_done)),
+        (tr(lang, "finished"), yes_no(project_update.project_finished)),
+    ]
+    activities = project_update.activities_text.strip() or tr(lang, "no_activities")
+    observations = project_update.summary.strip() or tr(lang, "no_observations")
+    sections = [(tr(lang, "activities"), activities), (tr(lang, "observations"), observations)]
+    percent = f"{project_update.completion_percent}%"
+
+    html = render_html(
+        title=tr(lang, "project_title"),
+        intro=tr(lang, "project_intro"),
+        highlight=(tr(lang, "completion"), percent),
+        summary=summary,
+        sections=sections,
+        lang=lang,
+    )
+    text_lines = [tr(lang, "project_title").upper(), ""]
+    text_lines += [f"{label}: {value}" for label, value in summary]
+    text_lines += ["", f"{tr(lang, 'completion')}: {percent}", ""]
+    for heading, body in sections:
+        text_lines += [heading.upper(), body, ""]
+    text_lines.append(f"Consultimer — {tr(lang, 'attachment_note')}")
+    subject = branded_subject(
+        tr(lang, "project_subject"), project.code or project.name, fmt_date(lang, project_update.date)
+    )
+    return build_email(
+        subject=subject,
+        to=[recipient_email],
+        text=NEWLINE.join(text_lines),
+        html=html,
+        attachments=[(pdf_filename, pdf_bytes, "application/pdf")],
+    )
+
+
+def send_project_daily_update_email(project_update, extra_recipients=None, lang="pt"):
     """Envia a Atualização Diária de Projeto para todos os ClientResponsible
     ativos do cliente vinculado ao projeto, mais quaisquer destinatários
     extras informados (usuários do sistema escolhidos ou e-mails avulsos
@@ -135,9 +196,6 @@ def send_project_daily_update_email(project_update, extra_recipients=None):
         elif not key:
             deduped.append((name, email))
 
-    subject = f"Atualização de Projeto — {project.name} ({project_update.date:%d/%m/%Y})"
-    body = build_project_update_body(project_update)
-
     # Import tardio para evitar import circular (project_pdf importa deste módulo).
     from .project_pdf import build_project_daily_update_pdf
 
@@ -149,14 +207,9 @@ def send_project_daily_update_email(project_update, extra_recipients=None):
         if not recipient_email:
             skipped.append(name)
             continue
-        email = EmailMessage(
-            subject=subject,
-            body=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[recipient_email],
+        build_project_update_message(project_update, recipient_email, pdf_bytes, pdf_filename, lang).send(
+            fail_silently=False
         )
-        email.attach(pdf_filename, pdf_bytes, "application/pdf")
-        email.send(fail_silently=False)
         sent.append(name)
 
     if sent:

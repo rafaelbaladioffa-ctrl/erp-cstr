@@ -8,6 +8,7 @@ import DateRangeCalendar, { type DateRange } from "../components/ui/DateRangeCal
 import DateInput from "../components/ui/DateInput";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { useI18n, usePageText } from "../i18n";
+import EmailLanguageSelect, { defaultEmailLanguage, type EmailLanguage } from "../components/ui/EmailLanguageSelect";
 import { PERMS, hasPerm } from "../utils/permissions";
 
 const TEXT = {
@@ -119,6 +120,7 @@ export default function DailyUpdates() {
   const { user } = useAuth();
   const p = usePageText(TEXT);
   const { locale } = useI18n();
+  const [emailLang, setEmailLang] = useState<EmailLanguage>(defaultEmailLanguage(locale));
   const canCreate = hasPerm(user, PERMS.addDailyUpdate);
   const canSend = hasPerm(user, PERMS.changeDailyUpdate);
   const canDelete = hasPerm(user, PERMS.deleteDailyUpdate);
@@ -233,7 +235,7 @@ export default function DailyUpdates() {
   }
 
   async function handleSendEmail(id: number) {
-    const result = await dailyUpdatesApi.sendEmail(id);
+    const result = await dailyUpdatesApi.sendEmail(id, emailLang);
     setFeedback(`${result.sent.length} e-mail(s) enviado(s).${result.skipped.length ? ` Sem e-mail: ${result.skipped.join(", ")}` : ""}`);
   }
 
@@ -463,6 +465,7 @@ export default function DailyUpdates() {
                         >
                           {downloadingId === update.id ? p.generating : p.pdf}
                         </button>
+                        <EmailLanguageSelect value={emailLang} onChange={setEmailLang} />
                         <button onClick={() => handleSendEmail(update.id)} className="btn btn-primary btn-sm">
                           {p.sendEmail}
                         </button>

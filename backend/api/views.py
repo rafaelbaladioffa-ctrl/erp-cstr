@@ -2244,7 +2244,7 @@ class DailyUpdateViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
     @action(detail=True, methods=["post"], url_path="send-email")
     def send_email(self, request, pk=None):
         daily_update = self.get_object()
-        sent, skipped = send_daily_update_emails(daily_update)
+        sent, skipped = send_daily_update_emails(daily_update, lang=request.data.get("language"))
         return Response({"sent": sent, "skipped": skipped})
 
     @action(detail=True, methods=["get"])
@@ -2331,7 +2331,7 @@ class ProjectDailyUpdateViewSet(RequireChangePermissionForActions, viewsets.Mode
         if not project_update.project.client_id and not extra:
             return Response({"detail": "O projeto não possui cliente vinculado."}, status=400)
 
-        sent, skipped = send_project_daily_update_email(project_update, extra_recipients=extra)
+        sent, skipped = send_project_daily_update_email(project_update, extra_recipients=extra, lang=request.data.get("language"))
         return Response({"sent": sent, "skipped": skipped})
 
     @action(detail=True, methods=["get"])
@@ -2602,10 +2602,11 @@ class PasswordResetRequestView(APIView):
 
         from django.contrib.auth.tokens import default_token_generator
         from django.conf import settings
-        from django.core.mail import get_connection, send_mail
+        from django.core.mail import get_connection
         from django.utils.encoding import force_bytes
         from django.utils.http import urlsafe_base64_encode
 
+        from core.emailing import branded_subject, build_email, render_html
         from users.models import User
 
         email = (request.data.get("email") or "").strip().lower()
@@ -2623,18 +2624,35 @@ class PasswordResetRequestView(APIView):
         frontend_url = request.build_absolute_uri("/").rstrip("/")
         reset_link = f"{frontend_url}/redefinir-senha/{uid}/{token}/"
 
-        send_mail(
-            subject="Redefinição de senha — ERP CSTR",
-            message=(
-                f"Olá, {user.get_full_name() or user.username}!\n\n"
-                f"Recebemos uma solicitação para redefinir a senha da sua conta.\n\n"
-                f"Clique no link abaixo para criar uma nova senha:\n{reset_link}\n\n"
-                f"O link expira em 24 horas. Se você não solicitou, ignore este e-mail.\n\n"
-                f"Equipe Consultimer"
-            ),
+        name = user.get_full_name() or user.username
+        nl = chr(10)
+        expiry_note = "This link expires in 24 hours. If you did not request this, you can safely ignore this email."
+        text = nl.join(
+            [
+                f"Hello, {name}!",
+                "",
+                "We received a request to reset the password for your account.",
+                "Use the link below to choose a new password:",
+                reset_link,
+                "",
+                expiry_note,
+                "",
+                "Consultimer",
+            ]
+        )
+        html = render_html(
+            title="Reset your password",
+            intro=f"Hello, {name}! We received a request to reset the password for your account.",
+            button=("Reset password", reset_link),
+            note=expiry_note,
+            lang="en",
+        )
+        build_email(
+            subject=branded_subject("Password reset"),
+            to=[user.email],
+            text=text,
+            html=html,
             from_email=settings.AUTH_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
             connection=get_connection(
                 host=settings.AUTH_EMAIL_HOST,
                 port=settings.AUTH_EMAIL_PORT,
@@ -2642,7 +2660,7 @@ class PasswordResetRequestView(APIView):
                 password=settings.AUTH_EMAIL_HOST_PASSWORD,
                 use_tls=settings.AUTH_EMAIL_USE_TLS,
             ),
-        )
+        ).send(fail_silently=False)
         return Response({"detail": "Se o e-mail estiver cadastrado, você receberá as instruções em breve."})
 
 

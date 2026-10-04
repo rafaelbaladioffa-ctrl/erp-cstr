@@ -9,6 +9,7 @@ import PageHeader from "../components/ui/PageHeader";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
 import { useI18n, usePageText } from "../i18n";
+import EmailLanguageSelect, { defaultEmailLanguage, type EmailLanguage } from "../components/ui/EmailLanguageSelect";
 
 const TEXT = {
   "pt-BR": {
@@ -408,6 +409,8 @@ function ProjectUpdateEditor({
   const [recipientsOpen, setRecipientsOpen] = useState(false);
   const [extraUserIds, setExtraUserIds] = useState<number[]>([]);
   const [extraEmailsText, setExtraEmailsText] = useState("");
+  const { locale: uiLocale } = useI18n();
+  const [emailLang, setEmailLang] = useState<EmailLanguage>(defaultEmailLanguage(uiLocale));
 
   async function handleDownloadPdf() {
     setDownloadingPdf(true);
@@ -442,7 +445,7 @@ function ProjectUpdateEditor({
     setFeedback("");
     setFeedbackError("");
     try {
-      const result = await projectUpdatesApi.sendEmail(update.id, { user_ids: extraUserIds, emails });
+      const result = await projectUpdatesApi.sendEmail(update.id, { user_ids: extraUserIds, emails, language: emailLang });
       if (result.detail) {
         setFeedbackError(result.detail);
       } else {
@@ -605,6 +608,7 @@ function ProjectUpdateEditor({
             <button onClick={handleDownloadPdf} disabled={downloadingPdf} className="btn btn-secondary">
               {downloadingPdf ? p.downloadingPdf : p.downloadPdf}
             </button>
+            <EmailLanguageSelect value={emailLang} onChange={setEmailLang} />
             <button onClick={handleSendEmail} disabled={sendingEmail} className="btn btn-primary">
               {sendingEmail ? p.sending : p.sendEmail}
             </button>
