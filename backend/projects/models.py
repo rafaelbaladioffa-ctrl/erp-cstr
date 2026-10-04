@@ -1,3 +1,5 @@
+import re
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
@@ -13,6 +15,13 @@ class ProjectSequence(models.Model):
     class Meta:
         verbose_name = "Sequência de Projetos"
         verbose_name_plural = "Sequências de Projetos"
+
+
+def build_structured_code(project, date, number):
+    """SIGLA + nº do cliente + site + AAMM + sequencial anual, sem separadores.
+    Ex.: DEP001GRU6526100001. O site mantém só letras e números."""
+    site = re.sub(r"[^A-Za-z0-9]", "", project.site.code).upper()
+    return f"{project.consultimer_type.code}{project.client.number_code}{site}{date:%y%m}{number:04d}"
 
 
 class ProjectCodeSequence(models.Model):
@@ -144,10 +153,7 @@ class Project(TimestampedModel):
             sequence.last_number += 1
             sequence.save(update_fields=("last_number",))
             if structured:
-                self.code = (
-                    f"{self.consultimer_type.code}-{self.client.number_code}-{self.site.code}-"
-                    f"{today:%y%m}-{sequence.last_number:04d}"
-                )
+                self.code = build_structured_code(self, today, sequence.last_number)
             else:
                 self.code = f"CSTR-PROJ-{year}{sequence.last_number:04d}"
             return super().save(*args, **kwargs)

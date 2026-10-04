@@ -127,12 +127,12 @@ class ProjectTests(TestCase):
         first = Project.objects.create(company=company, name="A", client=client, site=site, consultimer_type=deploy)
         second = Project.objects.create(company=company, name="B", client=client, site=site, consultimer_type=fitout)
         today = timezone.localdate()
-        self.assertEqual(first.code, f"DP-001-GRU65-{today:%y%m}-0001")
-        self.assertEqual(second.code, f"FO-001-GRU65-{today:%y%m}-0002")
+        self.assertEqual(first.code, f"DP001GRU65{today:%y%m}0001")
+        self.assertEqual(second.code, f"FO001GRU65{today:%y%m}0002")
         ProjectCodeSequence.objects.filter(year=today.year).delete()
         other_site = Site.objects.create(client=client, name="GRU50", code="GRU50")
         third = Project.objects.create(company=company, name="C", client=client, site=other_site, consultimer_type=deploy)
-        self.assertTrue(third.code.endswith("-0001"))
+        self.assertTrue(third.code.endswith("0001"))
 
     def test_project_has_po_and_two_responsible_fields(self):
         company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
