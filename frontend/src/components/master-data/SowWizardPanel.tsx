@@ -8,6 +8,8 @@ import DateInput from "../ui/DateInput";
 import FileInput from "../ui/FileInput";
 import Icon from "../ui/Icon";
 
+const PLANNING_STATUSES = ["planning", "not_started"];
+
 const TEXT = {
   "pt-BR": {
     titulo: "Novo Escopo de Projeto",
@@ -97,6 +99,8 @@ const TEXT = {
     step5Desc: "Selecione o projeto de destino e crie as tarefas. Depois atribua a equipe técnica responsável.",
     projetoDestino: "Projeto de destino",
     selecioneProjeto: "Selecione o projeto…",
+    somentePlanejamento: "Somente projetos em planejamento.",
+    semProjetosPlanejamento: "Nenhum projeto em planejamento disponível.",
     carregando: "Carregando…",
     verificar: "Verificar",
     criando: "Criando…",
@@ -210,6 +214,8 @@ const TEXT = {
     step5Desc: "Select the destination project and create the tasks. Then assign the responsible technical team.",
     projetoDestino: "Destination project",
     selecioneProjeto: "Select project…",
+    somentePlanejamento: "Only projects in planning.",
+    semProjetosPlanejamento: "No projects in planning available.",
     carregando: "Loading…",
     verificar: "Check",
     criando: "Creating…",
@@ -323,6 +329,8 @@ const TEXT = {
     step5Desc: "Seleccione el proyecto destino y cree las tareas. Luego asigne el equipo técnico responsable.",
     projetoDestino: "Proyecto destino",
     selecioneProjeto: "Seleccione el proyecto…",
+    somentePlanejamento: "Solo proyectos en planificación.",
+    semProjetosPlanejamento: "Ningún proyecto en planificación disponible.",
     carregando: "Cargando…",
     verificar: "Verificar",
     criando: "Creando…",
@@ -713,6 +721,8 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
   const pendingCount = items.filter((i) => i.active && (i.review_status === "PENDING" || i.review_status === "NEEDS_REVIEW")).length;
   const approvedCount = items.filter((i) => i.active && i.review_status === "APPROVED").length;
   const selectedProject = projects.find((proj) => proj.id === projectId);
+  // Só projetos em planejamento (mesma regra da aba "Planejamentos": planejamento ou não iniciado).
+  const planningProjects = projects.filter((proj) => PLANNING_STATUSES.includes(proj.status));
 
   return (
     <div className="card" style={{ padding: 20 }}>
@@ -1021,8 +1031,11 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
               <span className="field-label">{p.projetoDestino}</span>
               <select className="select" value={projectId} onChange={(e) => { setProjectId(e.target.value ? Number(e.target.value) : ""); setPlanData(null); setTaskCreateResult(null); }}>
                 <option value="">{p.selecioneProjeto}</option>
-                {projects.map((proj) => <option key={proj.id} value={proj.id}>{proj.code} — {proj.name}</option>)}
+                {planningProjects.map((proj) => <option key={proj.id} value={proj.id}>{proj.code} — {proj.name}</option>)}
               </select>
+              <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
+                {planningProjects.length === 0 && projects.length > 0 ? p.semProjetosPlanejamento : p.somentePlanejamento}
+              </span>
             </div>
             <button className="btn btn-outline" onClick={loadPlan} disabled={!projectId || planLoading}>
               {planLoading ? p.carregando : p.verificar}
