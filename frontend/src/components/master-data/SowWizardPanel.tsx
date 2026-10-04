@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import ProjectCombobox from "../ui/ProjectCombobox";
 import { collaboratorsApi, masterDataApi, planningApi, projectsApi, projectTasksApi } from "../../api/resources";
 import type { Collaborator, Project, ProjectTask, SowImport, SowParsedItem } from "../../api/types";
 import type { ReferenceData } from "../../pages/cadastros/registryConfig";
@@ -100,6 +101,8 @@ const TEXT = {
     projetoDestino: "Projeto de destino",
     selecioneProjeto: "Selecione o projeto…",
     somentePlanejamento: "Somente projetos em planejamento.",
+    buscarProjeto: "Buscar por código, nome, PO, cliente ou site...",
+    nenhumProjeto: "Nenhum projeto encontrado.",
     semProjetosPlanejamento: "Nenhum projeto em planejamento disponível.",
     carregando: "Carregando…",
     verificar: "Verificar",
@@ -215,6 +218,8 @@ const TEXT = {
     projetoDestino: "Destination project",
     selecioneProjeto: "Select project…",
     somentePlanejamento: "Only projects in planning.",
+    buscarProjeto: "Search by code, name, PO, client or site...",
+    nenhumProjeto: "No project found.",
     semProjetosPlanejamento: "No projects in planning available.",
     carregando: "Loading…",
     verificar: "Check",
@@ -330,6 +335,8 @@ const TEXT = {
     projetoDestino: "Proyecto destino",
     selecioneProjeto: "Seleccione el proyecto…",
     somentePlanejamento: "Solo proyectos en planificación.",
+    buscarProjeto: "Buscar por código, nombre, PO, cliente o sitio...",
+    nenhumProjeto: "Ningún proyecto encontrado.",
     semProjetosPlanejamento: "Ningún proyecto en planificación disponible.",
     carregando: "Cargando…",
     verificar: "Verificar",
@@ -1029,10 +1036,14 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, marginBottom: 14, alignItems: "flex-end" }}>
             <div className="field-group">
               <span className="field-label">{p.projetoDestino}</span>
-              <select className="select" value={projectId} onChange={(e) => { setProjectId(e.target.value ? Number(e.target.value) : ""); setPlanData(null); setTaskCreateResult(null); }}>
-                <option value="">{p.selecioneProjeto}</option>
-                {planningProjects.map((proj) => <option key={proj.id} value={proj.id}>{proj.code} — {proj.name}</option>)}
-              </select>
+              <ProjectCombobox
+                projects={planningProjects}
+                value={projectId}
+                onChange={(id) => { setProjectId(id); setPlanData(null); setTaskCreateResult(null); }}
+                placeholder={p.buscarProjeto}
+                emptyLabel={p.nenhumProjeto}
+                showAllToggle={false}
+              />
               <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
                 {planningProjects.length === 0 && projects.length > 0 ? p.semProjetosPlanejamento : p.somentePlanejamento}
               </span>

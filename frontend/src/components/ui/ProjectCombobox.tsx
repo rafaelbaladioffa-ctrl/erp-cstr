@@ -11,15 +11,17 @@ function normalize(text: string) {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-/** Seletor de projeto com busca (código, site, nome ou PO). Por padrão esconde
- * projetos concluídos/cancelados; "Mostrar todos" os inclui. */
+/** Seletor de projeto com busca (código, nome, PO, cliente, site ou responsável). Por
+ * padrão esconde projetos concluídos/cancelados; "Mostrar todos" os inclui
+ * (`showAllToggle={false}` remove essa opção quando a lista já vem filtrada). */
 export default function ProjectCombobox({
   projects,
   value,
   onChange,
-  placeholder = "Buscar por código, site, nome ou PO...",
+  placeholder = "Buscar por código, nome, PO, cliente ou site...",
   showAllLabel = "Mostrar todos (inclui concluídos e cancelados)",
   emptyLabel = "Nenhum projeto encontrado.",
+  showAllToggle = true,
 }: {
   projects: Project[];
   value: number | "";
@@ -27,6 +29,7 @@ export default function ProjectCombobox({
   placeholder?: string;
   showAllLabel?: string;
   emptyLabel?: string;
+  showAllToggle?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -39,13 +42,15 @@ export default function ProjectCombobox({
   const options = useMemo(() => {
     const terms = normalize(query).split(/\s+/).filter(Boolean);
     return projects
-      .filter((p) => showAll || !FINISHED_STATUSES.includes(p.status))
+      .filter((p) => showAll || !showAllToggle || !FINISHED_STATUSES.includes(p.status))
       .filter((p) => {
-        const haystack = normalize(`${p.code} ${p.site_name ?? ""} ${p.name} ${p.po ?? ""}`);
+        const haystack = normalize(
+          `${p.code} ${p.name} ${p.po ?? ""} ${p.client_name ?? ""} ${p.site_name ?? ""} ${p.responsible_cstr_name ?? ""}`,
+        );
         return terms.every((term) => haystack.includes(term));
       })
       .slice(0, 100);
-  }, [projects, query, showAll]);
+  }, [projects, query, showAll, showAllToggle]);
 
   useEffect(() => setHighlight(0), [query, showAll]);
 
@@ -100,10 +105,12 @@ export default function ProjectCombobox({
           </button>
         )}
       </div>
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, marginTop: 6, color: "var(--text-muted)" }}>
-        <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
-        {showAllLabel}
-      </label>
+      {showAllToggle && (
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, marginTop: 6, color: "var(--text-muted)" }}>
+          <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+          {showAllLabel}
+        </label>
+      )}
       {open && (
         <div
           role="listbox"
@@ -141,7 +148,7 @@ export default function ProjectCombobox({
             >
               <div style={{ fontSize: 13.5, color: "var(--text)" }}>{project.name}</div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {[project.code, project.site_name, project.po && `PO ${project.po}`].filter(Boolean).join(" · ")}
+                {[project.code, project.client_name, project.site_name, project.po && `PO ${project.po}`].filter(Boolean).join(" · ")}
                 {FINISHED_STATUSES.includes(project.status) ? ` · ${project.status_display}` : ""}
               </div>
             </div>
