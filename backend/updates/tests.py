@@ -230,3 +230,32 @@ class WeeklyUpdateTests(TestCase):
     def test_rejects_missing_projects_and_bad_period(self):
         self.assertEqual(self.post(project_ids=[]).status_code, 400)
         self.assertEqual(self.post(start=self.today.isoformat(), end=(self.today - timedelta(days=1)).isoformat()).status_code, 400)
+
+class WeeklyAdvanceTests(TestCase):
+    def task(self, status, day=None):
+        from datetime import datetime
+        from types import SimpleNamespace
+
+        end = timezone.make_aware(datetime.combine(day, datetime.min.time())) if day else None
+        return SimpleNamespace(status=status, actual_end=end, updated_at=end)
+
+    def test_advance_counts_only_tasks_completed_since_start(self):
+        from projects.models import ProjectTask
+        from .project_client_mail import weekly_advance
+
+        today = timezone.localdate()
+        start = today - timedelta(days=6)
+        done = ProjectTask.STATUS_COMPLETED
+        tasks = [
+            self.task(done, start - timedelta(days=3)),  # antes da semana
+            self.task(done, start),  # na semana
+            self.task(done, today),  # na semana
+            self.task(ProjectTask.STATUS_NOT_STARTED),
+        ]
+        self.assertEqual(weekly_advance(tasks, 75, start), 50)  # 75% agora - 25% antes
+
+    def test_advance_is_never_negative_and_handles_no_tasks(self):
+        from .project_client_mail import weekly_advance
+
+        self.assertEqual(weekly_advance([], 0, timezone.localdate()), 0)
+        self.assertEqual(weekly_advance([self.task('not_started')], 0, timezone.localdate()), 0)

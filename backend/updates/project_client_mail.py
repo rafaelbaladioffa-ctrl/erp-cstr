@@ -29,6 +29,28 @@ STATUS_LABELS = {
 }
 
 
+def task_completion_date(task):
+    """Data em que a tarefa foi concluída (None se não está concluída).
+    `actual_end` só existe quando a tarefa passou pelo fluxo do técnico; nas
+    concluídas por edição direta/ação em massa usa `updated_at` como aproximação."""
+    if task.status != ProjectTask.STATUS_COMPLETED:
+        return None
+    reference = task.actual_end or task.updated_at
+    return timezone.localtime(reference).date() if reference else None
+
+
+def weekly_advance(tasks, current_percent, start):
+    """Avanço (em pontos percentuais) desde o início do período: percentual atual
+    menos o percentual no fim do dia anterior a `start` (tarefas já concluídas
+    antes disso). Nunca negativo (tarefa reaberta/removida não conta como recuo)."""
+    tasks = list(tasks)
+    if not tasks:
+        return 0
+    done_before = sum(1 for t in tasks if (d := task_completion_date(t)) is not None and d < start)
+    before = round(done_before / len(tasks) * 100)
+    return max(0, current_percent - before)
+
+
 def compute_progress_defaults(project, date):
     """Calcula os valores padrão (percentual, atividades, certificação,
     finalização e colaboradores) a partir das ProjectTask do projeto.
@@ -41,18 +63,7 @@ def compute_progress_defaults(project, date):
     completed = [pt for pt in all_tasks if pt.status == ProjectTask.STATUS_COMPLETED]
     percent = round((len(completed) / total) * 100) if total else 0
 
-    def completed_on(pt):
-        # `actual_end` só é preenchido quando a tarefa passa pelo fluxo de
-        # iniciar/pausar/concluir do técnico (Minhas Tarefas). Tarefas
-        # concluídas por edição direta ou ação em massa não têm essa data —
-        # nesse caso usamos `updated_at` (quando o status virou "concluída")
-        # como aproximação de quando ela foi executada.
-        if pt.status != ProjectTask.STATUS_COMPLETED:
-            return None
-        reference = pt.actual_end or pt.updated_at
-        return timezone.localtime(reference).date() if reference else None
-
-    executed_today = [pt for pt in all_tasks if completed_on(pt) == date]
+    executed_today = [pt for pt in all_tasks if task_completion_date(pt) == date]
     activities_text = "\n".join(
         f"{pt.display_name} — {STATUS_LABELS.get(pt.status, pt.status)}" for pt in executed_today
     )
@@ -289,6 +300,7 @@ def _weekly_project_data(project_update, lang, start):
         if project.responsible_cstr_id
         else not_informed,
         "percent": project_update.completion_percent,
+        "advance": weekly_advance(project.project_tasks.all(), project_update.completion_percent, start),
         "certification": project_update.certification_done,
         "finished": project_update.project_finished,
         "notes": build_occurrence_notes(project_update, lang, start=start),
@@ -314,7 +326,7 @@ def build_weekly_update_message(project_updates, recipient_email, start, end, la
     text_lines = [tr(lang, "weekly_title").upper(), period, ""]
     for p in projects:
         text_lines += [
-            f"{p['name'].upper()} — {p['percent']}%",
+            f"{p['name'].upper()} — {p['percent']}% ({tr(lang, 'weekly_col_advance')}: +{p['advance']}%)",
             f"{tr(lang, 'code')}: {p['code']} | {tr(lang, 'site')}: {p['site']} | {tr(lang, 'po')}: {p['po']}",
             f"{p['responsible_client_label']}: {p['responsible_client']} | {tr(lang, 'responsible_company')}: {p['responsible_cstr']}",
             f"{tr(lang, 'certification')}: {yes_no(p['certification'])} | {tr(lang, 'finished')}: {yes_no(p['finished'])}",
