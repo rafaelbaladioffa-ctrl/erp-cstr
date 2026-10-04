@@ -17,6 +17,8 @@ function emptyRule(): BotBroadcastRule {
     statuses: ["in_progress"],
     client_ids: [],
     category_ids: [],
+    include_no_category: false,
+    region_ids: [],
     site_ids: [],
     recipient_ids: [],
     image_caption: "",
@@ -30,12 +32,16 @@ function toggle<T>(list: T[], value: T): T[] {
 function CheckList<T extends number | string>({
   title,
   hint,
+  allLabel,
+  extra,
   items,
   selected,
   onChange,
 }: {
   title: string;
   hint: string;
+  allLabel: string;
+  extra?: { label: string; checked: boolean; onChange: (checked: boolean) => void };
   items: { id: T; name: string; sub?: string }[];
   selected: T[];
   onChange: (next: T[]) => void;
@@ -46,7 +52,16 @@ function CheckList<T extends number | string>({
         {title} <span style={{ fontWeight: 400 }}>— {selected.length ? `${selected.length} selecionado(s)` : hint}</span>
       </div>
       <div style={{ border: "1px solid var(--border)", borderRadius: 8, marginTop: 6, maxHeight: 140, overflowY: "auto", padding: 6 }}>
-        {items.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: 4 }}>Nenhum item cadastrado.</div>}
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "3px 4px", fontWeight: 700 }}>
+          <input type="checkbox" checked={selected.length === 0} onChange={() => selected.length > 0 && onChange([])} />
+          {allLabel}
+        </label>
+        {extra && selected.length > 0 && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "3px 4px", fontWeight: 700 }}>
+            <input type="checkbox" checked={extra.checked} onChange={(e) => extra.onChange(e.target.checked)} />
+            {extra.label}
+          </label>
+        )}
         {items.map((item) => (
           <label key={String(item.id)} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "3px 4px" }}>
             <input type="checkbox" checked={selected.includes(item.id)} onChange={() => onChange(toggle(selected, item.id))} />
@@ -107,12 +122,11 @@ function RuleCard({
   }
 
   async function sendTest() {
-    if (!rule.id) return;
     setTesting(true);
     setFeedback(null);
     try {
-      // Testa com o que está salvo; avisa se há alterações pendentes.
-      const result = await botRulesApi.test(rule.id, testTo.trim());
+      // Envia na hora, com a regra exatamente como está na tela (salva ou não).
+      const result = await botRulesApi.test(rule, testTo.trim());
       setFeedback({ kind: "ok", text: result.detail });
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { detail?: string } } }).response?.data;
@@ -181,16 +195,26 @@ function RuleCard({
 
       <div style={{ ...LABEL_STYLE, marginBottom: 8, color: "var(--text)" }}>Quais projetos entram (filtro vazio = sem filtro)</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 14 }}>
-        <CheckList title="Clientes" hint="todos" items={options.clients} selected={rule.client_ids} onChange={(client_ids) => patch({ client_ids })} />
-        <CheckList title="Categorias" hint="todas" items={options.categories} selected={rule.category_ids} onChange={(category_ids) => patch({ category_ids })} />
-        <CheckList title="Sites" hint="todos" items={options.sites} selected={rule.site_ids} onChange={(site_ids) => patch({ site_ids })} />
-        <CheckList title="Status do projeto" hint="qualquer" items={options.statuses} selected={rule.statuses} onChange={(statuses) => patch({ statuses })} />
+        <CheckList title="Clientes" hint="todos" allLabel="Todos os clientes" items={options.clients} selected={rule.client_ids} onChange={(client_ids) => patch({ client_ids })} />
+        <CheckList
+          title="Categorias"
+          hint="todas"
+          allLabel="Todas (inclui projetos sem categoria)"
+          extra={{ label: "Incluir projetos sem categoria", checked: rule.include_no_category, onChange: (include_no_category) => patch({ include_no_category }) }}
+          items={options.categories}
+          selected={rule.category_ids}
+          onChange={(category_ids) => patch(category_ids.length ? { category_ids } : { category_ids, include_no_category: false })}
+        />
+        <CheckList title="Regionais" hint="todas" allLabel="Todas as regionais" items={options.regions} selected={rule.region_ids} onChange={(region_ids) => patch({ region_ids })} />
+        <CheckList title="Sites" hint="todos" allLabel="Todos os sites" items={options.sites} selected={rule.site_ids} onChange={(site_ids) => patch({ site_ids })} />
+        <CheckList title="Status do projeto" hint="qualquer" allLabel="Qualquer status" items={options.statuses} selected={rule.statuses} onChange={(statuses) => patch({ statuses })} />
       </div>
 
       <div style={{ marginBottom: 14 }}>
         <CheckList
           title="Destinatários"
           hint="todos que recebem a atualização diária de projeto"
+          allLabel="Todos que recebem o relatório diário de projeto"
           items={options.subscribers.map((s) => ({ id: s.id, name: s.name, sub: s.target }))}
           selected={rule.recipient_ids}
           onChange={(recipient_ids) => patch({ recipient_ids })}
@@ -212,10 +236,9 @@ function RuleCard({
           value={testTo}
           onChange={(e) => setTestTo(e.target.value)}
           placeholder="Telefone com DDD ou ID do grupo (@g.us)"
-          disabled={!rule.id}
           style={{ width: 300 }}
         />
-        <button className="btn" onClick={sendTest} disabled={!rule.id || !testTo.trim() || testing} type="button" title={rule.id ? "Envia só para o destino ao lado, com a regra como está salva" : "Salve a regra antes de testar"}>
+        <button className="btn" onClick={sendTest} disabled={!testTo.trim() || testing} type="button" title="Envia agora, só para o destino ao lado, com a regra como está na tela">
           <Icon name="send" style={{ fontSize: 17 }} />
           {testing ? "Enviando..." : "Enviar teste"}
         </button>

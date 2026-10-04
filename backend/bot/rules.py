@@ -16,7 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Category, Client, Site
+from core.models import Category, Client, Region, Site
 from projects.models import Project
 
 from .models import BotBroadcastRule, BotSubscriber
@@ -31,13 +31,14 @@ class BotBroadcastRuleSerializer(serializers.ModelSerializer):
     client_ids = serializers.PrimaryKeyRelatedField(source="clients", queryset=Client.objects.all(), many=True, required=False)
     category_ids = serializers.PrimaryKeyRelatedField(source="categories", queryset=Category.objects.all(), many=True, required=False)
     site_ids = serializers.PrimaryKeyRelatedField(source="sites", queryset=Site.objects.all(), many=True, required=False)
+    region_ids = serializers.PrimaryKeyRelatedField(source="regions", queryset=Region.objects.all(), many=True, required=False)
     recipient_ids = serializers.PrimaryKeyRelatedField(source="recipients", queryset=BotSubscriber.objects.all(), many=True, required=False)
 
     class Meta:
         model = BotBroadcastRule
         fields = (
             "id", "name", "is_active", "content_type", "send_time", "weekdays", "statuses",
-            "client_ids", "category_ids", "site_ids", "recipient_ids", "image_caption",
+            "client_ids", "category_ids", "include_no_category", "region_ids", "site_ids", "recipient_ids", "image_caption",
         )
 
     def validate_weekdays(self, value):
@@ -76,6 +77,7 @@ class BotBroadcastRuleViewSet(viewsets.ModelViewSet):
                 ],
                 "categories": [{"id": c.pk, "name": c.name} for c in Category.objects.exclude(name="").order_by("name")],
                 "sites": [{"id": s.pk, "name": s.name} for s in Site.objects.order_by("name")],
+                "regions": [{"id": r.pk, "name": r.name} for r in Region.objects.order_by("name")],
                 "statuses": [{"id": key, "name": label} for key, label in Project.STATUS_CHOICES],
                 "subscribers": [
                     {"id": s.pk, "name": s.name, "target": s.group_jid or s.phone}
@@ -84,32 +86,39 @@ class BotBroadcastRuleViewSet(viewsets.ModelViewSet):
             }
         )
 
-    @action(detail=True, methods=["post"])
-    def test(self, request, pk=None):
-        """Envio de teste: dispara a regra com os filtros ATUAIS, só para o
-        telefone/grupo informado (não toca nos destinatários reais)."""
-        rule = self.get_object()
+    @action(detail=False, methods=["post"])
+    def test(self, request):
+        """Envio de teste imediato: usa a regra COMO ESTÁ NA TELA (salva ou
+        não) e manda só para o telefone/grupo informado, sem tocar nos
+        destinatários reais. Cria uma regra temporária inativa para o bot
+        ler os filtros e a apaga ao terminar."""
         target = str(request.data.get("to", "")).strip()
         if not target:
             return Response({"detail": "Informe o telefone ou o ID do grupo (@g.us)."}, status=400)
         if not settings.WHATSAPP_BOT_SECRET:
             return Response({"detail": "Bot não configurado."}, status=503)
-        query = urllib.parse.urlencode({"rule": rule.pk, "to": target})
-        req = urllib.request.Request(
-            f"{BOT_INTERNAL_URL}/trigger-rule?{query}",
-            headers={"X-Bot-Token": settings.WHATSAPP_BOT_SECRET},
-        )
+        serializer = self.get_serializer(data={**(request.data.get("rule") or {}), "is_active": False})
+        serializer.is_valid(raise_exception=True)
+        rule = serializer.save()
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                payload = json.loads(resp.read().decode("utf-8") or "{}")
-        except urllib.error.HTTPError as exc:
-            if exc.code == 503:
-                detail = "O bot ainda está inicializando, tente novamente."
-            else:
-                detail = f"O bot recusou o envio (HTTP {exc.code})."
-            return Response({"detail": detail}, status=502)
-        except (urllib.error.URLError, TimeoutError, ValueError):
-            return Response({"detail": "Não foi possível falar com o bot."}, status=502)
+            query = urllib.parse.urlencode({"rule": rule.pk, "to": target})
+            req = urllib.request.Request(
+                f"{BOT_INTERNAL_URL}/trigger-rule?{query}",
+                headers={"X-Bot-Token": settings.WHATSAPP_BOT_SECRET},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    payload = json.loads(resp.read().decode("utf-8") or "{}")
+            except urllib.error.HTTPError as exc:
+                if exc.code == 503:
+                    detail = "O bot ainda está inicializando, tente novamente."
+                else:
+                    detail = f"O bot recusou o envio (HTTP {exc.code})."
+                return Response({"detail": detail}, status=502)
+            except (urllib.error.URLError, TimeoutError, ValueError):
+                return Response({"detail": "Não foi possível falar com o bot."}, status=502)
+        finally:
+            rule.delete()
         return Response({"detail": payload.get("message", "Envio de teste disparado.")})
 
 

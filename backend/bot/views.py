@@ -510,7 +510,13 @@ def _rule_projects_queryset(rule):
         qs = qs.filter(Q(client_id__in=client_ids) | Q(site__client_id__in=client_ids))
     category_ids = list(rule.categories.values_list("pk", flat=True))
     if category_ids:
-        qs = qs.filter(category_id__in=category_ids)
+        category_q = Q(category_id__in=category_ids)
+        if rule.include_no_category:
+            category_q |= Q(category__isnull=True)
+        qs = qs.filter(category_q)
+    region_ids = list(rule.regions.values_list("pk", flat=True))
+    if region_ids:
+        qs = qs.filter(site__region_id__in=region_ids)
     site_ids = list(rule.sites.values_list("pk", flat=True))
     if site_ids:
         qs = qs.filter(site_id__in=site_ids)

@@ -1460,6 +1460,8 @@ export interface BotBroadcastRule {
   statuses: string[];
   client_ids: number[];
   category_ids: number[];
+  include_no_category: boolean;
+  region_ids: number[];
   site_ids: number[];
   recipient_ids: number[];
   image_caption: string;
@@ -1469,6 +1471,7 @@ export interface BotBroadcastRuleOptions {
   clients: { id: number; name: string }[];
   categories: { id: number; name: string }[];
   sites: { id: number; name: string }[];
+  regions: { id: number; name: string }[];
   statuses: { id: string; name: string }[];
   subscribers: { id: number; name: string; target: string }[];
 }

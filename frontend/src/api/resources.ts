@@ -539,6 +539,6 @@ export const botRulesApi = {
   update: (id: number, payload: BotBroadcastRule) =>
     apiClient.put<BotBroadcastRule>(`/bot/broadcast-rules/${id}/`, payload).then((r) => r.data),
   remove: (id: number) => apiClient.delete(`/bot/broadcast-rules/${id}/`),
-  test: (id: number, to: string) =>
-    apiClient.post<{ detail: string }>(`/bot/broadcast-rules/${id}/test/`, { to }, { timeout: 130000 }).then((r) => r.data),
+  test: (rule: BotBroadcastRule, to: string) =>
+    apiClient.post<{ detail: string }>("/bot/broadcast-rules/test/", { to, rule }, { timeout: 130000 }).then((r) => r.data),
 };

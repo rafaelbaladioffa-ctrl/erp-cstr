@@ -254,6 +254,12 @@ class BotBroadcastRuleTests(TestCase):
 
         admin = get_user_model().objects.create_superuser(username="admin2", password="x", email="b@b.com")
         self.api.force_authenticate(admin)
-        rule = self.make_rule()
-        response = self.api.post(f"/api/bot/broadcast-rules/{rule.pk}/test/", {}, format="json")
+        from bot.models import BotBroadcastRule
+
+        rule = {"name": "Teste", "content_type": "text", "send_time": "15:00"}
+        response = self.api.post("/api/bot/broadcast-rules/test/", {"rule": rule}, format="json")
         self.assertEqual(response.status_code, 400)
+        # validação do rascunho e limpeza: regra temporária não pode sobrar
+        invalid = self.api.post("/api/bot/broadcast-rules/test/", {"to": "11999998888", "rule": {"name": "x"}}, format="json")
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(BotBroadcastRule.objects.count(), 0)
