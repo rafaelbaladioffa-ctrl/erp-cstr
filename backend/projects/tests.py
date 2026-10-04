@@ -130,7 +130,8 @@ class ProjectTests(TestCase):
         self.assertEqual(first.code, f"DP-001-GRU65-{today:%y%m}-0001")
         self.assertEqual(second.code, f"FO-001-GRU65-{today:%y%m}-0002")
         ProjectCodeSequence.objects.filter(year=today.year).delete()
-        third = Project.objects.create(company=company, name="C", client=client, site=site, consultimer_type=deploy)
+        other_site = Site.objects.create(client=client, name="GRU50", code="GRU50")
+        third = Project.objects.create(company=company, name="C", client=client, site=other_site, consultimer_type=deploy)
         self.assertTrue(third.code.endswith("-0001"))
 
     def test_project_has_po_and_two_responsible_fields(self):
