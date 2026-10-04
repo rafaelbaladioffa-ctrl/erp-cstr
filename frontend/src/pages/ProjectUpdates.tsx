@@ -9,6 +9,7 @@ import PageHeader from "../components/ui/PageHeader";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
 import { useI18n, usePageText } from "../i18n";
+import ProjectCombobox from "../components/ui/ProjectCombobox";
 import EmailLanguageSelect, { defaultEmailLanguage, type EmailLanguage } from "../components/ui/EmailLanguageSelect";
 
 const TEXT = {
@@ -308,14 +309,7 @@ export default function ProjectUpdates() {
       {creating && canCreate && (
         <div className="form-card">
           <label className="form-label">{p.formProject}</label>
-          <select className="input" value={newProjectId} onChange={(e) => setNewProjectId(Number(e.target.value))}>
-            <option value="">{p.formSelectProject}</option>
-            {projects.map((proj) => (
-              <option key={proj.id} value={proj.id}>
-                {proj.code} — {proj.name}
-              </option>
-            ))}
-          </select>
+          <ProjectCombobox projects={projects} value={newProjectId} onChange={setNewProjectId} />
 
           <label className="form-label">{p.formDate}</label>
           <DateInput value={newDate} onChange={setNewDate} />
