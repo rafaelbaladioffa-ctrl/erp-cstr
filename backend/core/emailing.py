@@ -25,6 +25,27 @@ COLOR_MUTED = "#6b6b70"
 COLOR_BORDER = "#e4e4e7"
 COLOR_BG = "#f4f4f5"
 
+# Tema escuro: clientes que respeitam prefers-color-scheme (Apple Mail, Gmail, novo
+# Outlook) e o seletor [data-ogsc/ogsb] do Outlook.com. Os !important vencem os
+# estilos inline; o Outlook desktop clássico só inverte cores e usa estes tons.
+DARK_CSS = (
+    "@media (prefers-color-scheme: dark){"
+    ".c-bg{background:#18181b !important}"
+    ".c-card{background:#27272a !important}"
+    ".c-hdr{background:#0f0f10 !important}"
+    ".c-hl,.c-ftr{background:#1f1f22 !important}"
+    ".c-txt{color:#f4f4f5 !important}"
+    ".c-mut{color:#a1a1aa !important}"
+    ".c-brd{border-color:#3f3f46 !important}}"
+    "[data-ogsb] .c-bg{background:#18181b !important}"
+    "[data-ogsb] .c-card{background:#27272a !important}"
+    "[data-ogsb] .c-hdr{background:#0f0f10 !important}"
+    "[data-ogsb] .c-hl,[data-ogsb] .c-ftr{background:#1f1f22 !important}"
+    "[data-ogsc] .c-txt{color:#f4f4f5 !important}"
+    "[data-ogsc] .c-mut{color:#a1a1aa !important}"
+    "[data-ogsc] .c-brd{border-color:#3f3f46 !important}"
+)
+
 LANGUAGES = ("pt", "en", "es")
 DEFAULT_LANGUAGE = "pt"
 
@@ -69,22 +90,22 @@ def render_html(*, title, intro="", summary=None, highlight=None, sections=None,
     parts = []
 
     if intro:
-        parts.append(f'<p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:{COLOR_TEXT};">{_multiline(intro)}</p>')
+        parts.append(f'<p class="c-txt" style="margin:0 0 20px;font-size:15px;line-height:1.6;color:{COLOR_TEXT};">{_multiline(intro)}</p>')
 
     if highlight:
         label, value = highlight
         parts.append(
             f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">'
-            f'<tr><td style="background:{COLOR_BG};border-left:4px solid {COLOR_ACCENT};padding:14px 18px;">'
-            f'<div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:{COLOR_MUTED};">{escape(label)}</div>'
-            f'<div style="font-size:28px;font-weight:700;color:{COLOR_TEXT};line-height:1.2;">{escape(value)}</div>'
+            f'<tr><td class="c-hl" style="background:{COLOR_BG};border-left:4px solid {COLOR_ACCENT};padding:14px 18px;">'
+            f'<div class="c-mut" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:{COLOR_MUTED};">{escape(label)}</div>'
+            f'<div class="c-txt" style="font-size:28px;font-weight:700;color:{COLOR_TEXT};line-height:1.2;">{escape(value)}</div>'
             f"</td></tr></table>"
         )
 
     if summary:
         rows = "".join(
-            f'<tr><td style="padding:9px 0;border-bottom:1px solid {COLOR_BORDER};width:38%;font-size:13px;color:{COLOR_MUTED};vertical-align:top;">{escape(label)}</td>'
-            f'<td style="padding:9px 0;border-bottom:1px solid {COLOR_BORDER};font-size:14px;color:{COLOR_TEXT};vertical-align:top;">{_multiline(value)}</td></tr>'
+            f'<tr><td class="c-mut c-brd" style="padding:9px 0;border-bottom:1px solid {COLOR_BORDER};width:38%;font-size:13px;color:{COLOR_MUTED};vertical-align:top;">{escape(label)}</td>'
+            f'<td class="c-txt c-brd" style="padding:9px 0;border-bottom:1px solid {COLOR_BORDER};font-size:14px;color:{COLOR_TEXT};vertical-align:top;">{_multiline(value)}</td></tr>'
             for label, value in summary
         )
         parts.append(f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">{rows}</table>')
@@ -92,7 +113,7 @@ def render_html(*, title, intro="", summary=None, highlight=None, sections=None,
     for heading, text in sections or []:
         parts.append(
             f'<h2 style="margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:{COLOR_ACCENT};">{escape(heading)}</h2>'
-            f'<p style="margin:0 0 22px;font-size:14px;line-height:1.6;color:{COLOR_TEXT};">{_multiline(text)}</p>'
+            f'<p class="c-txt" style="margin:0 0 22px;font-size:14px;line-height:1.6;color:{COLOR_TEXT};">{_multiline(text)}</p>'
         )
 
     if button:
@@ -102,11 +123,11 @@ def render_html(*, title, intro="", summary=None, highlight=None, sections=None,
             f'<td style="background:{COLOR_ACCENT};border-radius:6px;">'
             f'<a href="{escape(url, quote=True)}" style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">{escape(label)}</a>'
             f"</td></tr></table>"
-            f'<p style="margin:0 0 20px;font-size:12px;color:{COLOR_MUTED};word-break:break-all;">{escape(BUTTON_FALLBACK[lang])}<br>{escape(url)}</p>'
+            f'<p class="c-mut" style="margin:0 0 20px;font-size:12px;color:{COLOR_MUTED};word-break:break-all;">{escape(BUTTON_FALLBACK[lang])}<br>{escape(url)}</p>'
         )
 
     if note:
-        parts.append(f'<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:{COLOR_MUTED};">{_multiline(note)}</p>')
+        parts.append(f'<p class="c-mut" style="margin:0 0 8px;font-size:13px;line-height:1.5;color:{COLOR_MUTED};">{_multiline(note)}</p>')
 
     footer = "<br>".join(escape(line) for line in FOOTER_LINES[lang])
     logo_html = (
@@ -116,17 +137,19 @@ def render_html(*, title, intro="", summary=None, highlight=None, sections=None,
     )
 
     return f"""<!DOCTYPE html>
-<html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:{COLOR_BG};font-family:Segoe UI,Helvetica,Arial,sans-serif;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{COLOR_BG};padding:24px 12px;"><tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden;">
-<tr><td style="background:{COLOR_HEADER};padding:18px 28px;">{logo_html}</td></tr>
+<html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
+<style>{DARK_CSS}</style></head>
+<body class="c-bg" style="margin:0;padding:0;background:{COLOR_BG};font-family:Segoe UI,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="c-bg" style="background:{COLOR_BG};padding:24px 12px;"><tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" class="c-card" style="width:100%;max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden;">
+<tr><td class="c-hdr" style="background:{COLOR_HEADER};padding:18px 28px;">{logo_html}</td></tr>
 <tr><td style="background:{COLOR_ACCENT};height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
 <tr><td style="padding:28px 28px 8px;">
-<h1 style="margin:0 0 18px;font-size:20px;color:{COLOR_TEXT};">{escape(title)}</h1>
+<h1 class="c-txt" style="margin:0 0 18px;font-size:20px;color:{COLOR_TEXT};">{escape(title)}</h1>
 {"".join(parts)}
 </td></tr>
-<tr><td style="padding:18px 28px;background:{COLOR_BG};border-top:1px solid {COLOR_BORDER};font-size:12px;line-height:1.6;color:{COLOR_MUTED};">{footer}</td></tr>
+<tr><td class="c-ftr c-mut c-brd" style="padding:18px 28px;background:{COLOR_BG};border-top:1px solid {COLOR_BORDER};font-size:12px;line-height:1.6;color:{COLOR_MUTED};">{footer}</td></tr>
 </table></td></tr></table></body></html>"""
 
 
