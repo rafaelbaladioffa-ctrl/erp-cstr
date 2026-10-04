@@ -140,7 +140,7 @@ export default function TemplateEditor({ messageType, children }: { messageType:
           <Icon name="chat" style={{ fontSize: 18, color: "var(--green)" }} />
           <b>Prévia WhatsApp</b>
         </div>
-        <pre style={{ whiteSpace: "pre-wrap", background: "var(--bg-soft)", border: "1px solid var(--border)", borderRadius: 8, padding: 14, minHeight: 260, fontFamily: "inherit", fontSize: 13, lineHeight: 1.45, color: "var(--text)" }}>
+        <pre style={{ whiteSpace: "pre-wrap", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: 14, minHeight: 260, fontFamily: "inherit", fontSize: 13, lineHeight: 1.45, color: "var(--text)" }}>
           {preview || "Selecione os campos para gerar uma prévia."}
         </pre>
       </div>

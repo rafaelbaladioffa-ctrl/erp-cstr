@@ -6,6 +6,9 @@ import Icon from "./Icon";
 
 export interface ColumnFilters {
   selected: Record<string, string[]>;
+  sort: { key: string; dir: "asc" | "desc" } | null;
+  /** Clique no título: crescente → decrescente → sem ordenação. */
+  toggleSort: (key: string) => void;
   /** Valores distintos da coluna, considerando os filtros das OUTRAS colunas. */
   options: (key: string) => { value: string; count: number }[];
   setColumn: (key: string, values: string[]) => void;
@@ -13,8 +16,23 @@ export interface ColumnFilters {
   activeCount: number;
 }
 
+const EMPTY = "—";
+
+/** Chave de comparação: datas dd/mm/aaaa viram aaaa-mm-dd; "—" vai para o fim. */
+function sortKey(value: string): string {
+  const date = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(value);
+  return date ? `${date[3]}-${date[2]}-${date[1]}` : value;
+}
+
+function compareValues(a: string, b: string): number {
+  if (a === EMPTY || a === "") return b === EMPTY || b === "" ? 0 : 1;
+  if (b === EMPTY || b === "") return -1;
+  return sortKey(a).localeCompare(sortKey(b), "pt-BR", { numeric: true, sensitivity: "base" });
+}
+
 export function useColumnFilters<T>(rows: T[], accessors: Record<string, (row: T) => string>) {
   const [selected, setSelected] = useState<Record<string, string[]>>({});
+  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
 
   const matches = (row: T, skipKey?: string) =>
     Object.entries(selected).every(([key, values]) => {
@@ -22,11 +40,34 @@ export function useColumnFilters<T>(rows: T[], accessors: Record<string, (row: T
       return values.includes(accessors[key](row));
     });
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const filtered = useMemo(() => rows.filter((row) => matches(row)), [rows, selected]);
+  const filtered = useMemo(() => {
+    const result = rows.filter((row) => matches(row));
+    const accessor = sort ? accessors[sort.key] : null;
+    if (sort && accessor) {
+      const factor = sort.dir === "asc" ? 1 : -1;
+      // vazios ficam sempre no fim, em qualquer direção
+      result.sort((a, b) => {
+        const va = accessor(a);
+        const vb = accessor(b);
+        const emptyA = va === EMPTY || va === "";
+        const emptyB = vb === EMPTY || vb === "";
+        if (emptyA || emptyB) return compareValues(va, vb);
+        return factor * compareValues(va, vb);
+      });
+    }
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, selected, sort]);
 
   const filters: ColumnFilters = {
     selected,
+    sort,
+    toggleSort: (key) =>
+      setSort((prev) => {
+        if (!prev || prev.key !== key) return { key, dir: "asc" };
+        if (prev.dir === "asc") return { key, dir: "desc" };
+        return null;
+      }),
     options: (key) => {
       const accessor = accessors[key];
       if (!accessor) return [];
@@ -117,20 +158,32 @@ export function FilterTh({
     filters.setColumn(colKey, next.length === all.length ? [] : next);
   }
 
+  const sorted = filters.sort?.key === colKey ? filters.sort.dir : null;
+  const justify = align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start";
+
   return (
     <th style={style} className={className}>
-      <button
-        ref={btnRef}
-        type="button"
-        className={`col-filter-btn${active ? " active" : ""}`}
-        onClick={toggleOpen}
-        title="Filtrar esta coluna"
-        style={{ justifyContent: align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start" }}
-      >
-        <span>{label}</span>
-        <Icon name={active ? "filter_alt" : "arrow_drop_down"} style={{ fontSize: active ? 15 : 18 }} />
-        {active && <span className="col-filter-badge">{selected.length}</span>}
-      </button>
+      <div className="col-head" style={{ justifyContent: justify }}>
+        <button
+          type="button"
+          className={`col-sort-btn${sorted ? " active" : ""}`}
+          onClick={() => filters.toggleSort(colKey)}
+          title="Clique para ordenar por esta coluna"
+        >
+          <span>{label}</span>
+          {sorted && <Icon name={sorted === "asc" ? "arrow_upward" : "arrow_downward"} style={{ fontSize: 14 }} />}
+        </button>
+        <button
+          ref={btnRef}
+          type="button"
+          className={`col-filter-btn${active ? " active" : ""}`}
+          onClick={toggleOpen}
+          title="Filtrar valores desta coluna"
+        >
+          <Icon name={active ? "filter_alt" : "arrow_drop_down"} style={{ fontSize: active ? 15 : 18 }} />
+          {active && <span className="col-filter-badge">{selected.length}</span>}
+        </button>
+      </div>
 
       {open && pos && (
         <div ref={popRef} className="col-filter-pop" style={{ top: pos.top, left: pos.left }}>
