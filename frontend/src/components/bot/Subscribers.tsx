@@ -133,10 +133,51 @@ function SubscriberCard({
   );
 }
 
+function SubscriberRow({
+  sub,
+  onEdit,
+  onToggle,
+  onDelete,
+}: {
+  sub: BotSubscriber;
+  onEdit: () => void;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const defaults = FLAGS.filter((f) => sub[f.key]).map((f) => f.label);
+  return (
+    <div className="card" style={{ padding: "12px 16px", marginBottom: 10, display: "flex", gap: 14, alignItems: "center", opacity: sub.is_active ? 1 : 0.6 }}>
+      <Icon name={sub.group_jid ? "groups" : "person"} style={{ fontSize: 22, color: "var(--text-muted)" }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 13.5 }}>{sub.name}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+          {sub.group_jid ? `Grupo · ${sub.group_jid}` : sub.phone}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          Recebe por padrão: {defaults.length ? defaults.join(", ") : "nada"}
+        </div>
+      </div>
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)" }}>
+        <input type="checkbox" checked={sub.is_active} onChange={onToggle} />
+        {sub.is_active ? "Ativo" : "Pausado"}
+      </label>
+      <button className="btn" type="button" onClick={onEdit}>
+        <Icon name="edit" style={{ fontSize: 17 }} />
+        Editar
+      </button>
+      <button className="btn" type="button" onClick={onDelete} title="Excluir">
+        <Icon name="delete" style={{ fontSize: 17 }} />
+      </button>
+    </div>
+  );
+}
+
 export default function Subscribers() {
   const [subs, setSubs] = useState<BotSubscriber[] | null>(null);
-  const [drafts, setDrafts] = useState<{ key: number }[]>([]);
+  // null = tela da lista; senão, o destinatário aberto na tela de cadastro/edição.
+  const [editing, setEditing] = useState<{ key: number; sub: BotSubscriber } | null>(null);
   const [nextKey, setNextKey] = useState(1);
+  const [notice, setNotice] = useState("");
   const [groups, setGroups] = useState<BotGroup[]>([]);
   const [groupsError, setGroupsError] = useState("");
   const [error, setError] = useState("");
@@ -155,43 +196,75 @@ export default function Subscribers() {
   if (error) return <p style={{ color: "var(--red)", fontSize: 13 }}>{error}</p>;
   if (!subs) return <p style={{ color: "var(--text-muted)" }}>Carregando...</p>;
 
+  function openEditor(sub: BotSubscriber) {
+    setNotice("");
+    setEditing({ key: nextKey, sub });
+    setNextKey((k) => k + 1);
+  }
+
+  async function toggleActive(sub: BotSubscriber) {
+    if (!sub.id) return;
+    const updated = await botSubscribersApi.update(sub.id, { ...sub, is_active: !sub.is_active });
+    setSubs((prev) => (prev || []).map((x) => (x.id === updated.id ? updated : x)));
+  }
+
+  async function removeSub(sub: BotSubscriber) {
+    if (!sub.id || !window.confirm(`Excluir "${sub.name}"?`)) return;
+    await botSubscribersApi.remove(sub.id);
+    setSubs((prev) => (prev || []).filter((x) => x.id !== sub.id));
+  }
+
+  // ---- tela de cadastro / edição
+  if (editing) {
+    return (
+      <div>
+        <button className="btn" type="button" onClick={() => setEditing(null)} style={{ marginBottom: 14 }}>
+          <Icon name="arrow_back" style={{ fontSize: 17 }} />
+          Voltar para os destinatários cadastrados
+        </button>
+        <h3 style={{ margin: "0 0 12px", fontSize: 15 }}>{editing.sub.id ? "Editar destinatário" : "Novo destinatário"}</h3>
+        {groupsError && <p style={{ color: "var(--orange)", fontSize: 12.5, margin: "0 0 10px" }}>{groupsError}</p>}
+        <SubscriberCard
+          key={editing.key}
+          initial={editing.sub}
+          groups={groups}
+          onSaved={(saved) => {
+            setSubs((prev) => {
+              const list = prev || [];
+              const next = list.some((x) => x.id === saved.id) ? list.map((x) => (x.id === saved.id ? saved : x)) : [...list, saved];
+              return next.sort((a, b) => a.name.localeCompare(b.name));
+            });
+            setNotice(`"${saved.name}" salvo.`);
+            setEditing(null);
+          }}
+          onDeleted={(id) => {
+            if (id) setSubs((prev) => (prev || []).filter((x) => x.id !== id));
+            setEditing(null);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ---- tela da lista de destinatários cadastrados
   return (
     <div>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
         <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 12.5, maxWidth: 640 }}>
-          <b style={{ color: "var(--text)" }}>Destinatários e grupos.</b> Pessoas ou grupos de WhatsApp que recebem os envios. Nas regras você pode escolher
-          destinatários específicos; sem escolha, valem as caixas "recebe por padrão" de cada um.
-          {groupsError && <span style={{ color: "var(--orange)" }}> {groupsError}</span>}
+          Pessoas ou grupos de WhatsApp que recebem os envios. Nas regras você pode escolher destinatários específicos; sem escolha, valem as
+          caixas "recebe por padrão" de cada um.
         </p>
-        <button
-          className="btn btn-primary"
-          type="button"
-          onClick={() => {
-            setDrafts((prev) => [...prev, { key: nextKey }]);
-            setNextKey((k) => k + 1);
-          }}
-        >
+        <button className="btn btn-primary" type="button" onClick={() => openEditor(emptySubscriber())}>
           <Icon name="add" style={{ fontSize: 17 }} />
           Novo destinatário
         </button>
       </div>
+      {notice && <p style={{ color: "var(--green)", fontSize: 13, margin: "0 0 10px" }}>{notice}</p>}
 
       {subs.map((s) => (
-        <SubscriberCard key={s.id} initial={s} groups={groups} onSaved={(saved) => setSubs((prev) => (prev || []).map((x) => (x.id === saved.id ? saved : x)))} onDeleted={(id) => setSubs((prev) => (prev || []).filter((x) => x.id !== id))} />
+        <SubscriberRow key={s.id} sub={s} onEdit={() => openEditor(s)} onToggle={() => toggleActive(s)} onDelete={() => removeSub(s)} />
       ))}
-      {drafts.map(({ key }) => (
-        <SubscriberCard
-          key={`draft-${key}`}
-          initial={emptySubscriber()}
-          groups={groups}
-          onSaved={(saved) => {
-            setSubs((prev) => [...(prev || []), saved]);
-            setDrafts((prev) => prev.filter((d) => d.key !== key));
-          }}
-          onDeleted={() => setDrafts((prev) => prev.filter((d) => d.key !== key))}
-        />
-      ))}
-      {subs.length === 0 && drafts.length === 0 && <div className="empty-state">Nenhum destinatário cadastrado.</div>}
+      {subs.length === 0 && <div className="empty-state">Nenhum destinatário cadastrado.</div>}
     </div>
   );
 }

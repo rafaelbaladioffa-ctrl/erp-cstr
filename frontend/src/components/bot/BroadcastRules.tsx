@@ -349,12 +349,93 @@ function RuleCard({
   );
 }
 
+const WEEKDAY_FULL = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+function namesOf(ids: number[], list: { id: number; name: string }[]): string {
+  const names = ids.map((id) => list.find((i) => i.id === id)?.name).filter(Boolean) as string[];
+  return names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3}` : names.join(", ");
+}
+
+/** Resumo em uma linha do que a regra filtra. */
+function filtersSummary(rule: BotBroadcastRule, options: BotBroadcastRuleOptions): string {
+  const parts: string[] = [];
+  if (rule.client_ids.length) parts.push(`Cliente: ${namesOf(rule.client_ids, options.clients)}`);
+  if (rule.category_ids.length) {
+    parts.push(`Categoria: ${namesOf(rule.category_ids, options.categories)}${rule.include_no_category ? " + sem categoria" : ""}`);
+  }
+  if (rule.region_ids.length) parts.push(`Regional: ${namesOf(rule.region_ids, options.regions)}`);
+  if (rule.site_ids.length) parts.push(`Site: ${namesOf(rule.site_ids, options.sites)}`);
+  if (rule.statuses.length) {
+    parts.push(`Status: ${rule.statuses.map((s) => options.statuses.find((o) => o.id === s)?.name || s).join(", ")}`);
+  }
+  return parts.length ? parts.join(" · ") : "Sem filtros (todos)";
+}
+
+function recipientsSummary(rule: BotBroadcastRule, options: BotBroadcastRuleOptions, hasRecipients: boolean): string {
+  if (!hasRecipients) return "Cada técnico alocado";
+  if (!rule.recipient_ids.length) return "Destinatários padrão";
+  return namesOf(rule.recipient_ids, options.subscribers);
+}
+
+function RuleRow({
+  rule,
+  options,
+  onEdit,
+  onDuplicate,
+  onToggle,
+  onDelete,
+}: {
+  rule: BotBroadcastRule;
+  options: BotBroadcastRuleOptions;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const meta = RULE_TYPE_META[rule.message_type];
+  const days = rule.weekdays.length ? rule.weekdays.map((d) => WEEKDAY_FULL[d]).join(", ") : "Todos os dias";
+  return (
+    <div className="card" style={{ padding: "12px 16px", marginBottom: 10, display: "flex", gap: 14, alignItems: "center", opacity: rule.is_active ? 1 : 0.6 }}>
+      <div style={{ minWidth: 64, textAlign: "center" }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text)" }}>{rule.send_time}</div>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{rule.content_type === "image" ? "Imagem" : "Texto"}</div>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 13.5 }}>{rule.name}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+          {days}
+          {meta.dateOffset && rule.date_offset_days === 1 ? " · dados de amanhã" : ""} · Para: {recipientsSummary(rule, options, meta.recipients)}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {filtersSummary(rule, options)}
+        </div>
+      </div>
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)" }}>
+        <input type="checkbox" checked={rule.is_active} onChange={onToggle} />
+        {rule.is_active ? "Ativa" : "Pausada"}
+      </label>
+      <button className="btn" type="button" onClick={onEdit} title="Editar">
+        <Icon name="edit" style={{ fontSize: 17 }} />
+        Editar
+      </button>
+      <button className="btn" type="button" onClick={onDuplicate} title="Duplicar">
+        <Icon name="content_copy" style={{ fontSize: 17 }} />
+      </button>
+      <button className="btn" type="button" onClick={onDelete} title="Excluir">
+        <Icon name="delete" style={{ fontSize: 17 }} />
+      </button>
+    </div>
+  );
+}
+
 export default function BroadcastRules({ messageType }: { messageType: RuleType }) {
   const meta = RULE_TYPE_META[messageType];
   const [rules, setRules] = useState<BotBroadcastRule[]>([]);
-  const [drafts, setDrafts] = useState<{ key: number; rule: BotBroadcastRule }[]>([]);
   const [options, setOptions] = useState<BotBroadcastRuleOptions | null>(null);
   const [error, setError] = useState("");
+  // null = tela da lista; senão, a regra aberta na tela de cadastro/edição.
+  const [editing, setEditing] = useState<{ key: number; rule: BotBroadcastRule } | null>(null);
+  const [notice, setNotice] = useState("");
   const [nextKey, setNextKey] = useState(1);
 
   useEffect(() => {
@@ -371,48 +452,78 @@ export default function BroadcastRules({ messageType }: { messageType: RuleType 
 
   const typeRules = rules.filter((r) => r.message_type === messageType);
 
-  function addDraft() {
-    setDrafts((prev) => [...prev, { key: nextKey, rule: emptyRule(messageType) }]);
+  function openEditor(rule: BotBroadcastRule) {
+    setNotice("");
+    setEditing({ key: nextKey, rule });
     setNextKey((k) => k + 1);
   }
 
+  async function toggleActive(rule: BotBroadcastRule) {
+    if (!rule.id) return;
+    const updated = await botRulesApi.update(rule.id, { ...rule, is_active: !rule.is_active });
+    setRules((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  }
+
+  async function removeRule(rule: BotBroadcastRule) {
+    if (!rule.id || !window.confirm(`Excluir a regra "${rule.name}"?`)) return;
+    await botRulesApi.remove(rule.id);
+    setRules((prev) => prev.filter((r) => r.id !== rule.id));
+  }
+
+  // ---- tela de cadastro / edição
+  if (editing) {
+    return (
+      <div>
+        <button className="btn" type="button" onClick={() => setEditing(null)} style={{ marginBottom: 14 }}>
+          <Icon name="arrow_back" style={{ fontSize: 17 }} />
+          Voltar para as regras cadastradas
+        </button>
+        <h3 style={{ margin: "0 0 12px", fontSize: 15 }}>{editing.rule.id ? "Editar regra" : "Nova regra"} — {meta.label}</h3>
+        <RuleCard
+          key={editing.key}
+          initial={editing.rule}
+          options={options}
+          onSaved={(saved) => {
+            setRules((prev) => (prev.some((r) => r.id === saved.id) ? prev.map((r) => (r.id === saved.id ? saved : r)) : [...prev, saved]));
+            setRules((prev) => [...prev].sort((a, b) => a.send_time.localeCompare(b.send_time)));
+            setNotice(`Regra "${saved.name}" salva.`);
+            setEditing(null);
+          }}
+          onDeleted={(id) => {
+            if (id) setRules((prev) => prev.filter((r) => r.id !== id));
+            setEditing(null);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ---- tela da lista de regras cadastradas
   return (
     <div>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
         <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 12.5, maxWidth: 640 }}>
-          <b style={{ color: "var(--text)" }}>{meta.label}.</b> {meta.hint} Cada regra define horário, dias, quais dados entram e quem recebe.
-          Sem nenhuma regra ativa, este envio não acontece.
+          <b style={{ color: "var(--text)" }}>{meta.label}.</b> {meta.hint} Sem nenhuma regra ativa, este envio não acontece.
         </p>
-        <button className="btn btn-primary" onClick={addDraft} type="button">
+        <button className="btn btn-primary" onClick={() => openEditor(emptyRule(messageType))} type="button">
           <Icon name="add" style={{ fontSize: 17 }} />
           Nova regra
         </button>
       </div>
+      {notice && <p style={{ color: "var(--green)", fontSize: 13, margin: "0 0 10px" }}>{notice}</p>}
 
       {typeRules.map((rule) => (
-        <RuleCard
+        <RuleRow
           key={rule.id}
-          initial={rule}
+          rule={rule}
           options={options}
-          onSaved={(saved) => setRules((prev) => prev.map((r) => (r.id === saved.id ? saved : r)))}
-          onDeleted={(id) => setRules((prev) => prev.filter((r) => r.id !== id))}
+          onEdit={() => openEditor(rule)}
+          onDuplicate={() => openEditor({ ...rule, id: undefined, name: `${rule.name} (cópia)` })}
+          onToggle={() => toggleActive(rule)}
+          onDelete={() => removeRule(rule)}
         />
       ))}
-      {drafts.map(({ key, rule }) => (
-        <RuleCard
-          key={`draft-${key}`}
-          initial={rule}
-          options={options}
-          onSaved={(saved) => {
-            setRules((prev) => [...prev, saved]);
-            setDrafts((prev) => prev.filter((d) => d.key !== key));
-          }}
-          onDeleted={() => setDrafts((prev) => prev.filter((d) => d.key !== key))}
-        />
-      ))}
-      {typeRules.length === 0 && drafts.length === 0 && (
-        <div className="empty-state">Nenhuma regra para este envio. Clique em "Nova regra" para agendar.</div>
-      )}
+      {typeRules.length === 0 && <div className="empty-state">Nenhuma regra para este envio. Clique em "Nova regra" para agendar.</div>}
     </div>
   );
 }
