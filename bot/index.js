@@ -252,6 +252,27 @@ function formatAllocationMessage(t, date, template) {
   return `${intro}\n\n${lines.join("\n")}${footer}`;
 }
 
+// Resumo único da alocação (um bloco por técnico), para enviar a um grupo.
+function formatAllocationSummary(technicians, date, template) {
+  const useTemplate = template && template.is_active !== false;
+  const blocks = technicians.map((t) => {
+    const lines = t.allocations.map((a) => {
+      const name = templateEnabled(template, "project_code") && a.code ? `${a.project} (${a.code})` : a.project;
+      return templateEnabled(template, "site") ? `• ${name} — Site: ${a.site || "não informado"}` : `• ${name}`;
+    });
+    return `*${t.collaborator_name}*\n${lines.join("\n")}`;
+  });
+  const parts = [`*Alocação dos técnicos — ${formatDate(date)}*`, "", blocks.join("\n\n")];
+  if (useTemplate && template.footer_text) parts.push("", template.footer_text);
+  return parts.join("\n");
+}
+
+async function sendAllocationSummary(sock, data, recipients) {
+  const template = await fetchMessageTemplate("allocation");
+  console.log(`Alocação (resumo): ${data.technicians.length} técnico(s) para ${recipients.length} destinatário(s).`);
+  return sendToRecipients(sock, recipients, formatAllocationSummary(data.technicians, data.date, template), "Alocação (resumo)");
+}
+
 // Alocação individual: cada técnico recebe a própria mensagem. Com
 // overrideTo (teste), manda no máximo 3 mensagens, todas para esse destino.
 async function sendAllocationData(sock, data, overrideTo) {
@@ -644,17 +665,21 @@ async function runBroadcastRule(sock, ruleId, overrideTo) {
   if (!hasData) {
     return done(`Nenhum dado atende aos filtros da regra "${rule.name}" — nada enviado.`);
   }
-  // A alocação vai para cada técnico (não usa a lista de destinatários).
-  const recipients = type === "allocation" ? [] : overrideTo ? [overrideToRecipient(overrideTo)] : data.recipients;
-  if (type !== "allocation" && !recipients.length) {
+  // Alocação: com destinatários escolhidos (ex.: um grupo) vai UM resumo para
+  // eles; sem destinatários, cada técnico recebe a própria mensagem.
+  const allocationToGroup = type === "allocation" && Array.isArray(data.recipients) && data.recipients.length > 0;
+  const recipients = type === "allocation" && !allocationToGroup ? [] : overrideTo ? [overrideToRecipient(overrideTo)] : data.recipients;
+  if ((type !== "allocation" || allocationToGroup) && !recipients.length) {
     return done(`Regra "${rule.name}" sem destinatários — nada enviado.`);
   }
-  if (type === "allocation" && overrideTo) {
+  if (type === "allocation" && !allocationToGroup && overrideTo) {
     data.technicians = data.technicians.slice(0, 3);
   }
 
   let sent = 0;
-  if (type === "allocation") {
+  if (type === "allocation" && allocationToGroup) {
+    sent = await sendAllocationSummary(sock, data, recipients);
+  } else if (type === "allocation") {
     sent = await sendAllocationData(sock, data, overrideTo);
   } else if (type === "daily_tasks") {
     sent = await sendDailyTasksData(sock, data, recipients);

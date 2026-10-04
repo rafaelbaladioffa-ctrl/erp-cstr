@@ -211,7 +211,11 @@ class BotRuleBroadcastView(APIView):
             payload["workday_start"] = WORKDAY_START
             payload["workday_end"] = WORKDAY_END
         elif message_type == "allocation":
-            payload["technicians"] = build_allocation_technicians(target_date, rule=rule)
+            # Com destinatários escolhidos (ex.: um grupo), vai UM resumo para
+            # eles; sem destinatários, cada técnico recebe a própria mensagem.
+            recipients = list(rule.recipients.filter(is_active=True).order_by("name").values("name", "phone", "group_jid"))
+            payload["recipients"] = recipients
+            payload["technicians"] = build_allocation_technicians(target_date, rule=rule, require_phone=not recipients)
         elif message_type == "operations_print":
             payload["sites"] = list(rule.sites.values("id", "name"))
         flag = RECIPIENT_FLAG.get(message_type)

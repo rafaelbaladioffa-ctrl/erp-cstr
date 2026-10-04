@@ -15,6 +15,7 @@ interface RuleTypeMeta {
   projectFilters: boolean; // clientes, categorias, regionais, status
   siteFilter: boolean;
   recipients: boolean;
+  recipientsAllLabel?: string;
   dateOffset: boolean;
   captionField: boolean;
 }
@@ -61,14 +62,15 @@ export const RULE_TYPE_META: Record<RuleType, RuleTypeMeta> = {
   },
   allocation: {
     label: "Alocação diária aos técnicos",
-    hint: "Cada técnico alocado recebe a própria mensagem, no telefone cadastrado dele (não usa a lista de destinatários).",
+    hint: "Sem destinatário escolhido, cada técnico recebe a própria mensagem no telefone dele. Escolhendo um grupo (ou pessoas), vai um único resumo com todos os técnicos.",
     formats: ["text"],
     defaultTime: "18:00",
     defaultStatuses: [],
     defaultOffset: 1,
     projectFilters: true,
     siteFilter: true,
-    recipients: false,
+    recipients: true,
+    recipientsAllLabel: "Cada técnico, no telefone particular dele (sem grupo)",
     dateOffset: true,
     captionField: false,
   },
@@ -318,9 +320,9 @@ function RuleCard({
       {meta.recipients && (
         <div style={{ marginBottom: 14 }}>
           <CheckList
-            title="Destinatários"
-            hint="todos os destinatários padrão deste tipo de mensagem"
-            allLabel="Destinatários padrão (aba Destinatários e grupos)"
+            title={rule.message_type === "allocation" ? "Enviar para" : "Destinatários"}
+            hint={rule.message_type === "allocation" ? "um resumo para os escolhidos" : "todos os destinatários padrão deste tipo de mensagem"}
+            allLabel={meta.recipientsAllLabel || "Destinatários padrão (aba Destinatários e grupos)"}
             items={options.subscribers.map((s) => ({ id: s.id, name: s.name, sub: s.target }))}
             selected={rule.recipient_ids}
             onChange={(recipient_ids) => patch({ recipient_ids })}
@@ -373,7 +375,7 @@ function filtersSummary(rule: BotBroadcastRule, options: BotBroadcastRuleOptions
 
 function recipientsSummary(rule: BotBroadcastRule, options: BotBroadcastRuleOptions, hasRecipients: boolean): string {
   if (!hasRecipients) return "Cada técnico alocado";
-  if (!rule.recipient_ids.length) return "Destinatários padrão";
+  if (!rule.recipient_ids.length) return rule.message_type === "allocation" ? "Cada técnico (particular)" : "Destinatários padrão";
   return namesOf(rule.recipient_ids, options.subscribers);
 }
 

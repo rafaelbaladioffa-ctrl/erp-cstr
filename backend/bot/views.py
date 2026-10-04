@@ -92,14 +92,16 @@ def _allocations_for(target_date, rule=None):
     return qs
 
 
-def build_allocation_technicians(target_date, rule=None):
-    """Técnicos com alocação na data (e telefone), com os projetos de cada um."""
+def build_allocation_technicians(target_date, rule=None, require_phone=True):
+    """Técnicos com alocação na data, com os projetos de cada um. Com
+    `require_phone`, só quem tem telefone (envio individual); sem ele, todos
+    (resumo enviado a um grupo)."""
     allocations = _allocations_for(target_date, rule).select_related("project", "project__site").prefetch_related("collaborators__person")
 
     by_collaborator = {}
     for allocation in allocations:
         for collaborator in allocation.collaborators.all():
-            if not collaborator.is_active or not collaborator.person.phone:
+            if not collaborator.is_active or (require_phone and not collaborator.person.phone):
                 continue
             entry = by_collaborator.setdefault(
                 collaborator.id,

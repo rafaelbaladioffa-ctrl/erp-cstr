@@ -302,9 +302,15 @@ class BotRulesAllTypesTests(TestCase):
             self.assertEqual(response.status_code, 200, response.data)
             self.assertIn(key, response.data)
             self.assertEqual(response.data["rule"]["message_type"], message_type)
-        # a alocação não tem lista de destinatários (vai para cada técnico)
+        # alocação sem destinatários escolhidos = envio individual (lista vazia,
+        # sem cair nos destinatários padrão); com destinatário, vai para ele
         allocation = BotBroadcastRule.objects.get(message_type="allocation")
-        self.assertNotIn("recipients", self.api.get(f"/api/bot/broadcasts/rule/{allocation.pk}/", **self.bot_headers).data)
+        url = f"/api/bot/broadcasts/rule/{allocation.pk}/"
+        self.assertEqual(self.api.get(url, **self.bot_headers).data["recipients"], [])
+        group = BotSubscriber.objects.create(name="Grupo Alocação", group_jid="120363@g.us", receives_daily_tasks=False)
+        allocation.recipients.set([group])
+        recipients = self.api.get(url, **self.bot_headers).data["recipients"]
+        self.assertEqual([r["name"] for r in recipients], ["Grupo Alocação"])
 
     def test_format_must_match_message_type(self):
         self.api.force_authenticate(self.admin)
