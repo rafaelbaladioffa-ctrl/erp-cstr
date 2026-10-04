@@ -1447,6 +1447,19 @@ class CollaboratorCrudSerializer(serializers.ModelSerializer):
         _update_person_from_data(instance, validated_data.pop("person", None))
         return super().update(instance, validated_data)
 
+    def validate_manager(self, value):
+        """O gestor precisa ter cargo de Supervisor, Coordenador ou Gerente.
+        Só valida quando o gestor muda, para não travar a edição de quem já
+        tinha um gestor cadastrado antes desta regra."""
+        import re
+
+        if value is None or value.pk == getattr(self.instance, "manager_id", None):
+            return value
+        title = value.job_title.name if value.job_title_id else ""
+        if not re.search(r"supervisor|coordenador|gerente", title, re.IGNORECASE):
+            raise serializers.ValidationError("O gestor precisa ter cargo de Supervisor, Coordenador ou Gerente.")
+        return value
+
     def get_job_title_name(self, obj):
         return str(obj.job_title) if obj.job_title_id else None
 

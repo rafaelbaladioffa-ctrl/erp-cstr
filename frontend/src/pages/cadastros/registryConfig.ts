@@ -148,6 +148,12 @@ export function entityLabels(entity: EntityConfig<any>, locale: string): EntityL
   };
 }
 
+/** Cargo de gestão: Supervisor, Coordenador ou Gerente (sem diferenciar acento/caixa). */
+function isManagementTitle(c: CollaboratorFull): boolean {
+  const title = (c.job_title_name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /supervisor|coordenador|gerente/.test(title);
+}
+
 export const ENTITIES: EntityConfig<any>[] = [
   {
     key: "companies",
@@ -389,7 +395,8 @@ export const ENTITIES: EntityConfig<any>[] = [
         name: "manager",
         label: "Gestor",
         type: "select",
-        options: refs.collaborators.map((c) => ({ value: c.id, label: c.name })),
+        // Só quem tem cargo de gestão (Supervisor, Coordenador ou Gerente).
+        options: refs.collaborators.filter(isManagementTitle).map((c) => ({ value: c.id, label: c.name })),
       },
       { name: "sites", label: "Sites", type: "multiselect", span: 2, options: refs.sites.map((s) => ({ value: s.id, label: s.code || s.name })) },
       { name: "is_active", label: "Situação", type: "checkbox", placeholder: "Ativo", span: 2 },
