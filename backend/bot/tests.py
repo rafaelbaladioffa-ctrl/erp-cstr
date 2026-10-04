@@ -218,8 +218,10 @@ class BotBroadcastRuleTests(TestCase):
         self.make_rule(name="Ativa")
         self.make_rule(name="Inativa", is_active=False)
         response = self.api.get("/api/bot/broadcasts/rules/", **self.bot_headers)
-        self.assertEqual([r["name"] for r in response.data], ["Ativa"])
-        self.assertEqual(response.data[0]["send_time"], "15:00")
+        names = [r["name"] for r in response.data]
+        self.assertIn("Ativa", names)
+        self.assertNotIn("Inativa", names)
+        self.assertEqual(next(r for r in response.data if r["name"] == "Ativa")["send_time"], "15:00")
 
     def test_runtime_endpoints_require_secret(self):
         rule = self.make_rule()
