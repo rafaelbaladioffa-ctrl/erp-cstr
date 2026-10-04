@@ -34,6 +34,11 @@ TEXTS = {
         "daily_intro": "Segue a alocação das equipes para {date}. O relatório completo está anexo em PDF.",
         "sent_by": "Enviado por",
         "reset_subject": "Redefinição de senha",
+        "weekly_subject": "Update Semanal",
+        "weekly_title": "Update Semanal",
+        "weekly_intro": "Segue o update semanal dos projetos, referente ao período de {start} a {end}.",
+        "weekly_overview": "Visão geral",
+        "weekly_projects": "projetos",
     },
     "en": {
         "not_informed": "Not provided",
@@ -65,6 +70,11 @@ TEXTS = {
         "daily_intro": "Please find the team allocation for {date}. The full report is attached as a PDF.",
         "sent_by": "Sent by",
         "reset_subject": "Password reset",
+        "weekly_subject": "Weekly Update",
+        "weekly_title": "Weekly Update",
+        "weekly_intro": "Please find the weekly update for the projects below, covering {start} to {end}.",
+        "weekly_overview": "Overview",
+        "weekly_projects": "projects",
     },
     "es": {
         "not_informed": "No informado",
@@ -96,6 +106,11 @@ TEXTS = {
         "daily_intro": "A continuación la asignación de los equipos para {date}. El informe completo está adjunto en PDF.",
         "sent_by": "Enviado por",
         "reset_subject": "Restablecimiento de contraseña",
+        "weekly_subject": "Update Semanal",
+        "weekly_title": "Update Semanal",
+        "weekly_intro": "A continuación el update semanal de los proyectos, correspondiente al período del {start} al {end}.",
+        "weekly_overview": "Resumen general",
+        "weekly_projects": "proyectos",
     },
 }
 

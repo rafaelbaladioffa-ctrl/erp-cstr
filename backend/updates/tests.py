@@ -165,3 +165,65 @@ class DailyUpdateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertTrue(b"".join(response.streaming_content).startswith(b"%PDF"))
+
+
+class WeeklyUpdateTests(TestCase):
+    def setUp(self):
+        from core.models import Responsible
+
+        self.user = User.objects.create_superuser(username="weekly", email="weekly@example.com", password="x")
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.client_record = Client.objects.create(company=company, legal_name="Cliente Teste")
+        site = Site.objects.create(client=self.client_record, name="GRU65", code="GRU65")
+        self.projects = [
+            Project.objects.create(
+                company=company, site=site, client=self.client_record, name=name, po=f"PO-{i}",
+                status=Project.STATUS_IN_PROGRESS,
+            )
+            for i, name in enumerate(["Projeto Alfa", "Projeto Beta"], start=1)
+        ]
+        person = Person.objects.create(name="CONTATO CLIENTE", email="contato@cliente.com")
+        Responsible.objects.create(person=person, kind=Responsible.KIND_CLIENT, client=self.client_record)
+        self.client.force_login(self.user)
+        self.today = timezone.localdate()
+
+    def post(self, **extra):
+        payload = {
+            "project_ids": [p.pk for p in self.projects],
+            "start": (self.today - timedelta(days=6)).isoformat(),
+            "end": self.today.isoformat(),
+            "language": "pt",
+            **extra,
+        }
+        return self.client.post("/api/project-updates/send-weekly/", payload, content_type="application/json")
+
+    def test_sends_single_email_with_all_projects(self):
+        from django.core import mail
+
+        response = self.post(emails=["extra@exemplo.com"])
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["projects"], 2)
+        self.assertEqual(len(mail.outbox), 2)  # contato do cliente + e-mail avulso, um e-mail cada
+        for message in mail.outbox:
+            html = message.alternatives[0][0]
+            self.assertIn("Projeto Alfa", html)
+            self.assertIn("Projeto Beta", html)
+            self.assertIn("Update Semanal", message.subject)
+            self.assertIn("2 projetos", message.subject)
+            self.assertEqual(message.attachments, [])
+        from .models import ProjectDailyUpdate
+
+        self.assertEqual(ProjectDailyUpdate.objects.filter(sent_at__isnull=False).count(), 2)
+
+    def test_reuses_existing_update_in_the_week(self):
+        from .models import ProjectDailyUpdate
+
+        existing = ProjectDailyUpdate.objects.create(project=self.projects[0], date=self.today - timedelta(days=2))
+        self.post(emails=["extra@exemplo.com"])
+        self.assertEqual(ProjectDailyUpdate.objects.filter(project=self.projects[0]).count(), 1)
+        existing.refresh_from_db()
+        self.assertIsNotNone(existing.sent_at)
+
+    def test_rejects_missing_projects_and_bad_period(self):
+        self.assertEqual(self.post(project_ids=[]).status_code, 400)
+        self.assertEqual(self.post(start=self.today.isoformat(), end=(self.today - timedelta(days=1)).isoformat()).status_code, 400)

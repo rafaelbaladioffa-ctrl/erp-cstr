@@ -85,14 +85,8 @@ def _multiline(text):
     return escape(text).replace("\n", "<br>")
 
 
-def render_html(*, title, intro="", summary=None, highlight=None, sections=None, button=None, note="", logo=True, lang="pt"):
-    """summary: lista de (rótulo, valor). highlight: (rótulo, valor) em destaque.
-    sections: lista de (título, texto). button: (rótulo, url)."""
+def _body_parts(highlight, summary, sections):
     parts = []
-
-    if intro:
-        parts.append(f'<p class="c-txt" style="margin:0 0 20px;font-size:15px;line-height:1.6;color:{COLOR_TEXT};">{_multiline(intro)}</p>')
-
     if highlight:
         label, value = highlight
         parts.append(
@@ -116,6 +110,29 @@ def render_html(*, title, intro="", summary=None, highlight=None, sections=None,
             f'<h2 style="margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:{COLOR_ACCENT};">{escape(heading)}</h2>'
             f'<p class="c-txt" style="margin:0 0 22px;font-size:14px;line-height:1.6;color:{COLOR_TEXT};">{_multiline(text)}</p>'
         )
+    return parts
+
+
+def render_html(*, title, intro="", summary=None, highlight=None, sections=None, blocks=None, button=None, note="", logo=True, lang="pt"):
+    """summary: lista de (rótulo, valor). highlight: (rótulo, valor) em destaque.
+    sections: lista de (título, texto). blocks: lista de dicts {title, highlight,
+    summary, sections} renderizados em sequência. button: (rótulo, url)."""
+    parts = []
+
+    if intro:
+        parts.append(f'<p class="c-txt" style="margin:0 0 20px;font-size:15px;line-height:1.6;color:{COLOR_TEXT};">{_multiline(intro)}</p>')
+
+    parts += _body_parts(highlight, summary, sections)
+
+    for block in blocks or []:
+        # Um bloco por item (ex.: um projeto no Update Semanal), separado por linha e título.
+        parts.append(
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 18px;">'
+            f'<tr><td class="c-brd" style="border-top:2px solid {COLOR_BORDER};padding:18px 0 0;">'
+            f'<h2 class="c-txt" style="margin:0;font-size:17px;color:{COLOR_TEXT};">{escape(block["title"])}</h2>'
+            f"</td></tr></table>"
+        )
+        parts += _body_parts(block.get("highlight"), block.get("summary"), block.get("sections"))
 
     if button:
         label, url = button

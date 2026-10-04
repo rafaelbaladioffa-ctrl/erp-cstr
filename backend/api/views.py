@@ -105,7 +105,7 @@ from technical.models import MyTask
 from updates.mail import send_daily_update_emails
 from updates.models import DailyUpdate, DailyUpdateAllocation, ProjectDailyUpdate
 from updates.pdf import build_daily_updates_pdf
-from updates.project_client_mail import send_project_daily_update_email
+from updates.project_client_mail import send_project_daily_update_email, send_weekly_update_email
 from updates.project_pdf import build_project_daily_update_pdf
 
 from .permissions import (
@@ -2244,73 +2244,13 @@ class DailyUpdateViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
             queryset = queryset.filter(allocation_date__lte=date_to)
         return deny_if_client_scoped(queryset, self.request.user)
 
-    @action(detail=True, methods=["post"], url_path="send-email")
-    def send_email(self, request, pk=None):
-        daily_update = self.get_object()
-        sent, skipped = send_daily_update_emails(daily_update, lang=request.data.get("language"))
-        return Response({"sent": sent, "skipped": skipped})
-
-    @action(detail=True, methods=["get"])
-    def pdf(self, request, pk=None):
-        daily_update = self.get_object()
-        pdf_buffer = build_daily_updates_pdf([daily_update], daily_update.allocation_date)
-        filename = f"atualizacao-diaria-{daily_update.allocation_date:%Y-%m-%d}.pdf"
-        return FileResponse(pdf_buffer, content_type="application/pdf", filename=filename)
-
-    @action(detail=False, methods=["get"], url_path="pdf-consolidado")
-    def pdf_consolidado(self, request):
-        from django.utils.dateparse import parse_date as parse_date_str
-
-        allocation_date = parse_date_str(request.query_params.get("date", ""))
-        if not allocation_date:
-            return Response({"detail": "Informe uma data válida (?date=AAAA-MM-DD) para gerar o PDF."}, status=400)
-        updates = (
-            DailyUpdate.objects.filter(allocation_date=allocation_date)
-            .select_related("created_by")
-            .prefetch_related("allocations__project__site", "allocations__collaborators")
-        )
-        if not updates.exists():
-            return Response({"detail": "Não existem Atualizações Diárias para a data selecionada."}, status=404)
-        filename = f"atualizacao-diaria-{allocation_date:%Y-%m-%d}.pdf"
-        return FileResponse(build_daily_updates_pdf(updates, allocation_date), content_type="application/pdf", filename=filename)
-
-
-class ProjectDailyUpdateViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
-    queryset = (
-        ProjectDailyUpdate.objects.select_related("project", "project__client", "created_by")
-        .prefetch_related("collaborators")
-        .order_by("-date", "-created_at")
-    )
-    permission_classes = [ViewAwareModelPermissions]
-    change_permission_actions = ("send_email", "pdf")
-
-    def get_serializer_class(self):
-        if self.action == "create":
-            return ProjectDailyUpdateCreateSerializer
-        return ProjectDailyUpdateSerializer
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        project_id = self.request.query_params.get("project")
-        if project_id:
-            queryset = queryset.filter(project_id=project_id)
-        queryset = scope_project_queryset(queryset, self.request.user, field_prefix="project__")
-        return scope_supervisor_projects(queryset, self.request.user, field_prefix="project__")
-
-    def create(self, request, *args, **kwargs):
-        response = super().create(request, *args, **kwargs)
-        instance = ProjectDailyUpdate.objects.get(pk=response.data["id"])
-        response.data = ProjectDailyUpdateSerializer(instance).data
-        return response
-
-    @action(detail=True, methods=["post"], url_path="send-email")
-    def send_email(self, request, pk=None):
+    @staticmethod
+    def _extra_recipients(request):
+        """Usuários do sistema e e-mails avulsos escolhidos na tela -> ([(nome, e-mail)], inválidos)."""
         from django.core.exceptions import ValidationError as DjangoValidationError
         from django.core.validators import validate_email
 
         from users.models import User
-
-        project_update = self.get_object()
 
         extra = []
         user_ids = request.data.get("user_ids") or []
@@ -2328,7 +2268,13 @@ class ProjectDailyUpdateViewSet(RequireChangePermissionForActions, viewsets.Mode
                 invalid_emails.append(candidate)
                 continue
             extra.append((candidate, candidate))
+        return extra, invalid_emails
 
+    @action(detail=True, methods=["post"], url_path="send-email")
+    def send_email(self, request, pk=None):
+        project_update = self.get_object()
+
+        extra, invalid_emails = self._extra_recipients(request)
         if invalid_emails:
             return Response({"detail": f"E-mail(s) inválido(s): {', '.join(invalid_emails)}"}, status=400)
 
@@ -2337,6 +2283,55 @@ class ProjectDailyUpdateViewSet(RequireChangePermissionForActions, viewsets.Mode
 
         sent, skipped = send_project_daily_update_email(project_update, extra_recipients=extra, lang=request.data.get("language"))
         return Response({"sent": sent, "skipped": skipped})
+
+    @action(detail=False, methods=["post"], url_path="send-weekly")
+    def send_weekly(self, request):
+        """Update Semanal: um e-mail com um bloco por projeto. Para cada projeto usa a
+        atualização mais recente da semana (start..end) ou cria uma na data final
+        (limitada a hoje) se ainda não existir."""
+        from datetime import date as date_cls
+
+        project_ids = request.data.get("project_ids") or []
+        try:
+            start = date_cls.fromisoformat(str(request.data.get("start") or ""))
+            end = date_cls.fromisoformat(str(request.data.get("end") or ""))
+        except ValueError:
+            return Response({"detail": "Informe o período (início e fim)."}, status=400)
+        if end < start or (end - start).days > 31:
+            return Response({"detail": "Período inválido."}, status=400)
+        if not project_ids:
+            return Response({"detail": "Selecione ao menos um projeto."}, status=400)
+
+        extra, invalid_emails = self._extra_recipients(request)
+        if invalid_emails:
+            return Response({"detail": f"E-mail(s) inválido(s): {', '.join(invalid_emails)}"}, status=400)
+
+        projects = scope_supervisor_projects(
+            scope_project_queryset(Project.objects.filter(pk__in=project_ids), request.user), request.user
+        ).select_related("client", "site", "responsible_client__person", "responsible_cstr__person")
+        projects = sorted(projects, key=lambda p: p.name.lower())
+        if not projects:
+            return Response({"detail": "Nenhum projeto encontrado."}, status=400)
+
+        no_client = [p.name for p in projects if not p.client_id]
+        if no_client and not extra:
+            return Response({"detail": f"Projeto(s) sem cliente vinculado: {', '.join(no_client)}"}, status=400)
+
+        reference_day = min(end, timezone.localdate())
+        updates = []
+        for project in projects:
+            update = (
+                ProjectDailyUpdate.objects.filter(project=project, date__range=(start, end))
+                .select_related("project", "project__client", "project__site")
+                .order_by("-date", "-created_at")
+                .first()
+            )
+            if update is None:
+                update = ProjectDailyUpdate.objects.create(project=project, date=reference_day, created_by=request.user)
+            updates.append(update)
+
+        sent, skipped = send_weekly_update_email(updates, start, end, extra_recipients=extra, lang=request.data.get("language"))
+        return Response({"sent": sent, "skipped": skipped, "projects": len(updates)})
 
     @action(detail=True, methods=["get"])
     def pdf(self, request, pk=None):

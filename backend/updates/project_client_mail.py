@@ -123,16 +123,22 @@ def build_project_update_body(project_update):
     return "\n".join(lines)
 
 
-def build_occurrence_notes(project_update, lang):
+def build_occurrence_notes(project_update, lang, start=None):
     """Observações do e-mail: anotação manual da atualização (se houver) mais as
     ocorrências do projeto em aberto/em andamento e as ocorridas ou resolvidas na
-    data da atualização. Ocorrências canceladas ficam de fora."""
+    data da atualização (ou, com `start`, em qualquer dia de start até a data —
+    usado no Update Semanal). Ocorrências canceladas ficam de fora."""
     project = project_update.project
     date = project_update.date
     open_statuses = (ProjectOccurrence.STATUS_OPEN, ProjectOccurrence.STATUS_IN_PROGRESS)
     occurrences = (
         project.occurrences.exclude(status=ProjectOccurrence.STATUS_CANCELED)
-        .filter(Q(status__in=open_statuses) | Q(occurred_at=date) | Q(resolved_at=date))
+        .filter(
+            Q(status__in=open_statuses)
+            | (Q(occurred_at__range=(start, date)) | Q(resolved_at__range=(start, date))
+               if start
+               else Q(occurred_at=date) | Q(resolved_at=date))
+        )
         .order_by("occurred_at", "id")
     )
     statuses = TEXTS[lang]["occ_status"]
@@ -259,4 +265,103 @@ def send_project_daily_update_email(project_update, extra_recipients=None, lang=
         type(project_update).objects.filter(pk=project_update.pk).update(sent_at=timezone.now())
         project_update.sent_at = timezone.now()
 
+    return sent, skipped
+
+
+def _weekly_block(project_update, lang, start):
+    """Bloco de um projeto no Update Semanal (mesmos dados do e-mail individual)."""
+    project_update.refresh_from_tasks()
+    project = project_update.project
+    client_label = (
+        (project.client.trade_name or project.client.legal_name) if project.client_id else tr(lang, "client_fallback")
+    )
+    not_informed = tr(lang, "not_informed")
+    yes_no = lambda value: tr(lang, "yes" if value else "no")  # noqa: E731
+    summary = [
+        (tr(lang, "code"), project.code or "—"),
+        (tr(lang, "site"), (project.site.name or project.site.code) if project.site_id else not_informed),
+        (tr(lang, "po"), project.po or tr(lang, "po_missing")),
+        (
+            tr(lang, "responsible", client=client_label),
+            format_person_name(project.responsible_client.person.name) if project.responsible_client_id else not_informed,
+        ),
+        (
+            tr(lang, "responsible_company"),
+            format_person_name(project.responsible_cstr.person.name) if project.responsible_cstr_id else not_informed,
+        ),
+        (tr(lang, "certification"), yes_no(project_update.certification_done)),
+        (tr(lang, "finished"), yes_no(project_update.project_finished)),
+    ]
+    observations = build_occurrence_notes(project_update, lang, start=start) or tr(lang, "no_observations")
+    return {
+        "title": project.name,
+        "highlight": (tr(lang, "completion"), f"{project_update.completion_percent}%"),
+        "summary": summary,
+        "sections": [(tr(lang, "observations"), observations)],
+    }
+
+
+def build_weekly_update_message(project_updates, recipient_email, start, end, lang="pt"):
+    """Um único e-mail com um bloco por projeto (Update Semanal), sem anexo."""
+    lang = normalize_language(lang)
+    period = f"{fmt_date(lang, start)} – {fmt_date(lang, end)}"
+    blocks = [_weekly_block(pu, lang, start) for pu in project_updates]
+    overview = [(pu.project.name, f"{pu.completion_percent}%") for pu in project_updates]
+
+    html = render_html(
+        title=tr(lang, "weekly_title"),
+        intro=tr(lang, "weekly_intro", start=fmt_date(lang, start), end=fmt_date(lang, end)),
+        summary=overview,
+        blocks=blocks,
+        lang=lang,
+    )
+    text_lines = [tr(lang, "weekly_title").upper(), period, ""]
+    for block in blocks:
+        text_lines += [block["title"].upper(), f"{block['highlight'][0]}: {block['highlight'][1]}"]
+        text_lines += [f"{label}: {value}" for label, value in block["summary"]]
+        for heading, body in block["sections"]:
+            text_lines += [heading.upper() + ":", body]
+        text_lines.append("")
+    text_lines.append("Consultimer")
+    subject = f"{tr(lang, 'weekly_subject')} | {period} | {len(blocks)} {tr(lang, 'weekly_projects')}"
+    return build_email(subject=subject, to=[recipient_email], text=NEWLINE.join(text_lines), html=html)
+
+
+def send_weekly_update_email(project_updates, start, end, extra_recipients=None, lang="pt"):
+    """Envia o Update Semanal. Cada destinatário recebe um e-mail só: responsáveis
+    do cliente recebem apenas os projetos do próprio cliente; destinatários extras
+    (usuários/e-mails avulsos escolhidos na tela) recebem todos os projetos.
+    Retorna (enviados, sem_email) com os nomes."""
+    # destinatário (e-mail minúsculo) -> (nome, {pk das atualizações})
+    plan = {}
+    skipped = []
+
+    def add(name, email, updates):
+        key = (email or "").strip().lower()
+        if not key:
+            skipped.append(name)
+            return
+        entry = plan.setdefault(key, [name, email, {}])
+        for pu in updates:
+            entry[2][pu.pk] = pu
+
+    client_ids = {pu.project.client_id for pu in project_updates if pu.project.client_id}
+    for responsible in Responsible.objects.filter(
+        kind=Responsible.KIND_CLIENT, client_id__in=client_ids, is_active=True
+    ).select_related("person"):
+        own = [pu for pu in project_updates if pu.project.client_id == responsible.client_id]
+        add(responsible.person.name, responsible.person.email, own)
+    for name, email in extra_recipients or []:
+        add(name, email, project_updates)
+
+    order = {pu.pk: i for i, pu in enumerate(project_updates)}
+    sent = []
+    for name, email, updates in plan.values():
+        ordered = sorted(updates.values(), key=lambda pu: order[pu.pk])
+        build_weekly_update_message(ordered, email, start, end, lang).send(fail_silently=False)
+        sent.append(name)
+
+    if sent:
+        now = timezone.now()
+        type(project_updates[0]).objects.filter(pk__in=[pu.pk for pu in project_updates]).update(sent_at=now)
     return sent, skipped
