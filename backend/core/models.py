@@ -40,6 +40,12 @@ class Company(PhoneNormalizedModel, TimestampedModel):
         verbose_name = "empresa"
         verbose_name_plural = "empresas"
         ordering = ("legal_name",)
+        permissions = [
+            # Controla só a TELA "Cadastros Gerais" (menu/rota). Os dados dos
+            # cadastros continuam protegidos pelas permissões view_* de cada
+            # model, que outras telas (Projetos, Tarefas...) também usam.
+            ("access_registry_screen", "Pode acessar a tela Cadastros Gerais"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=("tax_id",),

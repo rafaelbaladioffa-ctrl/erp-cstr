@@ -85,3 +85,20 @@ class CollaboratorScopeTests(TestCase):
         client.force_authenticate(User.objects.get(pk=coordinator.pk))
         everyone = client.get("/api/collaborators/?page_size=500")
         self.assertEqual(len(everyone.data["results"]), Collaborator.objects.filter(is_active=True).count())
+
+
+class RegistryScreenPermissionTests(TestCase):
+    """A tela Cadastros Gerais tem permissão própria, separada das view_*."""
+
+    def test_permission_exists_and_is_not_in_gestores_defaults(self):
+        perm = Permission.objects.get(codename="access_registry_screen")
+        self.assertEqual(perm.content_type.app_label, "core")
+        from django.contrib.auth.models import Group
+
+        gestores = Group.objects.create(name="Gestores teste")
+        gestores.permissions.add(Permission.objects.get(codename="view_site"))
+        user = User.objects.create_user(username="g", email="g@x.com", password="x")
+        user.groups.add(gestores)
+        user = User.objects.get(pk=user.pk)
+        self.assertTrue(user.has_perm("core.view_site"))  # continua lendo os dados
+        self.assertFalse(user.has_perm("core.access_registry_screen"))  # mas sem a tela

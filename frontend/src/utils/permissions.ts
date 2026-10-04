@@ -49,6 +49,7 @@ export const PERMS = {
   viewProjectAttachment: "projects.view_projectattachment",
   addProjectAttachment: "projects.add_projectattachment",
   deleteProjectAttachment: "projects.delete_projectattachment",
+  accessRegistryScreen: "core.access_registry_screen",
   viewDailyUpdate: "updates.view_dailyupdate",
   addDailyUpdate: "updates.add_dailyupdate",
   changeDailyUpdate: "updates.change_dailyupdate",
@@ -116,14 +117,7 @@ export const MASTER_DATA_PERMS = [
   PERMS.viewSowImport,
 ];
 
-export const CADASTROS_PERMS = [
-  PERMS.viewCompany,
-  PERMS.viewClient,
-  PERMS.viewSite,
-  PERMS.viewCategory,
-  PERMS.viewProjectType,
-  PERMS.viewJobTitle,
-  PERMS.viewCollaborator,
-  PERMS.viewResponsible,
-  PERMS.viewTask,
-];
+// A tela "Cadastros Gerais" tem permissão própria (core.access_registry_screen).
+// As permissões view_* de cada cadastro continuam servindo só para ler os dados
+// em outras telas (Projetos, Tarefas...), sem abrir a tela de cadastros.
+export const CADASTROS_PERMS = [PERMS.accessRegistryScreen];
