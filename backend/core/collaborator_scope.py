@@ -43,6 +43,25 @@ def managed_collaborator_ids(user):
     return visible
 
 
+def is_supervisor_user(user):
+    """True quando o usuário (não admin) tem cadastro de técnico com cargo de Supervisor."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser or user.is_staff:
+        return False
+    person = getattr(user, "person", None)
+    collaborator = getattr(person, "collaborator_role", None) if person is not None else None
+    return collaborator is not None and is_supervisor(collaborator)
+
+
+def scope_supervisor_projects(queryset, user, field_prefix=""):
+    """Supervisor só enxerga os projetos em que é o Responsável CSTR. Os demais
+    perfis não sofrem restrição. `field_prefix` ex.: "project__"."""
+    if not is_supervisor_user(user):
+        return queryset
+    return queryset.filter(**{f"{field_prefix}responsible_cstr__person__user": user})
+
+
 def scope_collaborators(queryset, user, field="pk"):
     """Restringe um queryset ao que o gestor-supervisor pode ver. `field` é o
     caminho até o id do colaborador (ex.: "collaborator_id")."""

@@ -2060,6 +2060,15 @@ class ProjectDailyUpdateCreateSerializer(ClientScopedRelationsMixin, serializers
         model = ProjectDailyUpdate
         fields = ("id", "project", "date", "summary")
 
+    def validate_project(self, project):
+        from core.collaborator_scope import scope_supervisor_projects
+
+        request = self.context["request"]
+        allowed = scope_supervisor_projects(type(project).objects.filter(pk=project.pk), request.user)
+        if not allowed.exists():
+            raise serializers.ValidationError("Você só pode gerar atualizações dos projetos pelos quais é responsável.")
+        return project
+
     def create(self, validated_data):
         request = self.context["request"]
         return ProjectDailyUpdate.objects.create(created_by=request.user, **validated_data)

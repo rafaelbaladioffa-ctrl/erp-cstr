@@ -115,7 +115,7 @@ export default function ProjectCombobox({
             top: 40,
             maxHeight: 320,
             overflowY: "auto",
-            background: "var(--surface)",
+            background: "var(--white)",
             border: "1px solid var(--border)",
             borderRadius: 8,
             boxShadow: "0 8px 24px rgba(0,0,0,.12)",
@@ -135,7 +135,7 @@ export default function ProjectCombobox({
               style={{
                 padding: "8px 12px",
                 cursor: "pointer",
-                background: index === highlight ? "var(--surface-2)" : "transparent",
+                background: index === highlight ? "var(--orange-soft)" : "transparent",
                 borderBottom: "1px solid var(--border)",
               }}
             >

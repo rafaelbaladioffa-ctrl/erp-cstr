@@ -301,3 +301,27 @@ class ProjectUpdateEmailContentTests(TestCase):
         self.assertIn("Porta trancada", html)
         self.assertNotIn("Cancelada", html)
         self.assertNotIn("Atividades executadas", html)
+
+
+class SupervisorProjectScopeTests(TestCase):
+    def test_supervisor_only_sees_projects_where_is_responsible_cstr(self):
+        from core.collaborator_scope import scope_supervisor_projects
+        from core.models import Responsible
+        from projects.models import Project
+
+        company = Company.objects.create(legal_name="Empresa", trade_name="Empresa")
+        title = JobTitle.objects.create(company=company, name="Supervisor de Campo")
+        user = User.objects.create_user(username="sup", password="x")
+        person = Person.objects.create(name="Sup", company=company, user=user)
+        Collaborator.objects.create(person=person, job_title=title)
+        own = Responsible.objects.create(person=person, kind=Responsible.KIND_CSTR)
+        other = Responsible.objects.create(person=Person.objects.create(name="Outro", company=company), kind=Responsible.KIND_CSTR)
+        mine = Project.objects.create(company=company, name="Meu", responsible_cstr=own)
+        Project.objects.create(company=company, name="Alheio", responsible_cstr=other)
+        Project.objects.create(company=company, name="Sem responsavel")
+
+        visible = scope_supervisor_projects(Project.objects.all(), user)
+        self.assertEqual(list(visible), [mine])
+
+        admin = User.objects.create_superuser(username="adm", password="x", email="a@b.com")
+        self.assertEqual(scope_supervisor_projects(Project.objects.all(), admin).count(), 3)

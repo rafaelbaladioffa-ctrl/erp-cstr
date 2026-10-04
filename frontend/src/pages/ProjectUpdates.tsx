@@ -197,7 +197,7 @@ export default function ProjectUpdates() {
 
   useEffect(() => {
     reload();
-    projectsApi.list().then((data) => setProjects(data.results));
+    projectsApi.list({ for_updates: "1" }).then((data) => setProjects(data.results));
     collaboratorsApi.list().then((data) => setCollaborators(data.results));
     usersApi.options().then(setUserOptions).catch(() => setUserOptions([]));
   }, []);
