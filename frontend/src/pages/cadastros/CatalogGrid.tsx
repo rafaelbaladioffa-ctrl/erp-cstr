@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { FilterTh, useColumnFilters } from "../../components/ui/ColumnFilter";
 import Icon from "../../components/ui/Icon";
 import { useI18n } from "../../i18n";
 import type { EntityConfig } from "./registryConfig";
@@ -46,6 +47,13 @@ export default function CatalogGrid({
   const { locale, t } = useI18n();
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const newMenuRef = useRef<HTMLDivElement>(null);
+  const { filtered: visibleRecords, filters: colFilters } = useColumnFilters<RecentRecord>(recentRecords, {
+    entity: (r) => r.entityLabel,
+    name: (r) => r.name,
+    code: (r) => r.code || "—",
+    status: (r) => (r.isActive ? t.common.ativo : t.common.inativo),
+    updated: (r) => formatDate(r.updatedAt, locale),
+  });
 
   return (
     <div>
@@ -160,15 +168,15 @@ export default function CatalogGrid({
           <table className="table">
             <thead>
               <tr>
-                <th>{t.crud.entidade}</th>
-                <th>{t.crud.nomeDescricao}</th>
-                <th>{t.crud.codigo}</th>
-                <th>{t.crud.situacao}</th>
-                <th>{t.crud.atualizadoEm}</th>
+                <FilterTh colKey="entity" label={t.crud.entidade} filters={colFilters} />
+                <FilterTh colKey="name" label={t.crud.nomeDescricao} filters={colFilters} />
+                <FilterTh colKey="code" label={t.crud.codigo} filters={colFilters} />
+                <FilterTh colKey="status" label={t.crud.situacao} filters={colFilters} />
+                <FilterTh colKey="updated" label={t.crud.atualizadoEm} filters={colFilters} />
               </tr>
             </thead>
             <tbody>
-              {recentRecords.map((row, i) => (
+              {visibleRecords.map((row, i) => (
                 <tr key={`${row.entityKey}-${i}`} onClick={() => onSelect(row.entityKey)} style={{ cursor: "pointer" }}>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -192,7 +200,7 @@ export default function CatalogGrid({
                   <td>{formatDate(row.updatedAt, locale)}</td>
                 </tr>
               ))}
-              {recentRecords.length === 0 && (
+              {visibleRecords.length === 0 && (
                 <tr>
                   <td colSpan={5}>
                     <div className="table-empty">{t.crud.nenhumRecente}</div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FilterTh, useColumnFilters } from "../components/ui/ColumnFilter";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { projectsApi } from "../api/resources";
 import type { Project } from "../api/types";
@@ -506,7 +507,7 @@ export default function ProjectsList() {
     (viewMode === "kanban" ? projects : scoped).map((p) => p.category_name).filter(Boolean)
   )) as string[], [scoped, projects, viewMode]);
 
-  const filtered = useMemo(() => {
+  const baseFiltered = useMemo(() => {
     return scoped.filter((p) => {
       if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.po.toLowerCase().includes(search.toLowerCase())) return false;
       if (clientFilter && p.client_name !== clientFilter) return false;
@@ -515,6 +516,19 @@ export default function ProjectsList() {
       return true;
     });
   }, [scoped, search, clientFilter, siteFilter, categoryFilter]);
+
+  // Filtro por coluna (clicar no título da coluna da lista)
+  const { filtered, filters: colFilters } = useColumnFilters<Project>(baseFiltered, {
+    project: (pr) => pr.name,
+    client_site: (pr) => `${pr.client_name || "—"} / ${pr.site_name || "—"}`,
+    tasks: (pr) => `${pr.completed_tasks}/${pr.total_tasks}`,
+    progress: (pr) => `${pr.progress_percent}%`,
+    status: (pr) => pr.status_display,
+    deadline: (pr) => formatDate(pr.planned_end, locale),
+  });
+  useEffect(() => {
+    setPage(1);
+  }, [colFilters.selected]);
 
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
@@ -694,12 +708,12 @@ export default function ProjectsList() {
               <table className="table" style={{ minWidth: 700 }}>
                 <thead>
                   <tr>
-                    <th style={{ minWidth: 200 }}>{lp.colProject}</th>
-                    <th>{lp.colClientSite}</th>
-                    <th style={{ textAlign: "center" }}>{lp.colTasks}</th>
-                    <th style={{ minWidth: 160 }}>{lp.colProgress}</th>
-                    <th>{lp.colStatus}</th>
-                    <th>{lp.colDeadline}</th>
+                    <FilterTh colKey="project" label={lp.colProject} filters={colFilters} style={{ minWidth: 200 }} />
+                    <FilterTh colKey="client_site" label={lp.colClientSite} filters={colFilters} />
+                    <FilterTh colKey="tasks" label={lp.colTasks} filters={colFilters} style={{ textAlign: "center" }} align="center" />
+                    <FilterTh colKey="progress" label={lp.colProgress} filters={colFilters} style={{ minWidth: 160 }} />
+                    <FilterTh colKey="status" label={lp.colStatus} filters={colFilters} />
+                    <FilterTh colKey="deadline" label={lp.colDeadline} filters={colFilters} />
                     <th>{lp.colActions}</th>
                   </tr>
                 </thead>

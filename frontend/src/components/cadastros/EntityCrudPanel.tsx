@@ -20,6 +20,7 @@ import DynamicForm, { type FormValues } from "../ui/DynamicForm";
 import Icon from "../ui/Icon";
 import Modal from "../ui/Modal";
 import Pagination from "../ui/Pagination";
+import { FilterTh, useColumnFilters } from "../ui/ColumnFilter";
 
 type ApiErrors = Record<string, string[]>;
 
@@ -162,7 +163,7 @@ export default function EntityCrudPanel({
     URL.revokeObjectURL(url);
   }
 
-  const filtered = useMemo(() => {
+  const baseFiltered = useMemo(() => {
     let result = rows;
     for (const filter of entity.filters ?? []) {
       const value = filterValues[filter.key];
@@ -174,6 +175,21 @@ export default function EntityCrudPanel({
     }
     return result;
   }, [rows, search, filterValues, entity.filters]);
+
+  // Filtro por coluna (clicar no título): valores exatamente como aparecem na tabela.
+  const columnAccessors: Record<string, (row: Record<string, unknown>) => string> = {};
+  for (const col of entity.columns) {
+    columnAccessors[col.key] = (row) => (col.render ? col.render(row as never) : String((row[col.key] as string | number) ?? "—")) || "—";
+  }
+  columnAccessors.__status = (row) => (row[statusField] ? t.common.ativo : t.common.inativo);
+  const { filtered, filters: colFilters } = useColumnFilters(baseFiltered, columnAccessors);
+  useEffect(() => {
+    colFilters.clearAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity.key]);
+  useEffect(() => {
+    setPage(1);
+  }, [colFilters.selected]);
 
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
@@ -500,9 +516,9 @@ export default function EntityCrudPanel({
               <thead>
                 <tr>
                   {entity.columns.map((col) => (
-                    <th key={col.key}>{col.label}</th>
+                    <FilterTh key={col.key} colKey={col.key} label={col.label} filters={colFilters} />
                   ))}
-                  <th>{t.crud.situacao}</th>
+                  <FilterTh colKey="__status" label={t.crud.situacao} filters={colFilters} />
                   {showActionsColumn && <th>{t.crud.acoes}</th>}
                 </tr>
               </thead>

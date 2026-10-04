@@ -12,6 +12,7 @@ import type {
   SitesPanelProject,
   SitesPanelTechCounts,
 } from "../api/types";
+import { FilterTh, useColumnFilters } from "../components/ui/ColumnFilter";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import { useAuth } from "../context/AuthContext";
@@ -801,10 +802,23 @@ function AnalysisTab({
   p: PanelText;
 }) {
   const healthRank: Record<SitesPanelHealth, number> = { late: 0, risk: 1, no_data: 2, ok: 3 };
+  // Filtro por coluna (clicar no título): vale para todos os grupos da tabela.
+  const { filtered: visibleProjects, filters: colFilters } = useColumnFilters<SitesPanelProject>(projects, {
+    project: (r) => r.name,
+    status: (r) => r.status_display,
+    resp: (r) => r.responsible_cstr?.name ?? "—",
+    progress: (r) => (r.real_pct == null ? p.notStarted : `${r.real_pct}%`),
+    end: (r) => fmtDate(r.planned_end),
+    deviation: (r) => (r.deviation_pp != null ? `${r.deviation_pp > 0 ? "−" : "+"}${Math.abs(r.deviation_pp)} ${p.pp}` : "—"),
+    techs: (r) => String(r.technicians_today.length),
+    occ: (r) => String(r.occurrences_open),
+    update: (r) => (r.update_status ? p.update[r.update_status] : "—"),
+    health: (r) => p.healthProject[r.health],
+  });
   const grouped = groups
     .map((g) => ({
       group: g,
-      rows: projects
+      rows: visibleProjects
         .filter((r) => r.group_key === g.key)
         .sort((a, b) => healthRank[a.health] - healthRank[b.health] || (b.deviation_pp ?? -99) - (a.deviation_pp ?? -99)),
     }))
@@ -823,7 +837,7 @@ function AnalysisTab({
             </span>
           )}
         </div>
-        <button className="btn btn-sm btn-outline" onClick={() => exportCsv(projects, p)}>
+        <button className="btn btn-sm btn-outline" onClick={() => exportCsv(visibleProjects, p)}>
           <Icon name="download" style={{ fontSize: 16 }} />
           {p.exportCsv}
         </button>
@@ -832,16 +846,16 @@ function AnalysisTab({
         <table className="table sp-table">
           <thead>
             <tr>
-              <th>{p.col.project}</th>
-              <th>{p.col.status}</th>
-              <th>{p.col.resp}</th>
-              <th>{p.col.progress}</th>
-              <th>{p.col.end}</th>
-              <th style={{ textAlign: "right" }}>{p.col.deviation}</th>
-              <th style={{ textAlign: "right" }}>{p.col.techs}</th>
-              <th style={{ textAlign: "right" }}>{p.col.occ}</th>
-              <th>{p.col.update}</th>
-              <th>{p.col.health}</th>
+              <FilterTh colKey="project" label={p.col.project} filters={colFilters} />
+              <FilterTh colKey="status" label={p.col.status} filters={colFilters} />
+              <FilterTh colKey="resp" label={p.col.resp} filters={colFilters} />
+              <FilterTh colKey="progress" label={p.col.progress} filters={colFilters} />
+              <FilterTh colKey="end" label={p.col.end} filters={colFilters} />
+              <FilterTh colKey="deviation" label={p.col.deviation} filters={colFilters} style={{ textAlign: "right" }} align="right" />
+              <FilterTh colKey="techs" label={p.col.techs} filters={colFilters} style={{ textAlign: "right" }} align="right" />
+              <FilterTh colKey="occ" label={p.col.occ} filters={colFilters} style={{ textAlign: "right" }} align="right" />
+              <FilterTh colKey="update" label={p.col.update} filters={colFilters} />
+              <FilterTh colKey="health" label={p.col.health} filters={colFilters} />
             </tr>
           </thead>
           {grouped.map(({ group, rows }) => (
