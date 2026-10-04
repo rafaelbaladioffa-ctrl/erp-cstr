@@ -19,6 +19,7 @@ from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDaily
 from projects.models import ProjectTask, ProjectTaskAssignment
 
 from .reports import MAX_PERIOD_DAYS, build_operations_reports
+from core.collaborator_scope import scope_collaborators
 
 
 class HasOperationsBoardPermission(IsAuthenticated):
@@ -115,12 +116,13 @@ def _queue_by_collaborator(collaborator_ids):
     return result
 
 
-def build_board_data(site_id, date=None):
+def build_board_data(site_id, date=None, user=None):
     """Monta os mesmos dados de OperationsBoardView.get() — extraído à parte
     pra ser reaproveitado pela view de "print" (bot do WhatsApp), sem
     duplicar a lógica."""
     today = date or timezone.localdate()
     collaborators_qs = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
+    collaborators_qs = scope_collaborators(collaborators_qs, user)
     if site_id:
         collaborators_qs = collaborators_qs.filter(sites=site_id)
 
@@ -236,15 +238,16 @@ class OperationsBoardView(APIView):
             site_id = None
         date_str = request.query_params.get("date")
         date = parse_date(date_str) if date_str else None
-        return Response(build_board_data(site_id, date=date))
+        return Response(build_board_data(site_id, date=date, user=request.user))
 
 
-def build_timeline_data(site_id, date):
+def build_timeline_data(site_id, date, user=None):
     """Monta os mesmos dados de OperationsTimelineView.get() — extraído à
     parte pra ser reaproveitado pela view de "print" (bot do WhatsApp)."""
     is_today = date == timezone.localdate()
 
     collaborators_qs = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
+    collaborators_qs = scope_collaborators(collaborators_qs, user)
     if site_id:
         collaborators_qs = collaborators_qs.filter(sites=site_id)
 
@@ -335,7 +338,7 @@ class OperationsTimelineView(APIView):
         if date is None:
             date = timezone.localdate()
 
-        return Response(build_timeline_data(site_id, date))
+        return Response(build_timeline_data(site_id, date, user=request.user))
 
 
 def _log_entries(collaborator_ids, date, limit=60):
@@ -443,5 +446,7 @@ class OperationsReportsView(APIView):
             return Response({"detail": f"O período máximo é de {MAX_PERIOD_DAYS} dias."}, status=400)
 
         return Response(
-            build_operations_reports(site_id=site_id, date_from=date_from, date_to=date_to, log_entries_fn=_log_entries)
+            build_operations_reports(
+                site_id=site_id, date_from=date_from, date_to=date_to, log_entries_fn=_log_entries, user=request.user
+            )
         )

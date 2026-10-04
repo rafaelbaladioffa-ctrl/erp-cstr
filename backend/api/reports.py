@@ -22,6 +22,8 @@ from datetime import datetime, time, timedelta
 from django.utils import timezone
 
 from core.models import Collaborator
+
+from core.collaborator_scope import managed_collaborator_ids, scope_collaborators
 from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import ProjectTask
 
@@ -144,7 +146,7 @@ def _distribution(values):
     }
 
 
-def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn):
+def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, user=None):
     now = timezone.now()
     today = timezone.localdate()
 
@@ -254,12 +256,19 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn):
             group["hh_per_meter"].append(task_man_hours / meters)
             group["total_meters"] += meters
 
+    # Supervisor só enxerga os colaboradores sob a sua gestão.
+    allowed_ids = managed_collaborator_ids(user)
+    if allowed_ids is not None:
+        tech = {k: v for k, v in tech.items() if k in allowed_ids}
+
     # --- Técnicos do período: quem concluiu tarefa OU teve check-in -------
     presence_qs = TechnicianDailyPresence.objects.filter(
         date__gte=date_from, date__lte=date_to, checked_in_at__isnull=False
     )
     if site_id:
         presence_qs = presence_qs.filter(collaborator__sites=site_id)
+    if allowed_ids is not None:
+        presence_qs = presence_qs.filter(collaborator_id__in=allowed_ids)
     days_worked = {}
     for collaborator_id in presence_qs.values_list("collaborator_id", flat=True):
         days_worked[collaborator_id] = days_worked.get(collaborator_id, 0) + 1
@@ -399,6 +408,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn):
 
     # --- Bloco "Hoje" (independe do filtro de período, RN-14) ------------
     today_collaborators = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
+    today_collaborators = scope_collaborators(today_collaborators, user)
     if site_id:
         today_collaborators = today_collaborators.filter(sites=site_id)
     today_by_id = {c.id: c for c in today_collaborators}

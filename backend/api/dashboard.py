@@ -79,6 +79,7 @@ class TechnicalPerformanceView(APIView):
 
     def get(self, request):
         data = build_technical_performance(
+            user=request.user,
             company_id=request.query_params.get("company"),
             date_from=parse_date(request.query_params.get("date_from")),
             date_to=parse_date(request.query_params.get("date_to")),

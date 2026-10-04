@@ -26,6 +26,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from core.access_scope import get_scope_for_user, scope_project_queryset
+from core.collaborator_scope import scope_collaborators
 from core.models import Collaborator, Site
 from dispatch.models import TechnicianAbsence, TechnicianDailyPresence
 from updates.models import ProjectDailyUpdate
@@ -274,12 +275,12 @@ def resolve_dispatch_of_day(assignments, today):
     return None, None
 
 
-def build_technicians_of_day(today, project_ids_in_scope, site_ids_in_scope=None):
+def build_technicians_of_day(today, project_ids_in_scope, site_ids_in_scope=None, user=None):
     """Lista de técnicos com categoria de presença e local do dia. Só
     entram técnicos cujo despacho do dia é de um projeto do escopo OU (sem
     despacho) com lotação em algum site do escopo."""
     collaborators = list(
-        technician_queryset().select_related("person", "job_title").prefetch_related("sites")
+        scope_collaborators(technician_queryset(), user).select_related("person", "job_title").prefetch_related("sites")
     )
     ids = [c.id for c in collaborators]
     presences = {p.collaborator_id: p for p in TechnicianDailyPresence.objects.filter(collaborator_id__in=ids, date=today)}
@@ -473,7 +474,7 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
             site_scope = {p.site_id for p in projects if p.site_id}
         else:
             site_scope = None
-        technicians = build_technicians_of_day(today, project_ids, site_scope)
+        technicians = build_technicians_of_day(today, project_ids, site_scope, user=user)
         # Escopo de gestor/cliente: só técnicos de sites que ele enxerga.
         scope = get_scope_for_user(user)
         if scope is not None and scope.get("sites") is not None:

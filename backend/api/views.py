@@ -115,6 +115,7 @@ from .permissions import (
     RequireViewPermissionForActions,
     ViewAwareModelPermissions,
 )
+from core.collaborator_scope import scope_collaborators
 from .serializers import (
     AuditLogSerializer,
     ClientCrudSerializer,
@@ -440,7 +441,9 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [ViewAwareModelPermissions]
 
     def get_queryset(self):
-        return deny_if_client_scoped(super().get_queryset(), self.request.user)
+        queryset = deny_if_client_scoped(super().get_queryset(), self.request.user)
+        # Supervisor só enxerga os colaboradores sob a sua gestão.
+        return scope_collaborators(queryset, self.request.user)
 
 
 class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
@@ -2168,6 +2171,10 @@ class CollaboratorRegistryViewSet(RegistryViewSet):
     serializer_class = CollaboratorCrudSerializer
     search_fields = ("person__name", "registration", "yellow_badge")
 
+    def get_queryset(self):
+        # Supervisor só enxerga os colaboradores sob a sua gestão.
+        return scope_collaborators(super().get_queryset(), self.request.user)
+
 
 class TaskViewSet(RegistryViewSet):
     queryset = Task.objects.prefetch_related("project_types").order_by("name")
@@ -2535,7 +2542,7 @@ class TechnicianAbsenceViewSet(viewsets.ModelViewSet):
     permission_classes = [ViewAwareModelPermissions]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = scope_collaborators(super().get_queryset(), self.request.user, field="collaborator_id")
         collaborator_id = self.request.query_params.get("collaborator")
         if collaborator_id:
             queryset = queryset.filter(collaborator_id=collaborator_id)

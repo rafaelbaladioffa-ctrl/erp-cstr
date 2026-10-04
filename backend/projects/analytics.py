@@ -9,6 +9,7 @@ from datetime import date
 
 from django.utils import timezone
 
+from core.collaborator_scope import scope_collaborators
 from core.models import Collaborator
 from .models import Project, ProjectTask
 
@@ -116,8 +117,9 @@ def build_projects_performance(*, company_id=None, client_id=None, status=None, 
     }
 
 
-def build_technical_performance(*, company_id=None, date_from=None, date_to=None):
+def build_technical_performance(*, company_id=None, date_from=None, date_to=None, user=None):
     collaborators = Collaborator.objects.filter(is_active=True).select_related("person", "person__company", "job_title")
+    collaborators = scope_collaborators(collaborators, user)
     if company_id:
         collaborators = collaborators.filter(person__company_id=company_id)
     collaborators = collaborators.prefetch_related(
