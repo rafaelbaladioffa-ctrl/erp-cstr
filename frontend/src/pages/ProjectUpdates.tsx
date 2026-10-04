@@ -10,6 +10,7 @@ import { downloadAuthenticatedFile } from "../utils/downloadFile";
 import { PERMS, hasPerm } from "../utils/permissions";
 import { useI18n, usePageText } from "../i18n";
 import ProjectCombobox from "../components/ui/ProjectCombobox";
+import WeeklyUpdatePanel from "../components/projects/WeeklyUpdatePanel";
 import EmailLanguageSelect, { defaultEmailLanguage, type EmailLanguage } from "../components/ui/EmailLanguageSelect";
 
 const TEXT = {
@@ -19,6 +20,7 @@ const TEXT = {
     subtitle: "Gere, edite e envie o status consolidado de cada projeto.",
     cancel: "Cancelar",
     newUpdate: "Nova Atualização",
+    weeklyUpdate: "Update Semanal",
     period: "Período",
     search: "Buscar",
     searchPlaceholder: "PO ou nome do projeto...",
@@ -66,6 +68,7 @@ const TEXT = {
     subtitle: "Generate, edit and send the consolidated status for each project.",
     cancel: "Cancel",
     newUpdate: "New Update",
+    weeklyUpdate: "Weekly Update",
     period: "Period",
     search: "Search",
     searchPlaceholder: "PO or project name...",
@@ -112,6 +115,7 @@ const TEXT = {
     subtitle: "Genere, edite y envíe el estado consolidado de cada proyecto.",
     cancel: "Cancelar",
     newUpdate: "Nueva Actualización",
+    weeklyUpdate: "Update Semanal",
     period: "Período",
     search: "Buscar",
     searchPlaceholder: "PO o nombre del proyecto...",
@@ -168,6 +172,7 @@ export default function ProjectUpdates() {
   const [userOptions, setUserOptions] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [weeklyOpen, setWeeklyOpen] = useState(false);
   const [selected, setSelected] = useState<ProjectDailyUpdate | null>(null);
 
   const [newProjectId, setNewProjectId] = useState<number | "">("");
@@ -263,10 +268,18 @@ export default function ProjectUpdates() {
         subtitle={p.subtitle}
         actions={
           canCreate ? (
-            <button className="btn btn-primary" onClick={() => setCreating((v) => !v)}>
-              <Icon name={creating ? "close" : "add"} style={{ fontSize: 18 }} />
-              {creating ? p.cancel : p.newUpdate}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              {canEdit && (
+                <button className="btn btn-secondary" onClick={() => setWeeklyOpen((v) => !v)}>
+                  <Icon name={weeklyOpen ? "close" : "date_range"} style={{ fontSize: 18 }} />
+                  {weeklyOpen ? p.cancel : p.weeklyUpdate}
+                </button>
+              )}
+              <button className="btn btn-primary" onClick={() => setCreating((v) => !v)}>
+                <Icon name={creating ? "close" : "add"} style={{ fontSize: 18 }} />
+                {creating ? p.cancel : p.newUpdate}
+              </button>
+            </div>
           ) : undefined
         }
       />
@@ -305,6 +318,8 @@ export default function ProjectUpdates() {
           </div>
         </div>
       </div>
+
+      {weeklyOpen && canEdit && <WeeklyUpdatePanel projects={projects} userOptions={userOptions} />}
 
       {creating && canCreate && (
         <div className="form-card">

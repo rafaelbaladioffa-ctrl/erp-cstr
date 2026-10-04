@@ -486,6 +486,17 @@ export const projectUpdatesApi = {
     apiClient
       .post<{ sent: string[]; skipped: string[]; detail?: string }>(`/project-updates/${id}/send-email/`, payload || {})
       .then((r) => r.data),
+  sendWeekly: (payload: {
+    project_ids: number[];
+    start: string;
+    end: string;
+    user_ids?: number[];
+    emails?: string[];
+    language?: string;
+  }) =>
+    apiClient
+      .post<{ sent: string[]; skipped: string[]; projects: number }>("/project-updates/send-weekly/", payload)
+      .then((r) => r.data),
   pdfPath: (id: number) => `/project-updates/${id}/pdf/`,
 };
 
