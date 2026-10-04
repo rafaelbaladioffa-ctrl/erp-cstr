@@ -25,6 +25,7 @@ from .models import (
     JobTitle,
     Notification,
     Person,
+    ConsultimerProjectType,
     ProjectType,
     Region,
     Responsible,
@@ -506,6 +507,15 @@ class ProjectTypeAdminForm(forms.ModelForm):
             self.instance.name = current_name
         self.additional_names = [name for name in names if name != current_name]
         return cleaned_data
+
+
+@admin.register(ConsultimerProjectType)
+class ConsultimerProjectTypeAdmin(DenyClientScopedAdminMixin, SelectablePageSizeAdminMixin, ModelAdmin):
+    list_display = ("name", "code", "is_active")
+    list_display_links = ("name",)
+    list_filter = ("is_active",)
+    search_fields = ("name", "code", "description")
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(ProjectType)

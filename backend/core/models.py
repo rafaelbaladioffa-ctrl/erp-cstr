@@ -473,6 +473,28 @@ class ProjectType(TimestampedModel):
         return self.name or "Tipo de projeto sem identificação"
 
 
+class ConsultimerProjectType(TimestampedModel):
+    """Modalidade de projeto da Consultimer (ex: Deployment, Fitout).
+    A sigla (`code`) identifica o tipo no código do projeto."""
+
+    name = models.CharField("nome", max_length=100)
+    code = models.CharField("sigla", max_length=10, unique=True)
+    description = models.TextField("descrição", blank=True)
+    is_active = models.BooleanField("ativo", default=True)
+
+    class Meta:
+        verbose_name = "Tipo de Projeto Consultimer"
+        verbose_name_plural = "Tipos de Projeto Consultimer"
+        ordering = ("name",)
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+    def save(self, *args, **kwargs):
+        self.code = (self.code or "").strip().upper()
+        return super().save(*args, **kwargs)
+
+
 class TaskSequence(models.Model):
     year = models.PositiveIntegerField("ano", primary_key=True)
     last_number = models.PositiveIntegerField("último número", default=0)
@@ -534,6 +556,7 @@ class Task(TimestampedModel):
 class Client(PhoneNormalizedModel, ActiveCompanyModel):
     PERSON_TYPE_CHOICES = (("company", "Pessoa jurídica"), ("person", "Pessoa física"))
 
+    number = models.PositiveIntegerField("número do cadastro", null=True, blank=True, unique=True, editable=False)
     person_type = models.CharField(
         "tipo de pessoa",
         max_length=10,
@@ -565,6 +588,18 @@ class Client(PhoneNormalizedModel, ActiveCompanyModel):
 
     def __str__(self):
         return self.trade_name or self.legal_name or self.tax_id or "Cliente sem identificação"
+
+    @property
+    def number_code(self):
+        return f"{self.number:03d}" if self.number else ""
+
+    def save(self, *args, **kwargs):
+        if self.number is None:
+            with transaction.atomic():
+                last = Client.objects.select_for_update().aggregate(m=models.Max("number"))["m"] or 0
+                self.number = last + 1
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
 
 class Notification(TimestampedModel):

@@ -6,6 +6,7 @@ import type {
   Company,
   Project,
   ProjectType,
+  ConsultimerProjectType,
   ResponsibleFull,
   SiteFull,
 } from "../../api/types";
@@ -109,6 +110,7 @@ export default function ProjectFormModal({
   const [sites, setSites] = useState<SiteFull[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
+  const [consultimerTypes, setConsultimerTypes] = useState<ConsultimerProjectType[]>([]);
   const [responsibles, setResponsibles] = useState<ResponsibleFull[]>([]);
   const [clientResponsibles, setClientResponsibles] = useState<ResponsibleFull[]>([]);
   const [loadingRefs, setLoadingRefs] = useState(true);
@@ -118,7 +120,7 @@ export default function ProjectFormModal({
       ? { ...project }
       : {
           company: null, name: "", po: "", link_count: 0, has_rack_positions: false, client: null, site: null, category: null,
-          project_type: null, responsible_cstr: null, responsible_client: null, status: "planning",
+          project_type: null, consultimer_type: null, responsible_cstr: null, responsible_client: null, status: "planning",
           planned_start: null, planned_end: null, description: "", notes: "", is_active: true,
         }
   );
@@ -132,15 +134,17 @@ export default function ProjectFormModal({
       registryApi.sites.list({ page_size: "500" } as never),
       registryApi.categories.list({ page_size: "200" } as never),
       registryApi.projectTypes.list({ page_size: "200" } as never),
+      registryApi.consultimerProjectTypes.list({ page_size: "200" } as never),
       registryApi.responsibles.list({ page_size: "200", kind: "cstr" } as never),
       registryApi.responsibles.list({ page_size: "500", kind: "client" } as never),
     ])
-      .then(([c, cl, s, cat, pt, resp, clResp]) => {
+      .then(([c, cl, s, cat, pt, ct, resp, clResp]) => {
         if (c.status === "fulfilled") setCompanies(c.value.results);
         if (cl.status === "fulfilled") setClients(cl.value.results);
         if (s.status === "fulfilled") setSites(s.value.results);
         if (cat.status === "fulfilled") setCategories(cat.value.results);
         if (pt.status === "fulfilled") setProjectTypes(pt.value.results);
+        if (ct.status === "fulfilled") setConsultimerTypes(ct.value.results.filter((t) => t.is_active));
         if (resp.status === "fulfilled") setResponsibles(resp.value.results);
         if (clResp.status === "fulfilled") setClientResponsibles(clResp.value.results);
       })
@@ -165,6 +169,7 @@ export default function ProjectFormModal({
           .filter((s) => !selectedClientId || s.client === selectedClientId)
           .map((s) => ({ value: s.id, label: s.code || s.name })),
       },
+      { name: "consultimer_type", label: "Tipo Consultimer", type: "select", options: consultimerTypes.map((t) => ({ value: t.id, label: `${t.name} (${t.code})` })) },
       { name: "project_type", label: p.tipoProjeto, type: "select", options: projectTypes.map((pt) => ({ value: pt.id, label: pt.name })) },
       { name: "category", label: p.categoria, type: "select", options: categories.map((cat) => ({ value: cat.id, label: cat.name })) },
       { name: "responsible_cstr", label: p.responsavelCstr, type: "select", options: responsibles.map((r) => ({ value: r.id, label: r.name })) },
@@ -180,7 +185,7 @@ export default function ProjectFormModal({
       { name: "notes", label: p.observacoes, type: "textarea", span: 2 },
       { name: "is_active", label: p.situacao, type: "checkbox", placeholder: t.common.ativo, span: 2 },
     ];
-  }, [companies, clients, sites, categories, projectTypes, responsibles, clientResponsibles, values.client, p, t, statusOptions]);
+  }, [companies, clients, sites, categories, projectTypes, consultimerTypes, responsibles, clientResponsibles, values.client, p, t, statusOptions]);
 
   async function handleSave() {
     setSaving(true);

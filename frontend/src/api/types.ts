@@ -32,6 +32,8 @@ export interface Project {
   category: number | null;
   category_name: string | null;
   project_type: number | null;
+  consultimer_type: number | null;
+  consultimer_type_name: string | null;
   responsible_cstr: number | null;
   responsible_cstr_name: string | null;
   responsible_client: number | null;
@@ -125,6 +127,14 @@ export interface Category {
 export interface ProjectType {
   id: number;
   name: string;
+  description: string;
+  is_active: boolean;
+}
+
+export interface ConsultimerProjectType {
+  id: number;
+  name: string;
+  code: string;
   description: string;
   is_active: boolean;
 }
@@ -723,6 +733,8 @@ export interface SiteFull {
 
 export interface ClientFull {
   id: number;
+  number: number | null;
+  number_code: string;
   company: number | null;
   company_name: string | null;
   person_type: string;

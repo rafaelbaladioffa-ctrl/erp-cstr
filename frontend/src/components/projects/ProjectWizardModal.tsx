@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { projectsApi, registryApi } from "../../api/resources";
-import type { Category, ClientFull, Company, Project, ProjectType, ResponsibleFull, SiteFull } from "../../api/types";
+import type { Category, ClientFull, Company, ConsultimerProjectType, Project, ProjectType, ResponsibleFull, SiteFull } from "../../api/types";
 import { useI18n, usePageText } from "../../i18n";
 import DateInput from "../ui/DateInput";
 import Icon from "../ui/Icon";
@@ -199,6 +199,7 @@ type FormValues = {
   client: number | "";
   site: number | "";
   project_type: number | "";
+  consultimer_type: number | "";
   category: number | "";
   status: string;
   has_rack_positions: boolean;
@@ -213,7 +214,7 @@ type FormValues = {
 
 const INITIAL: FormValues = {
   name: "", po: "", company: "", client: "", site: "",
-  project_type: "", category: "", status: "planning",
+  project_type: "", consultimer_type: "", category: "", status: "planning",
   has_rack_positions: false, link_count: "",
   responsible_cstr: "", responsible_client: "",
   planned_start: "", planned_end: "", description: "", notes: "",
@@ -272,6 +273,7 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
   const [sites, setSites] = useState<SiteFull[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
+  const [consultimerTypes, setConsultimerTypes] = useState<ConsultimerProjectType[]>([]);
   const [responsibles, setResponsibles] = useState<ResponsibleFull[]>([]);
   const [clientResponsibles, setClientResponsibles] = useState<ResponsibleFull[]>([]);
   const [loadingRefs, setLoadingRefs] = useState(true);
@@ -283,14 +285,16 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
       registryApi.sites.list({ page_size: "500" } as never),
       registryApi.categories.list({ page_size: "200" } as never),
       registryApi.projectTypes.list({ page_size: "200" } as never),
+      registryApi.consultimerProjectTypes.list({ page_size: "200" } as never),
       registryApi.responsibles.list({ page_size: "200", kind: "cstr" } as never),
       registryApi.responsibles.list({ page_size: "500", kind: "client" } as never),
-    ]).then(([c, cl, s, cat, pt, resp, clResp]) => {
+    ]).then(([c, cl, s, cat, pt, ct, resp, clResp]) => {
       if (c.status === "fulfilled") setCompanies(c.value.results);
       if (cl.status === "fulfilled") setClients(cl.value.results);
       if (s.status === "fulfilled") setSites(s.value.results);
       if (cat.status === "fulfilled") setCategories(cat.value.results);
       if (pt.status === "fulfilled") setProjectTypes(pt.value.results);
+      if (ct.status === "fulfilled") setConsultimerTypes(ct.value.results.filter((t) => t.is_active));
       if (resp.status === "fulfilled") setResponsibles(resp.value.results);
       if (clResp.status === "fulfilled") setClientResponsibles(clResp.value.results);
     }).finally(() => setLoadingRefs(false));
@@ -346,6 +350,7 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
         client: values.client || null,
         site: values.site || null,
         project_type: values.project_type || null,
+        consultimer_type: values.consultimer_type || null,
         category: values.category || null,
         responsible_cstr: values.responsible_cstr || null,
         responsible_client: values.responsible_client || null,
@@ -472,6 +477,11 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
             <div>
               <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>{p.descPasso2}</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+                <SelectField label="Tipo Consultimer" error={errFirst("consultimer_type")}
+                  value={values.consultimer_type} onChange={(v) => set("consultimer_type", v)}
+                  options={consultimerTypes.map((t) => ({ value: t.id, label: `${t.name} (${t.code})` }))}
+                  placeholder={p.selecione}
+                />
                 <SelectField label={p.tipoProjeto} error={errFirst("project_type")}
                   value={values.project_type} onChange={(v) => set("project_type", v)}
                   options={projectTypes.map((pt) => ({ value: pt.id, label: pt.name }))}

@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
-from core.models import Category, Client, Collaborator, Company, ProjectType, Responsible, Site, Task, TimestampedModel
+from core.models import Category, Client, Collaborator, Company, ConsultimerProjectType, ProjectType, Responsible, Site, Task, TimestampedModel
 
 
 class ProjectSequence(models.Model):
@@ -45,6 +45,14 @@ class Project(TimestampedModel):
     client = models.ForeignKey(Client, verbose_name="cliente", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
     site = models.ForeignKey(Site, verbose_name="site", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
     project_type = models.ForeignKey(ProjectType, verbose_name="Tipo de Projeto", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
+    consultimer_type = models.ForeignKey(
+        ConsultimerProjectType,
+        verbose_name="Tipo Consultimer",
+        on_delete=models.PROTECT,
+        related_name="projects",
+        null=True,
+        blank=True,
+    )
     category = models.ForeignKey(Category, verbose_name="categoria", on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
     responsible_cstr = models.ForeignKey(
         Responsible,

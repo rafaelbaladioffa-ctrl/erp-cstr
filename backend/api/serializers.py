@@ -10,6 +10,7 @@ from core.models import (
     Company,
     JobTitle,
     Notification,
+    ConsultimerProjectType,
     ProjectType,
     Region,
     Responsible,
@@ -1324,6 +1325,22 @@ class ProjectTypeCrudSerializer(serializers.ModelSerializer):
         read_only_fields = ("created_at", "updated_at")
 
 
+class ConsultimerProjectTypeCrudSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConsultimerProjectType
+        fields = ("id", "name", "code", "description", "is_active", "created_at", "updated_at")
+        read_only_fields = ("created_at", "updated_at")
+
+    def validate_code(self, value):
+        value = value.strip().upper()
+        queryset = ConsultimerProjectType.objects.filter(code=value)
+        if self.instance is not None:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("Já existe um tipo com esta sigla.")
+        return value
+
+
 class JobTitleCrudSerializer(serializers.ModelSerializer):
     company_name = serializers.SerializerMethodField()
 
@@ -1360,14 +1377,15 @@ class SiteCrudSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer
 
 class ClientCrudSerializer(serializers.ModelSerializer):
     company_name = serializers.SerializerMethodField()
+    number_code = serializers.CharField(read_only=True)
 
     class Meta:
         model = Client
         fields = (
-            "id", "company", "company_name", "person_type", "legal_name", "trade_name", "tax_id",
+            "id", "number", "number_code", "company", "company_name", "person_type", "legal_name", "trade_name", "tax_id",
             "email", "phone", "address", "city", "state", "notes", "is_active", "created_at", "updated_at",
         )
-        read_only_fields = ("created_at", "updated_at")
+        read_only_fields = ("number", "created_at", "updated_at")
 
     def get_company_name(self, obj):
         return str(obj.company) if obj.company_id else None
@@ -1486,6 +1504,7 @@ class ProjectSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer)
     client_name = serializers.SerializerMethodField()
     site_name = serializers.SerializerMethodField()
     category_name = serializers.SerializerMethodField()
+    consultimer_type_name = serializers.SerializerMethodField()
     responsible_cstr_name = serializers.SerializerMethodField()
     responsible_client_name = serializers.SerializerMethodField()
     status_display = serializers.CharField(source="get_status_display", read_only=True)
@@ -1515,6 +1534,8 @@ class ProjectSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer)
             "category",
             "category_name",
             "project_type",
+            "consultimer_type",
+            "consultimer_type_name",
             "responsible_cstr",
             "responsible_cstr_name",
             "responsible_client",
@@ -1546,6 +1567,9 @@ class ProjectSerializer(ClientScopedRelationsMixin, serializers.ModelSerializer)
 
     def get_category_name(self, obj):
         return str(obj.category) if obj.category_id else None
+
+    def get_consultimer_type_name(self, obj):
+        return str(obj.consultimer_type) if obj.consultimer_type_id else None
 
     def get_responsible_cstr_name(self, obj):
         return str(obj.responsible_cstr) if obj.responsible_cstr_id else None

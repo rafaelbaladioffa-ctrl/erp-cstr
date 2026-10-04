@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.urls import reverse
 from django.db import IntegrityError, transaction
 from users.models import User
-from .models import Category, Client, Collaborator, Company, JobTitle, Person, ProjectType, Responsible, Site, Task
+from .models import Category, Client, Collaborator, Company, ConsultimerProjectType, JobTitle, Person, ProjectType, Responsible, Site, Task
 
 
 def make_collaborator(company, name, **kwargs):
@@ -224,3 +224,19 @@ class ClientIpAndLockoutTests(TestCase):
                 self._login("errada", "203.0.113.10")
             self.assertNotEqual(self._login("certa-123", "203.0.113.10").status_code, 200)
             self.assertEqual(self._login("certa-123", "198.51.100.20").status_code, 200)
+
+
+class ClientNumberTests(TestCase):
+    def test_client_number_is_sequential_starting_at_001(self):
+        company = Company.objects.create(legal_name="Empresa", trade_name="Empresa")
+        first = Client.objects.create(company=company, trade_name="A")
+        second = Client.objects.create(company=company, trade_name="B")
+        self.assertEqual(first.number_code, "001")
+        self.assertEqual(second.number_code, "002")
+
+
+class ConsultimerProjectTypeTests(TestCase):
+    def test_code_is_normalized_to_uppercase(self):
+        item = ConsultimerProjectType.objects.create(name="Deployment", code=" dp ")
+        self.assertEqual(item.code, "DP")
+

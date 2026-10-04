@@ -69,6 +69,7 @@ export const PERMS = {
   changeSite: "core.change_site",
   viewCategory: "core.view_category",
   viewProjectType: "core.view_projecttype",
+  viewConsultimerProjectType: "core.view_consultimerprojecttype",
   viewJobTitle: "core.view_jobtitle",
   viewCollaborator: "core.view_collaborator",
   viewResponsible: "core.view_responsible",

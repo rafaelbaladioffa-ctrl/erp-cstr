@@ -28,6 +28,7 @@ from core.models import (
     Company,
     JobTitle,
     Notification,
+    ConsultimerProjectType,
     ProjectType,
     PushSubscription,
     Region,
@@ -156,6 +157,7 @@ from .serializers import (
     ProjectTaskBulkActionSerializer,
     ProjectTaskCreateSerializer,
     ProjectTaskSerializer,
+    ConsultimerProjectTypeCrudSerializer,
     ProjectTypeCrudSerializer,
     RackPositionBulkCreateSerializer,
     RackPositionSerializer,
@@ -449,7 +451,7 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
 class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
     queryset = (
         Project.objects.select_related(
-            "client", "site", "category", "responsible_cstr__person", "responsible_client__person"
+            "client", "site", "category", "consultimer_type", "responsible_cstr__person", "responsible_client__person"
         )
         .prefetch_related("project_tasks__assignments")
         .order_by("-created_at")
@@ -2047,6 +2049,12 @@ class ProjectTypeViewSet(RegistryViewSet):
             )
             created += int(was_created)
         return Response({"created": created})
+
+
+class ConsultimerProjectTypeViewSet(RegistryViewSet):
+    queryset = ConsultimerProjectType.objects.order_by("name")
+    serializer_class = ConsultimerProjectTypeCrudSerializer
+    search_fields = ("name", "code")
 
 
 class JobTitleViewSet(RegistryViewSet):
