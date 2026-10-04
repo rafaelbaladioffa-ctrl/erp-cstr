@@ -9,7 +9,8 @@ from datetime import date
 
 from django.utils import timezone
 
-from core.collaborator_scope import scope_collaborators
+from core.access_scope import scope_project_queryset
+from core.collaborator_scope import scope_collaborators, scope_supervisor_projects
 from core.models import Collaborator
 from .models import Project, ProjectTask
 
@@ -23,10 +24,14 @@ def parse_date(value):
         return None
 
 
-def build_projects_performance(*, company_id=None, client_id=None, status=None, date_from=None, date_to=None):
+def build_projects_performance(*, company_id=None, client_id=None, status=None, date_from=None, date_to=None, user=None):
     queryset = Project.objects.select_related("company", "client").prefetch_related(
         "project_tasks", "project_tasks__assignments"
     )
+    if user is not None:
+        # Mesmo escopo das telas de projeto: Cliente/Site/Categoria do usuário e,
+        # para Supervisor, só os projetos em que é Responsável CSTR.
+        queryset = scope_supervisor_projects(scope_project_queryset(queryset, user), user)
 
     if company_id:
         queryset = queryset.filter(company_id=company_id)

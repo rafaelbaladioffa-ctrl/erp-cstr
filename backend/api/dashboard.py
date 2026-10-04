@@ -57,6 +57,7 @@ class ProjectsPerformanceView(APIView):
 
     def get(self, request):
         data = build_projects_performance(
+            user=request.user,
             company_id=request.query_params.get("company"),
             client_id=request.query_params.get("client"),
             status=request.query_params.get("status"),
