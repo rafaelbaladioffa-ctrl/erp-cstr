@@ -213,6 +213,9 @@ AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = True
 AXES_LOCKOUT_TEMPLATE = None
 AXES_VERBOSE = True
 
+# URL pública do frontend (links de e-mail, ex.: redefinição de senha). Vazio = usa o Origin.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "").rstrip("/")
+
 CORS_ALLOWED_ORIGINS = [
     item.strip()
     for item in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")

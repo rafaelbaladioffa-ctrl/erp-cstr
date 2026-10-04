@@ -2625,7 +2625,14 @@ class PasswordResetRequestView(APIView):
 
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
-        frontend_url = request.build_absolute_uri("/").rstrip("/")
+        # A página de redefinição é do frontend, que fica em outro host que a API:
+        # usa FRONTEND_URL ou o Origin da requisição (só se estiver em CORS_ALLOWED_ORIGINS).
+        origin = (request.headers.get("Origin") or "").rstrip("/")
+        frontend_url = (
+            settings.FRONTEND_URL
+            or (origin if origin in settings.CORS_ALLOWED_ORIGINS else "")
+            or request.build_absolute_uri("/").rstrip("/")
+        )
         reset_link = f"{frontend_url}/redefinir-senha/{uid}/{token}/"
 
         name = user.get_full_name() or user.username
