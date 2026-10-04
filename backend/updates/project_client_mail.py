@@ -321,6 +321,7 @@ def build_weekly_update_message(project_updates, recipient_email, start, end, la
         raw_html=render_weekly_body(lang, projects),
         lang=lang,
         width=WEEKLY_WIDTH,
+        note=tr(lang, "attachment_note"),
     )
     yes_no = lambda value: tr(lang, "yes" if value else "no")  # noqa: E731
     text_lines = [tr(lang, "weekly_title").upper(), period, ""]
@@ -334,9 +335,19 @@ def build_weekly_update_message(project_updates, recipient_email, start, end, la
         if p["notes"]:
             text_lines += [f"{tr(lang, 'observations')}:", p["notes"]]
         text_lines.append("")
-    text_lines.append("Consultimer")
+    text_lines.append(f"Consultimer — {tr(lang, 'attachment_note')}")
     subject = f"{tr(lang, 'weekly_subject')} | {period} | {len(projects)} {tr(lang, 'weekly_projects')}"
-    return build_email(subject=subject, to=[recipient_email], text=NEWLINE.join(text_lines), html=html)
+    from .weekly_pdf import build_weekly_update_pdf
+
+    pdf_bytes = build_weekly_update_pdf(projects, start, end, lang).read()
+    pdf_filename = f"update-semanal-{start:%Y-%m-%d}_{end:%Y-%m-%d}.pdf"
+    return build_email(
+        subject=subject,
+        to=[recipient_email],
+        text=NEWLINE.join(text_lines),
+        html=html,
+        attachments=[(pdf_filename, pdf_bytes, "application/pdf")],
+    )
 
 
 def send_weekly_update_email(project_updates, start, end, extra_recipients=None, lang="pt"):
