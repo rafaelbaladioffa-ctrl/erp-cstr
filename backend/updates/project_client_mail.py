@@ -7,6 +7,16 @@ from core.models import Responsible
 from projects.models import ProjectOccurrence, ProjectTask
 
 NEWLINE = chr(10)
+NAME_PARTICLES = {"da", "de", "do", "das", "dos", "e"}
+
+
+def format_person_name(name):
+    """'RAFAEL BALADI' / 'maria da silva' -> 'Rafael Baladi' / 'Maria da Silva'."""
+    words = (name or "").split()
+    return " ".join(
+        w.lower() if i and w.lower() in NAME_PARTICLES else w[:1].upper() + w[1:].lower()
+        for i, w in enumerate(words)
+    )
 WORKDAY_START = "07:30"
 WORKDAY_END = "16:40"
 
@@ -141,12 +151,15 @@ def build_project_update_message(project_update, recipient_email, pdf_bytes, pdf
         (project.client.trade_name or project.client.legal_name) if project.client_id else tr(lang, "client_fallback")
     )
     responsible_client = (
-        project.responsible_client.person.name if project.responsible_client_id else tr(lang, "not_informed")
+        format_person_name(project.responsible_client.person.name)
+        if project.responsible_client_id
+        else tr(lang, "not_informed")
     )
-    responsible_cstr = project.responsible_cstr.person.name if project.responsible_cstr_id else tr(lang, "not_informed")
-    collaborators = ", ".join(
-        project_update.collaborators.order_by("person__name").values_list("person__name", flat=True)
-    ) or tr(lang, "not_informed_pl")
+    responsible_cstr = (
+        format_person_name(project.responsible_cstr.person.name)
+        if project.responsible_cstr_id
+        else tr(lang, "not_informed")
+    )
     yes_no = lambda value: tr(lang, "yes" if value else "no")  # noqa: E731
     summary = [
         (tr(lang, "project"), project.name),
@@ -156,7 +169,6 @@ def build_project_update_message(project_update, recipient_email, pdf_bytes, pdf
         (tr(lang, "responsible", client=client_label), responsible_client),
         (tr(lang, "responsible_company"), responsible_cstr),
         (tr(lang, "date"), fmt_date(lang, project_update.date)),
-        (tr(lang, "team"), collaborators),
         (tr(lang, "certification"), yes_no(project_update.certification_done)),
         (tr(lang, "finished"), yes_no(project_update.project_finished)),
     ]
