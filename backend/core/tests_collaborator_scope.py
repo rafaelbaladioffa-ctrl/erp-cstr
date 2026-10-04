@@ -96,7 +96,7 @@ class RegistryScreenPermissionTests(TestCase):
         from django.contrib.auth.models import Group
 
         gestores = Group.objects.create(name="Gestores teste")
-        gestores.permissions.add(Permission.objects.get(codename="view_site"))
+        gestores.permissions.add(Permission.objects.get(content_type__app_label="core", codename="view_site"))
         user = User.objects.create_user(username="g", email="g@x.com", password="x")
         user.groups.add(gestores)
         user = User.objects.get(pk=user.pk)
