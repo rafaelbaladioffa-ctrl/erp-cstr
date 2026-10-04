@@ -131,7 +131,7 @@ def render_html(*, title, intro="", summary=None, highlight=None, sections=None,
 
     footer = "<br>".join(escape(line) for line in FOOTER_LINES[lang])
     logo_html = (
-        f'<img src="cid:{LOGO_CID}" alt="{BRAND}" width="170" style="display:block;border:0;height:auto;">'
+        f'<img src="cid:{LOGO_CID}" alt="{BRAND_ALT}" width="170" height="40" style="display:block;border:0;width:170px;height:40px;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:22px;line-height:40px;font-weight:700;color:#ffffff;">'
         if logo
         else f'<span style="font-size:22px;font-weight:700;color:#ffffff;">{BRAND}</span>'
     )
@@ -143,7 +143,7 @@ def render_html(*, title, intro="", summary=None, highlight=None, sections=None,
 <body class="c-bg" style="margin:0;padding:0;background:{COLOR_BG};font-family:Segoe UI,Helvetica,Arial,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="c-bg" style="background:{COLOR_BG};padding:24px 12px;"><tr><td align="center">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="c-card" style="width:100%;max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden;">
-<tr><td class="c-hdr" style="background:{COLOR_HEADER};padding:18px 28px;">{logo_html}</td></tr>
+<tr><td class="c-hdr" bgcolor="{COLOR_HEADER}" style="background:{COLOR_HEADER};padding:18px 28px;">{logo_html}</td></tr>
 <tr><td style="background:{COLOR_ACCENT};height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
 <tr><td style="padding:28px 28px 8px;">
 <h1 class="c-txt" style="margin:0 0 18px;font-size:20px;color:{COLOR_TEXT};">{escape(title)}</h1>
