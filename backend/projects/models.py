@@ -15,6 +15,17 @@ class ProjectSequence(models.Model):
         verbose_name_plural = "Sequências de Projetos"
 
 
+class ProjectCodeSequence(models.Model):
+    """Contador anual do sufixo sequencial do código do projeto (zera a cada ano)."""
+
+    year = models.PositiveIntegerField("ano", primary_key=True)
+    last_number = models.PositiveIntegerField("último número", default=0)
+
+    class Meta:
+        verbose_name = "Sequência de Código de Projeto"
+        verbose_name_plural = "Sequências de Código de Projeto"
+
+
 class Project(TimestampedModel):
     STATUS_PLANNING = "planning"
     STATUS_NOT_STARTED = "not_started"
@@ -31,7 +42,7 @@ class Project(TimestampedModel):
         (STATUS_CANCELED, "Cancelado"),
     )
 
-    code = models.CharField("código", max_length=30, unique=True, editable=False)
+    code = models.CharField("código", max_length=50, unique=True, editable=False)
     company = models.ForeignKey(Company, verbose_name="empresa", on_delete=models.PROTECT, related_name="projects")
     name = models.CharField("nome do projeto", max_length=200)
     po = models.CharField("PO", max_length=100, blank=True)
@@ -117,19 +128,28 @@ class Project(TimestampedModel):
         if self.code:
             return super().save(*args, **kwargs)
 
-        year = timezone.localdate().year
+        today = timezone.localdate()
+        year = today.year
+        structured = bool(self.consultimer_type_id and self.client_id and self.site_id and self.client.number)
+        sequence_model = ProjectCodeSequence if structured else ProjectSequence
         with transaction.atomic():
             try:
-                sequence = ProjectSequence.objects.select_for_update().get(year=year)
-            except ProjectSequence.DoesNotExist:
+                sequence = sequence_model.objects.select_for_update().get(year=year)
+            except sequence_model.DoesNotExist:
                 try:
                     with transaction.atomic():
-                        sequence = ProjectSequence.objects.create(year=year)
+                        sequence = sequence_model.objects.create(year=year)
                 except IntegrityError:
-                    sequence = ProjectSequence.objects.select_for_update().get(year=year)
+                    sequence = sequence_model.objects.select_for_update().get(year=year)
             sequence.last_number += 1
             sequence.save(update_fields=("last_number",))
-            self.code = f"CSTR-PROJ-{year}{sequence.last_number:04d}"
+            if structured:
+                self.code = (
+                    f"{self.consultimer_type.code}-{self.client.number_code}-{self.site.code}-"
+                    f"{today:%y%m}-{sequence.last_number:04d}"
+                )
+            else:
+                self.code = f"CSTR-PROJ-{year}{sequence.last_number:04d}"
             return super().save(*args, **kwargs)
 
 
