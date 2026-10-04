@@ -14,6 +14,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 
 BRAND = "Consultimer"
+BRAND_ALT = "CONSULTIMER GROUP"  # texto exibido enquanto o cliente bloqueia o logo
 SUBJECT_PREFIX = f"{BRAND} · "
 LOGO_PATH = Path(settings.BASE_DIR) / "core" / "static" / "core" / "img" / "consultimer-logo-branco.png"
 LOGO_CID = "consultimer-logo"
