@@ -68,12 +68,16 @@ class BotMessageTemplate(TimestampedModel):
     TYPE_PROJECT_UPDATES = "project_updates"
     TYPE_OPERATIONS_PRINT = "operations_print"
     TYPE_DAILY_PROJECT_REPORT = "daily_project_report"
+    TYPE_ALLOCATION = "allocation"
+    TYPE_INTERACTIVE_MENU = "interactive_menu"
 
     MESSAGE_TYPE_CHOICES = (
         (TYPE_DAILY_TASKS, "Tarefas do dia"),
         (TYPE_PROJECT_UPDATES, "Atualização de projetos"),
         (TYPE_OPERATIONS_PRINT, "Print da Operação do Dia"),
         (TYPE_DAILY_PROJECT_REPORT, "Relatório diário de projeto"),
+        (TYPE_ALLOCATION, "Alocação diária aos técnicos"),
+        (TYPE_INTERACTIVE_MENU, "Menu /bot"),
     )
 
     message_type = models.CharField("tipo de mensagem", max_length=40, choices=MESSAGE_TYPE_CHOICES, unique=True)
@@ -100,11 +104,23 @@ class BotBroadcastRule(TimestampedModel):
 
     CONTENT_TEXT = "text"
     CONTENT_IMAGE = "image"
-    CONTENT_CHOICES = ((CONTENT_TEXT, "Texto (uma mensagem por projeto)"), (CONTENT_IMAGE, "Imagem (print)"))
+    CONTENT_CHOICES = ((CONTENT_TEXT, "Texto"), (CONTENT_IMAGE, "Imagem (print)"))
+    MESSAGE_TYPE_CHOICES = (
+        ("daily_project_report", "Relatório diário de projeto"),
+        ("daily_tasks", "Tarefas do dia"),
+        ("project_updates", "Atualização de projetos"),
+        ("allocation", "Alocação diária aos técnicos"),
+        ("operations_print", "Print da operação"),
+    )
 
     name = models.CharField("nome", max_length=150)
     is_active = models.BooleanField("ativa", default=True)
-    message_type = models.CharField("tipo de mensagem", max_length=40, default="daily_project_report", editable=False)
+    message_type = models.CharField(
+        "tipo de mensagem", max_length=40, choices=MESSAGE_TYPE_CHOICES, default="daily_project_report"
+    )
+    date_offset_days = models.IntegerField(
+        "dias à frente dos dados", default=0, help_text="0 = dados de hoje; 1 = dados de amanhã (ex.: alocação do dia seguinte)."
+    )
     content_type = models.CharField("formato", max_length=10, choices=CONTENT_CHOICES, default=CONTENT_TEXT)
     send_time = models.TimeField("horário de envio (Brasília)")
     weekdays = models.JSONField(

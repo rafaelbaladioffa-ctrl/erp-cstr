@@ -1,123 +1,89 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { botMessagesApi } from "../api/resources";
-import type { BotMessageTemplate } from "../api/types";
-import BroadcastRules from "../components/bot/BroadcastRules";
+import BroadcastRules, { type RuleType } from "../components/bot/BroadcastRules";
+import Subscribers from "../components/bot/Subscribers";
+import TemplateEditor from "../components/bot/TemplateEditor";
 import Icon from "../components/ui/Icon";
 
-const LABELS: Record<BotMessageTemplate["message_type"], { title: string; subtitle: string; icon: string }> = {
-  daily_tasks: { title: "Tarefas do dia", subtitle: "Resumo gerencial das 10h", icon: "checklist" },
-  project_updates: { title: "Atualização de projetos", subtitle: "Mensagem das 17h por projeto", icon: "description" },
-  daily_project_report: { title: "Relatório diário de projeto", subtitle: "Mensagem das 15h por projeto", icon: "summarize" },
-  operations_print: { title: "Print da operação", subtitle: "Legenda da imagem operacional", icon: "photo_camera" },
-};
+type Feature = RuleType | "interactive_menu" | "subscribers";
 
-export default function BotWhatsApp() {
-  const [templates, setTemplates] = useState<BotMessageTemplate[]>([]);
-  const [selectedType, setSelectedType] = useState<BotMessageTemplate["message_type"]>("daily_tasks");
-  const [draft, setDraft] = useState<BotMessageTemplate | null>(null);
-  const [preview, setPreview] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [showRules, setShowRules] = useState(false);
+const FEATURES: { key: Feature; title: string; subtitle: string; icon: string }[] = [
+  { key: "daily_project_report", title: "Relatório diário de projeto", subtitle: "Texto por projeto ou print", icon: "summarize" },
+  { key: "daily_tasks", title: "Tarefas do dia", subtitle: "Resumo gerencial dos projetos alocados", icon: "checklist" },
+  { key: "project_updates", title: "Atualização de projetos", subtitle: "Mensagem por projeto do dia", icon: "description" },
+  { key: "allocation", title: "Alocação aos técnicos", subtitle: "Cada técnico recebe a sua", icon: "badge" },
+  { key: "operations_print", title: "Print da operação", subtitle: "Imagem da Central de Operações", icon: "photo_camera" },
+  { key: "interactive_menu", title: "Menu /bot", subtitle: "Conversa que o técnico inicia", icon: "forum" },
+  { key: "subscribers", title: "Destinatários e grupos", subtitle: "Quem recebe os envios", icon: "groups" },
+];
 
-  useEffect(() => {
-    setLoading(true);
-    botMessagesApi
-      .list()
-      .then((data) => {
-        setTemplates(data);
-        setDraft(data.find((t) => t.message_type === selectedType) || data[0] || null);
-      })
-      .catch(() => setError("Não foi possível carregar as configurações do bot."))
-      .finally(() => setLoading(false));
-  }, []);
+const BROADCAST_TYPES: Feature[] = ["daily_project_report", "daily_tasks", "project_updates", "allocation", "operations_print"];
 
-  useEffect(() => {
-    const current = templates.find((t) => t.message_type === selectedType);
-    if (current) setDraft({ ...current, enabled_fields: { ...current.enabled_fields } });
-  }, [selectedType, templates]);
+function MenuTest() {
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
-  useEffect(() => {
-    if (!draft) return;
-    const timer = setTimeout(() => {
-      botMessagesApi.preview(draft).then((data) => setPreview(data.preview)).catch(() => setPreview(""));
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [draft]);
-
-  const activeMeta = draft ? LABELS[draft.message_type] : null;
-  const enabledCount = useMemo(
-    () => draft?.field_definitions.filter((f) => draft.enabled_fields[f.key]).length || 0,
-    [draft]
-  );
-
-  function updateDraft(patch: Partial<BotMessageTemplate>) {
-    setSaved(false);
-    setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
-  }
-
-  function toggleField(key: string) {
-    if (!draft) return;
-    updateDraft({ enabled_fields: { ...draft.enabled_fields, [key]: !draft.enabled_fields[key] } });
-  }
-
-  async function save() {
-    if (!draft) return;
-    setSaving(true);
-    setError("");
+  async function send() {
+    setBusy(true);
+    setFeedback(null);
     try {
-      const updated = await botMessagesApi.update(draft);
-      setTemplates((prev) => prev.map((t) => (t.message_type === updated.message_type ? updated : t)));
-      setDraft(updated);
-      setSaved(true);
-    } catch {
-      setError("Não foi possível salvar a configuração.");
+      const result = await botMessagesApi.testMenu(to.trim());
+      setFeedback({ kind: "ok", text: result.detail });
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { detail?: string } } }).response?.data;
+      setFeedback({ kind: "error", text: data?.detail || "Não foi possível enviar o menu." });
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
-  if (loading) return <p style={{ color: "var(--text-muted)" }}>Carregando...</p>;
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6 }}>Testar o menu (salve o texto antes)</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="Telefone com DDD ou ID do grupo (@g.us)" style={{ width: 300 }} />
+        <button className="btn" onClick={send} disabled={!to.trim() || busy} type="button">
+          <Icon name="send" style={{ fontSize: 17 }} />
+          {busy ? "Enviando..." : "Enviar menu de teste"}
+        </button>
+      </div>
+      {feedback && <p style={{ margin: "8px 0 0", fontSize: 13, color: feedback.kind === "ok" ? "var(--green)" : "var(--red)" }}>{feedback.text}</p>}
+    </div>
+  );
+}
+
+export default function BotWhatsApp() {
+  const [feature, setFeature] = useState<Feature>("daily_project_report");
+  const [tab, setTab] = useState<"rules" | "text">("rules");
+  const active = FEATURES.find((f) => f.key === feature)!;
+  const isBroadcast = BROADCAST_TYPES.includes(feature);
 
   return (
     <div>
-      <div className="section-header-row" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, color: "var(--text)" }}>Bot WhatsApp</h1>
-          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 13 }}>
-            Configure visualmente quais informações pré-codadas entram nas mensagens automáticas.
-          </p>
-        </div>
-        {!showRules && (
-        <button className="btn btn-primary" onClick={save} disabled={saving || !draft}>
-          <Icon name="save" style={{ fontSize: 17 }} />
-          {saving ? "Salvando..." : "Salvar"}
-        </button>
-        )}
+      <div style={{ marginBottom: 16 }}>
+        <h1 style={{ margin: 0, fontSize: 24, color: "var(--text)" }}>Bot WhatsApp</h1>
+        <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 13 }}>
+          Central de controle do bot: escolha uma função, defina quando e para quem ela é enviada, o que entra na mensagem e teste na hora.
+        </p>
       </div>
 
-      {error && <p style={{ color: "var(--red)", fontSize: 13 }}>{error}</p>}
-      {saved && <p style={{ color: "var(--green)", fontSize: 13 }}>Configuração salva.</p>}
-
-      <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr) 380px", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
         <div className="card" style={{ padding: 10 }}>
-          {templates.map((template) => {
-            const meta = LABELS[template.message_type];
-            const active = !showRules && template.message_type === selectedType;
+          {FEATURES.map((f) => {
+            const on = f.key === feature;
             return (
               <button
-                key={template.message_type}
+                key={f.key}
                 type="button"
                 onClick={() => {
-                  setShowRules(false);
-                  setSelectedType(template.message_type);
+                  setFeature(f.key);
+                  setTab("rules");
                 }}
                 style={{
                   width: "100%",
-                  border: active ? "1px solid var(--orange)" : "1px solid transparent",
-                  background: active ? "rgba(255, 111, 32, 0.08)" : "transparent",
+                  border: on ? "1px solid var(--orange)" : "1px solid transparent",
+                  background: on ? "rgba(255, 111, 32, 0.08)" : "transparent",
                   borderRadius: 8,
                   padding: 12,
                   display: "flex",
@@ -127,93 +93,57 @@ export default function BotWhatsApp() {
                   color: "var(--text)",
                 }}
               >
-                <Icon name={meta.icon} style={{ fontSize: 20, color: active ? "var(--orange)" : "var(--text-muted)" }} />
+                <Icon name={f.icon} style={{ fontSize: 20, color: on ? "var(--orange)" : "var(--text-muted)" }} />
                 <span>
-                  <b style={{ display: "block", fontSize: 13 }}>{meta.title}</b>
-                  <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{meta.subtitle}</span>
+                  <b style={{ display: "block", fontSize: 13 }}>{f.title}</b>
+                  <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{f.subtitle}</span>
                 </span>
               </button>
             );
           })}
-          <button
-            type="button"
-            onClick={() => setShowRules(true)}
-            style={{
-              width: "100%",
-              border: showRules ? "1px solid var(--orange)" : "1px solid transparent",
-              background: showRules ? "rgba(255, 111, 32, 0.08)" : "transparent",
-              borderRadius: 8,
-              padding: 12,
-              display: "flex",
-              gap: 10,
-              textAlign: "left",
-              cursor: "pointer",
-              color: "var(--text)",
-              marginTop: 6,
-              borderTop: showRules ? undefined : "1px solid var(--border)",
-            }}
-          >
-            <Icon name="schedule" style={{ fontSize: 20, color: showRules ? "var(--orange)" : "var(--text-muted)" }} />
-            <span>
-              <b style={{ display: "block", fontSize: 13 }}>Regras de envio</b>
-              <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Horário, filtros, destinatários e teste</span>
-            </span>
-          </button>
         </div>
 
-        {showRules && (
-          <div style={{ gridColumn: "2 / 4", minWidth: 0 }}>
-            <BroadcastRules />
-          </div>
-        )}
+        <div style={{ minWidth: 0 }}>
+          <h2 style={{ margin: "0 0 12px", fontSize: 18 }}>{active.title}</h2>
 
-        {!showRules && draft && activeMeta && (
-          <div className="card" style={{ padding: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 18 }}>{activeMeta.title}</h2>
-                <p style={{ margin: "3px 0 0", color: "var(--text-muted)", fontSize: 12 }}>
-                  {enabledCount} campo(s) selecionado(s)
-                </p>
-              </div>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-muted)" }}>
-                <input type="checkbox" checked={draft.is_active} onChange={(e) => updateDraft({ is_active: e.target.checked })} />
-                Ativo
-              </label>
-            </div>
-
-            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>Título</label>
-            <input className="input" value={draft.title} onChange={(e) => updateDraft({ title: e.target.value })} style={{ width: "100%", margin: "6px 0 12px" }} />
-
-            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>Texto inicial</label>
-            <textarea className="input" value={draft.intro_text} onChange={(e) => updateDraft({ intro_text: e.target.value })} style={{ width: "100%", minHeight: 72, margin: "6px 0 12px" }} />
-
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8 }}>Informações da mensagem</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
-              {draft.field_definitions.map((field) => (
-                <label key={field.key} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "9px 10px", display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
-                  <input type="checkbox" checked={!!draft.enabled_fields[field.key]} onChange={() => toggleField(field.key)} />
-                  {field.label}
-                </label>
+          {isBroadcast && (
+            <div style={{ display: "flex", gap: 4, marginBottom: 14, borderBottom: "1px solid var(--border)" }}>
+              {(
+                [
+                  ["rules", "Quando e para quem"],
+                  ["text", "Texto da mensagem"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  style={{
+                    padding: "9px 14px",
+                    fontSize: 13,
+                    fontWeight: tab === key ? 700 : 500,
+                    cursor: "pointer",
+                    background: "transparent",
+                    color: tab === key ? "var(--orange)" : "var(--text-muted)",
+                    border: "none",
+                    borderBottom: tab === key ? "2px solid var(--orange)" : "2px solid transparent",
+                  }}
+                >
+                  {label}
+                </button>
               ))}
             </div>
+          )}
 
-            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>Texto final</label>
-            <textarea className="input" value={draft.footer_text} onChange={(e) => updateDraft({ footer_text: e.target.value })} style={{ width: "100%", minHeight: 72, marginTop: 6 }} />
-          </div>
-        )}
-
-        {!showRules && (
-        <div className="card" style={{ padding: 18, position: "sticky", top: 88 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <Icon name="chat" style={{ fontSize: 18, color: "var(--green)" }} />
-            <b>Prévia WhatsApp</b>
-          </div>
-          <pre style={{ whiteSpace: "pre-wrap", background: "var(--bg-soft)", border: "1px solid var(--border)", borderRadius: 8, padding: 14, minHeight: 360, fontFamily: "inherit", fontSize: 13, lineHeight: 1.45, color: "var(--text)" }}>
-            {preview || "Selecione os campos para gerar uma prévia."}
-          </pre>
+          {isBroadcast && tab === "rules" && <BroadcastRules key={feature} messageType={feature as RuleType} />}
+          {isBroadcast && tab === "text" && <TemplateEditor key={feature} messageType={feature as RuleType} />}
+          {feature === "interactive_menu" && (
+            <TemplateEditor key="menu" messageType="interactive_menu">
+              <MenuTest />
+            </TemplateEditor>
+          )}
+          {feature === "subscribers" && <Subscribers />}
         </div>
-        )}
       </div>
     </div>
   );

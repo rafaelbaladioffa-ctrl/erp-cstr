@@ -83,6 +83,132 @@ class BotAllocationView(APIView):
         )
 
 
+def _allocations_for(target_date, rule=None):
+    """Alocações do dia; com `rule`, só dos projetos que passam nos filtros
+    da regra (cliente, categoria, regional, site, status)."""
+    qs = DailyUpdateAllocation.objects.filter(daily_update__allocation_date=target_date)
+    if rule is not None:
+        qs = qs.filter(project_id__in=_rule_projects_queryset(rule).values("pk"))
+    return qs
+
+
+def build_allocation_technicians(target_date, rule=None):
+    """Técnicos com alocação na data (e telefone), com os projetos de cada um."""
+    allocations = _allocations_for(target_date, rule).select_related("project", "project__site").prefetch_related("collaborators__person")
+
+    by_collaborator = {}
+    for allocation in allocations:
+        for collaborator in allocation.collaborators.all():
+            if not collaborator.is_active or not collaborator.person.phone:
+                continue
+            entry = by_collaborator.setdefault(
+                collaborator.id,
+                {
+                    "phone": collaborator.person.phone,
+                    "collaborator_name": collaborator.person.name,
+                    "allocations": [],
+                },
+            )
+            entry["allocations"].append(
+                {
+                    "project": allocation.project.name,
+                    "code": allocation.project.code,
+                    "site": allocation.project.site.name if allocation.project.site_id else None,
+                }
+            )
+
+    return list(by_collaborator.values())
+
+
+def build_daily_tasks_projects(target_date, rule=None):
+    """Projetos alocados na data, com técnicos e tarefas pendentes."""
+    allocations = _allocations_for(target_date, rule).select_related("project", "project__site").prefetch_related("collaborators__person")
+
+    status_labels = dict(ProjectTask.STATUS_CHOICES)
+    projects = []
+    for allocation in allocations:
+        project = allocation.project
+        allocated_collaborators = list(allocation.collaborators.all())
+        # Só tarefas pendentes explicitamente atribuídas a um dos técnicos
+        # alocados hoje nesse projeto — não entra tarefa sem responsável
+        # nem tarefa de outra pessoa que não está no time de hoje.
+        pending_tasks = (
+            ProjectTask.objects.filter(project=project, collaborators__in=allocated_collaborators)
+            .exclude(status__in=(ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_CANCELED))
+            .distinct()
+            .order_by("order", "id")
+        )
+        projects.append(
+            {
+                "project": project.name,
+                "code": project.code,
+                "site": project.site.name if project.site_id else None,
+                "collaborators": [
+                    c.person.name for c in allocation.collaborators.order_by("person__name")
+                ],
+                "tasks": [
+                    f"{t.display_name} ({status_labels.get(t.status, t.status)})" for t in pending_tasks
+                ],
+            }
+        )
+
+    return projects
+
+
+def build_project_updates_projects(target_date, rule=None):
+    """Dados da Atualização Diária de Projeto dos projetos alocados na data."""
+    project_ids = _allocations_for(target_date, rule).values_list("project_id", flat=True).distinct()
+    projects_qs = Project.objects.filter(pk__in=project_ids).select_related(
+        "responsible_client__person", "responsible_cstr__person"
+    )
+    # Se já existe uma Atualização de Projeto registrada pra essa data,
+    # usa os colaboradores e a observação que a pessoa responsável
+    # digitou lá — só o percentual/atividades/certificação continuam
+    # sempre recalculados ao vivo (mesmo critério de refresh_from_tasks()).
+    existing_updates = {
+        u.project_id: u
+        for u in ProjectDailyUpdate.objects.filter(
+            project_id__in=project_ids, date=target_date
+        ).prefetch_related("collaborators__person")
+    }
+
+    projects = []
+    for project in projects_qs:
+        defaults = compute_progress_defaults(project, target_date)
+        existing = existing_updates.get(project.id)
+
+        if existing:
+            collaborator_names = list(
+                existing.collaborators.order_by("person__name").values_list("person__name", flat=True)
+            )
+            summary = existing.summary or None
+        else:
+            collaborator_names = list(
+                Collaborator.objects.filter(pk__in=defaults["collaborator_ids"])
+                .select_related("person")
+                .order_by("person__name")
+                .values_list("person__name", flat=True)
+            )
+            summary = None
+
+        projects.append(
+            {
+                "project": project.name,
+                "po": project.po or None,
+                "responsible_client": project.responsible_client.person.name if project.responsible_client_id else None,
+                "responsible_cstr": project.responsible_cstr.person.name if project.responsible_cstr_id else None,
+                "collaborators": collaborator_names,
+                "completion_percent": defaults["percent"],
+                "activities_text": defaults["activities_text"] or None,
+                "certification_done": defaults["certification_done"],
+                "project_finished": defaults["project_finished"],
+                "summary": summary,
+            }
+        )
+
+    return projects
+
+
 class BotDailyBroadcastView(APIView):
     """GET /api/bot/daily-broadcast/?date=<AAAA-MM-DD, opcional>
 
@@ -101,34 +227,9 @@ class BotDailyBroadcastView(APIView):
         if error:
             return error
 
-        allocations = (
-            DailyUpdateAllocation.objects.filter(daily_update__allocation_date=target_date)
-            .select_related("project", "project__site")
-            .prefetch_related("collaborators__person")
-        )
+        technicians = build_allocation_technicians(target_date)
 
-        by_collaborator = {}
-        for allocation in allocations:
-            for collaborator in allocation.collaborators.all():
-                if not collaborator.is_active or not collaborator.person.phone:
-                    continue
-                entry = by_collaborator.setdefault(
-                    collaborator.id,
-                    {
-                        "phone": collaborator.person.phone,
-                        "collaborator_name": collaborator.person.name,
-                        "allocations": [],
-                    },
-                )
-                entry["allocations"].append(
-                    {
-                        "project": allocation.project.name,
-                        "code": allocation.project.code,
-                        "site": allocation.project.site.name if allocation.project.site_id else None,
-                    }
-                )
-
-        return Response({"date": target_date.isoformat(), "technicians": list(by_collaborator.values())})
+        return Response({"date": target_date.isoformat(), "technicians": technicians})
 
 
 class BotMyTasksView(APIView):
@@ -375,39 +476,7 @@ class BotDailyTasksBroadcastView(APIView):
         if error:
             return error
 
-        allocations = (
-            DailyUpdateAllocation.objects.filter(daily_update__allocation_date=target_date)
-            .select_related("project", "project__site")
-            .prefetch_related("collaborators__person")
-        )
-
-        status_labels = dict(ProjectTask.STATUS_CHOICES)
-        projects = []
-        for allocation in allocations:
-            project = allocation.project
-            allocated_collaborators = list(allocation.collaborators.all())
-            # Só tarefas pendentes explicitamente atribuídas a um dos técnicos
-            # alocados hoje nesse projeto — não entra tarefa sem responsável
-            # nem tarefa de outra pessoa que não está no time de hoje.
-            pending_tasks = (
-                ProjectTask.objects.filter(project=project, collaborators__in=allocated_collaborators)
-                .exclude(status__in=(ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_CANCELED))
-                .distinct()
-                .order_by("order", "id")
-            )
-            projects.append(
-                {
-                    "project": project.name,
-                    "code": project.code,
-                    "site": project.site.name if project.site_id else None,
-                    "collaborators": [
-                        c.person.name for c in allocation.collaborators.order_by("person__name")
-                    ],
-                    "tasks": [
-                        f"{t.display_name} ({status_labels.get(t.status, t.status)})" for t in pending_tasks
-                    ],
-                }
-            )
+        projects = build_daily_tasks_projects(target_date)
 
         return Response(
             {
@@ -434,58 +503,7 @@ class BotProjectUpdatesBroadcastView(APIView):
         if error:
             return error
 
-        project_ids = (
-            DailyUpdateAllocation.objects.filter(daily_update__allocation_date=target_date)
-            .values_list("project_id", flat=True)
-            .distinct()
-        )
-        projects_qs = Project.objects.filter(pk__in=project_ids).select_related(
-            "responsible_client__person", "responsible_cstr__person"
-        )
-        # Se já existe uma Atualização de Projeto registrada pra essa data,
-        # usa os colaboradores e a observação que a pessoa responsável
-        # digitou lá — só o percentual/atividades/certificação continuam
-        # sempre recalculados ao vivo (mesmo critério de refresh_from_tasks()).
-        existing_updates = {
-            u.project_id: u
-            for u in ProjectDailyUpdate.objects.filter(
-                project_id__in=project_ids, date=target_date
-            ).prefetch_related("collaborators__person")
-        }
-
-        projects = []
-        for project in projects_qs:
-            defaults = compute_progress_defaults(project, target_date)
-            existing = existing_updates.get(project.id)
-
-            if existing:
-                collaborator_names = list(
-                    existing.collaborators.order_by("person__name").values_list("person__name", flat=True)
-                )
-                summary = existing.summary or None
-            else:
-                collaborator_names = list(
-                    Collaborator.objects.filter(pk__in=defaults["collaborator_ids"])
-                    .select_related("person")
-                    .order_by("person__name")
-                    .values_list("person__name", flat=True)
-                )
-                summary = None
-
-            projects.append(
-                {
-                    "project": project.name,
-                    "po": project.po or None,
-                    "responsible_client": project.responsible_client.person.name if project.responsible_client_id else None,
-                    "responsible_cstr": project.responsible_cstr.person.name if project.responsible_cstr_id else None,
-                    "collaborators": collaborator_names,
-                    "completion_percent": defaults["percent"],
-                    "activities_text": defaults["activities_text"] or None,
-                    "certification_done": defaults["certification_done"],
-                    "project_finished": defaults["project_finished"],
-                    "summary": summary,
-                }
-            )
+        projects = build_project_updates_projects(target_date)
 
         return Response(
             {

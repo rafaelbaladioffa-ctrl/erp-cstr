@@ -264,3 +264,67 @@ class BotBroadcastRuleTests(TestCase):
         invalid = self.api.post("/api/bot/broadcast-rules/test/", {"to": "11999998888", "rule": {"name": "x"}}, format="json")
         self.assertEqual(invalid.status_code, 400)
         self.assertEqual(BotBroadcastRule.objects.count(), before)
+
+
+@override_settings(WHATSAPP_BOT_SECRET="test-bot-secret")
+class BotRulesAllTypesTests(TestCase):
+    """Regras para todos os tipos de mensagem + CRUD de destinatários."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        self.api = APIClient()
+        self.bot_headers = {"HTTP_X_BOT_SECRET": "test-bot-secret"}
+        self.admin = get_user_model().objects.create_superuser(username="admin3", password="x", email="c@c.com")
+
+    def test_migration_seeds_rules_for_every_type(self):
+        from bot.models import BotBroadcastRule
+
+        types = set(BotBroadcastRule.objects.values_list("message_type", flat=True))
+        self.assertTrue({"daily_tasks", "project_updates", "allocation", "operations_print"} <= types)
+        allocation = BotBroadcastRule.objects.get(message_type="allocation")
+        self.assertEqual(allocation.date_offset_days, 1)
+        self.assertEqual(BotBroadcastRule.objects.filter(message_type="operations_print").count(), 6)
+
+    def test_runtime_payload_per_type(self):
+        from bot.models import BotBroadcastRule
+
+        for message_type, key in (
+            ("daily_tasks", "projects"),
+            ("project_updates", "projects"),
+            ("allocation", "technicians"),
+            ("operations_print", "sites"),
+        ):
+            rule = BotBroadcastRule.objects.filter(message_type=message_type).first()
+            response = self.api.get(f"/api/bot/broadcasts/rule/{rule.pk}/", **self.bot_headers)
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertIn(key, response.data)
+            self.assertEqual(response.data["rule"]["message_type"], message_type)
+        # a alocação não tem lista de destinatários (vai para cada técnico)
+        allocation = BotBroadcastRule.objects.get(message_type="allocation")
+        self.assertNotIn("recipients", self.api.get(f"/api/bot/broadcasts/rule/{allocation.pk}/", **self.bot_headers).data)
+
+    def test_format_must_match_message_type(self):
+        self.api.force_authenticate(self.admin)
+        payload = {"name": "x", "message_type": "allocation", "content_type": "image", "send_time": "18:00"}
+        self.assertEqual(self.api.post("/api/bot/broadcast-rules/", payload, format="json").status_code, 400)
+        payload["content_type"] = "text"
+        self.assertEqual(self.api.post("/api/bot/broadcast-rules/", payload, format="json").status_code, 201)
+
+    def test_subscriber_crud_validation(self):
+        self.api.force_authenticate(self.admin)
+        bad = self.api.post("/api/bot/subscribers/", {"name": "Sem destino"}, format="json")
+        self.assertEqual(bad.status_code, 400)
+        bad_group = self.api.post("/api/bot/subscribers/", {"name": "G", "group_jid": "123"}, format="json")
+        self.assertEqual(bad_group.status_code, 400)
+        ok = self.api.post("/api/bot/subscribers/", {"name": "Grupo", "group_jid": "120363@g.us"}, format="json")
+        self.assertEqual(ok.status_code, 201, ok.data)
+        self.assertEqual(self.api.get("/api/bot/subscribers/").status_code, 200)
+
+    def test_new_message_templates_available(self):
+        self.api.force_authenticate(self.admin)
+        data = self.api.get("/api/bot/message-templates/").data
+        types = {t["message_type"] for t in data}
+        self.assertTrue({"allocation", "interactive_menu"} <= types)
+        runtime = self.api.get("/api/bot/message-template/?message_type=interactive_menu", **self.bot_headers)
+        self.assertEqual(runtime.status_code, 200)

@@ -23,10 +23,18 @@ const MENU_OPTIONS = [
   { number: "4", key: "status_tecnicos", label: "Status dos técnicos" },
 ];
 
-const MENU_TEXT =
-  "Olá! Eu sou o bot do ERP Consultimer. O que você deseja?\n\n" +
-  MENU_OPTIONS.map((o) => `${o.number}️⃣ ${o.label}`).join("\n") +
-  "\n\nDigite o número da opção.";
+// Texto do menu conforme o modelo "Menu /bot" configurado na web: saudação,
+// opções habilitadas (renumeradas) e rodapé.
+function buildMenu(template) {
+  const useTemplate = template && template.is_active !== false;
+  const options = MENU_OPTIONS.filter((o) => templateEnabled(template, o.key)).map((o, i) => ({ ...o, number: String(i + 1) }));
+  const intro = (useTemplate && template.intro_text) || "Olá! Eu sou o bot do ERP Consultimer. O que você deseja?";
+  const footer = (useTemplate && template.footer_text) || "Digite o número da opção.";
+  const text = options.length
+    ? `${intro}\n\n${options.map((o) => `${o.number}️⃣ ${o.label}`).join("\n")}\n\n${footer}`
+    : "Nenhuma opção do bot está disponível no momento.";
+  return { options, text };
+}
 
 // Estado de conversa por número (em memória — reinicia com o processo, o que
 // é aceitável já que o fluxo é curto e o usuário sempre pode digitar /bot
@@ -229,15 +237,34 @@ function formatBroadcastMessage(t, date) {
   return `Olá, ${t.collaborator_name}! Aqui está sua alocação para ${formatDate(date)}:\n\n${lines.join("\n")}`;
 }
 
-async function runAllocationBroadcast(sock) {
-  const data = await botGet("/bot/daily-broadcast/");
-  if (!data.technicians.length) {
+function formatAllocationMessage(t, date, template) {
+  const useTemplate = template && template.is_active !== false;
+  const fallbackIntro = `Olá, ${t.collaborator_name}! Aqui está sua alocação para ${formatDate(date)}:`;
+  const intro =
+    useTemplate && template.intro_text
+      ? template.intro_text.split("{nome}").join(t.collaborator_name).split("{data}").join(formatDate(date))
+      : fallbackIntro;
+  const lines = t.allocations.map((a) => {
+    const name = templateEnabled(template, "project_code") && a.code ? `${a.project} (${a.code})` : a.project;
+    return templateEnabled(template, "site") ? `• ${name} — Site: ${a.site || "não informado"}` : `• ${name}`;
+  });
+  const footer = useTemplate && template.footer_text ? `\n\n${template.footer_text}` : "";
+  return `${intro}\n\n${lines.join("\n")}${footer}`;
+}
+
+// Alocação individual: cada técnico recebe a própria mensagem. Com
+// overrideTo (teste), manda no máximo 3 mensagens, todas para esse destino.
+async function sendAllocationData(sock, data, overrideTo) {
+  const technicians = overrideTo ? data.technicians.slice(0, 3) : data.technicians;
+  if (!technicians.length) {
     console.log(`Envio de alocação: nenhuma alocação para ${data.date}, nada a enviar.`);
-    return;
+    return 0;
   }
-  console.log(`Envio de alocação: enviando de ${data.date} para ${data.technicians.length} técnico(s).`);
-  for (const t of data.technicians) {
-    const jid = await resolvePhoneJid(sock, t.phone);
+  const template = await fetchMessageTemplate("allocation");
+  console.log(`Envio de alocação: enviando de ${data.date} para ${technicians.length} técnico(s).`);
+  let sent = 0;
+  for (const t of technicians) {
+    const jid = overrideTo ? recipientToJid(overrideToRecipient(overrideTo)) : await resolvePhoneJid(sock, t.phone);
     if (!jid) {
       console.error(`Envio de alocação: telefone inválido ou não encontrado no WhatsApp para ${t.collaborator_name} (${t.phone}), pulando.`);
       continue;
@@ -248,12 +275,19 @@ async function runAllocationBroadcast(sock) {
       // reduzindo o "Aguardando mensagem" no aparelho do técnico.
       await sock.presenceSubscribe(jid).catch(() => {});
       await new Promise((resolve) => setTimeout(resolve, 500));
-      await sock.sendMessage(jid, { text: formatBroadcastMessage(t, data.date) });
+      await sock.sendMessage(jid, { text: formatAllocationMessage(t, data.date, template) });
+      sent += 1;
       await new Promise((resolve) => setTimeout(resolve, 800));
     } catch (err) {
       console.error(`Envio de alocação: erro ao enviar para ${t.collaborator_name}:`, err.message);
     }
   }
+  return sent;
+}
+
+async function runAllocationBroadcast(sock) {
+  const data = await botGet("/bot/daily-broadcast/");
+  await sendAllocationData(sock, data);
 }
 
 // Manda o mesmo texto consolidado (todos os projetos do dia) para cada
@@ -262,8 +296,9 @@ async function runAllocationBroadcast(sock) {
 async function sendToRecipients(sock, recipients, text, label) {
   if (!recipients.length) {
     console.log(`${label}: nenhum destinatário cadastrado (BotSubscriber), nada a enviar.`);
-    return;
+    return 0;
   }
+  let sent = 0;
   for (const r of recipients) {
     const jid = recipientToJid(r);
     if (!jid) {
@@ -272,11 +307,34 @@ async function sendToRecipients(sock, recipients, text, label) {
     }
     try {
       await sock.sendMessage(jid, { text });
+      sent += 1;
       await new Promise((resolve) => setTimeout(resolve, 800));
     } catch (err) {
       console.error(`${label}: erro ao enviar para ${r.name}:`, err.message);
     }
   }
+  return sent;
+}
+
+async function sendDailyTasksData(sock, data, recipients) {
+  const template = await fetchMessageTemplate("daily_tasks");
+  const blocks = data.projects.map((p) => {
+    const titleParts = [];
+    if (templateEnabled(template, "project_code") && p.code) titleParts.push(p.code);
+    if (templateEnabled(template, "project_name")) titleParts.push(p.project);
+    const lines = titleParts.length ? [`*${titleParts.join(" - ")}*`] : [];
+    if (templateEnabled(template, "site")) lines.push(`Site: ${p.site || "não informado"}`);
+    if (templateEnabled(template, "collaborators")) lines.push(`Técnicos: ${p.collaborators.join(", ") || "não informado"}`);
+    if (templateEnabled(template, "pending_tasks")) {
+      lines.push(p.tasks.length ? `Tarefas:\n${p.tasks.map((t) => `• ${t}`).join("\n")}` : "Sem tarefas pendentes cadastradas.");
+    }
+    return lines.join("\n");
+  }).filter(Boolean);
+  const text =
+    renderTemplatedLines(template, `Tarefas alocadas para hoje (${formatDate(data.date)})`, [["projects", blocks.join("\n\n")]]) ||
+    `Tarefas alocadas para hoje (${formatDate(data.date)}):\n\n${blocks.join("\n\n")}`;
+  console.log(`Tarefas do dia: enviando ${data.projects.length} projeto(s) para ${recipients.length} destinatário(s).`);
+  return sendToRecipients(sock, recipients, text, "Tarefas do dia");
 }
 
 async function runDailyTasksBroadcast(sock) {
@@ -285,24 +343,7 @@ async function runDailyTasksBroadcast(sock) {
     console.log(`Tarefas do dia (10h): nenhum projeto alocado em ${data.date}, nada a enviar.`);
     return;
   }
-  const template = await fetchMessageTemplate("daily_tasks");
-  const blocks = data.projects.map((p) => {
-    const titleParts = [];
-    if (templateEnabled(template, "project_code") && p.code) titleParts.push(p.code);
-    if (templateEnabled(template, "project_name")) titleParts.push(p.project);
-    const lines = titleParts.length ? [`*${titleParts.join(" - ")}*`] : [];
-    if (templateEnabled(template, "site")) lines.push(`Site: ${p.site || "n�o informado"}`);
-    if (templateEnabled(template, "collaborators")) lines.push(`T�cnicos: ${p.collaborators.join(", ") || "n�o informado"}`);
-    if (templateEnabled(template, "pending_tasks")) {
-      lines.push(p.tasks.length ? `Tarefas:\n${p.tasks.map((t) => `� ${t}`).join("\n")}` : "Sem tarefas pendentes cadastradas.");
-    }
-    return lines.join("\n");
-  }).filter(Boolean);
-  const text =
-    renderTemplatedLines(template, `Tarefas alocadas para hoje (${formatDate(data.date)})`, [["projects", blocks.join("\n\n")]]) ||
-    `Tarefas alocadas para hoje (${formatDate(data.date)}):\n\n${blocks.join("\n\n")}`;
-  console.log(`Tarefas do dia (10h): enviando ${data.projects.length} projeto(s) para ${data.recipients.length} destinat�rio(s).`);
-  await sendToRecipients(sock, data.recipients, text, "Tarefas do dia (10h)");
+  await sendDailyTasksData(sock, data, data.recipients);
 }
 
 function formatProjectDailyUpdate(p, date, workdayStart, workdayEnd, template) {
@@ -478,32 +519,39 @@ async function runDailyProjectReportImageBroadcast(sock, overridePhone, projectL
   }
 }
 
+async function sendProjectUpdatesData(sock, data, recipients) {
+  console.log(`Atualização de projetos: enviando ${data.projects.length} projeto(s) para ${recipients.length} destinatário(s).`);
+  const template = await fetchMessageTemplate("project_updates");
+  let sent = 0;
+  for (const r of recipients) {
+    const jid = recipientToJid(r);
+    if (!jid) {
+      console.error(`Atualização de projetos: telefone inválido para ${r.name} (${r.phone}), pulando.`);
+      continue;
+    }
+    for (const p of data.projects) {
+      try {
+        await sock.sendMessage(jid, { text: formatProjectDailyUpdate(p, data.date, data.workday_start, data.workday_end, template) });
+        sent += 1;
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      } catch (err) {
+        console.error(`Atualização de projetos: erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
+      }
+    }
+  }
+  return sent;
+}
+
 async function runProjectUpdatesBroadcast(sock) {
   const data = await botGet("/bot/broadcasts/project-updates/");
   if (!data.projects.length) {
     console.log(`Atualização de projetos (17h): nenhum projeto alocado em ${data.date}, nada a enviar.`);
     return;
   }
-  console.log(`Atualização de projetos (17h): enviando ${data.projects.length} projeto(s) para ${data.recipients.length} destinatário(s).`);
-  const template = await fetchMessageTemplate("project_updates");
-  for (const r of data.recipients) {
-    const jid = recipientToJid(r);
-    if (!jid) {
-      console.error(`Atualização de projetos (17h): telefone inválido para ${r.name} (${r.phone}), pulando.`);
-      continue;
-    }
-    for (const p of data.projects) {
-      try {
-        await sock.sendMessage(jid, { text: formatProjectDailyUpdate(p, data.date, data.workday_start, data.workday_end, template) });
-        await new Promise((resolve) => setTimeout(resolve, 800));
-      } catch (err) {
-        console.error(`Atualização de projetos (17h): erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
-      }
-    }
-  }
+  await sendProjectUpdatesData(sock, data, data.recipients);
 }
 
-async function captureOperationsPrint() {
+async function captureOperationsPrint(site = "all") {
   const browser = await puppeteer.launch({
     executablePath: CHROMIUM_PATH,
     headless: true,
@@ -520,7 +568,7 @@ async function captureOperationsPrint() {
     const page = await browser.newPage();
     await page.setExtraHTTPHeaders({ "X-Bot-Secret": API_SECRET });
     await page.setViewport({ width: 1260, height: 900, deviceScaleFactor: 2 });
-    await page.goto(`${API_URL}/bot/operations-print/?site=all`, { waitUntil: "networkidle0", timeout: 30000 });
+    await page.goto(`${API_URL}/bot/operations-print/?site=${encodeURIComponent(site)}`, { waitUntil: "networkidle0", timeout: 30000 });
     const shot = await page.screenshot({ type: "png", fullPage: true });
     return Buffer.isBuffer(shot) ? shot : Buffer.from(shot);
   } finally {
@@ -528,38 +576,48 @@ async function captureOperationsPrint() {
   }
 }
 
-async function runOperationsPrintBroadcast(sock, overridePhone) {
+// Print da Operação do Dia. `sites` (opcional): lista de {id, name}; manda um
+// print por site. Sem sites, um único print com todos.
+async function sendOperationsPrint(sock, recipients, sites) {
   const label = "Operação do Dia (print)";
+  const template = await fetchMessageTemplate("operations_print");
+  const targets = sites && sites.length ? sites : [{ id: "all", name: "" }];
+  let sent = 0;
+  for (const site of targets) {
+    console.log(`${label}: capturando imagem da Central de Operações${site.name ? ` (${site.name})` : ""}...`);
+    const image = await captureOperationsPrint(site.id);
+    let caption =
+      renderTemplatedLines(template, "Operação do Dia", [["caption_datetime", formatBrazilDateTime(new Date())]]) ||
+      `📸 Operação do Dia — ${formatBrazilDateTime(new Date())}`;
+    if (site.name) caption += `\n${site.name}`;
+    console.log(`${label}: enviando para ${recipients.length} destinatário(s).`);
+    for (const r of recipients) {
+      const jid = recipientToJid(r);
+      if (!jid) {
+        console.error(`${label}: telefone inválido para ${r.name} (${r.phone}), pulando.`);
+        continue;
+      }
+      try {
+        await sock.sendMessage(jid, { image, caption, mimetype: "image/png" });
+        sent += 1;
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      } catch (err) {
+        console.error(`${label}: erro ao enviar para ${r.name}:`, err.message);
+      }
+    }
+  }
+  return sent;
+}
+
+async function runOperationsPrintBroadcast(sock, overridePhone) {
   const recipients = overridePhone
     ? [{ name: "Teste", phone: overridePhone }]
     : (await botGet("/bot/broadcasts/operations-print-recipients/")).recipients;
-
   if (!recipients.length) {
-    console.log(`${label}: nenhum destinatário cadastrado, nada a enviar.`);
+    console.log("Operação do Dia (print): nenhum destinatário cadastrado, nada a enviar.");
     return;
   }
-
-  console.log(`${label}: capturando imagem da Central de Operações...`);
-  const image = await captureOperationsPrint();
-  const template = await fetchMessageTemplate("operations_print");
-  const caption =
-    renderTemplatedLines(template, "Opera��o do Dia", [["caption_datetime", formatBrazilDateTime(new Date())]]) ||
-    `📸 Operação do Dia — ${formatBrazilDateTime(new Date())}`;
-
-  console.log(`${label}: enviando para ${recipients.length} destinatário(s).`);
-  for (const r of recipients) {
-    const jid = recipientToJid(r);
-    if (!jid) {
-      console.error(`${label}: telefone inválido para ${r.name} (${r.phone}), pulando.`);
-      continue;
-    }
-    try {
-      await sock.sendMessage(jid, { image, caption, mimetype: "image/png" });
-      await new Promise((resolve) => setTimeout(resolve, 800));
-    } catch (err) {
-      console.error(`${label}: erro ao enviar para ${r.name}:`, err.message);
-    }
-  }
+  await sendOperationsPrint(sock, recipients);
 }
 
 // Destino do envio de teste: grupo (JID @g.us) ou telefone.
@@ -576,19 +634,35 @@ async function runBroadcastRule(sock, ruleId, overrideTo) {
   const label = `Regra de envio #${ruleId}`;
   const data = await botGet(`/bot/broadcasts/rule/${ruleId}/`);
   const rule = data.rule;
-  if (!data.projects.length) {
-    const msg = `Nenhum projeto atende aos filtros da regra "${rule.name}" — nada enviado.`;
+  const type = rule.message_type || "daily_project_report";
+  const done = (msg) => {
     console.log(`${label}: ${msg}`);
     return msg;
+  };
+
+  const hasData = type === "allocation" ? data.technicians.length > 0 : type === "operations_print" ? true : data.projects.length > 0;
+  if (!hasData) {
+    return done(`Nenhum dado atende aos filtros da regra "${rule.name}" — nada enviado.`);
   }
-  const recipients = overrideTo ? [overrideToRecipient(overrideTo)] : data.recipients;
-  if (!recipients.length) {
-    const msg = `Regra "${rule.name}" sem destinatários — nada enviado.`;
-    console.log(`${label}: ${msg}`);
-    return msg;
+  // A alocação vai para cada técnico (não usa a lista de destinatários).
+  const recipients = type === "allocation" ? [] : overrideTo ? [overrideToRecipient(overrideTo)] : data.recipients;
+  if (type !== "allocation" && !recipients.length) {
+    return done(`Regra "${rule.name}" sem destinatários — nada enviado.`);
   }
+  if (type === "allocation" && overrideTo) {
+    data.technicians = data.technicians.slice(0, 3);
+  }
+
   let sent = 0;
-  if (rule.content_type === "image") {
+  if (type === "allocation") {
+    sent = await sendAllocationData(sock, data, overrideTo);
+  } else if (type === "daily_tasks") {
+    sent = await sendDailyTasksData(sock, data, recipients);
+  } else if (type === "project_updates") {
+    sent = await sendProjectUpdatesData(sock, data, recipients);
+  } else if (type === "operations_print") {
+    sent = await sendOperationsPrint(sock, recipients, data.sites);
+  } else if (rule.content_type === "image") {
     const image = await captureDailyProjectReportPrint(data.date, undefined, rule.id);
     const caption = rule.image_caption || `Status de Projetos AZ4 - ${formatDate(data.date)}`;
     for (const r of recipients) {
@@ -621,9 +695,7 @@ async function runBroadcastRule(sock, ruleId, overrideTo) {
       }
     }
   }
-  const msg = `Regra "${rule.name}": ${sent} mensagem(ns) enviada(s) para ${recipients.length} destino(s).`;
-  console.log(`${label}: ${msg}`);
-  return msg;
+  return done(`Regra "${rule.name}": ${sent} mensagem(ns) enviada(s).`);
 }
 
 // Agendador das regras: a cada minuto consulta as regras ativas e dispara as
@@ -775,6 +847,24 @@ http
 
     // Envio de uma regra configurada na web; com ?to= manda só para esse
     // destino (botão "Enviar teste" da tela Bot WhatsApp).
+    // Envia o menu /bot (como configurado) para um número, para conferir o texto.
+    if (url.pathname === "/trigger-bot-menu") {
+      const to = url.searchParams.get("to");
+      const jid = to ? recipientToJid(overrideToRecipient(to)) : null;
+      if (!jid) {
+        res.writeHead(400).end("Parâmetro to inválido.\n");
+        return;
+      }
+      fetchMessageTemplate("interactive_menu")
+        .then((template) => currentSock.sendMessage(jid, { text: buildMenu(template).text }))
+        .then(() => {
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true, message: "Menu enviado." }));
+        })
+        .catch((err) => res.writeHead(500).end(`Erro: ${err.message}\n`));
+      return;
+    }
+
     if (url.pathname === "/trigger-rule") {
       const ruleId = Number.parseInt(url.searchParams.get("rule"), 10);
       const to = url.searchParams.get("to") || undefined;
@@ -809,7 +899,7 @@ setInterval(() => {
   const now = new Date();
   const dateKey = now.toISOString().slice(0, 10);
   for (const b of SCHEDULED_BROADCASTS) {
-    if (b.scheduled === false) continue;
+    if (b.scheduled !== true) continue; // agendamento agora é feito só pelas regras (web)
     if (now.getUTCHours() === b.hourUTC && now.getUTCMinutes() === b.minuteUTC && lastRunDateKey[b.key] !== dateKey) {
       lastRunDateKey[b.key] = dateKey;
       b.run(currentSock).catch((err) => console.error(`Erro no envio automático (${b.key}):`, err.message));
@@ -873,8 +963,9 @@ async function start() {
 
       try {
         if (text === "/bot" || text === "bot") {
-          sessions.set(jid, { state: "menu" });
-          await sock.sendMessage(jid, { text: MENU_TEXT });
+          const menu = buildMenu(await fetchMessageTemplate("interactive_menu"));
+          sessions.set(jid, { state: "menu", options: menu.options });
+          await sock.sendMessage(jid, { text: menu.text });
           continue;
         }
 
@@ -882,9 +973,10 @@ async function start() {
         if (!session) continue; // ignora mensagens fora do fluxo, sem /bot não reagimos
 
         if (session.state === "menu") {
-          const option = MENU_OPTIONS.find((o) => o.number === text || normalize(o.key) === text || text.includes(o.key));
+          const menuOptions = session.options || MENU_OPTIONS;
+          const option = menuOptions.find((o) => o.number === text || normalize(o.key) === text || text.includes(o.key));
           if (!option) {
-            await sock.sendMessage(jid, { text: "Opção inválida. " + MENU_TEXT });
+            await sock.sendMessage(jid, { text: "Opção inválida. " + buildMenu(await fetchMessageTemplate("interactive_menu")).text });
             continue;
           }
 

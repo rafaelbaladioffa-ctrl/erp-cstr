@@ -1440,7 +1440,13 @@ export interface BotMessageFieldDefinition {
 
 export interface BotMessageTemplate {
   id?: number;
-  message_type: "daily_tasks" | "project_updates" | "operations_print" | "daily_project_report";
+  message_type:
+    | "daily_tasks"
+    | "project_updates"
+    | "operations_print"
+    | "daily_project_report"
+    | "allocation"
+    | "interactive_menu";
   title: string;
   intro_text: string;
   footer_text: string;
@@ -1454,6 +1460,8 @@ export interface BotBroadcastRule {
   id?: number;
   name: string;
   is_active: boolean;
+  message_type: "daily_project_report" | "daily_tasks" | "project_updates" | "allocation" | "operations_print";
+  date_offset_days: number;
   content_type: "text" | "image";
   send_time: string;
   weekdays: number[];
@@ -1474,4 +1482,21 @@ export interface BotBroadcastRuleOptions {
   regions: { id: number; name: string }[];
   statuses: { id: string; name: string }[];
   subscribers: { id: number; name: string; target: string }[];
+}
+
+export interface BotSubscriber {
+  id?: number;
+  name: string;
+  phone: string;
+  group_jid: string;
+  is_active: boolean;
+  receives_daily_tasks: boolean;
+  receives_project_updates: boolean;
+  receives_operations_print: boolean;
+  receives_daily_project_report: boolean;
+}
+
+export interface BotGroup {
+  jid: string;
+  nome: string;
 }

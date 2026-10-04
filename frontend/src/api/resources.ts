@@ -67,6 +67,8 @@ import type {
   Workstream,
   BotBroadcastRule,
   BotBroadcastRuleOptions,
+  BotGroup,
+  BotSubscriber,
   BotMessageTemplate,
 } from "./types";
 
@@ -530,6 +532,16 @@ export const botMessagesApi = {
     apiClient.patch<BotMessageTemplate>("/bot/message-templates/", payload).then((r) => r.data),
   preview: (payload: BotMessageTemplate) =>
     apiClient.post<{ preview: string }>("/bot/message-templates/preview/", payload).then((r) => r.data),
+  testMenu: (to: string) =>
+    apiClient.post<{ detail: string }>("/bot/message-templates/test-menu/", { to }, { timeout: 70000 }).then((r) => r.data),
+};
+
+export const botSubscribersApi = {
+  list: () => apiClient.get<BotSubscriber[]>("/bot/subscribers/").then((r) => r.data),
+  create: (payload: BotSubscriber) => apiClient.post<BotSubscriber>("/bot/subscribers/", payload).then((r) => r.data),
+  update: (id: number, payload: BotSubscriber) => apiClient.put<BotSubscriber>(`/bot/subscribers/${id}/`, payload).then((r) => r.data),
+  remove: (id: number) => apiClient.delete(`/bot/subscribers/${id}/`),
+  groups: () => apiClient.get<BotGroup[]>("/bot/subscribers/groups/").then((r) => r.data),
 };
 
 export const botRulesApi = {

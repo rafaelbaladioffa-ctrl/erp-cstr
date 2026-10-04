@@ -3,18 +3,105 @@ import { botRulesApi } from "../../api/resources";
 import type { BotBroadcastRule, BotBroadcastRuleOptions } from "../../api/types";
 import Icon from "../ui/Icon";
 
+export type RuleType = BotBroadcastRule["message_type"];
+
+interface RuleTypeMeta {
+  label: string;
+  hint: string;
+  formats: BotBroadcastRule["content_type"][];
+  defaultTime: string;
+  defaultStatuses: string[];
+  defaultOffset: number;
+  projectFilters: boolean; // clientes, categorias, regionais, status
+  siteFilter: boolean;
+  recipients: boolean;
+  dateOffset: boolean;
+  captionField: boolean;
+}
+
+export const RULE_TYPE_META: Record<RuleType, RuleTypeMeta> = {
+  daily_project_report: {
+    label: "Relatório diário de projeto",
+    hint: "Texto: uma mensagem por projeto. Imagem: um print com todos os projetos.",
+    formats: ["text", "image"],
+    defaultTime: "15:00",
+    defaultStatuses: ["in_progress"],
+    defaultOffset: 0,
+    projectFilters: true,
+    siteFilter: true,
+    recipients: true,
+    dateOffset: true,
+    captionField: true,
+  },
+  daily_tasks: {
+    label: "Tarefas do dia",
+    hint: "Uma mensagem consolidada com os projetos alocados no dia, técnicos e tarefas pendentes.",
+    formats: ["text"],
+    defaultTime: "10:00",
+    defaultStatuses: [],
+    defaultOffset: 0,
+    projectFilters: true,
+    siteFilter: true,
+    recipients: true,
+    dateOffset: true,
+    captionField: false,
+  },
+  project_updates: {
+    label: "Atualização de projetos",
+    hint: "Uma mensagem por projeto alocado no dia, igual à atualização diária enviada ao cliente.",
+    formats: ["text"],
+    defaultTime: "17:00",
+    defaultStatuses: [],
+    defaultOffset: 0,
+    projectFilters: true,
+    siteFilter: true,
+    recipients: true,
+    dateOffset: true,
+    captionField: false,
+  },
+  allocation: {
+    label: "Alocação diária aos técnicos",
+    hint: "Cada técnico alocado recebe a própria mensagem, no telefone cadastrado dele (não usa a lista de destinatários).",
+    formats: ["text"],
+    defaultTime: "18:00",
+    defaultStatuses: [],
+    defaultOffset: 1,
+    projectFilters: true,
+    siteFilter: true,
+    recipients: false,
+    dateOffset: true,
+    captionField: false,
+  },
+  operations_print: {
+    label: "Print da operação",
+    hint: "Imagem da Central de Operações. Com sites selecionados, envia um print por site; sem sites, um print geral.",
+    formats: ["image"],
+    defaultTime: "08:00",
+    defaultStatuses: [],
+    defaultOffset: 0,
+    projectFilters: false,
+    siteFilter: true,
+    recipients: true,
+    dateOffset: false,
+    captionField: false,
+  },
+};
+
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
 const LABEL_STYLE = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)" } as const;
 
-function emptyRule(): BotBroadcastRule {
+function emptyRule(type: RuleType): BotBroadcastRule {
+  const meta = RULE_TYPE_META[type];
   return {
     name: "Nova regra",
     is_active: true,
-    content_type: "text",
-    send_time: "15:00",
+    message_type: type,
+    date_offset_days: meta.defaultOffset,
+    content_type: meta.formats[0],
+    send_time: meta.defaultTime,
     weekdays: [],
-    statuses: ["in_progress"],
+    statuses: meta.defaultStatuses,
     client_ids: [],
     category_ids: [],
     include_no_category: false,
@@ -84,9 +171,10 @@ function RuleCard({
 }: {
   initial: BotBroadcastRule;
   options: BotBroadcastRuleOptions;
-  onSaved: (rule: BotBroadcastRule, previousId?: number) => void;
+  onSaved: (rule: BotBroadcastRule) => void;
   onDeleted: (id?: number) => void;
 }) {
+  const meta = RULE_TYPE_META[initial.message_type];
   const [rule, setRule] = useState<BotBroadcastRule>(initial);
   const [saving, setSaving] = useState(false);
   const [testTo, setTestTo] = useState("");
@@ -104,7 +192,7 @@ function RuleCard({
     try {
       const saved = rule.id ? await botRulesApi.update(rule.id, rule) : await botRulesApi.create(rule);
       setRule(saved);
-      onSaved(saved, rule.id);
+      onSaved(saved);
       setFeedback({ kind: "ok", text: "Regra salva." });
     } catch (err: unknown) {
       const data = (err as { response?: { data?: unknown } }).response?.data;
@@ -137,7 +225,7 @@ function RuleCard({
   }
 
   return (
-    <div className="card" style={{ padding: 18, marginBottom: 16 }}>
+    <div className="card" style={{ padding: 18, marginBottom: 16, opacity: rule.is_active ? 1 : 0.75 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
         <input className="input" value={rule.name} onChange={(e) => patch({ name: e.target.value })} style={{ flex: 1, fontWeight: 700 }} />
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)" }}>
@@ -146,18 +234,29 @@ function RuleCard({
         </label>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 14 }}>
         <div>
           <div style={LABEL_STYLE}>Horário (Brasília)</div>
           <input className="input" type="time" value={rule.send_time} onChange={(e) => patch({ send_time: e.target.value })} style={{ width: "100%", marginTop: 6 }} />
         </div>
-        <div>
-          <div style={LABEL_STYLE}>Formato</div>
-          <select className="input" value={rule.content_type} onChange={(e) => patch({ content_type: e.target.value as BotBroadcastRule["content_type"] })} style={{ width: "100%", marginTop: 6 }}>
-            <option value="text">Texto (uma mensagem por projeto)</option>
-            <option value="image">Imagem (print)</option>
-          </select>
-        </div>
+        {meta.formats.length > 1 && (
+          <div>
+            <div style={LABEL_STYLE}>Formato</div>
+            <select className="input" value={rule.content_type} onChange={(e) => patch({ content_type: e.target.value as BotBroadcastRule["content_type"] })} style={{ width: "100%", marginTop: 6 }}>
+              <option value="text">Texto (uma mensagem por projeto)</option>
+              <option value="image">Imagem (print)</option>
+            </select>
+          </div>
+        )}
+        {meta.dateOffset && (
+          <div>
+            <div style={LABEL_STYLE}>Dados de</div>
+            <select className="input" value={rule.date_offset_days} onChange={(e) => patch({ date_offset_days: Number(e.target.value) })} style={{ width: "100%", marginTop: 6 }}>
+              <option value={0}>Hoje</option>
+              <option value={1}>Amanhã</option>
+            </select>
+          </div>
+        )}
         <div>
           <div style={LABEL_STYLE}>Dias da semana {rule.weekdays.length === 0 && <span style={{ fontWeight: 400 }}>— todos</span>}</div>
           <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
@@ -186,40 +285,48 @@ function RuleCard({
         </div>
       </div>
 
-      {rule.content_type === "image" && (
+      {meta.captionField && rule.content_type === "image" && (
         <div style={{ marginBottom: 14 }}>
           <div style={LABEL_STYLE}>Legenda da imagem</div>
           <input className="input" value={rule.image_caption} placeholder="Vazio = Status de Projetos AZ4 - data" onChange={(e) => patch({ image_caption: e.target.value })} style={{ width: "100%", marginTop: 6 }} />
         </div>
       )}
 
-      <div style={{ ...LABEL_STYLE, marginBottom: 8, color: "var(--text)" }}>Quais projetos entram (filtro vazio = sem filtro)</div>
+      <div style={{ ...LABEL_STYLE, marginBottom: 8, color: "var(--text)" }}>
+        {meta.projectFilters ? "Quais projetos entram (nada selecionado = todos)" : "Quais sites entram (nada selecionado = todos)"}
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 14 }}>
-        <CheckList title="Clientes" hint="todos" allLabel="Todos os clientes" items={options.clients} selected={rule.client_ids} onChange={(client_ids) => patch({ client_ids })} />
-        <CheckList
-          title="Categorias"
-          hint="todas"
-          allLabel="Todas (inclui projetos sem categoria)"
-          extra={{ label: "Incluir projetos sem categoria", checked: rule.include_no_category, onChange: (include_no_category) => patch({ include_no_category }) }}
-          items={options.categories}
-          selected={rule.category_ids}
-          onChange={(category_ids) => patch(category_ids.length ? { category_ids } : { category_ids, include_no_category: false })}
-        />
-        <CheckList title="Regionais" hint="todas" allLabel="Todas as regionais" items={options.regions} selected={rule.region_ids} onChange={(region_ids) => patch({ region_ids })} />
-        <CheckList title="Sites" hint="todos" allLabel="Todos os sites" items={options.sites} selected={rule.site_ids} onChange={(site_ids) => patch({ site_ids })} />
-        <CheckList title="Status do projeto" hint="qualquer" allLabel="Qualquer status" items={options.statuses} selected={rule.statuses} onChange={(statuses) => patch({ statuses })} />
+        {meta.projectFilters && (
+          <>
+            <CheckList title="Clientes" hint="todos" allLabel="Todos os clientes" items={options.clients} selected={rule.client_ids} onChange={(client_ids) => patch({ client_ids })} />
+            <CheckList
+              title="Categorias"
+              hint="todas"
+              allLabel="Todas (inclui projetos sem categoria)"
+              extra={{ label: "Incluir projetos sem categoria", checked: rule.include_no_category, onChange: (include_no_category) => patch({ include_no_category }) }}
+              items={options.categories}
+              selected={rule.category_ids}
+              onChange={(category_ids) => patch(category_ids.length ? { category_ids } : { category_ids, include_no_category: false })}
+            />
+            <CheckList title="Regionais" hint="todas" allLabel="Todas as regionais" items={options.regions} selected={rule.region_ids} onChange={(region_ids) => patch({ region_ids })} />
+          </>
+        )}
+        {meta.siteFilter && <CheckList title="Sites" hint="todos" allLabel="Todos os sites" items={options.sites} selected={rule.site_ids} onChange={(site_ids) => patch({ site_ids })} />}
+        {meta.projectFilters && <CheckList title="Status do projeto" hint="qualquer" allLabel="Qualquer status" items={options.statuses} selected={rule.statuses} onChange={(statuses) => patch({ statuses })} />}
       </div>
 
-      <div style={{ marginBottom: 14 }}>
-        <CheckList
-          title="Destinatários"
-          hint="todos que recebem a atualização diária de projeto"
-          allLabel="Todos que recebem o relatório diário de projeto"
-          items={options.subscribers.map((s) => ({ id: s.id, name: s.name, sub: s.target }))}
-          selected={rule.recipient_ids}
-          onChange={(recipient_ids) => patch({ recipient_ids })}
-        />
-      </div>
+      {meta.recipients && (
+        <div style={{ marginBottom: 14 }}>
+          <CheckList
+            title="Destinatários"
+            hint="todos os destinatários padrão deste tipo de mensagem"
+            allLabel="Destinatários padrão (aba Destinatários e grupos)"
+            items={options.subscribers.map((s) => ({ id: s.id, name: s.name, sub: s.target }))}
+            selected={rule.recipient_ids}
+            onChange={(recipient_ids) => patch({ recipient_ids })}
+          />
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: 14 }}>
         <button className="btn btn-primary" onClick={save} disabled={saving || !rule.name.trim() || !rule.send_time}>
@@ -231,26 +338,19 @@ function RuleCard({
           Excluir
         </button>
         <span style={{ flex: 1 }} />
-        <input
-          className="input"
-          value={testTo}
-          onChange={(e) => setTestTo(e.target.value)}
-          placeholder="Telefone com DDD ou ID do grupo (@g.us)"
-          style={{ width: 300 }}
-        />
+        <input className="input" value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="Telefone com DDD ou ID do grupo (@g.us)" style={{ width: 300 }} />
         <button className="btn" onClick={sendTest} disabled={!testTo.trim() || testing} type="button" title="Envia agora, só para o destino ao lado, com a regra como está na tela">
           <Icon name="send" style={{ fontSize: 17 }} />
           {testing ? "Enviando..." : "Enviar teste"}
         </button>
       </div>
-      {feedback && (
-        <p style={{ margin: "10px 0 0", fontSize: 13, color: feedback.kind === "ok" ? "var(--green)" : "var(--red)" }}>{feedback.text}</p>
-      )}
+      {feedback && <p style={{ margin: "10px 0 0", fontSize: 13, color: feedback.kind === "ok" ? "var(--green)" : "var(--red)" }}>{feedback.text}</p>}
     </div>
   );
 }
 
-export default function BroadcastRules() {
+export default function BroadcastRules({ messageType }: { messageType: RuleType }) {
+  const meta = RULE_TYPE_META[messageType];
   const [rules, setRules] = useState<BotBroadcastRule[]>([]);
   const [drafts, setDrafts] = useState<{ key: number; rule: BotBroadcastRule }[]>([]);
   const [options, setOptions] = useState<BotBroadcastRuleOptions | null>(null);
@@ -269,28 +369,27 @@ export default function BroadcastRules() {
   if (error) return <p style={{ color: "var(--red)", fontSize: 13 }}>{error}</p>;
   if (!options) return <p style={{ color: "var(--text-muted)" }}>Carregando...</p>;
 
+  const typeRules = rules.filter((r) => r.message_type === messageType);
+
   function addDraft() {
-    setDrafts((prev) => [...prev, { key: nextKey, rule: emptyRule() }]);
+    setDrafts((prev) => [...prev, { key: nextKey, rule: emptyRule(messageType) }]);
     setNextKey((k) => k + 1);
   }
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 18 }}>Regras de envio — relatório diário de projeto</h2>
-          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 12.5 }}>
-            Cada regra define horário, dias, quais projetos entram, quem recebe e o formato (texto ou print). O conteúdo do texto
-            segue o modelo "Relatório diário de projeto".
-          </p>
-        </div>
+        <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 12.5, maxWidth: 640 }}>
+          <b style={{ color: "var(--text)" }}>{meta.label}.</b> {meta.hint} Cada regra define horário, dias, quais dados entram e quem recebe.
+          Sem nenhuma regra ativa, este envio não acontece.
+        </p>
         <button className="btn btn-primary" onClick={addDraft} type="button">
           <Icon name="add" style={{ fontSize: 17 }} />
           Nova regra
         </button>
       </div>
 
-      {rules.map((rule) => (
+      {typeRules.map((rule) => (
         <RuleCard
           key={rule.id}
           initial={rule}
@@ -311,8 +410,8 @@ export default function BroadcastRules() {
           onDeleted={() => setDrafts((prev) => prev.filter((d) => d.key !== key))}
         />
       ))}
-      {rules.length === 0 && drafts.length === 0 && (
-        <div className="empty-state">Nenhuma regra cadastrada. Sem regras, o relatório diário de projeto não é enviado.</div>
+      {typeRules.length === 0 && drafts.length === 0 && (
+        <div className="empty-state">Nenhuma regra para este envio. Clique em "Nova regra" para agendar.</div>
       )}
     </div>
   );

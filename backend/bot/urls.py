@@ -4,12 +4,14 @@ from rest_framework.routers import SimpleRouter
 from . import views
 from .operations_print import OperationsPrintView
 from .project_report_print import ProjectReportPrintView
-from .rules import BotBroadcastRuleViewSet, BotRuleBroadcastView, BotRulesScheduleView
+from .rules import BotBroadcastRuleViewSet, BotRuleBroadcastView, BotMenuTestView, BotRulesScheduleView, BotSubscriberViewSet
 
 router = SimpleRouter()
 router.register("broadcast-rules", BotBroadcastRuleViewSet, basename="bot-broadcast-rule")
+router.register("subscribers", BotSubscriberViewSet, basename="bot-subscriber")
 
 urlpatterns = [
+    path("message-templates/test-menu/", BotMenuTestView.as_view(), name="bot-menu-test"),
     path("", include(router.urls)),
     path("broadcasts/rules/", BotRulesScheduleView.as_view(), name="bot-broadcast-rules-schedule"),
     path("broadcasts/rule/<int:pk>/", BotRuleBroadcastView.as_view(), name="bot-broadcast-rule"),

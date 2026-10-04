@@ -42,6 +42,16 @@ FIELD_DEFINITIONS = {
     "operations_print": [
         ("caption_datetime", "Data e hora na legenda"),
     ],
+    "allocation": [
+        ("project_code", "Código do projeto"),
+        ("site", "Site"),
+    ],
+    "interactive_menu": [
+        ("alocacao", "1 · Alocação (projeto e site de hoje)"),
+        ("atualizacao_projetos", "2 · Atualização de projetos"),
+        ("minhas_tarefas", "3 · Minhas tarefas"),
+        ("status_tecnicos", "4 · Status dos técnicos"),
+    ],
 }
 
 DEFAULT_TEMPLATES = {
@@ -64,6 +74,16 @@ DEFAULT_TEMPLATES = {
         "title": "ATUALIZAÇÃO DIÁRIA DE PROJETO",
         "intro_text": "",
         "footer_text": "",
+    },
+    "allocation": {
+        "title": "",
+        "intro_text": "Olá, {nome}! Aqui está sua alocação para {data}:",
+        "footer_text": "",
+    },
+    "interactive_menu": {
+        "title": "",
+        "intro_text": "Olá! Eu sou o bot do ERP Consultimer. O que você deseja?",
+        "footer_text": "Digite o número da opção.",
     },
 }
 
@@ -144,6 +164,13 @@ def preview_for_template(data):
             ("occurrences", "Acesso ao rack B pendente"),
         ],
         "operations_print": [("caption_datetime", "03/10/2026 14:00")],
+        "allocation": [("project_code", "CSTR-2026-001"), ("site", "Site SP01")],
+        "interactive_menu": [
+            ("alocacao", "Alocação (projeto e site de hoje)"),
+            ("atualizacao_projetos", "Atualização de projetos"),
+            ("minhas_tarefas", "Minhas tarefas"),
+            ("status_tecnicos", "Status dos técnicos"),
+        ],
     }
     lines = [f"*{title}*"] if title else []
     if intro:
