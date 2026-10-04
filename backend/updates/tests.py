@@ -213,7 +213,7 @@ class WeeklyUpdateTests(TestCase):
             self.assertIn("Projeto Beta", html)
             self.assertIn("Update Semanal", message.subject)
             self.assertIn("2 projetos", message.subject)
-            self.assertEqual(message.attachments, [])
+            self.assertFalse([att for att in message.attachments if isinstance(att, tuple)])  # sem PDF (só o logo inline)
         from .models import ProjectDailyUpdate
 
         self.assertEqual(ProjectDailyUpdate.objects.filter(sent_at__isnull=False).count(), 2)
