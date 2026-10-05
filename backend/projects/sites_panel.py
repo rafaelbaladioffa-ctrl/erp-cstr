@@ -248,6 +248,8 @@ def _presence_category(presence, absence):
     if presence.status == TechnicianDailyPresence.STATUS_OFF_DUTY:
         return TECH_OFF_DUTY
     productivity = TechnicianDailyPresence.PRESENCE_PRODUCTIVITY.get(presence.status)
+    if productivity == TechnicianDailyPresence.PRODUCTIVITY_PRODUCTIVE:
+        return TECH_EXECUTING
     if productivity == TechnicianDailyPresence.PRODUCTIVITY_UNPRODUCTIVE:
         return TECH_UNPRODUCTIVE
     return TECH_BREAK

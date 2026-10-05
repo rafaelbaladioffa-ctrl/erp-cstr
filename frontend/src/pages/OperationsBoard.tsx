@@ -90,6 +90,7 @@ const TEXT = {
     legendMeal: "Café",
     legendMeeting: "Reunião",
     legendTraveling: "Em Deslocamento",
+    legendSupport: "Apoio a outro técnico",
     legendSiteBlocked: "Sem Acesso ao Site",
     legendAwaiting: "Aguardando Liberações",
     legendNotStarted: "Não iniciado / Fim de Expediente",
@@ -169,6 +170,7 @@ const TEXT = {
     legendMeal: "Coffee Break",
     legendMeeting: "Meeting",
     legendTraveling: "Traveling",
+    legendSupport: "Supporting another technician",
     legendSiteBlocked: "No Site Access",
     legendAwaiting: "Awaiting Releases",
     legendNotStarted: "Not started / End of Shift",
@@ -248,6 +250,7 @@ const TEXT = {
     legendMeal: "Café",
     legendMeeting: "Reunión",
     legendTraveling: "En desplazamiento",
+    legendSupport: "Apoyo a otro técnico",
     legendSiteBlocked: "Sin Acceso al Sitio",
     legendAwaiting: "Esperando Liberaciones",
     legendNotStarted: "No iniciado / Fin de Jornada",
@@ -1115,6 +1118,10 @@ export default function OperationsBoard() {
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.traveling }} />
                   {p.legendTraveling}
+                </div>
+                <div className="legend-item">
+                  <span className="legend-swatch" style={{ background: PRESENCE_COLOR.support }} />
+                  {p.legendSupport}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.site_blocked }} />

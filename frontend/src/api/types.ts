@@ -846,7 +846,7 @@ export interface TechnicianPresence {
   id: number;
   collaborator: number;
   date: string;
-  status: "not_started" | "available" | "in_progress" | "lunch" | "personal" | "meal" | "meeting" | "traveling" | "site_blocked" | "awaiting_release" | "off_duty";
+  status: "not_started" | "available" | "in_progress" | "lunch" | "personal" | "meal" | "meeting" | "traveling" | "support" | "site_blocked" | "awaiting_release" | "off_duty";
   status_display: string;
   checked_in_at: string | null;
   checked_out_at: string | null;

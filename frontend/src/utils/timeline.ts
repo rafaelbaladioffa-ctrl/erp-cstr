@@ -9,6 +9,7 @@ export const PRESENCE_COLOR: Record<string, string> = {
   meal: "var(--teal)",
   meeting: "var(--pink)",
   traveling: "var(--cyan)",
+  support: "var(--lime)",
   site_blocked: "var(--red)",
   awaiting_release: "var(--orange)",
   off_duty: "var(--text-faint)",
@@ -31,6 +32,7 @@ export const PRESENCE_LABEL: Record<string, string> = {
   meal: "Café",
   meeting: "Reunião",
   traveling: "Em Deslocamento",
+  support: "Apoio a outro técnico",
   site_blocked: "Sem Acesso ao Site",
   awaiting_release: "Aguardando Liberações",
   off_duty: "Fim de Expediente",
@@ -47,6 +49,7 @@ const PRESENCE_LABELS_I18N: Record<string, Record<string, string>> = {
     meal: "Coffee Break",
     meeting: "Meeting",
     traveling: "Traveling",
+    support: "Supporting another technician",
     site_blocked: "No Site Access",
     awaiting_release: "Awaiting Release",
     off_duty: "Off Duty",
@@ -60,6 +63,7 @@ const PRESENCE_LABELS_I18N: Record<string, Record<string, string>> = {
     meal: "Café",
     meeting: "Reunión",
     traveling: "En desplazamiento",
+    support: "Apoyo a otro técnico",
     site_blocked: "Sin acceso al site",
     awaiting_release: "Esperando liberaciones",
     off_duty: "Fuera de turno",
@@ -82,7 +86,7 @@ export function emPausaLabel(locale: string): string {
 
 // Status que "explicam" uma pausa — se o técnico pausou uma tarefa e trocou
 // pra um desses, a barra da pausa reflete o motivo em vez do genérico "Em pausa".
-export const AWAY_STATUSES = ["lunch", "personal", "meal", "meeting", "traveling", "site_blocked", "awaiting_release"];
+export const AWAY_STATUSES = ["lunch", "personal", "meal", "meeting", "traveling", "support", "site_blocked", "awaiting_release"];
 
 export const WINDOW_START_HOUR = 7;
 export const WINDOW_END_HOUR = 19;

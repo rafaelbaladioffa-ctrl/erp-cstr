@@ -22,6 +22,7 @@ class TechnicianDailyPresence(TimestampedModel):
     STATUS_MEAL = "meal"
     STATUS_MEETING = "meeting"
     STATUS_TRAVELING = "traveling"
+    STATUS_SUPPORT = "support"
     STATUS_SITE_BLOCKED = "site_blocked"
     STATUS_AWAITING_RELEASE = "awaiting_release"
     STATUS_OFF_DUTY = "off_duty"
@@ -34,6 +35,7 @@ class TechnicianDailyPresence(TimestampedModel):
         (STATUS_MEAL, "Café"),
         (STATUS_MEETING, "Reunião"),
         (STATUS_TRAVELING, "Em Deslocamento"),
+        (STATUS_SUPPORT, "Apoio a outro técnico"),
         (STATUS_SITE_BLOCKED, "Sem Acesso ao Site"),
         (STATUS_AWAITING_RELEASE, "Aguardando Liberações"),
         (STATUS_OFF_DUTY, "Fim de Expediente"),
@@ -51,6 +53,7 @@ class TechnicianDailyPresence(TimestampedModel):
         STATUS_MEAL,
         STATUS_MEETING,
         STATUS_TRAVELING,
+        STATUS_SUPPORT,
         STATUS_SITE_BLOCKED,
         STATUS_AWAITING_RELEASE,
         STATUS_OFF_DUTY,
@@ -65,6 +68,7 @@ class TechnicianDailyPresence(TimestampedModel):
     # nenhum dos dois lados).
     PRODUCTIVITY_UNPRODUCTIVE = "unproductive"
     PRODUCTIVITY_NEUTRAL = "neutral"
+    PRODUCTIVITY_PRODUCTIVE = "productive"
     PRESENCE_PRODUCTIVITY = {
         STATUS_AVAILABLE: PRODUCTIVITY_UNPRODUCTIVE,
         STATUS_SITE_BLOCKED: PRODUCTIVITY_UNPRODUCTIVE,
@@ -74,6 +78,9 @@ class TechnicianDailyPresence(TimestampedModel):
         STATUS_MEAL: PRODUCTIVITY_NEUTRAL,
         STATUS_MEETING: PRODUCTIVITY_NEUTRAL,
         STATUS_TRAVELING: PRODUCTIVITY_NEUTRAL,
+        # Apoio a outro técnico é trabalho: conta como tempo produtivo, igual
+        # a "Em Execução" (ver PRODUCTIVE_STATUSES em api/reports.py).
+        STATUS_SUPPORT: PRODUCTIVITY_PRODUCTIVE,
     }
 
     # Jornada padrão usada nos relatórios de utilização — fixa, não é

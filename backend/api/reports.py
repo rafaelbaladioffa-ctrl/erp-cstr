@@ -39,6 +39,11 @@ EXTERNAL_BLOCK_STATUSES = (
     TechnicianDailyPresence.STATUS_AWAITING_RELEASE,
 )
 INTERNAL_IDLE_STATUSES = (TechnicianDailyPresence.STATUS_AVAILABLE,)
+# Tempo produtivo: execução de tarefa + apoio a outro técnico.
+PRODUCTIVE_STATUSES = (
+    TechnicianDailyPresence.STATUS_IN_PROGRESS,
+    TechnicianDailyPresence.STATUS_SUPPORT,
+)
 METER_UNITS = {"m", "M", "METER", "METERS", "METRO", "METROS", "MT", "MTS"}
 
 
@@ -309,7 +314,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     internal_idle = {}
     days_with_execution = set()
     for (collaborator_id, day), durations in per_day.items():
-        in_progress = durations.get(TechnicianDailyPresence.STATUS_IN_PROGRESS, 0.0)
+        in_progress = _sum_statuses(durations, PRODUCTIVE_STATUSES)
         if in_progress > 0:
             days_with_execution.add((collaborator_id, day))
         productive[collaborator_id] = productive.get(collaborator_id, 0.0) + in_progress
@@ -448,7 +453,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         if collaborator is None:
             continue
         journey = TechnicianDailyPresence.STANDARD_WORKDAY_HOURS if collaborator_id in checked_in_today else 0.0
-        active = durations.get(TechnicianDailyPresence.STATUS_IN_PROGRESS, 0.0)
+        active = _sum_statuses(durations, PRODUCTIVE_STATUSES)
         available = durations.get(TechnicianDailyPresence.STATUS_AVAILABLE, 0.0)
         breaks = _sum_statuses(
             durations,

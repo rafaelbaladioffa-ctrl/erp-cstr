@@ -48,6 +48,7 @@ const TEXT = {
     legendMeal: "Café",
     legendMeeting: "Reunião",
     legendTraveling: "Em Deslocamento",
+    legendSupport: "Apoio a outro técnico",
     legendSiteBlocked: "Sem Acesso ao Site",
     legendAwaitingRelease: "Aguardando Liberações",
     legendIdle: "Não iniciado / Fim de Expediente",
@@ -85,6 +86,7 @@ const TEXT = {
     legendMeal: "Coffee Break",
     legendMeeting: "Meeting",
     legendTraveling: "Traveling",
+    legendSupport: "Supporting another technician",
     legendSiteBlocked: "No Site Access",
     legendAwaitingRelease: "Awaiting Releases",
     legendIdle: "Not started / End of shift",
@@ -122,6 +124,7 @@ const TEXT = {
     legendMeal: "Café",
     legendMeeting: "Reunión",
     legendTraveling: "En desplazamiento",
+    legendSupport: "Apoyo a otro técnico",
     legendSiteBlocked: "Sin acceso al sitio",
     legendAwaitingRelease: "Esperando liberaciones",
     legendIdle: "No iniciado / Fin de jornada",
@@ -338,6 +341,10 @@ export default function TimelineOperacional() {
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.traveling }} />
               {p.legendTraveling}
+            </div>
+            <div className="legend-item">
+              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.support }} />
+              {p.legendSupport}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.site_blocked }} />
