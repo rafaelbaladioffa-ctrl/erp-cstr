@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from core.models import Client, Collaborator, Company, JobTitle, Person, Responsible, Site
 from projects.analytics import build_projects_performance
@@ -92,3 +93,52 @@ class ProjectsListSupervisorScopeTests(DashboardProjectsScopeTests):
         client.force_authenticate(admin)
         ids = {row["id"] for row in client.get("/api/projects/", {"page_size": "100"}).json()["results"]}
         self.assertEqual(ids, {self.mine.pk, self.other.pk})
+
+
+class OperationsBoardSupervisorScopeTests(DashboardProjectsScopeTests):
+    """Central de Operações: supervisor vê só técnicos sob sua gestão e tarefas dos projetos em que é Responsável CSTR."""
+
+    def test_board_and_timeline_limited_to_own_projects_and_team(self):
+        from datetime import timedelta
+
+        from core.models import Collaborator, Task
+        from api.operations import build_board_data, build_timeline_data
+        from projects.models import ProjectTask, ProjectTaskAssignment
+
+        today = timezone.localdate()
+        start = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time())) + timedelta(hours=8)
+        catalog = Task.objects.create(name="Tarefa")
+        supervisor = Collaborator.objects.get(person__user=self.user)
+        company = self.mine.company
+        team_person = Person.objects.create(name="Tec Time", company=company)
+        team_member = Collaborator.objects.create(person=team_person, manager=supervisor)
+        outsider = Collaborator.objects.create(person=Person.objects.create(name="Tec Fora", company=company))
+
+        def task(project, collaborator, order):
+            t = ProjectTask.objects.create(
+                project=project, task=catalog, order=order, status=ProjectTask.STATUS_NOT_STARTED, planned_start=start
+            )
+            ProjectTaskAssignment.objects.create(project_task=t, collaborator=collaborator)
+            return t
+
+        mine_task = task(self.mine, team_member, 1)
+        other_task = task(self.other, team_member, 2)
+        task(self.mine, outsider, 3)
+
+        board = build_board_data(None, user=self.user)
+        self.assertEqual({t["id"] for t in board["pool"]}, {mine_task.id})
+        names = {t["name"] for t in board["technicians"]}
+        self.assertIn("Tec Time", names)
+        self.assertNotIn("Tec Fora", names)
+        team = next(t for t in board["technicians"] if t["name"] == "Tec Time")
+        self.assertEqual({q["task_id"] for q in team["queue"]}, {mine_task.id})
+
+        timeline = build_timeline_data(None, today, user=self.user)
+        team_tl = next(t for t in timeline["technicians"] if t["name"] == "Tec Time")
+        self.assertEqual({b["id"] for b in team_tl["blocks"]}, {mine_task.id})
+        self.assertNotIn(other_task.id, {b["id"] for b in team_tl["blocks"]})
+
+        admin = User.objects.create_superuser(username="adm3", email="adm3@x.com", password="x")
+        self.assertEqual({t["id"] for t in build_board_data(None, user=admin)["pool"]}, {mine_task.id, other_task.id} | {
+            t.id for t in ProjectTask.objects.filter(project=self.mine, status=ProjectTask.STATUS_NOT_STARTED)
+        })

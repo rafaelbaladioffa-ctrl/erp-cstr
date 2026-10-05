@@ -65,6 +65,16 @@ def is_supervisor_user(user):
     return collaborator is not None and is_supervisor(collaborator)
 
 
+def supervisor_project_ids(user):
+    """IDs dos projetos em que o supervisor é Responsável CSTR, ou None quando o usuário
+    não é supervisor (sem restrição)."""
+    if not is_supervisor_user(user):
+        return None
+    from projects.models import Project
+
+    return set(Project.objects.filter(responsible_cstr__person__user=user).values_list("pk", flat=True))
+
+
 def scope_supervisor_projects(queryset, user, field_prefix=""):
     """Supervisor só enxerga os projetos em que é o Responsável CSTR. Os demais
     perfis não sofrem restrição. `field_prefix` ex.: "project__"."""

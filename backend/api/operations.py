@@ -19,7 +19,7 @@ from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDaily
 from projects.models import ProjectTask, ProjectTaskAssignment
 
 from .reports import MAX_PERIOD_DAYS, build_operations_reports
-from core.collaborator_scope import scope_collaborators
+from core.collaborator_scope import scope_collaborators, supervisor_project_ids
 
 
 class HasOperationsBoardPermission(IsAuthenticated):
@@ -31,7 +31,7 @@ class HasOperationsBoardPermission(IsAuthenticated):
         return request.user.has_perm("projects.view_projecttaskassignment")
 
 
-def _current_tasks_by_collaborator(collaborator_ids):
+def _current_tasks_by_collaborator(collaborator_ids, project_ids=None):
     """Tarefas 'abertas' (em execução OU pausadas) de cada técnico, numa
     única consulta. Pode haver mais de uma por técnico: pausar uma e iniciar
     outra é permitido, então mostrar só a primeira esconderia a que está
@@ -44,6 +44,8 @@ def _current_tasks_by_collaborator(collaborator_ids):
         .select_related("project_task__project", "project_task__task")
         .order_by("project_task__status", "project_task__actual_start")
     )
+    if project_ids is not None:
+        assignments = assignments.filter(project_task__project_id__in=project_ids)
     result = {}
     for a in assignments:
         result.setdefault(a.collaborator_id, []).append(
@@ -95,7 +97,7 @@ def _site_label(collaborator):
     return ", ".join(names) if names else "—"
 
 
-def _queue_by_collaborator(collaborator_ids):
+def _queue_by_collaborator(collaborator_ids, project_ids=None):
     assignments = (
         ProjectTaskAssignment.objects.filter(
             collaborator_id__in=collaborator_ids, project_task__status=ProjectTask.STATUS_NOT_STARTED
@@ -103,6 +105,8 @@ def _queue_by_collaborator(collaborator_ids):
         .select_related("project_task__project", "project_task__task")
         .order_by("queue_order", "dispatched_at")
     )
+    if project_ids is not None:
+        assignments = assignments.filter(project_task__project_id__in=project_ids)
     result = {}
     for a in assignments:
         result.setdefault(a.collaborator_id, []).append(
@@ -125,6 +129,8 @@ def build_board_data(site_id, date=None, user=None):
     collaborators_qs = scope_collaborators(collaborators_qs, user)
     if site_id:
         collaborators_qs = collaborators_qs.filter(sites=site_id)
+    # Supervisor: só técnicos sob a sua gestão (acima) e só tarefas dos projetos em que é Responsável CSTR.
+    project_ids = supervisor_project_ids(user)
 
     presence_filter = {"date": today}
     if site_id:
@@ -133,8 +139,8 @@ def build_board_data(site_id, date=None, user=None):
     collaborator_ids = [c.id for c in collaborators_qs]
     status_events_by_collaborator = _status_events_data(collaborator_ids, today)
     pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
-    current_tasks_by_collaborator = _current_tasks_by_collaborator(collaborator_ids)
-    queue_by_collaborator = _queue_by_collaborator(collaborator_ids)
+    current_tasks_by_collaborator = _current_tasks_by_collaborator(collaborator_ids, project_ids)
+    queue_by_collaborator = _queue_by_collaborator(collaborator_ids, project_ids)
     absences_today = {
         a.collaborator_id: a
         for a in TechnicianAbsence.objects.filter(
@@ -171,6 +177,8 @@ def build_board_data(site_id, date=None, user=None):
     # isso, todo o backlog não iniciado (mesmo tarefas agendadas pra
     # daqui semanas) aparecia junto, inflando a lista.
     pool_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_NOT_STARTED, planned_start__date=today)
+    if project_ids is not None:
+        pool_qs = pool_qs.filter(project_id__in=project_ids)
     if site_id:
         pool_qs = pool_qs.filter(project__site_id=site_id)
     pool = (
@@ -196,6 +204,9 @@ def build_board_data(site_id, date=None, user=None):
 
     active_qs = ProjectTask.objects.filter(status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
     completed_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_COMPLETED, actual_end__date=today)
+    if project_ids is not None:
+        active_qs = active_qs.filter(project_id__in=project_ids)
+        completed_qs = completed_qs.filter(project_id__in=project_ids)
     if site_id:
         active_qs = active_qs.filter(project__site_id=site_id)
         completed_qs = completed_qs.filter(project__site_id=site_id)
@@ -254,8 +265,9 @@ def build_timeline_data(site_id, date, user=None):
     collaborator_ids = [c.id for c in collaborators_qs]
     status_events_by_collaborator = _status_events_data(collaborator_ids, date)
     pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
+    project_ids = supervisor_project_ids(user)  # supervisor: só tarefas dos projetos em que é Responsável CSTR
 
-    queue_by_collaborator = _queue_by_collaborator(collaborator_ids) if is_today else {}
+    queue_by_collaborator = _queue_by_collaborator(collaborator_ids, project_ids) if is_today else {}
     # Timestamps do PRÓPRIO técnico (assignment_start/assignment_end) quando
     # disponíveis, para não mostrar barras no período em que outro técnico
     # executava a tarefa e este não.
@@ -272,6 +284,8 @@ def build_timeline_data(site_id, date, user=None):
         )
         .order_by("project_task__planned_start", "project_task__actual_start")
     )
+    if project_ids is not None:
+        all_assignments = all_assignments.filter(project_task__project_id__in=project_ids)
     for a in all_assignments:
         assignments_by_collaborator.setdefault(a.collaborator_id, []).append(a)
 
