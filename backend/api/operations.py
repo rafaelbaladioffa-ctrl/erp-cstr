@@ -89,13 +89,53 @@ def _pair_partner_map(collaborator_ids):
     return partner_map
 
 
-def _site_label(collaborator):
-    """Nome do(s) site(s) do técnico — um técnico pode estar vinculado a mais
-    de um site (Collaborator.sites é M2M), então junta os nomes. Usado pra
-    identificar de qual site é cada técnico quando o painel mostra 'Todos os
-    sites' de uma vez."""
-    names = [s.name for s in collaborator.sites.all()]
-    return ", ".join(names) if names else "—"
+def _working_sites_by_collaborator(collaborator_ids, date):
+    """Site(s) onde cada técnico ATUA no dia, a partir das tarefas dele — não do
+    cadastro (Collaborator.sites lista onde ele pode trabalhar, não onde está).
+
+    Prioridade: tarefa em execução/pausada agora (só no dia de hoje) > tarefas que
+    ele iniciou ou concluiu naquela data (mais recentes primeiro) > tarefas da fila
+    previstas para a data. Sem nenhuma tarefa, o técnico não tem site no dia.
+    Devolve {collaborator_id: "GRU65" | "GRU60, GRU65"}."""
+    is_today = date == timezone.localdate()
+    day_filter = (
+        Q(assignment_start__date=date)
+        | Q(assignment_end__date=date)
+        | Q(project_task__actual_start__date=date)
+        | Q(project_task__actual_end__date=date)
+    )
+    open_statuses = (ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED)
+    relevant = day_filter
+    if is_today:
+        relevant = relevant | Q(status__in=open_statuses) | Q(status=ProjectTask.STATUS_NOT_STARTED, project_task__planned_start__date=date)
+    else:
+        relevant = relevant | Q(status=ProjectTask.STATUS_NOT_STARTED, project_task__planned_start__date=date)
+    assignments = (
+        ProjectTaskAssignment.objects.filter(collaborator_id__in=collaborator_ids, project_task__project__site__isnull=False)
+        .filter(relevant)
+        .select_related("project_task__project__site")
+    )
+
+    ranked = {}
+    for a in assignments:
+        site_name = a.project_task.project.site.name
+        moment = a.assignment_end or a.assignment_start or a.project_task.actual_end or a.project_task.actual_start
+        if is_today and a.status in open_statuses:
+            rank = 0
+        elif a.status == ProjectTask.STATUS_NOT_STARTED:
+            rank = 2
+        else:
+            rank = 1
+        # dentro de cada faixa, o mais recente primeiro
+        order_key = (rank, -(moment.timestamp() if moment else 0))
+        entries = ranked.setdefault(a.collaborator_id, {})
+        if site_name not in entries or order_key < entries[site_name]:
+            entries[site_name] = order_key
+
+    return {
+        collaborator_id: ", ".join(name for name, _ in sorted(entries.items(), key=lambda kv: kv[1]))
+        for collaborator_id, entries in ranked.items()
+    }
 
 
 def _queue_by_collaborator(collaborator_ids, project_ids=None):
@@ -142,6 +182,7 @@ def build_board_data(site_id, date=None, user=None):
     pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
     current_tasks_by_collaborator = _current_tasks_by_collaborator(collaborator_ids, project_ids)
     queue_by_collaborator = _queue_by_collaborator(collaborator_ids, project_ids)
+    working_sites = _working_sites_by_collaborator(collaborator_ids, today)
     absences_today = {
         a.collaborator_id: a
         for a in TechnicianAbsence.objects.filter(
@@ -157,7 +198,7 @@ def build_board_data(site_id, date=None, user=None):
             {
                 "id": collaborator.id,
                 "name": collaborator.person.name if collaborator.person_id else str(collaborator),
-                "site_name": _site_label(collaborator),
+                "site_name": working_sites.get(collaborator.id, ""),
                 "presence_status": "on_leave" if absence else (presence.status if presence else TechnicianDailyPresence.STATUS_NOT_STARTED),
                 "presence_status_display": (
                     (absence.reason or "Férias / Ausência") if absence
@@ -267,6 +308,7 @@ def build_timeline_data(site_id, date, user=None):
     status_events_by_collaborator = _status_events_data(collaborator_ids, date)
     pair_partner_by_collaborator = _pair_partner_map(collaborator_ids)
     project_ids = supervisor_project_ids(user)  # supervisor: só tarefas dos projetos em que é Responsável CSTR
+    working_sites = _working_sites_by_collaborator(collaborator_ids, date)
 
     queue_by_collaborator = _queue_by_collaborator(collaborator_ids, project_ids) if is_today else {}
     # Timestamps do PRÓPRIO técnico (assignment_start/assignment_end) quando
@@ -322,7 +364,7 @@ def build_timeline_data(site_id, date, user=None):
             {
                 "id": collaborator.id,
                 "name": collaborator.person.name,
-                "site_name": _site_label(collaborator),
+                "site_name": working_sites.get(collaborator.id, ""),
                 "blocks": blocks,
                 "queue": queue_by_collaborator.get(collaborator.id, []),
                 "status_events": status_events_by_collaborator.get(collaborator.id, []),

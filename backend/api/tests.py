@@ -1074,6 +1074,68 @@ class ProjectTaskDispatchApiTests(TestCase):
         self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
 
 
+class OperationsWorkingSiteTests(TestCase):
+    """O site mostrado ao lado do técnico na Operação do Dia / Timeline é o das tarefas
+    dele no dia — não os sites do cadastro."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.client_obj = Client.objects.create(company=self.company, legal_name="Cliente Sites")
+        self.site_65 = Site.objects.create(client=self.client_obj, name="GRU65")
+        self.site_60 = Site.objects.create(client=self.client_obj, name="GRU60")
+        self.site_1 = Site.objects.create(client=self.client_obj, name="VCP1")
+        self.project_65 = Project.objects.create(company=self.company, name="Projeto 65", site=self.site_65, status=Project.STATUS_IN_PROGRESS)
+        self.project_60 = Project.objects.create(company=self.company, name="Projeto 60", site=self.site_60, status=Project.STATUS_IN_PROGRESS)
+        self.tech = make_collaborator(self.company, "Técnico Multi-site")
+        self.tech.sites.set([self.site_65, self.site_1])  # cadastro: GRU65 e VCP1
+        self.admin = User.objects.create_superuser(username="site_admin", email="site_admin@example.com", password="test-password")
+        self.client_api.force_authenticate(user=self.admin)
+        self.today = timezone.localdate()
+
+    def assign(self, project, status, **task_fields):
+        task = ProjectTask.objects.create(project=project, custom_name=f"Tarefa {project.name} {status}", status=status, **task_fields)
+        return ProjectTaskAssignment.objects.create(project_task=task, collaborator=self.tech, status=status)
+
+    def board_site(self):
+        response = self.client_api.get("/api/operations/board/", {"site": "all"})
+        self.assertEqual(response.status_code, 200, response.data)
+        return next(t for t in response.data["technicians"] if t["id"] == self.tech.pk)["site_name"]
+
+    def timeline_site(self):
+        response = self.client_api.get("/api/operations/timeline/", {"site": "all", "date": str(self.today)})
+        self.assertEqual(response.status_code, 200, response.data)
+        return next(t for t in response.data["technicians"] if t["id"] == self.tech.pk)["site_name"]
+
+    def test_no_tasks_shows_no_site(self):
+        self.assertEqual(self.board_site(), "")
+        self.assertEqual(self.timeline_site(), "")
+
+    def test_shows_site_of_task_in_execution_not_registered_sites(self):
+        now = timezone.now()
+        assignment = self.assign(self.project_60, ProjectTask.STATUS_IN_PROGRESS, actual_start=now)
+        ProjectTaskAssignment.objects.filter(pk=assignment.pk).update(assignment_start=now)
+
+        self.assertEqual(self.board_site(), "GRU60")
+        self.assertEqual(self.timeline_site(), "GRU60")
+
+    def test_finished_day_keeps_site_of_completed_tasks(self):
+        now = timezone.now()
+        assignment = self.assign(self.project_65, ProjectTask.STATUS_COMPLETED, actual_start=now - timedelta(hours=2), actual_end=now)
+        ProjectTaskAssignment.objects.filter(pk=assignment.pk).update(assignment_start=now - timedelta(hours=2), assignment_end=now)
+
+        self.assertEqual(self.board_site(), "GRU65")
+
+    def test_two_sites_in_the_same_day_current_first(self):
+        now = timezone.now()
+        done = self.assign(self.project_65, ProjectTask.STATUS_COMPLETED, actual_start=now - timedelta(hours=5), actual_end=now - timedelta(hours=3))
+        ProjectTaskAssignment.objects.filter(pk=done.pk).update(assignment_start=now - timedelta(hours=5), assignment_end=now - timedelta(hours=3))
+        running = self.assign(self.project_60, ProjectTask.STATUS_IN_PROGRESS, actual_start=now - timedelta(hours=1))
+        ProjectTaskAssignment.objects.filter(pk=running.pk).update(assignment_start=now - timedelta(hours=1))
+
+        self.assertEqual(self.board_site(), "GRU60, GRU65")
+
+
 class TechnicianAbsenceApiTests(TestCase):
     """CRUD de TechnicianAbsence e o efeito de uma ausência ativa sobre a
     Central de Operações (build_board_data)."""

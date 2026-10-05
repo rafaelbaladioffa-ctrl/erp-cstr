@@ -698,7 +698,7 @@ export default function OperationsBoard() {
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div className="ops-tech-name">
                           {tech.name}
-                          {siteId === "all" && <span className="ops-tech-site"> · {tech.site_name}</span>}
+                          {siteId === "all" && tech.site_name && <span className="ops-tech-site"> · {tech.site_name}</span>}
                         </div>
                         <div className="ops-tech-status" style={{ color: dotColor }}>
                           {busyStatus === "in_progress"
@@ -1012,7 +1012,7 @@ export default function OperationsBoard() {
                             </span>
                           </div>
                         </div>
-                        <div className="tod-row-sites">{tech.site_name}</div>
+                        {tech.site_name && <div className="tod-row-sites">{tech.site_name}</div>}
                         <div className="tod-row-stats">
                           {doneCount} {doneLabel} · {pendingCount} {pendLabel}
                         </div>

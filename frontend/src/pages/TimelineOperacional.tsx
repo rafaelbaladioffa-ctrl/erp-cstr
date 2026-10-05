@@ -370,7 +370,7 @@ export default function TimelineOperacional() {
                     <div style={{ minWidth: 0 }}>
                       <div className="tl-row-name">
                         {tech.name}
-                        {siteId === "all" && <span className="tl-row-site"> · {tech.site_name}</span>}
+                        {siteId === "all" && tech.site_name && <span className="tl-row-site"> · {tech.site_name}</span>}
                       </div>
                       <div className="tl-row-overview">
                         {p.doneCount(doneCount)}
