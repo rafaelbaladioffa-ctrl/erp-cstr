@@ -16,7 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Category, Client, Region, Responsible, Site
+from core.models import Category, Client, Collaborator, Region, Responsible, Site
 from projects.models import Project
 
 from .models import BotBroadcastRule, BotSubscriber
@@ -60,13 +60,14 @@ class BotBroadcastRuleSerializer(serializers.ModelSerializer):
     responsible_ids = serializers.PrimaryKeyRelatedField(
         source="responsibles", queryset=Responsible.objects.filter(kind=Responsible.KIND_CSTR), many=True, required=False
     )
+    manager_ids = serializers.PrimaryKeyRelatedField(source="managers", queryset=Collaborator.objects.all(), many=True, required=False)
     recipient_ids = serializers.PrimaryKeyRelatedField(source="recipients", queryset=BotSubscriber.objects.all(), many=True, required=False)
 
     class Meta:
         model = BotBroadcastRule
         fields = (
             "id", "name", "is_active", "message_type", "date_offset_days", "content_type", "send_time", "weekdays", "statuses",
-            "client_ids", "category_ids", "include_no_category", "region_ids", "responsible_ids", "site_ids", "recipient_ids", "image_caption",
+            "client_ids", "category_ids", "include_no_category", "region_ids", "responsible_ids", "manager_ids", "site_ids", "recipient_ids", "image_caption",
         )
 
     def validate(self, attrs):
@@ -117,6 +118,13 @@ class BotBroadcastRuleViewSet(viewsets.ModelViewSet):
                     {"id": r.pk, "name": r.person.name}
                     for r in Responsible.objects.filter(kind=Responsible.KIND_CSTR, is_active=True)
                     .select_related("person")
+                    .order_by("person__name")
+                ],
+                "managers": [
+                    {"id": c.pk, "name": c.person.name}
+                    for c in Collaborator.objects.filter(is_active=True, direct_reports__isnull=False)
+                    .select_related("person")
+                    .distinct()
                     .order_by("person__name")
                 ],
                 "statuses": [{"id": key, "name": label} for key, label in Project.STATUS_CHOICES],

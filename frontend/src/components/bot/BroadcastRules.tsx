@@ -14,6 +14,7 @@ interface RuleTypeMeta {
   defaultOffset: number;
   projectFilters: boolean; // clientes, categorias, regionais, status
   siteFilter: boolean;
+  managerFilter?: boolean; // só alocação: filtra técnicos pelo gestor
   recipients: boolean;
   recipientsAllLabel?: string;
   dateOffset: boolean;
@@ -71,6 +72,7 @@ export const RULE_TYPE_META: Record<RuleType, RuleTypeMeta> = {
     siteFilter: true,
     recipients: true,
     recipientsAllLabel: "Cada técnico, no telefone particular dele (sem grupo)",
+    managerFilter: true,
     dateOffset: true,
     captionField: false,
   },
@@ -109,6 +111,7 @@ function emptyRule(type: RuleType): BotBroadcastRule {
     include_no_category: false,
     region_ids: [],
     responsible_ids: [],
+    manager_ids: [],
     site_ids: [],
     recipient_ids: [],
     image_caption: "",
@@ -313,6 +316,9 @@ function RuleCard({
             />
             <CheckList title="Regionais" hint="todas" allLabel="Todas as regionais" items={options.regions} selected={rule.region_ids} onChange={(region_ids) => patch({ region_ids })} />
             <CheckList title="Responsável CSTR" hint="todos" allLabel="Todos os responsáveis" items={options.responsibles ?? []} selected={rule.responsible_ids ?? []} onChange={(responsible_ids) => patch({ responsible_ids })} />
+            {meta.managerFilter && (
+              <CheckList title="Gestor" hint="todos" allLabel="Todos os gestores" items={options.managers ?? []} selected={rule.manager_ids ?? []} onChange={(manager_ids) => patch({ manager_ids })} />
+            )}
           </>
         )}
         {meta.siteFilter && <CheckList title="Sites" hint="todos" allLabel="Todos os sites" items={options.sites} selected={rule.site_ids} onChange={(site_ids) => patch({ site_ids })} />}
@@ -369,6 +375,7 @@ function filtersSummary(rule: BotBroadcastRule, options: BotBroadcastRuleOptions
   }
   if (rule.region_ids.length) parts.push(`Regional: ${namesOf(rule.region_ids, options.regions)}`);
   if (rule.responsible_ids?.length) parts.push(`Responsável CSTR: ${namesOf(rule.responsible_ids, options.responsibles ?? [])}`);
+  if (rule.manager_ids?.length) parts.push(`Gestor: ${namesOf(rule.manager_ids, options.managers ?? [])}`);
   if (rule.site_ids.length) parts.push(`Site: ${namesOf(rule.site_ids, options.sites)}`);
   if (rule.statuses.length) {
     parts.push(`Status: ${rule.statuses.map((s) => options.statuses.find((o) => o.id === s)?.name || s).join(", ")}`);

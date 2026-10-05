@@ -133,6 +133,13 @@ class BotBroadcastRule(TimestampedModel):
     responsibles = models.ManyToManyField(
         "core.Responsible", verbose_name="responsáveis CSTR", blank=True, related_name="+"
     )
+    managers = models.ManyToManyField(
+        "core.Collaborator",
+        verbose_name="gestores",
+        blank=True,
+        related_name="+",
+        help_text="Alocação: só entram os técnicos desses gestores (e de quem está abaixo deles). Vazio = todos.",
+    )
     include_no_category = models.BooleanField(
         "incluir projetos sem categoria",
         default=False,

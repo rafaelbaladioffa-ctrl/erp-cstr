@@ -359,3 +359,39 @@ class BotRuleResponsibleFilterTests(TestCase):
         self.assertEqual(set(_rule_projects_queryset(rule)), {project_ana, project_bia})
         rule.responsibles.set([ana])
         self.assertEqual(set(_rule_projects_queryset(rule)), {project_ana})
+
+
+class BotAllocationManagerFilterTests(TestCase):
+    """Alocação: filtro Gestor só mantém técnicos da equipe (direta ou indireta) do gestor."""
+
+    def test_allocation_technicians_limited_to_selected_manager_team(self):
+        from bot.models import BotBroadcastRule
+        from bot.views import build_allocation_technicians
+        from core.models import Collaborator, Person
+        from updates.models import DailyUpdate, DailyUpdateAllocation
+
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+
+        def collaborator(name, manager=None):
+            person = Person.objects.create(name=name, company=company, phone="11999990000")
+            return Collaborator.objects.create(person=person, manager=manager)
+
+        boss_a, boss_b = collaborator("GESTOR A"), collaborator("GESTOR B")
+        sup_a = collaborator("SUP A", manager=boss_a)
+        tech_a = collaborator("TEC A", manager=sup_a)  # subordinado indireto de A
+        tech_b = collaborator("TEC B", manager=boss_b)
+
+        project = Project.objects.create(company=company, name="P", status=Project.STATUS_IN_PROGRESS)
+        date = timezone.localdate()
+        daily = DailyUpdate.objects.create(allocation_date=date)
+        allocation = DailyUpdateAllocation.objects.create(daily_update=daily, project=project)
+        allocation.collaborators.set([tech_a, tech_b])
+
+        rule = BotBroadcastRule.objects.create(name="r", message_type="allocation", send_time="18:00")
+        names = lambda: {t["collaborator_name"] for t in build_allocation_technicians(date, rule=rule)}  # noqa: E731
+
+        self.assertEqual(names(), {"TEC A", "TEC B"})  # sem gestor = todos
+        rule.managers.set([boss_a])
+        self.assertEqual(names(), {"TEC A"})
+        rule.managers.set([boss_a, boss_b])
+        self.assertEqual(names(), {"TEC A", "TEC B"})

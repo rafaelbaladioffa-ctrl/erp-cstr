@@ -98,10 +98,21 @@ def build_allocation_technicians(target_date, rule=None, require_phone=True):
     (resumo enviado a um grupo)."""
     allocations = _allocations_for(target_date, rule).select_related("project", "project__site").prefetch_related("collaborators__person")
 
+    # Filtro Gestor: só técnicos da equipe (direta ou indireta) dos gestores da regra.
+    allowed_ids = None
+    if rule is not None:
+        manager_ids = list(rule.managers.values_list("pk", flat=True))
+        if manager_ids:
+            from core.collaborator_scope import team_collaborator_ids
+
+            allowed_ids = team_collaborator_ids(manager_ids)
+
     by_collaborator = {}
     for allocation in allocations:
         for collaborator in allocation.collaborators.all():
             if not collaborator.is_active or (require_phone and not collaborator.person.phone):
+                continue
+            if allowed_ids is not None and collaborator.id not in allowed_ids:
                 continue
             entry = by_collaborator.setdefault(
                 collaborator.id,

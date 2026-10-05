@@ -43,6 +43,17 @@ def managed_collaborator_ids(user):
     return visible
 
 
+def team_collaborator_ids(manager_ids):
+    """IDs dos gestores informados mais todos os subordinados, direta ou indiretamente."""
+    visible = set(manager_ids)
+    frontier = set(manager_ids)
+    while frontier:
+        children = set(Collaborator.objects.filter(manager_id__in=frontier).values_list("pk", flat=True))
+        frontier = children - visible
+        visible |= children
+    return visible
+
+
 def is_supervisor_user(user):
     """True quando o usuário (não admin) tem cadastro de técnico com cargo de Supervisor."""
     if user is None or not getattr(user, "is_authenticated", False):
