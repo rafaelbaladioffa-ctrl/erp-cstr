@@ -562,8 +562,8 @@ def build_daily_project_report_projects(target_date, rule=None):
 
     A imagem não depende de um layout fixo: esta função sempre calcula a
     lista atual de projetos e as mesmas condicionais usadas no texto.
-    Com `rule`, os filtros vêm da regra de envio; sem ela, mantém o filtro
-    histórico (cliente A100, categoria GND).
+    Com `rule`, os filtros vêm da regra de envio; sem ela, entram todos os
+    projetos ativos e em andamento.
     """
     if rule is not None:
         projects_qs = (
@@ -572,11 +572,13 @@ def build_daily_project_report_projects(target_date, rule=None):
             .order_by("name")
         )
     else:
-        # O relatório das 15h (legado) é exclusivo de projetos do cliente A100, categoria "Projetos GND".
-        _A100 = Q(client__trade_name__icontains="A100") | Q(client__legal_name__icontains="A100") | Q(site__client__trade_name__icontains="A100") | Q(site__client__legal_name__icontains="A100")
-        projects_qs = Project.objects.filter(
-                status=Project.STATUS_IN_PROGRESS, is_active=True, category__name__icontains="GND"
-            ).filter(_A100).select_related("site", "site__client", "client", "category", "responsible_client__person", "responsible_cstr__person").order_by("name")
+        # Disparo manual sem regra: todos os projetos ativos e em andamento. Recortes por
+        # cliente/categoria/regional/etc. são feitos pelos filtros das regras de envio.
+        projects_qs = (
+            Project.objects.filter(status=Project.STATUS_IN_PROGRESS, is_active=True)
+            .select_related("site", "site__client", "client", "category", "responsible_client__person", "responsible_cstr__person")
+            .order_by("name")
+        )
 
     project_ids = [p.id for p in projects_qs]
 
