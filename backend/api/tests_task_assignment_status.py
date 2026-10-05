@@ -14,7 +14,6 @@ from unittest.mock import patch
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
 from core.models import Collaborator, Company, Person
@@ -220,7 +219,7 @@ class TaskAssignmentStatusTests(TestCase):
         response = self.client_a.get("/api/technician-presence/me/")
 
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(parse_datetime(response.data["status_since"]), at(9, 30))
+        self.assertEqual(response.data["status_since"], at(9, 30))
         self.assertEqual(presence.checked_in_at, at(7))
 
     def test_site_block_pauses_only_the_blocked_technician(self):
