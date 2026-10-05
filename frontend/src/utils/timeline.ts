@@ -111,6 +111,7 @@ export interface Segment {
   start: Date;
   end: Date | null; // null = ainda aberto (vai até "agora")
   live: boolean;
+  taskId?: number; // presente nas barras de tarefa (permite ações sobre a tarefa)
 }
 
 export interface StatusEventLike {
@@ -217,6 +218,7 @@ export function buildTechSegments(
           start: new Date(piece.start),
           end: new Date(piece.end),
           live: false,
+          taskId: b.id,
         });
         taskIntervals.push(piece);
       }
@@ -241,12 +243,13 @@ export function buildTechSegments(
             start,
             end: isLive ? null : now,
             live: false,
+            taskId: b.id,
           });
         } else {
-          segments.push({ color: BUSY_COLOR.paused, label: `${emPausaLabel(locale)} · ${b.name}`, start, end: isLive ? null : now, live: false });
+          segments.push({ color: BUSY_COLOR.paused, label: `${emPausaLabel(locale)} · ${b.name}`, start, end: isLive ? null : now, live: false, taskId: b.id });
         }
       } else {
-        segments.push({ color: BUSY_COLOR.in_progress, label: b.name, start, end: isLive ? null : now, live: isLive });
+        segments.push({ color: BUSY_COLOR.in_progress, label: b.name, start, end: isLive ? null : now, live: isLive, taskId: b.id });
       }
     }
   }

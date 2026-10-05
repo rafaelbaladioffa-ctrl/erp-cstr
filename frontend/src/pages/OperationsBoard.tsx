@@ -293,7 +293,7 @@ export default function OperationsBoard() {
   const anchorTaskRef = useRef<number | null>(null);
   const [selectedTechs, setSelectedTechs] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
-  const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number } | null>(null);
+  const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number; taskId?: number } | null>(null);
   const todPopupRef = useRef<HTMLDivElement>(null);
   const [poolOpen, setPoolOpen] = useState(false);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
@@ -1021,7 +1021,7 @@ export default function OperationsBoard() {
                                   setTodPopup((prev) =>
                                     prev?.key === barKey
                                       ? null
-                                      : { key: barKey, label: segment.label, start: segment.start, end: segment.end ?? null, color: segment.color, top: rect.bottom + 6, left: rect.left }
+                                      : { key: barKey, label: segment.label, start: segment.start, end: segment.end ?? null, color: segment.color, top: rect.bottom + 6, left: rect.left, taskId: segment.taskId }
                                   );
                                 }}
                                 style={{ left: `${left}%`, width: `${width}%`, top: barT(lane), height: barH, background: segment.color }}
@@ -1191,6 +1191,20 @@ export default function OperationsBoard() {
                 {formatTime(todPopup.start.toISOString())}
                 {todPopup.end ? ` – ${formatTime(todPopup.end.toISOString())}` : p.inProgress}
               </div>
+              {todPopup.taskId != null && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ color: "var(--red)", marginTop: 6 }}
+                  onClick={() => {
+                    const id = todPopup.taskId!;
+                    setTodPopup(null);
+                    handleReturnToPool(id);
+                  }}
+                >
+                  {p.returnToPool}
+                </button>
+              )}
             </div>
             <button className="tl-popup-close" onClick={() => setTodPopup(null)} aria-label={p.closeLabel}>×</button>
           </div>

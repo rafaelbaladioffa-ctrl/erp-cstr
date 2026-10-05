@@ -871,20 +871,11 @@ class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActi
 
     @action(detail=True, methods=["post"], url_path="return-to-pool")
     def return_to_pool(self, request, pk=None):
-        """Devolve ao pool uma tarefa já iniciada pelo técnico (em andamento,
-        pausada ou aguardando QA/QC): remove todos os despachos e volta o
-        status pra Não Iniciada, zerando o apontamento real (início, fim,
+        """Devolve ao pool uma tarefa em QUALQUER status (inclusive concluída ou
+        cancelada): remove todos os despachos e volta o status pra Não Iniciada, zerando o apontamento real (início, fim,
         horas e pausas) — senão a tarefa voltaria ao pool com horas
         trabalhadas fantasma nos relatórios. Datas planejadas são mantidas."""
         task = self.get_object()
-        returnable = (
-            ProjectTask.STATUS_IN_PROGRESS,
-            ProjectTask.STATUS_PAUSED,
-            ProjectTask.STATUS_WAITING_QAQC,
-        )
-        if task.status not in returnable:
-            return Response({"detail": "Só tarefas iniciadas (em andamento, pausadas ou aguardando QA/QC) podem voltar ao pool."}, status=400)
-
         with transaction.atomic():
             task.assignments.all().delete()
             # .update() de propósito: ProjectTask.save() recalcula paused_seconds

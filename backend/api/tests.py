@@ -1017,15 +1017,21 @@ class ProjectTaskDispatchApiTests(TestCase):
         self.assertIsNone(self.task.paused_at)
         self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
 
-    def test_return_to_pool_rejects_not_started_and_completed_tasks(self):
-        response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/return-to-pool/")
-        self.assertEqual(response.status_code, 400)
+    def test_return_to_pool_works_for_completed_task_too(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json")
+        now = timezone.now()
+        ProjectTask.objects.filter(pk=self.task.pk).update(
+            status=ProjectTask.STATUS_COMPLETED, actual_start=now - timedelta(hours=3), actual_end=now, actual_hours=3
+        )
 
-        ProjectTask.objects.filter(pk=self.task.pk).update(status=ProjectTask.STATUS_COMPLETED)
         response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/return-to-pool/")
-        self.assertEqual(response.status_code, 400)
+
+        self.assertEqual(response.status_code, 200, response.data)
         self.task.refresh_from_db()
-        self.assertEqual(self.task.status, ProjectTask.STATUS_COMPLETED)
+        self.assertEqual(self.task.status, ProjectTask.STATUS_NOT_STARTED)
+        self.assertIsNone(self.task.actual_end)
+        self.assertIsNone(self.task.actual_hours)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
 
 
 class TechnicianAbsenceApiTests(TestCase):
