@@ -732,6 +732,19 @@ export default function OperationsBoard() {
                               <span key={q.task_id} className="ops-queue-chip" title={q.task_name}>
                                 <span className="ops-queue-num">{idx + 1}</span>
                                 {q.task_name}
+                                <button
+                                  type="button"
+                                  title={p.returnToPool}
+                                  aria-label={p.returnToPool}
+                                  disabled={undispatchingId === q.task_id}
+                                  style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "0 0 0 6px", fontWeight: 700 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReturnToPool(q.task_id);
+                                  }}
+                                >
+                                  ×
+                                </button>
                               </span>
                             ))}
                           </div>
@@ -1043,7 +1056,7 @@ export default function OperationsBoard() {
                                   setTodPopup((prev) =>
                                     prev?.key === barKey
                                       ? null
-                                      : { key: barKey, label: bar.label, start: bar.start, end: bar.end, color: "transparent", top: rect.bottom + 6, left: rect.left }
+                                      : { key: barKey, label: bar.label, start: bar.start, end: bar.end, color: "transparent", top: rect.bottom + 6, left: rect.left, taskId: bar.key }
                                   );
                                 }}
                                 style={{
@@ -1136,6 +1149,18 @@ export default function OperationsBoard() {
                       <div key={q.task_id} className="tod-activity-card">
                         <div className="tod-activity-name">{q.task_name}</div>
                         <div className="tod-activity-project">{q.project_name}</div>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ color: "var(--red)", marginTop: 4, padding: "0 6px" }}
+                          disabled={undispatchingId === q.task_id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleReturnToPool(q.task_id);
+                          }}
+                        >
+                          {undispatchingId === q.task_id ? p.removing : p.returnToPool}
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1160,6 +1185,18 @@ export default function OperationsBoard() {
                         <div key={q.task_id} className="tod-activity-card">
                           <div className="tod-activity-name">{q.task_name}</div>
                           <div className="tod-activity-project">{q.project_name}</div>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            style={{ color: "var(--red)", marginTop: 4, padding: "0 6px" }}
+                            disabled={undispatchingId === q.task_id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReturnToPool(q.task_id);
+                            }}
+                          >
+                            {undispatchingId === q.task_id ? p.removing : p.returnToPool}
+                          </button>
                         </div>
                       ))}
                     </div>
