@@ -130,6 +130,9 @@ class BotBroadcastRule(TimestampedModel):
     categories = models.ManyToManyField("core.Category", verbose_name="categorias", blank=True, related_name="+")
     sites = models.ManyToManyField("core.Site", verbose_name="sites", blank=True, related_name="+")
     regions = models.ManyToManyField("core.Region", verbose_name="regionais", blank=True, related_name="+")
+    responsibles = models.ManyToManyField(
+        "core.Responsible", verbose_name="responsáveis CSTR", blank=True, related_name="+"
+    )
     include_no_category = models.BooleanField(
         "incluir projetos sem categoria",
         default=False,

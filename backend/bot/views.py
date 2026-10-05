@@ -537,6 +537,9 @@ def _rule_projects_queryset(rule):
     region_ids = list(rule.regions.values_list("pk", flat=True))
     if region_ids:
         qs = qs.filter(site__region_id__in=region_ids)
+    responsible_ids = list(rule.responsibles.values_list("pk", flat=True))
+    if responsible_ids:
+        qs = qs.filter(responsible_cstr_id__in=responsible_ids)
     site_ids = list(rule.sites.values_list("pk", flat=True))
     if site_ids:
         qs = qs.filter(site_id__in=site_ids)

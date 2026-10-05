@@ -16,7 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Category, Client, Region, Site
+from core.models import Category, Client, Region, Responsible, Site
 from projects.models import Project
 
 from .models import BotBroadcastRule, BotSubscriber
@@ -57,13 +57,16 @@ class BotBroadcastRuleSerializer(serializers.ModelSerializer):
     category_ids = serializers.PrimaryKeyRelatedField(source="categories", queryset=Category.objects.all(), many=True, required=False)
     site_ids = serializers.PrimaryKeyRelatedField(source="sites", queryset=Site.objects.all(), many=True, required=False)
     region_ids = serializers.PrimaryKeyRelatedField(source="regions", queryset=Region.objects.all(), many=True, required=False)
+    responsible_ids = serializers.PrimaryKeyRelatedField(
+        source="responsibles", queryset=Responsible.objects.filter(kind=Responsible.KIND_CSTR), many=True, required=False
+    )
     recipient_ids = serializers.PrimaryKeyRelatedField(source="recipients", queryset=BotSubscriber.objects.all(), many=True, required=False)
 
     class Meta:
         model = BotBroadcastRule
         fields = (
             "id", "name", "is_active", "message_type", "date_offset_days", "content_type", "send_time", "weekdays", "statuses",
-            "client_ids", "category_ids", "include_no_category", "region_ids", "site_ids", "recipient_ids", "image_caption",
+            "client_ids", "category_ids", "include_no_category", "region_ids", "responsible_ids", "site_ids", "recipient_ids", "image_caption",
         )
 
     def validate(self, attrs):
@@ -110,6 +113,12 @@ class BotBroadcastRuleViewSet(viewsets.ModelViewSet):
                 "categories": [{"id": c.pk, "name": c.name} for c in Category.objects.exclude(name="").order_by("name")],
                 "sites": [{"id": s.pk, "name": s.name} for s in Site.objects.order_by("name")],
                 "regions": [{"id": r.pk, "name": r.name} for r in Region.objects.order_by("name")],
+                "responsibles": [
+                    {"id": r.pk, "name": r.person.name}
+                    for r in Responsible.objects.filter(kind=Responsible.KIND_CSTR, is_active=True)
+                    .select_related("person")
+                    .order_by("person__name")
+                ],
                 "statuses": [{"id": key, "name": label} for key, label in Project.STATUS_CHOICES],
                 "subscribers": [
                     {"id": s.pk, "name": s.name, "target": s.group_jid or s.phone}

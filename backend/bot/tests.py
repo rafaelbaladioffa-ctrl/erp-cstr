@@ -336,3 +336,26 @@ class BotRulesAllTypesTests(TestCase):
         self.assertTrue({"allocation", "interactive_menu"} <= types)
         runtime = self.api.get("/api/bot/message-template/?message_type=interactive_menu", **self.bot_headers)
         self.assertEqual(runtime.status_code, 200)
+
+
+class BotRuleResponsibleFilterTests(TestCase):
+    """Regra de envio: filtro por Responsável CSTR (vazio = todos)."""
+
+    def test_rule_filters_projects_by_responsible_cstr(self):
+        from bot.models import BotBroadcastRule
+        from bot.views import _rule_projects_queryset
+        from core.models import Person, Responsible
+
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+
+        def responsible(name):
+            return Responsible.objects.create(person=Person.objects.create(name=name, company=company), kind=Responsible.KIND_CSTR)
+
+        ana, bia = responsible("ANA"), responsible("BIA")
+        project_ana = Project.objects.create(company=company, name="P Ana", responsible_cstr=ana, status=Project.STATUS_IN_PROGRESS)
+        project_bia = Project.objects.create(company=company, name="P Bia", responsible_cstr=bia, status=Project.STATUS_IN_PROGRESS)
+        rule = BotBroadcastRule.objects.create(name="r", message_type="daily_project_report", send_time="15:00")
+
+        self.assertEqual(set(_rule_projects_queryset(rule)), {project_ana, project_bia})
+        rule.responsibles.set([ana])
+        self.assertEqual(set(_rule_projects_queryset(rule)), {project_ana})
