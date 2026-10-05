@@ -509,12 +509,14 @@ const PROJECT_REPORT_SEPARATOR = "\n\n━━━━━━━━━━━━━━
 const PROJECT_REPORT_MAX_CHARS = 12000; // acima disso divide em partes (legibilidade/limite do WhatsApp)
 
 // Monta a(s) mensagem(ns) consolidada(s): cabeçalho uma vez, um bloco por projeto, rodapé uma vez.
-function buildConsolidatedDailyProjectReport(projects, date, template) {
+function buildConsolidatedDailyProjectReport(projects, date, template, opts = {}) {
   const active = template && template.is_active !== false ? template : null;
-  const title = (active && active.title) || "ATUALIZAÇÃO DIÁRIA DE PROJETO";
+  const title = (active && active.title) || opts.fallbackTitle || "ATUALIZAÇÃO DIÁRIA DE PROJETO";
+  const blockFn = opts.blockFn || formatDailyProjectReportBlock;
+  const extraHeader = opts.extraHeader || [];
   const intro = active && active.intro_text ? active.intro_text : "";
   const footer = active && active.footer_text ? active.footer_text : "";
-  const blocks = projects.map((p) => formatDailyProjectReportBlock(p, template));
+  const blocks = projects.map((p) => blockFn(p, template));
 
   // Agrupa os blocos em partes que respeitam o limite de tamanho.
   const parts = [];
@@ -534,11 +536,30 @@ function buildConsolidatedDailyProjectReport(projects, date, template) {
   return parts.map((partBlocks, index) => {
     const partLabel = parts.length > 1 ? ` (parte ${index + 1}/${parts.length})` : "";
     const head = [`*${title}*`, `Data: ${formatDate(date)} · ${projects.length} projeto(s)${partLabel}`];
+    head.push(...extraHeader);
     if (intro) head.push("", intro);
     let text = `${head.join("\n")}\n\n${partBlocks.join(PROJECT_REPORT_SEPARATOR)}`;
     if (footer && index === parts.length - 1) text += `\n\n${footer}`;
     return text.trim();
   });
+}
+
+// Bloco de UM projeto na "Atualização de projetos" consolidada. Data e horário de
+// trabalho aparecem uma vez no cabeçalho da mensagem.
+function formatProjectUpdateBlock(p, template) {
+  const rows = [
+    ["project_name", `*Nome do Projeto: ${p.project}*`],
+    ["po", `PO: ${p.po || "Não informada"}`],
+    ["responsible_client", `Responsável AWS: ${formatPersonName(p.responsible_client) || "Não informado"}`],
+    ["responsible_cstr", `Responsável CSTR: ${formatPersonName(p.responsible_cstr) || "Não informado"}`],
+    ["collaborators", `Colaboradores: ${p.collaborators.length ? p.collaborators.map(formatPersonName).join(", ") : "Não informados"}`],
+    ["completion_percent", `Percentual de Conclusão: ${p.completion_percent}%`],
+    ["activities_text", `Atividades Executadas:\n${p.activities_text || "Nenhuma atividade concluída registrada nesta data."}`],
+    ["certification_done", `Certificação Finalizada: ${p.certification_done ? "Sim" : "Não"}`],
+    ["project_finished", `Projeto finalizado: ${p.project_finished ? "Sim" : "Não"}`],
+    ["summary", `Observações:\n${p.summary || "Nenhuma observação."}`],
+  ];
+  return rows.filter(([key]) => templateEnabled(template, key)).map(([, line]) => line).filter(Boolean).join("\n");
 }
 
 // Envia o relatório diário de projeto como UMA mensagem por destinatário (ou poucas, se enorme).
@@ -627,6 +648,14 @@ async function runDailyProjectReportImageBroadcast(sock, overridePhone, projectL
 async function sendProjectUpdatesData(sock, data, recipients) {
   console.log(`Atualização de projetos: enviando ${data.projects.length} projeto(s) para ${recipients.length} destinatário(s).`);
   const template = await fetchMessageTemplate("project_updates");
+  const extraHeader = templateEnabled(template, "work_hours")
+    ? [`Hora de início: ${data.workday_start}`, `Hora de término: ${data.workday_end}`]
+    : [];
+  const messages = buildConsolidatedDailyProjectReport(data.projects, data.date, template, {
+    fallbackTitle: "ATUALIZAÇÃO DIÁRIA DE PROJETO",
+    blockFn: formatProjectUpdateBlock,
+    extraHeader,
+  });
   let sent = 0;
   for (const r of recipients) {
     const jid = recipientToJid(r);
@@ -634,13 +663,13 @@ async function sendProjectUpdatesData(sock, data, recipients) {
       console.error(`Atualização de projetos: telefone inválido para ${r.name} (${r.phone}), pulando.`);
       continue;
     }
-    for (const p of data.projects) {
+    for (const text of messages) {
       try {
-        await sock.sendMessage(jid, { text: formatProjectDailyUpdate(p, data.date, data.workday_start, data.workday_end, template) });
+        await sock.sendMessage(jid, { text });
         sent += 1;
         await new Promise((resolve) => setTimeout(resolve, 800));
       } catch (err) {
-        console.error(`Atualização de projetos: erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
+        console.error(`Atualização de projetos: erro ao enviar para ${r.name}:`, err.message);
       }
     }
   }
