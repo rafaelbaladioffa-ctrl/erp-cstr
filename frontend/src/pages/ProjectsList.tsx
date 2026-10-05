@@ -44,6 +44,8 @@ const TEXT = {
     deadlineNoDeadline: "Sem prazo", deadlineOverdue: (d: number) => `${d}d em atraso`,
     deadlineToday: "Vence hoje", deadlineDays: (d: number) => `${d}d restantes`,
     dropHere: "Soltar aqui", noProjectsKanban: "Nenhum projeto",
+    moveNoPermission: "Você não tem permissão para alterar o status de projetos. Peça ao administrador para liberar a edição de projetos no seu grupo.",
+    moveFailed: "Não foi possível mover o projeto. Tente novamente.",
     kanbanActive: "Em andamento", kanbanPaused: "Pausados", kanbanPlanning: "Planejamento", kanbanFinished: "Finalizados",
   },
   "en-US": {
@@ -73,6 +75,8 @@ const TEXT = {
     deadlineNoDeadline: "No deadline", deadlineOverdue: (d: number) => `${d}d overdue`,
     deadlineToday: "Due today", deadlineDays: (d: number) => `${d}d remaining`,
     dropHere: "Drop here", noProjectsKanban: "No projects",
+    moveNoPermission: "You do not have permission to change project status. Ask an administrator to grant project editing to your group.",
+    moveFailed: "Could not move the project. Please try again.",
     kanbanActive: "In progress", kanbanPaused: "Paused", kanbanPlanning: "Planning", kanbanFinished: "Completed",
   },
   "es-ES": {
@@ -102,6 +106,8 @@ const TEXT = {
     deadlineNoDeadline: "Sin plazo", deadlineOverdue: (d: number) => `${d}d de retraso`,
     deadlineToday: "Vence hoy", deadlineDays: (d: number) => `${d}d restantes`,
     dropHere: "Soltar aquí", noProjectsKanban: "Ningún proyecto",
+    moveNoPermission: "No tienes permiso para cambiar el estado de los proyectos. Pide a un administrador que habilite la edición de proyectos en tu grupo.",
+    moveFailed: "No se pudo mover el proyecto. Inténtalo de nuevo.",
     kanbanActive: "En curso", kanbanPaused: "Pausados", kanbanPlanning: "Planificación", kanbanFinished: "Finalizados",
   },
 };
@@ -255,12 +261,13 @@ function DetailPanel({ project, canChange, onEdit, onClose, onOpenTab, p }: {
 
 // ── Kanban card ──────────────────────────────────────────────────────────────
 function KanbanCard({
-  project, selected, onClick, onDragStart, p,
+  project, selected, onClick, onDragStart, draggable, p,
 }: {
   project: Project;
   selected: boolean;
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
+  draggable: boolean;
   p: PL;
 }) {
   const diff = daysDiff(project.planned_end);
@@ -274,7 +281,7 @@ function KanbanCard({
 
   return (
     <div
-      draggable
+      draggable={draggable}
       onDragStart={onDragStart}
       onClick={onClick}
       style={{
@@ -323,12 +330,13 @@ const KANBAN_COLS_BASE: { key: string | string[]; labelKey: keyof PL; statusKey:
 ];
 
 function KanbanView({
-  projects, selectedId, onSelect, onStatusChange, p,
+  projects, selectedId, onSelect, onStatusChange, canMove, p,
 }: {
   projects: Project[];
   selectedId: number | null;
   onSelect: (p: Project) => void;
   onStatusChange: (projectId: number, newStatus: string) => void;
+  canMove: boolean;
   p: PL;
 }) {
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
@@ -396,6 +404,7 @@ function KanbanView({
                 project={proj}
                 selected={selectedId === proj.id}
                 onClick={() => onSelect(proj)}
+                draggable={canMove}
                 onDragStart={(e) => {
                   dragIdRef.current = proj.id;
                   e.dataTransfer.effectAllowed = "move";
@@ -443,6 +452,7 @@ export default function ProjectsList() {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   function reload() {
@@ -664,13 +674,23 @@ export default function ProjectsList() {
           <p style={{ padding: 20, color: "var(--text-muted)" }}>{lp.loading}</p>
         ) : viewMode === "kanban" ? (
           /* ── KANBAN VIEW ── */
+          <>
+          {moveError && (
+            <div role="alert" style={{ margin: "12px 16px 0", padding: "10px 14px", borderRadius: 8, background: "var(--red-soft)", color: "var(--red)", fontSize: 13, display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span>{moveError}</span>
+              <button type="button" onClick={() => setMoveError(null)} aria-label="Fechar" style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontWeight: 700 }}>×</button>
+            </div>
+          )}
           <div className="projects-layout" style={{ display: "flex", alignItems: "flex-start" }}>
             <div className="kanban-scroll-wrap" style={{ flex: 1, minWidth: 0 }}>
               <KanbanView
                 projects={kanbanBase}
                 selectedId={selectedProject?.id ?? null}
                 onSelect={setSelectedProject}
+                canMove={canChange}
                 onStatusChange={(projectId, newStatus) => {
+                  if (!canChange) { setMoveError(lp.moveNoPermission); return; }
+                  setMoveError(null);
                   const STATUS_DISPLAY: Record<string, string> = {
                     in_progress: lp.kanbanActive,
                     paused: lp.kanbanPaused,
@@ -683,7 +703,10 @@ export default function ProjectsList() {
                   const display = STATUS_DISPLAY[newStatus] ?? newStatus;
                   setProjects((prev) => prev.map((pr) => pr.id === projectId ? { ...pr, status: newStatus, status_display: display } : pr));
                   if (selectedProject?.id === projectId) setSelectedProject((prev) => prev ? { ...prev, status: newStatus, status_display: display } : prev);
-                  projectsApi.update(projectId, { status: newStatus } as Partial<Project>).catch(() => reload());
+                  projectsApi.update(projectId, { status: newStatus } as Partial<Project>).catch((err: { response?: { status?: number } }) => {
+                    setMoveError(err?.response?.status === 403 ? lp.moveNoPermission : lp.moveFailed);
+                    reload();
+                  });
                 }}
                 p={lp}
               />
@@ -701,6 +724,7 @@ export default function ProjectsList() {
               </div>
             )}
           </div>
+          </>
         ) : (
           /* ── LIST VIEW ── */
           <div className="projects-layout" style={{ display: "flex", alignItems: "flex-start" }}>
