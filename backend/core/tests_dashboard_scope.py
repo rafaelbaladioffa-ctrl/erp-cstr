@@ -123,10 +123,11 @@ class OperationsBoardSupervisorScopeTests(DashboardProjectsScopeTests):
 
         mine_task = task(self.mine, team_member, 1)
         other_task = task(self.other, team_member, 2)
-        task(self.mine, outsider, 3)
+        outsider_task = task(self.mine, outsider, 3)
 
         board = build_board_data(None, user=self.user)
-        self.assertEqual({t["id"] for t in board["pool"]}, {mine_task.id})
+        # pool do dia: só tarefas dos projetos do supervisor (a do projeto do colega fica de fora)
+        self.assertEqual({t["id"] for t in board["pool"]}, {mine_task.id, outsider_task.id})
         names = {t["name"] for t in board["technicians"]}
         self.assertIn("Tec Time", names)
         self.assertNotIn("Tec Fora", names)
@@ -139,6 +140,7 @@ class OperationsBoardSupervisorScopeTests(DashboardProjectsScopeTests):
         self.assertNotIn(other_task.id, {b["id"] for b in team_tl["blocks"]})
 
         admin = User.objects.create_superuser(username="adm3", email="adm3@x.com", password="x")
-        self.assertEqual({t["id"] for t in build_board_data(None, user=admin)["pool"]}, {mine_task.id, other_task.id} | {
-            t.id for t in ProjectTask.objects.filter(project=self.mine, status=ProjectTask.STATUS_NOT_STARTED)
-        })
+        self.assertEqual(
+            {t["id"] for t in build_board_data(None, user=admin)["pool"]},
+            {mine_task.id, other_task.id, outsider_task.id},
+        )
