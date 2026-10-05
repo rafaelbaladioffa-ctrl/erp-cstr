@@ -481,9 +481,8 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             queryset = queryset.filter(
                 models.Q(name__icontains=search) | models.Q(code__icontains=search) | models.Q(po__icontains=search)
             )
-        if self.request.query_params.get("for_updates"):
-            # Seletor de "Atualizações de Projeto": supervisor só vê os projetos sob sua responsabilidade.
-            queryset = scope_supervisor_projects(queryset, self.request.user)
+        # Supervisor só enxerga os projetos em que é Responsável CSTR (lista, detalhe e ações).
+        queryset = scope_supervisor_projects(queryset, self.request.user)
         return scope_project_queryset(queryset, self.request.user)
 
     @action(detail=True, methods=["get"])

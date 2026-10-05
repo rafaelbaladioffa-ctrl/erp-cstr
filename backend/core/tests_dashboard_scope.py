@@ -62,3 +62,33 @@ class SitesPanelSupervisorScopeTests(DashboardProjectsScopeTests):
     def test_non_supervisor_sees_all_projects_in_sites_panel(self):
         admin = User.objects.create_superuser(username="adm", email="adm@x.com", password="x")
         self.assertEqual(self.panel_ids(admin), {self.mine.pk, self.other.pk})
+
+
+class ProjectsListSupervisorScopeTests(DashboardProjectsScopeTests):
+    """API de Projetos: supervisor só lista e abre os projetos em que é Responsável CSTR."""
+
+    def api(self, user):
+        from django.contrib.auth.models import Permission
+        from rest_framework.test import APIClient
+
+        user.user_permissions.add(Permission.objects.get(codename="view_project", content_type__app_label="projects"))
+        client = APIClient()
+        client.force_authenticate(User.objects.get(pk=user.pk))
+        return client
+
+    def test_supervisor_lists_only_own_projects_and_cannot_open_others(self):
+        client = self.api(self.user)
+        listed = client.get("/api/projects/", {"page_size": "100"}).json()
+        ids = {row["id"] for row in listed["results"]}
+        self.assertEqual(ids, {self.mine.pk})
+        self.assertEqual(client.get(f"/api/projects/{self.mine.pk}/").status_code, 200)
+        self.assertEqual(client.get(f"/api/projects/{self.other.pk}/").status_code, 404)
+
+    def test_admin_lists_all_projects(self):
+        admin = User.objects.create_superuser(username="adm2", email="adm2@x.com", password="x")
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(admin)
+        ids = {row["id"] for row in client.get("/api/projects/", {"page_size": "100"}).json()["results"]}
+        self.assertEqual(ids, {self.mine.pk, self.other.pk})
