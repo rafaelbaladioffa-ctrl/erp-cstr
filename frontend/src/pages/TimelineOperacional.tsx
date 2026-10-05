@@ -45,6 +45,8 @@ const TEXT = {
     legendPause: "Pausa",
     legendLunch: "Horário de Almoço",
     legendPersonal: "Particular",
+    legendMeal: "Refeição",
+    legendMeeting: "Reunião",
     legendSiteBlocked: "Sem Acesso ao Site",
     legendAwaitingRelease: "Aguardando Liberações",
     legendIdle: "Não iniciado / Fim de Expediente",
@@ -79,6 +81,8 @@ const TEXT = {
     legendPause: "Break",
     legendLunch: "Lunch break",
     legendPersonal: "Personal",
+    legendMeal: "Meal",
+    legendMeeting: "Meeting",
     legendSiteBlocked: "No Site Access",
     legendAwaitingRelease: "Awaiting Releases",
     legendIdle: "Not started / End of shift",
@@ -113,6 +117,8 @@ const TEXT = {
     legendPause: "Pausa",
     legendLunch: "Hora de almuerzo",
     legendPersonal: "Personal",
+    legendMeal: "Comida",
+    legendMeeting: "Reunión",
     legendSiteBlocked: "Sin acceso al sitio",
     legendAwaitingRelease: "Esperando liberaciones",
     legendIdle: "No iniciado / Fin de jornada",
@@ -317,6 +323,14 @@ export default function TimelineOperacional() {
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.personal }} />
               {p.legendPersonal}
+            </div>
+            <div className="legend-item">
+              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.meal }} />
+              {p.legendMeal}
+            </div>
+            <div className="legend-item">
+              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.meeting }} />
+              {p.legendMeeting}
             </div>
             <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.site_blocked }} />

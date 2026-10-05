@@ -90,6 +90,8 @@
   --amber-soft: #fef6e4;
   --purple: #7c3aed;
   --purple-soft: #f3effe;
+  --pink: #db2777;
+  --pink-soft: #fdf0f6;
   --red: #dc2626;
   --red-soft: #fef0f0;
   --radius: 8px;
@@ -120,6 +122,8 @@
   --amber-soft: #271a06;
   --purple: #b197fc;
   --purple-soft: #1f1535;
+  --pink: #f472b6;
+  --pink-soft: #2a1020;
   --red: #fc8080;
   --red-soft: #2a1111;
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.35);

@@ -80,6 +80,8 @@ const TEXT = {
     legendPaused: "Pausa",
     legendLunch: "Horário de Almoço",
     legendPersonal: "Particular",
+    legendMeal: "Refeição",
+    legendMeeting: "Reunião",
     legendSiteBlocked: "Sem Acesso ao Site",
     legendAwaiting: "Aguardando Liberações",
     legendNotStarted: "Não iniciado / Fim de Expediente",
@@ -147,6 +149,8 @@ const TEXT = {
     legendPaused: "Paused",
     legendLunch: "Lunch Break",
     legendPersonal: "Personal",
+    legendMeal: "Meal",
+    legendMeeting: "Meeting",
     legendSiteBlocked: "No Site Access",
     legendAwaiting: "Awaiting Releases",
     legendNotStarted: "Not started / End of Shift",
@@ -214,6 +218,8 @@ const TEXT = {
     legendPaused: "Pausa",
     legendLunch: "Hora del Almuerzo",
     legendPersonal: "Personal",
+    legendMeal: "Comida",
+    legendMeeting: "Reunión",
     legendSiteBlocked: "Sin Acceso al Sitio",
     legendAwaiting: "Esperando Liberaciones",
     legendNotStarted: "No iniciado / Fin de Jornada",
@@ -907,6 +913,14 @@ export default function OperationsBoard() {
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.personal }} />
                   {p.legendPersonal}
+                </div>
+                <div className="legend-item">
+                  <span className="legend-swatch" style={{ background: PRESENCE_COLOR.meal }} />
+                  {p.legendMeal}
+                </div>
+                <div className="legend-item">
+                  <span className="legend-swatch" style={{ background: PRESENCE_COLOR.meeting }} />
+                  {p.legendMeeting}
                 </div>
                 <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.site_blocked }} />

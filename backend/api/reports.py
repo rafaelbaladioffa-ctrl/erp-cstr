@@ -427,7 +427,15 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         journey = TechnicianDailyPresence.STANDARD_WORKDAY_HOURS if collaborator_id in checked_in_today else 0.0
         active = durations.get(TechnicianDailyPresence.STATUS_IN_PROGRESS, 0.0)
         available = durations.get(TechnicianDailyPresence.STATUS_AVAILABLE, 0.0)
-        breaks = _sum_statuses(durations, (TechnicianDailyPresence.STATUS_LUNCH, TechnicianDailyPresence.STATUS_PERSONAL))
+        breaks = _sum_statuses(
+            durations,
+            (
+                TechnicianDailyPresence.STATUS_LUNCH,
+                TechnicianDailyPresence.STATUS_PERSONAL,
+                TechnicianDailyPresence.STATUS_MEAL,
+                TechnicianDailyPresence.STATUS_MEETING,
+            ),
+        )
         blocked = _sum_statuses(durations, EXTERNAL_BLOCK_STATUSES)
         utilization = _pct(active, journey)
         today_technicians.append(

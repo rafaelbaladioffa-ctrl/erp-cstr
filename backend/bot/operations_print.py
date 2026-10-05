@@ -28,6 +28,8 @@ PRESENCE_COLOR = {
     "in_progress": "#fbbf24",
     "lunch": "#a78bfa",
     "personal": "#5b9bff",
+    "meal": "#2dd4bf",
+    "meeting": "#f472b6",
     "site_blocked": "#f87171",
     "awaiting_release": "#f16023",
     "off_duty": "#6c7d97",
@@ -41,11 +43,13 @@ PRESENCE_LABEL = {
     "in_progress": "Em Execução",
     "lunch": "Horário de Almoço",
     "personal": "Particular",
+    "meal": "Refeição",
+    "meeting": "Reunião",
     "site_blocked": "Sem Acesso ao Site",
     "awaiting_release": "Aguardando Liberações",
     "off_duty": "Fim de Expediente",
 }
-AWAY_STATUSES = {"lunch", "personal", "site_blocked", "awaiting_release"}
+AWAY_STATUSES = {"lunch", "personal", "meal", "meeting", "site_blocked", "awaiting_release"}
 
 
 def _fmt(value):
