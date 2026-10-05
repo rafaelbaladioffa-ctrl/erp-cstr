@@ -23,7 +23,7 @@ from django.utils import timezone
 
 from core.models import Collaborator
 
-from core.collaborator_scope import managed_collaborator_ids, scope_collaborators
+from core.collaborator_scope import managed_collaborator_ids, scope_collaborators, supervisor_project_ids
 from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import ProjectTask
 
@@ -149,6 +149,8 @@ def _distribution(values):
 def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, user=None):
     now = timezone.now()
     today = timezone.localdate()
+    # Supervisor: só tarefas dos projetos em que é Responsável CSTR (técnicos já são limitados à sua equipe).
+    project_ids = supervisor_project_ids(user)
 
     tasks_qs = (
         ProjectTask.objects.filter(
@@ -162,6 +164,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         )
         .prefetch_related("assignments__collaborator__person", "assignments__collaborator__sites")
     )
+    if project_ids is not None:
+        tasks_qs = tasks_qs.filter(project_id__in=project_ids)
     if site_id:
         tasks_qs = tasks_qs.filter(project__site_id=site_id)
     tasks = list(tasks_qs)
@@ -465,6 +469,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     completed_month_qs = ProjectTask.objects.filter(
         status=ProjectTask.STATUS_COMPLETED, actual_end__date__gte=month_start, actual_end__date__lte=today
     )
+    if project_ids is not None:
+        completed_month_qs = completed_month_qs.filter(project_id__in=project_ids)
     if site_id:
         completed_month_qs = completed_month_qs.filter(project__site_id=site_id)
 
@@ -504,7 +510,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
 
     log_entries = [
         {"at": e["at"].isoformat(), "name": e["name"], "type": e["type"], "text": e["text"]}
-        for e in log_entries_fn(today_ids, today)
+        for e in log_entries_fn(today_ids, today, project_ids=project_ids)
     ]
 
     return {

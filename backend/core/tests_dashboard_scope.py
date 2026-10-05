@@ -144,3 +144,48 @@ class OperationsBoardSupervisorScopeTests(DashboardProjectsScopeTests):
             {t["id"] for t in build_board_data(None, user=admin)["pool"]},
             {mine_task.id, other_task.id, outsider_task.id},
         )
+
+    def test_reports_count_only_tasks_of_supervisor_projects(self):
+        from datetime import timedelta
+
+        from core.models import Collaborator, Task
+        from api.operations import _log_entries
+        from api.reports import build_operations_reports
+        from projects.models import ProjectTask, ProjectTaskAssignment
+
+        today = timezone.localdate()
+        now = timezone.now()
+        catalog = Task.objects.create(name="Tarefa")
+        supervisor = Collaborator.objects.get(person__user=self.user)
+        member = Collaborator.objects.create(
+            person=Person.objects.create(name="Tec Time", company=self.mine.company), manager=supervisor
+        )
+
+        def completed(project, order):
+            t = ProjectTask.objects.create(
+                project=project, task=catalog, order=order, status=ProjectTask.STATUS_COMPLETED,
+                actual_start=now - timedelta(hours=2), actual_end=now - timedelta(hours=1),
+            )
+            ProjectTaskAssignment.objects.create(
+                project_task=t, collaborator=member, assignment_start=now - timedelta(hours=2), assignment_end=now - timedelta(hours=1)
+            )
+            return t
+
+        completed(self.mine, 1)
+        completed(self.other, 2)
+        completed(self.other, 3)
+
+        def run(user):
+            return build_operations_reports(
+                site_id=None, date_from=today - timedelta(days=7), date_to=today, log_entries_fn=_log_entries, user=user
+            )
+
+        data = run(self.user)
+        self.assertEqual(data["stats"]["period_completed_count"], 1)
+        self.assertEqual(data["stats"]["completed_this_month"], 1)
+        scoped_log = _log_entries([member.id], today, project_ids={self.mine.pk})
+        self.assertEqual(sum(1 for e in scoped_log if e["type"] in ("start", "complete")), 2)  # só a tarefa do projeto dele
+        self.assertEqual(sum(1 for e in _log_entries([member.id], today) if e["type"] in ("start", "complete")), 6)
+
+        admin = User.objects.create_superuser(username="adm4", email="adm4@x.com", password="x")
+        self.assertEqual(run(admin)["stats"]["period_completed_count"], 3)

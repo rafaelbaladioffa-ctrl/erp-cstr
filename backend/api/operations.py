@@ -355,7 +355,7 @@ class OperationsTimelineView(APIView):
         return Response(build_timeline_data(site_id, date, user=request.user))
 
 
-def _log_entries(collaborator_ids, date, limit=60):
+def _log_entries(collaborator_ids, date, limit=60, project_ids=None):
     """Feed de eventos do dia pra exibição — combina despachos
     (ProjectTaskAssignment.dispatched_at), início/fim real de tarefa
     (ProjectTask.actual_start/actual_end) e trocas de status
@@ -370,6 +370,8 @@ def _log_entries(collaborator_ids, date, limit=60):
     dispatches = ProjectTaskAssignment.objects.filter(
         collaborator_id__in=collaborator_ids, dispatched_at__date=date
     ).select_related("project_task__task", "collaborator__person")
+    if project_ids is not None:
+        dispatches = dispatches.filter(project_task__project_id__in=project_ids)
     for a in dispatches:
         entries.append({"at": a.dispatched_at, "name": a.collaborator.person.name, "type": "dispatch", "text": f"foi despachado → {a.project_task.display_name}"})
 
@@ -387,6 +389,8 @@ def _log_entries(collaborator_ids, date, limit=60):
         .select_related("project_task__task", "project_task__project", "collaborator__person")
         .distinct()
     )
+    if project_ids is not None:
+        log_assignments = log_assignments.filter(project_task__project_id__in=project_ids)
     completion_marks = {}
     for a in log_assignments:
         t = a.project_task
