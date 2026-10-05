@@ -133,6 +133,9 @@ class DashboardTests(TestCase):
             actual_end=timezone.make_aware(datetime(2026, 2, 1, 10, 0)),
         )
         completed_task.collaborators.add(collaborator)
+        ProjectTaskAssignment.objects.filter(project_task=completed_task, collaborator=collaborator).update(
+            status=ProjectTask.STATUS_COMPLETED, assignment_start=completed_task.actual_start, assignment_end=completed_task.actual_end
+        )
         completed_task.rack_positions.set([rack_a, rack_b])
 
         other_task = Task.objects.create(name="Outra Tarefa")
@@ -167,6 +170,9 @@ class DashboardTests(TestCase):
             actual_end=timezone.make_aware(datetime(2026, 3, 10, 9, 0)),
         )
         pt_in_range.collaborators.add(collaborator)
+        ProjectTaskAssignment.objects.filter(project_task=pt_in_range).update(
+            status=ProjectTask.STATUS_COMPLETED, assignment_start=pt_in_range.actual_start, assignment_end=pt_in_range.actual_end
+        )
 
         pt_out_of_range = ProjectTask.objects.create(
             project=project,
@@ -176,6 +182,9 @@ class DashboardTests(TestCase):
             actual_end=timezone.make_aware(datetime(2026, 5, 10, 9, 0)),
         )
         pt_out_of_range.collaborators.add(collaborator)
+        ProjectTaskAssignment.objects.filter(project_task=pt_out_of_range).update(
+            status=ProjectTask.STATUS_COMPLETED, assignment_start=pt_out_of_range.actual_start, assignment_end=pt_out_of_range.actual_end
+        )
 
         response = self.client_api.get(
             reverse("dashboard-technical"),
@@ -6185,7 +6194,9 @@ class QueryScalingTests(TestCase):
             planned_start=now, actual_start=now,
         )
         queued = ProjectTask.objects.create(project=project, task=self.catalog, order=2, planned_start=now)
-        ProjectTaskAssignment.objects.create(project_task=running, collaborator=collaborator, assignment_start=now)
+        ProjectTaskAssignment.objects.create(
+            project_task=running, collaborator=collaborator, assignment_start=now, status=ProjectTask.STATUS_IN_PROGRESS
+        )
         ProjectTaskAssignment.objects.create(project_task=queued, collaborator=collaborator)
         return collaborator
 
@@ -6420,9 +6431,12 @@ class OperationsReportsV2Tests(TestCase):
             quantity_planned=quantity,
         )
         for collaborator, a_start, a_end, a_hours in assignments:
+            # Técnico que concluiu a própria parte (status por técnico).
             ProjectTaskAssignment.objects.create(
                 project_task=task,
                 collaborator=collaborator,
+                status=ProjectTask.STATUS_COMPLETED,
+                completion_outcome=outcome,
                 assignment_start=a_start,
                 assignment_end=a_end,
                 actual_hours=Decimal(str(a_hours)) if a_hours is not None else None,
@@ -6650,7 +6664,8 @@ class OperationsReportsV2Tests(TestCase):
 
     def test_tracking_rate(self):
         self.make_task(self.at(8), self.at(9), 1, [(self.tech_a, self.at(8), self.at(9), 1)])
-        self.make_task(None, self.at(10), None, [(self.tech_a, None, None, None)])
+        # Técnico concluiu (há fim registrado) mas sem horas apontadas.
+        self.make_task(None, self.at(10), None, [(self.tech_a, None, self.at(10), None)])
         data = self.get()
         self.assertEqual(data["stats"]["tracking_rate_pct"], 50)
         self.assertEqual(self.tech_row(data, self.tech_a)["tracking_rate_pct"], 50)

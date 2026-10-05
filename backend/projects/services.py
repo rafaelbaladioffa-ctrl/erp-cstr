@@ -164,16 +164,6 @@ def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, pl
     tela Planejamento > Plano do Projeto atribuir prazo/prioridade junto
     com o técnico, sem precisar de um endpoint novo."""
     updates = {}
-    if status:
-        updates["status"] = status
-        if status == ProjectTask.STATUS_COMPLETED:
-            # QuerySet.update() (usado logo abaixo) não passa por Model.save(),
-            # então campos auto_now como updated_at não são preenchidos
-            # sozinhos — sem isso, uma conclusão em massa nunca "conta" como
-            # feita hoje pros relatórios de Atualização de Projeto/bot, já que
-            # eles usam actual_end (ou updated_at, na falta dele) pra saber em
-            # que dia a tarefa foi executada.
-            updates["actual_end"] = timezone.now()
     if planned_start:
         updates["planned_start"] = planned_start
     if planned_end:
@@ -183,19 +173,32 @@ def apply_bulk_task_update(project_tasks, *, status=None, planned_start=None, pl
     if priority:
         updates["priority"] = priority
 
-    updated = 0
+    tasks = list(project_tasks)
+    updated = len(tasks) if status else 0
+    if collaborators:
+        # Técnicos entram antes do status: quem é adicionado recebe o status
+        # aplicado logo abaixo (ou entra como "não iniciada" se não houver status).
+        for project_task in tasks:
+            project_task.collaborators.set(collaborators)
+        updated = len(tasks)
     if updates:
         updated = project_tasks.update(**updates)
-    if collaborators:
-        for project_task in project_tasks:
-            project_task.collaborators.set(collaborators)
-        updated = project_tasks.count()
     if rack_positions:
-        for project_task in project_tasks:
+        for project_task in tasks:
             project_task.validate_rack_positions(rack_positions)
-        for project_task in project_tasks:
+        for project_task in tasks:
             project_task.rack_positions.set(rack_positions)
         updated = project_tasks.count()
+    if status:
+        # Status é aplicado tarefa por tarefa, nos técnicos despachados, sem
+        # apontamento de horas (ver ProjectTask.set_status_by_admin). Não passa
+        # pelo .update() acima, que pularia os assignments e os signals. Por último
+        # e com instâncias recarregadas, para não sobrescrever os campos acima.
+        for project_task in project_tasks.all():
+            project_task.set_status_by_admin(status)
+    elif collaborators:
+        for project_task in project_tasks.all():
+            project_task.sync_from_assignments()
     return updated
 
 

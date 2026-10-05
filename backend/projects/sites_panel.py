@@ -259,7 +259,7 @@ def resolve_dispatch_of_day(assignments, today):
     executing = [
         a for a in assignments
         if a.assignment_start and not a.assignment_end
-        and a.project_task.status in (ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED)
+        and a.status in (ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED)
     ]
     if executing:
         return max(executing, key=lambda a: a.assignment_start), "executing"
@@ -268,7 +268,7 @@ def resolve_dispatch_of_day(assignments, today):
         return max(finished_today, key=lambda a: a.assignment_end), "finished_today"
     queued = [
         a for a in assignments
-        if not a.assignment_end and a.project_task.status == ProjectTask.STATUS_NOT_STARTED
+        if not a.assignment_end and a.status == ProjectTask.STATUS_NOT_STARTED
     ]
     if queued:
         return min(queued, key=lambda a: (a.queue_order, a.dispatched_at)), "queued"
@@ -292,7 +292,7 @@ def build_technicians_of_day(today, project_ids_in_scope, site_ids_in_scope=None
     open_or_today = (
         ProjectTaskAssignment.objects.filter(collaborator_id__in=ids, project_task__project__is_active=True)
         .filter(
-            Q(assignment_end__isnull=True, project_task__status__in=(
+            Q(assignment_end__isnull=True, status__in=(
                 ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED, ProjectTask.STATUS_NOT_STARTED
             ))
             | Q(assignment_end__date=today)

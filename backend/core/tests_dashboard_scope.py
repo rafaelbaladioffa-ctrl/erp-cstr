@@ -169,7 +169,8 @@ class OperationsBoardSupervisorScopeTests(DashboardProjectsScopeTests):
                 actual_start=started, actual_end=ended,
             )
             ProjectTaskAssignment.objects.create(
-                project_task=t, collaborator=member, assignment_start=started, assignment_end=ended
+                project_task=t, collaborator=member, status=ProjectTask.STATUS_COMPLETED,
+                assignment_start=started, assignment_end=ended,
             )
             return t
 

@@ -25,7 +25,7 @@ from core.models import Collaborator
 
 from core.collaborator_scope import managed_collaborator_ids, scope_collaborators, supervisor_project_ids
 from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
-from projects.models import ProjectTask
+from projects.models import ProjectTask, ProjectTaskAssignment
 
 MAX_PERIOD_DAYS = 180
 # Jornada + almoço: corte do último status de um dia sem "Fim de Expediente" (RN-09).
@@ -152,6 +152,20 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     # Supervisor: só tarefas dos projetos em que é Responsável CSTR (técnicos já são limitados à sua equipe).
     project_ids = supervisor_project_ids(user)
 
+    # Conclusões do período são POR TÉCNICO (cada um conclui a própria parte,
+    # mesmo que a tarefa só feche depois). Ajuste do admin, sem fim registrado
+    # pelo técnico, não entra nos indicadores de técnico.
+    completed_qs = ProjectTaskAssignment.objects.filter(
+        status=ProjectTask.STATUS_COMPLETED, assignment_end__date__gte=date_from, assignment_end__date__lte=date_to
+    ).select_related("collaborator__person", "project_task__project")
+    if project_ids is not None:
+        completed_qs = completed_qs.filter(project_task__project_id__in=project_ids)
+    if site_id:
+        completed_qs = completed_qs.filter(project_task__project__site_id=site_id)
+    completed_assignments = list(completed_qs)
+
+    # Tarefas fechadas no período (todos os técnicos concluíram): base da
+    # estimativa por atividade (RN-16..21), uma execução completa por tarefa.
     tasks_qs = (
         ProjectTask.objects.filter(
             status=ProjectTask.STATUS_COMPLETED, actual_end__date__gte=date_from, actual_end__date__lte=date_to
@@ -170,7 +184,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         tasks_qs = tasks_qs.filter(project__site_id=site_id)
     tasks = list(tasks_qs)
 
-    # --- HH por técnico e por tarefa (RN-01, RN-03, RN-05) ----------------
+    # --- HH por técnico (RN-01, RN-03, RN-05) -----------------------------
     tech = {}
     # Horas por assignment indexadas por (técnico, dia do término) — usadas
     # como fallback de horas produtivas em dias sem status "Em Execução".
@@ -185,34 +199,39 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
             {"collaborator": collaborator, "man_hours": 0.0, "completed_count": 0, "untracked_count": 0},
         )
 
+    for assignment in completed_assignments:
+        entry = tech_entry(assignment.collaborator)
+        entry["completed_count"] += 1
+        task = assignment.project_task
+        if assignment.actual_hours is not None:
+            hours = float(assignment.actual_hours)
+        elif assignment.assignment_start is None and task.has_real_time_tracking:
+            # Dado histórico (anterior ao rastreamento por técnico): duração da tarefa.
+            hours = task.worked_hours
+        else:
+            hours = None
+        if hours is None:
+            entry["untracked_count"] += 1
+            continue
+        tracked_completed += 1
+        entry["man_hours"] += hours
+        if hours > 0:
+            key = (assignment.collaborator_id, _local_date(assignment.assignment_end))
+            assignment_hours_by_day[key] = assignment_hours_by_day.get(key, 0.0) + hours
+
     for task in tasks:
         assignments = list(task.assignments.all())
         has_assignment_hours = any(a.actual_hours is not None for a in assignments)
-        task_tracked = task.has_real_time_tracking or has_assignment_hours
-        if task_tracked:
-            tracked_completed += 1
-
-        task_man_hours = 0.0
-        crew = 0
-        for a in assignments:
-            entry = tech_entry(a.collaborator)
-            entry["completed_count"] += 1
-            if a.actual_hours is not None:
-                hours = float(a.actual_hours)
-            elif not has_assignment_hours and task.has_real_time_tracking:
-                # Dado histórico sem rastreamento por assignment.
-                hours = task.worked_hours
-            else:
-                hours = 0.0
-            if not task_tracked:
-                entry["untracked_count"] += 1
-            if hours > 0:
-                crew += 1
-                task_man_hours += hours
-                entry["man_hours"] += hours
-                end = a.assignment_end or task.actual_end
-                key = (a.collaborator_id, _local_date(end))
-                assignment_hours_by_day[key] = assignment_hours_by_day.get(key, 0.0) + hours
+        if has_assignment_hours:
+            task_man_hours = sum(float(a.actual_hours) for a in assignments if a.actual_hours is not None)
+            crew = sum(1 for a in assignments if a.actual_hours is not None and float(a.actual_hours) > 0)
+        elif task.has_real_time_tracking:
+            # Dado histórico sem rastreamento por assignment: duração × equipe.
+            crew = len(assignments)
+            task_man_hours = task.worked_hours * crew
+        else:
+            crew = 0
+            task_man_hours = 0.0
 
         # --- Base de estimativa por atividade × família de cabo (RN-16..21)
         generated = task.generated_task
@@ -467,18 +486,18 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     n_checked_in = len(checked_in_today)
 
     month_start = today.replace(day=1)
-    completed_month_qs = ProjectTask.objects.filter(
-        status=ProjectTask.STATUS_COMPLETED, actual_end__date__gte=month_start, actual_end__date__lte=today
+    completed_month_qs = ProjectTaskAssignment.objects.filter(
+        status=ProjectTask.STATUS_COMPLETED, assignment_end__date__gte=month_start, assignment_end__date__lte=today
     )
     if project_ids is not None:
-        completed_month_qs = completed_month_qs.filter(project_id__in=project_ids)
+        completed_month_qs = completed_month_qs.filter(project_task__project_id__in=project_ids)
     if site_id:
-        completed_month_qs = completed_month_qs.filter(project__site_id=site_id)
+        completed_month_qs = completed_month_qs.filter(project_task__project__site_id=site_id)
 
     stats = {
-        "period_completed_count": len(tasks),
+        "period_completed_count": len(completed_assignments),
         "tracked_completed_count": tracked_completed,
-        "tracking_rate_pct": _pct(tracked_completed, len(tasks)),
+        "tracking_rate_pct": _pct(tracked_completed, len(completed_assignments)),
         "man_hours_total": round(sum(t["man_hours"] for t in technicians), 2),
         "productive_hours_total": round(total_productive, 2),
         "journey_hours_total": round(total_journey, 2),
@@ -492,7 +511,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         # Campos v1 mantidos durante a transição do frontend.
         "avg_utilization_pct": utilization_total or 0,
         "productive_hours": round(total_productive, 1),
-        "completed_count": len(tasks),
+        "completed_count": len(completed_assignments),
         "today_productive_hours": round(today_productive, 1),
         "today_unproductive_hours": round(today_block + today_idle, 1),
         "completed_this_month": completed_month_qs.count(),

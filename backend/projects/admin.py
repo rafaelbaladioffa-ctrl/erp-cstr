@@ -1023,9 +1023,12 @@ class ProjectTaskAdminForm(forms.ModelForm):
 
 
 class ProjectTaskAssignmentInline(TabularInline):
+    """Despachos da tarefa. O status editado aqui é o do técnico, aplicado sem
+    apontamento de horas (ver ProjectTask.set_assignment_status_by_admin)."""
+
     model = ProjectTaskAssignment
     extra = 0
-    fields = ("collaborator", "queue_order", "dispatched_at", "dispatched_by")
+    fields = ("collaborator", "queue_order", "status", "completion_outcome", "dispatched_at", "dispatched_by")
     readonly_fields = ("dispatched_at",)
     autocomplete_fields = ("collaborator",)
 
@@ -1059,6 +1062,17 @@ class ProjectTaskAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).prefetch_related("collaborators", "rack_positions")
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Trocar o status da tarefa inteira pelo admin aplica a todos os técnicos
+        # despachados (sem apontamento); ajustes por técnico vêm no inline.
+        if change and "status" in form.changed_data:
+            obj.set_status_by_admin(obj.status)
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        form.instance.sync_from_assignments()
 
     def get_model_perms(self, request):
         """Mantém as rotas para os links internos, mas oculta o submódulo do menu."""

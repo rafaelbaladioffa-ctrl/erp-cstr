@@ -1892,24 +1892,72 @@ class RackPositionBulkCreateSerializer(serializers.Serializer):
     text = serializers.CharField(allow_blank=False)
 
 
-class MyTaskUpdateSerializer(serializers.ModelSerializer):
-    """Usado em /api/my-tasks/: o técnico só pode alterar o andamento da
-    própria tarefa, não o projeto/tarefa/responsáveis atribuídos. Um técnico
-    pode ter várias tarefas em andamento ao mesmo tempo — sem essa
-    restrição de propósito."""
+class MyTaskSerializer(ProjectTaskSerializer):
+    """Visão do técnico logado em /api/my-tasks/. Status, horas, resultado e
+    quantidade são do PRÓPRIO despacho dele; o status da tarefa inteira
+    continua em task_status (só fica concluída quando todos concluírem)."""
 
-    class Meta:
-        model = ProjectTask
-        fields = (
-            "id",
-            "status",
-            "actual_start",
-            "actual_end",
-            "actual_hours",
-            "completion_outcome",
-            "quantity_done",
-            "notes",
-        )
+    task_status = serializers.CharField(source="status", read_only=True)
+    status = serializers.SerializerMethodField()
+    status_display = serializers.SerializerMethodField()
+    actual_start = serializers.SerializerMethodField()
+    actual_end = serializers.SerializerMethodField()
+    actual_hours = serializers.SerializerMethodField()
+    completion_outcome = serializers.SerializerMethodField()
+    quantity_done = serializers.SerializerMethodField()
+
+    class Meta(ProjectTaskSerializer.Meta):
+        fields = ProjectTaskSerializer.Meta.fields + ("task_status",)
+
+    def _own_assignment(self, obj):
+        request = self.context.get("request")
+        collaborator = get_collaborator_role(request.user) if request else None
+        if collaborator is None:
+            return None
+        return next((a for a in obj.assignments.all() if a.collaborator_id == collaborator.id), None)
+
+    def get_status(self, obj):
+        assignment = self._own_assignment(obj)
+        return assignment.status if assignment else obj.status
+
+    def get_status_display(self, obj):
+        return dict(ProjectTask.STATUS_CHOICES).get(self.get_status(obj), obj.status)
+
+    def get_actual_start(self, obj):
+        assignment = self._own_assignment(obj)
+        return assignment.assignment_start if assignment else None
+
+    def get_actual_end(self, obj):
+        assignment = self._own_assignment(obj)
+        return assignment.assignment_end if assignment else None
+
+    def get_actual_hours(self, obj):
+        assignment = self._own_assignment(obj)
+        return assignment.actual_hours if assignment else None
+
+    def get_completion_outcome(self, obj):
+        assignment = self._own_assignment(obj)
+        return assignment.completion_outcome if assignment else ""
+
+    def get_quantity_done(self, obj):
+        assignment = self._own_assignment(obj)
+        return assignment.quantity_done if assignment else ""
+
+
+class MyTaskUpdateSerializer(serializers.Serializer):
+    """Entrada de /api/my-tasks/<id>/ (PATCH). O técnico só informa o andamento
+    do próprio despacho. Datas e horas não entram aqui de propósito: o
+    apontamento usa o relógio do servidor (ver MyTaskViewSet.update)."""
+
+    status = serializers.ChoiceField(
+        choices=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED, ProjectTask.STATUS_COMPLETED),
+        required=False,
+    )
+    completion_outcome = serializers.ChoiceField(
+        choices=ProjectTask.COMPLETION_OUTCOME_CHOICES, required=False, allow_blank=True
+    )
+    quantity_done = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
 
 
 class TechnicianDailyPresenceSerializer(serializers.ModelSerializer):

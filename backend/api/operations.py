@@ -39,10 +39,10 @@ def _current_tasks_by_collaborator(collaborator_ids, project_ids=None):
     assignments = (
         ProjectTaskAssignment.objects.filter(
             collaborator_id__in=collaborator_ids,
-            project_task__status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED),
+            status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED),
         )
         .select_related("project_task__project", "project_task__task")
-        .order_by("project_task__status", "project_task__actual_start")
+        .order_by("status", "assignment_start")
     )
     if project_ids is not None:
         assignments = assignments.filter(project_task__project_id__in=project_ids)
@@ -53,8 +53,9 @@ def _current_tasks_by_collaborator(collaborator_ids, project_ids=None):
                 "id": a.project_task.id,
                 "name": a.project_task.display_name,
                 "project_name": a.project_task.project.name,
-                "status": a.project_task.status,
-                "actual_start": a.project_task.actual_start,
+                # Status e início do próprio técnico, não da tarefa inteira.
+                "status": a.status,
+                "actual_start": a.assignment_start,
             }
         )
     return result
@@ -100,7 +101,7 @@ def _site_label(collaborator):
 def _queue_by_collaborator(collaborator_ids, project_ids=None):
     assignments = (
         ProjectTaskAssignment.objects.filter(
-            collaborator_id__in=collaborator_ids, project_task__status=ProjectTask.STATUS_NOT_STARTED
+            collaborator_id__in=collaborator_ids, status=ProjectTask.STATUS_NOT_STARTED
         )
         .select_related("project_task__project", "project_task__task")
         .order_by("queue_order", "dispatched_at")
@@ -280,7 +281,7 @@ def build_timeline_data(site_id, date, user=None):
             Q(assignment_start__date=date)
             | Q(project_task__actual_start__date=date)
             | Q(project_task__planned_start__date=date)
-            | Q(project_task__status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
+            | Q(status__in=(ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED))
         )
         .order_by("project_task__planned_start", "project_task__actual_start")
     )
@@ -310,7 +311,7 @@ def build_timeline_data(site_id, date, user=None):
                 "id": t.id,
                 "name": t.display_name,
                 "project_name": t.project.name,
-                "status": t.status,
+                "status": a.status,
                 "planned_start": t.planned_start,
                 "planned_end": t.planned_end,
                 "actual_start": actual_start,

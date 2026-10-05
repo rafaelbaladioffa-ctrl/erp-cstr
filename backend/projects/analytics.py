@@ -139,39 +139,36 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
         tasks = list(collaborator.project_tasks.all())
         tasks_total = len(tasks)
 
-        completed_tasks = [t for t in tasks if t.status == ProjectTask.STATUS_COMPLETED]
+        # Conclusões do PRÓPRIO técnico: cada um tem a sua, mesmo quando a
+        # tarefa só fecha depois. Ajuste do admin (sem fim registrado pelo
+        # técnico) não entra em indicador de técnico.
+        own_done = []
+        for task in tasks:
+            own = next((a for a in task.assignments.all() if a.collaborator_id == collaborator.pk), None)
+            if own and own.status == ProjectTask.STATUS_COMPLETED and own.assignment_end:
+                own_done.append((task, own))
         if date_from or date_to:
-            def _in_range(task):
-                if not task.actual_end:
-                    return False
-                task_date = timezone.localtime(task.actual_end).date() if timezone.is_aware(task.actual_end) else task.actual_end.date()
+            def _in_range(moment):
+                task_date = timezone.localtime(moment).date() if timezone.is_aware(moment) else moment.date()
                 if date_from and task_date < date_from:
                     return False
                 if date_to and task_date > date_to:
                     return False
                 return True
 
-            completed_tasks = [t for t in completed_tasks if _in_range(t)]
+            own_done = [(task, own) for task, own in own_done if _in_range(own.assignment_end)]
 
-        # Horas por técnico: apenas tarefas com apontamento real completo.
-        # Merge de intervalos evita dupla contagem quando o técnico tinha
+        completed_tasks = [task for task, _ in own_done]
+
+        # Horas por técnico: intervalos de execução do próprio técnico (sem
+        # pausas). Merge de intervalos evita dupla contagem quando ele tinha
         # tarefas paralelas (10 tarefas das 9h–10h = 1h efetiva, não 10h).
         intervals = []
-        flat_hours = 0.0
         untracked_count = 0
-        # task_assignments já prefetchado via 'project_tasks__assignments'
-        for task in completed_tasks:
-            # Tenta usar o intervalo do próprio assignment do técnico
-            # (rastreamento por assignment — evita contar tempo de colegas).
-            own_assignment = next(
-                (a for a in task.assignments.all() if a.collaborator_id == collaborator.pk),
-                None,
-            )
-            if own_assignment and own_assignment.assignment_start and own_assignment.assignment_end:
-                intervals.append((own_assignment.assignment_start, own_assignment.assignment_end))
-            elif task.has_real_time_tracking:
-                # Fallback: dados históricos sem rastreamento por assignment.
-                intervals.append((task.actual_start, task.actual_end))
+        for _task, own in own_done:
+            working = own.working_intervals()
+            if working:
+                intervals.extend(working)
             else:
                 untracked_count += 1
         intervals.sort(key=lambda iv: iv[0])
@@ -182,7 +179,7 @@ def build_technical_performance(*, company_id=None, date_from=None, date_to=None
             else:
                 merged_intervals.append((start, end))
         interval_hours = sum((e - s).total_seconds() for s, e in merged_intervals) / 3600
-        hours_worked = round(interval_hours + flat_hours, 2)
+        hours_worked = round(interval_hours, 2)
         links_executed = sum(rp.links for t in completed_tasks for rp in t.rack_positions.all())
 
         rows.append(
