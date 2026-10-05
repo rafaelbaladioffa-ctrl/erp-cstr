@@ -44,7 +44,7 @@ PRESENCE_LABEL = {
     "in_progress": "Em Execução",
     "lunch": "Horário de Almoço",
     "personal": "Particular",
-    "meal": "Refeição",
+    "meal": "Café",
     "meeting": "Reunião",
     "traveling": "Em Deslocamento",
     "site_blocked": "Sem Acesso ao Site",

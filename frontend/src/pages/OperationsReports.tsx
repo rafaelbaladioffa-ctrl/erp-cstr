@@ -208,7 +208,7 @@ const TEXT = {
     catInterno: "Ocioso interno",
     descExterno: "Evidência para o cliente",
     descInterno: "Falha de despacho/planejamento",
-    intervalosNeutros: "Almoço, refeição, reunião, deslocamento e pausas pessoais não entram.",
+    intervalosNeutros: "Almoço, café, reunião, deslocamento e pausas pessoais não entram.",
     segExecucao: "Execução",
     segIntervalos: "Intervalos",
     ordemOcioso: "Mais ocioso primeiro",

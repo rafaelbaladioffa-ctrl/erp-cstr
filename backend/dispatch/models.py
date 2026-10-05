@@ -31,7 +31,7 @@ class TechnicianDailyPresence(TimestampedModel):
         (STATUS_IN_PROGRESS, "Em Execução"),
         (STATUS_LUNCH, "Horário de Almoço"),
         (STATUS_PERSONAL, "Particular"),
-        (STATUS_MEAL, "Refeição"),
+        (STATUS_MEAL, "Café"),
         (STATUS_MEETING, "Reunião"),
         (STATUS_TRAVELING, "Em Deslocamento"),
         (STATUS_SITE_BLOCKED, "Sem Acesso ao Site"),
