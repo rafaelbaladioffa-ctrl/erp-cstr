@@ -109,6 +109,7 @@ from updates.project_client_mail import send_project_daily_update_email, send_we
 from updates.project_pdf import build_project_daily_update_pdf
 
 from .permissions import (
+    AllowManageProjectTasks,
     DenyClientScopedUsers,
     IsSuperUser,
     require_perms,
@@ -116,7 +117,7 @@ from .permissions import (
     RequireViewPermissionForActions,
     ViewAwareModelPermissions,
 )
-from core.collaborator_scope import scope_collaborators, scope_supervisor_projects
+from core.collaborator_scope import managed_collaborator_ids, scope_collaborators, scope_supervisor_projects
 from .serializers import (
     AuditLogSerializer,
     ClientCrudSerializer,
@@ -448,7 +449,24 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
         return scope_collaborators(queryset, self.request.user)
 
 
-class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
+def _collaborators_outside_team(user, collaborator_ids):
+    """Supervisor só aloca/despacha técnicos sob a sua gestão: devolve a resposta 403 se algum
+    técnico informado estiver fora da equipe (None quando está tudo certo ou não há restrição)."""
+    allowed = managed_collaborator_ids(user)
+    if allowed is None:
+        return None
+    requested = set()
+    for value in collaborator_ids:
+        try:
+            requested.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    if requested - allowed:
+        return Response({"detail": "Só é possível alocar técnicos que estão sob a sua gestão."}, status=403)
+    return None
+
+
+class ProjectViewSet(AllowManageProjectTasks, RequireChangePermissionForActions, viewsets.ModelViewSet):
     queryset = (
         Project.objects.select_related(
             "client", "site", "category", "consultimer_type", "responsible_cstr__person", "responsible_client__person"
@@ -459,6 +477,8 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
     permission_classes = [ViewAwareModelPermissions]
     change_permission_actions = ("tasks_bulk", "import_tasks", "rack_positions_bulk", "tasks_create", "tasks_create_custom")
+    # Ajuste em massa de tarefas (status, datas, colaboradores) também liberado a quem gerencia tarefas.
+    manage_task_actions = ("tasks_bulk",)
 
     def get_queryset(self):
         queryset = super().get_queryset().annotate(
@@ -597,6 +617,13 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
         data = payload.validated_data
         bulk_action = data["action"]
 
+        # Quem só gerencia tarefas (sem poder de alterar/criar projetos) não adiciona nem exclui tarefas em massa.
+        user = request.user
+        if bulk_action in (ProjectTaskBulkActionSerializer.ACTION_ADD, ProjectTaskBulkActionSerializer.ACTION_DELETE) and not (
+            user.has_perm("projects.change_project") and user.has_perm("projects.add_project")
+        ):
+            return Response({"detail": "Sem permissão para adicionar ou excluir tarefas."}, status=403)
+
         if bulk_action == ProjectTaskBulkActionSerializer.ACTION_ADD:
             add_tasks = data["add_task_ids"]
             if not add_tasks:
@@ -620,6 +647,9 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             return Response({"deleted": deleted})
 
         collaborators = data["collaborator_ids"]
+        outside_team = _collaborators_outside_team(request.user, [c.pk for c in collaborators])
+        if outside_team:
+            return outside_team
         rack_positions = data["rack_position_ids"]
         if rack_positions:
             invalid = [rp for rp in rack_positions if rp.project_id != project.pk]
@@ -650,13 +680,15 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
         return Response({"updated": updated})
 
 
-class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
+class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActions, viewsets.ModelViewSet):
     queryset = ProjectTask.objects.select_related(
         "task", "project", "generated_task__activity", "generated_task__path", "generated_task__scope_item", "generated_task__task_template"
     ).prefetch_related("collaborators__person", "rack_positions", "assignments")
     serializer_class = ProjectTaskSerializer
     permission_classes = [ViewAwareModelPermissions]
     change_permission_actions = ("dispatch_task", "undispatch_task")
+    # Gestor (permissão dedicada) despacha, altera status/datas/colaboradores; criar e excluir seguem restritos.
+    manage_task_actions = ("dispatch_task", "undispatch_task", "update", "partial_update")
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -680,6 +712,8 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
         if origin:
             queryset = queryset.filter(origin=origin)
         queryset = scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+        # Supervisor só enxerga/altera tarefas dos projetos em que é Responsável CSTR.
+        queryset = scope_supervisor_projects(queryset, self.request.user, field_prefix="project__")
         return queryset.order_by("order", "id")
 
     def perform_create(self, serializer):
@@ -700,6 +734,9 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
         collaborator_ids = list(request.data.get("collaborator_ids") or [])
         if not collaborator_ids:
             return Response({"detail": "Informe ao menos um técnico."}, status=400)
+        outside_team = _collaborators_outside_team(request.user, collaborator_ids)
+        if outside_team:
+            return outside_team
 
         # Duplas fixas são sempre despachadas juntas — mesmo que o front só
         # tenha mandado um dos dois (ex: ação vinda de outro lugar que não

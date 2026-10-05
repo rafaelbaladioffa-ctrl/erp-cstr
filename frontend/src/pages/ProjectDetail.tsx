@@ -17,7 +17,7 @@ import StatusBadge from "../components/ui/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { useI18n, usePageText } from "../i18n";
 import { downloadAuthenticatedFile } from "../utils/downloadFile";
-import { PERMS, hasPerm } from "../utils/permissions";
+import { PERMS, hasAnyPerm, hasPerm } from "../utils/permissions";
 
 type DetailTab = "overview" | "tasks" | "hours" | "occurrences" | "attachments";
 
@@ -467,7 +467,7 @@ export default function ProjectDetail() {
   const canChangeRack = hasPerm(user, PERMS.changeRackPosition);
   const canDeleteRack = hasPerm(user, PERMS.deleteRackPosition);
   const canAddTask = hasPerm(user, PERMS.addProjectTask);
-  const canChangeTask = hasPerm(user, PERMS.changeProjectTask);
+  const canChangeTask = hasAnyPerm(user, [PERMS.changeProjectTask, PERMS.manageProjectTasks]);
   const canDeleteTask = hasPerm(user, PERMS.deleteProjectTask);
   const canAddOccurrence = hasPerm(user, PERMS.addProjectOccurrence);
   const canChangeOccurrence = hasPerm(user, PERMS.changeProjectOccurrence);

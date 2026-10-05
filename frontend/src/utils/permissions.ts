@@ -41,6 +41,7 @@ export const PERMS = {
   deleteRackPosition: "projects.delete_rackposition",
   addProjectTask: "projects.add_projecttask",
   changeProjectTask: "projects.change_projecttask",
+  manageProjectTasks: "projects.manage_project_tasks",
   deleteProjectTask: "projects.delete_projecttask",
   viewProjectOccurrence: "projects.view_projectoccurrence",
   addProjectOccurrence: "projects.add_projectoccurrence",

@@ -312,6 +312,7 @@ class ProjectTask(TimestampedModel):
         verbose_name = "Tarefa do Projeto"
         verbose_name_plural = "Tarefas do Projeto"
         ordering = ("order", "id")
+        permissions = [("manage_project_tasks", "Pode gerenciar tarefas do projeto (status, datas, colaboradores e despacho)")]
         constraints = [
             # Idempotência da criação a partir do Plano do Projeto — nunca
             # duas ProjectTask para a mesma (projeto, GeneratedTask). Índice
