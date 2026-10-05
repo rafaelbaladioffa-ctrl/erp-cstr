@@ -251,10 +251,11 @@ function formatBroadcastMessage(t, date) {
 
 function formatAllocationMessage(t, date, template) {
   const useTemplate = template && template.is_active !== false;
-  const fallbackIntro = `Olá, ${t.collaborator_name}! Aqui está sua alocação para ${formatDate(date)}:`;
+  const displayName = formatPersonName(t.collaborator_name);
+  const fallbackIntro = `Olá, ${displayName}! Aqui está sua alocação para ${formatDate(date)}:`;
   const intro =
     useTemplate && template.intro_text
-      ? template.intro_text.split("{nome}").join(t.collaborator_name).split("{data}").join(formatDate(date))
+      ? template.intro_text.split("{nome}").join(displayName).split("{data}").join(formatDate(date))
       : fallbackIntro;
   const lines = t.allocations.map((a) => {
     const name = templateEnabled(template, "project_code") && a.code ? `${a.project} (${a.code})` : a.project;
@@ -264,25 +265,50 @@ function formatAllocationMessage(t, date, template) {
   return `${intro}\n\n${lines.join("\n")}${footer}`;
 }
 
-// Resumo único da alocação (um bloco por técnico), para enviar a um grupo.
-function formatAllocationSummary(technicians, date, template) {
-  const useTemplate = template && template.is_active !== false;
-  const blocks = technicians.map((t) => {
-    const lines = t.allocations.map((a) => {
-      const name = templateEnabled(template, "project_code") && a.code ? `${a.project} (${a.code})` : a.project;
-      return templateEnabled(template, "site") ? `• ${name} — Site: ${a.site || "não informado"}` : `• ${name}`;
-    });
-    return `*${t.collaborator_name}*\n${lines.join("\n")}`;
+// Resumo único da alocação para enviar a um grupo: um bloco por projeto (ordenado por
+// site e nome), com os técnicos alocados listados embaixo.
+function groupAllocationByProject(technicians) {
+  const groups = new Map();
+  for (const t of technicians) {
+    for (const a of t.allocations) {
+      const key = `${a.code || ""}|${a.project}|${a.site || ""}`;
+      if (!groups.has(key)) groups.set(key, { project: a.project, code: a.code, site: a.site, technicians: [] });
+      groups.get(key).technicians.push(formatPersonName(t.collaborator_name));
+    }
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, technicians: [...new Set(g.technicians)].sort((x, y) => x.localeCompare(y, "pt-BR")) }))
+    .sort((x, y) => (x.site || "").localeCompare(y.site || "", "pt-BR") || x.project.localeCompare(y.project, "pt-BR"));
+}
+
+function formatAllocationGroupBlock(g, template) {
+  const title = templateEnabled(template, "project_code") && g.code ? `${g.project} (${g.code})` : g.project;
+  const count = `${g.technicians.length} técnico(s)`;
+  const lines = [`*${title}*`];
+  lines.push(templateEnabled(template, "site") ? `Site: ${g.site || "não informado"} · ${count}` : count);
+  lines.push(...g.technicians.map((name) => `• ${name}`));
+  return lines.join("\n");
+}
+
+function buildAllocationSummaryMessages(technicians, date, template) {
+  const groups = groupAllocationByProject(technicians);
+  // O texto de introdução do modelo é da mensagem individual ("Olá, {nome}!"); o resumo não usa.
+  const summaryTemplate = template ? { ...template, intro_text: "" } : template;
+  return buildConsolidatedDailyProjectReport(groups, date, summaryTemplate, {
+    fallbackTitle: "Alocação Técnica",
+    blockFn: formatAllocationGroupBlock,
+    extraHeader: [`Técnicos: ${new Set(technicians.map((t) => t.collaborator_name)).size}`],
   });
-  const parts = [`*Alocação dos técnicos — ${formatDate(date)}*`, "", blocks.join("\n\n")];
-  if (useTemplate && template.footer_text) parts.push("", template.footer_text);
-  return parts.join("\n");
 }
 
 async function sendAllocationSummary(sock, data, recipients) {
   const template = await fetchMessageTemplate("allocation");
   console.log(`Alocação (resumo): ${data.technicians.length} técnico(s) para ${recipients.length} destinatário(s).`);
-  return sendToRecipients(sock, recipients, formatAllocationSummary(data.technicians, data.date, template), "Alocação (resumo)");
+  let sent = 0;
+  for (const text of buildAllocationSummaryMessages(data.technicians, data.date, template)) {
+    sent += await sendToRecipients(sock, recipients, text, "Alocação (resumo)");
+  }
+  return sent;
 }
 
 // Alocação individual: cada técnico recebe a própria mensagem. Com
