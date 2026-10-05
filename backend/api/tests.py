@@ -6432,16 +6432,18 @@ class OperationsReportsV2Tests(TestCase):
         P = self.Presence
         self.assertIn(P.STATUS_MEAL, P.SELECTABLE_STATUSES)
         self.assertIn(P.STATUS_MEETING, P.SELECTABLE_STATUSES)
+        self.assertIn(P.STATUS_TRAVELING, P.SELECTABLE_STATUSES)
         self.check_in(self.tech_a, [
             (P.STATUS_AVAILABLE, self.at(8)),
             (P.STATUS_IN_PROGRESS, self.at(9)),
             (P.STATUS_MEAL, self.at(12)),
             (P.STATUS_MEETING, self.at(13)),
-            (P.STATUS_IN_PROGRESS, self.at(14)),
+            (P.STATUS_TRAVELING, self.at(14)),
+            (P.STATUS_IN_PROGRESS, self.at(15)),
             (P.STATUS_OFF_DUTY, self.at(17)),
         ])
         row = self.tech_row(self.get(), self.tech_a)
-        self.assertEqual(row["productive_hours"], 6.0)
+        self.assertEqual(row["productive_hours"], 5.0)
         self.assertEqual(row["external_block_hours"], 0.0)
         self.assertEqual(row["internal_idle_hours"], 1.0)
 

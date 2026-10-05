@@ -21,6 +21,7 @@ class TechnicianDailyPresence(TimestampedModel):
     STATUS_PERSONAL = "personal"
     STATUS_MEAL = "meal"
     STATUS_MEETING = "meeting"
+    STATUS_TRAVELING = "traveling"
     STATUS_SITE_BLOCKED = "site_blocked"
     STATUS_AWAITING_RELEASE = "awaiting_release"
     STATUS_OFF_DUTY = "off_duty"
@@ -32,6 +33,7 @@ class TechnicianDailyPresence(TimestampedModel):
         (STATUS_PERSONAL, "Particular"),
         (STATUS_MEAL, "Refeição"),
         (STATUS_MEETING, "Reunião"),
+        (STATUS_TRAVELING, "Em Deslocamento"),
         (STATUS_SITE_BLOCKED, "Sem Acesso ao Site"),
         (STATUS_AWAITING_RELEASE, "Aguardando Liberações"),
         (STATUS_OFF_DUTY, "Fim de Expediente"),
@@ -48,6 +50,7 @@ class TechnicianDailyPresence(TimestampedModel):
         STATUS_PERSONAL,
         STATUS_MEAL,
         STATUS_MEETING,
+        STATUS_TRAVELING,
         STATUS_SITE_BLOCKED,
         STATUS_AWAITING_RELEASE,
         STATUS_OFF_DUTY,
@@ -70,6 +73,7 @@ class TechnicianDailyPresence(TimestampedModel):
         STATUS_PERSONAL: PRODUCTIVITY_NEUTRAL,
         STATUS_MEAL: PRODUCTIVITY_NEUTRAL,
         STATUS_MEETING: PRODUCTIVITY_NEUTRAL,
+        STATUS_TRAVELING: PRODUCTIVITY_NEUTRAL,
     }
 
     # Jornada padrão usada nos relatórios de utilização — fixa, não é

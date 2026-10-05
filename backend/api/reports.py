@@ -438,6 +438,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                 TechnicianDailyPresence.STATUS_PERSONAL,
                 TechnicianDailyPresence.STATUS_MEAL,
                 TechnicianDailyPresence.STATUS_MEETING,
+                TechnicianDailyPresence.STATUS_TRAVELING,
             ),
         )
         blocked = _sum_statuses(durations, EXTERNAL_BLOCK_STATUSES)

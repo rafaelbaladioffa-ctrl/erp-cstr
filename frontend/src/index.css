@@ -92,6 +92,8 @@
   --purple-soft: #f3effe;
   --pink: #db2777;
   --pink-soft: #fdf0f6;
+  --cyan: #0891b2;
+  --cyan-soft: #e6f6fa;
   --red: #dc2626;
   --red-soft: #fef0f0;
   --radius: 8px;
@@ -124,6 +126,8 @@
   --purple-soft: #1f1535;
   --pink: #f472b6;
   --pink-soft: #2a1020;
+  --cyan: #22d3ee;
+  --cyan-soft: #0b2530;
   --red: #fc8080;
   --red-soft: #2a1111;
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.35);
