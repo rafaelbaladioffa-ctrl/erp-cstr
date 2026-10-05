@@ -686,9 +686,9 @@ class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActi
     ).prefetch_related("collaborators__person", "rack_positions", "assignments")
     serializer_class = ProjectTaskSerializer
     permission_classes = [ViewAwareModelPermissions]
-    change_permission_actions = ("dispatch_task", "undispatch_task")
+    change_permission_actions = ("dispatch_task", "undispatch_task", "dispatch_bulk")
     # Gestor (permissão dedicada) despacha, altera status/datas/colaboradores; criar e excluir seguem restritos.
-    manage_task_actions = ("dispatch_task", "undispatch_task", "update", "partial_update")
+    manage_task_actions = ("dispatch_task", "undispatch_task", "dispatch_bulk", "update", "partial_update")
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -738,9 +738,21 @@ class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActi
         if outside_team:
             return outside_team
 
-        # Duplas fixas são sempre despachadas juntas — mesmo que o front só
-        # tenha mandado um dos dois (ex: ação vinda de outro lugar que não
-        # sabe de duplas), o parceiro entra automaticamente.
+        collaborators = self._dispatch_collaborators(collaborator_ids)
+        self._assign_collaborators(task, collaborators, request.user)
+
+        # `task` veio de self.get_object(), que já tinha prefetch_related("collaborators")
+        # rodado (vazio, antes do despacho acima) — refresh_from_db() limpa esse cache
+        # de prefetch pra refletir as ProjectTaskAssignment recém-criadas na resposta.
+        task.refresh_from_db()
+        return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
+
+    @staticmethod
+    def _dispatch_collaborators(collaborator_ids):
+        """Expande as duplas fixas (sempre despachadas juntas — mesmo que o front só
+        tenha mandado um dos dois, o parceiro entra automaticamente) e devolve os
+        técnicos ativos."""
+        collaborator_ids = list(collaborator_ids)
         paired = CollaboratorPair.objects.filter(
             is_active=True
         ).filter(models.Q(collaborator_a_id__in=collaborator_ids) | models.Q(collaborator_b_id__in=collaborator_ids))
@@ -748,8 +760,12 @@ class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActi
             collaborator_ids.append(pair.collaborator_a_id)
             collaborator_ids.append(pair.collaborator_b_id)
         collaborator_ids = list(dict.fromkeys(collaborator_ids))
+        return list(Collaborator.objects.filter(id__in=collaborator_ids, is_active=True))
 
-        collaborators = Collaborator.objects.filter(id__in=collaborator_ids, is_active=True)
+    @staticmethod
+    def _assign_collaborators(task, collaborators, user):
+        """Cria (ou atualiza) a ProjectTaskAssignment de cada técnico, colocando a tarefa
+        no fim da fila dele (posições anteriores dele em tarefas ainda não iniciadas)."""
         for collaborator in collaborators:
             next_order = (
                 ProjectTaskAssignment.objects.filter(
@@ -760,14 +776,38 @@ class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActi
             ProjectTaskAssignment.objects.update_or_create(
                 project_task=task,
                 collaborator=collaborator,
-                defaults={"dispatched_by": request.user, "queue_order": next_order},
+                defaults={"dispatched_by": user, "queue_order": next_order},
             )
 
-        # `task` veio de self.get_object(), que já tinha prefetch_related("collaborators")
-        # rodado (vazio, antes do despacho acima) — refresh_from_db() limpa esse cache
-        # de prefetch pra refletir as ProjectTaskAssignment recém-criadas na resposta.
-        task.refresh_from_db()
-        return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
+    @action(detail=False, methods=["post"], url_path="dispatch-bulk")
+    def dispatch_bulk(self, request):
+        """Despacha várias tarefas de uma vez para os mesmos técnicos. A ordem de `task_ids`
+        é a ordem de entrada na fila de cada técnico. Tudo ou nada (transação única)."""
+        from django.db import transaction
+
+        try:
+            task_ids = list(dict.fromkeys(int(i) for i in (request.data.get("task_ids") or [])))
+        except (TypeError, ValueError):
+            return Response({"detail": "task_ids inválido."}, status=400)
+        collaborator_ids = list(request.data.get("collaborator_ids") or [])
+        if not task_ids:
+            return Response({"detail": "Informe ao menos uma tarefa."}, status=400)
+        if not collaborator_ids:
+            return Response({"detail": "Informe ao menos um técnico."}, status=400)
+        outside_team = _collaborators_outside_team(request.user, collaborator_ids)
+        if outside_team:
+            return outside_team
+
+        tasks_by_id = {t.id: t for t in self.get_queryset().filter(id__in=task_ids)}
+        missing = [i for i in task_ids if i not in tasks_by_id]
+        if missing:
+            return Response({"detail": "Tarefa não encontrada ou sem acesso.", "missing": missing}, status=404)
+
+        collaborators = self._dispatch_collaborators(collaborator_ids)
+        with transaction.atomic():
+            for task_id in task_ids:
+                self._assign_collaborators(tasks_by_id[task_id], collaborators, request.user)
+        return Response({"dispatched": len(task_ids), "task_ids": task_ids})
 
     @action(detail=True, methods=["post"], url_path="undispatch")
     def undispatch_task(self, request, pk=None):

@@ -936,6 +936,59 @@ class ProjectTaskDispatchApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
 
+    def test_dispatch_bulk_assigns_all_tasks_in_given_order(self):
+        task2 = ProjectTask.objects.create(project=self.project, custom_name="Tarefa 2", order=2)
+        task3 = ProjectTask.objects.create(project=self.project, custom_name="Tarefa 3", order=3)
+
+        response = self.client_api.post(
+            "/api/project-tasks/dispatch-bulk/",
+            {"task_ids": [task3.pk, self.task.pk, task2.pk], "collaborator_ids": [self.collaborator_a.pk]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["dispatched"], 3)
+        orders = {
+            a.project_task_id: a.queue_order
+            for a in ProjectTaskAssignment.objects.filter(collaborator=self.collaborator_a)
+        }
+        self.assertEqual(orders[task3.pk], 1)
+        self.assertEqual(orders[self.task.pk], 2)
+        self.assertEqual(orders[task2.pk], 3)
+
+    def test_dispatch_bulk_includes_paired_partner(self):
+        CollaboratorPair.objects.create(collaborator_a=self.collaborator_a, collaborator_b=self.collaborator_b, is_active=True)
+        task2 = ProjectTask.objects.create(project=self.project, custom_name="Tarefa 2", order=2)
+
+        response = self.client_api.post(
+            "/api/project-tasks/dispatch-bulk/",
+            {"task_ids": [self.task.pk, task2.pk], "collaborator_ids": [self.collaborator_a.pk]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(collaborator=self.collaborator_b).count(), 2)
+
+    def test_dispatch_bulk_is_all_or_nothing_for_unknown_task(self):
+        response = self.client_api.post(
+            "/api/project-tasks/dispatch-bulk/",
+            {"task_ids": [self.task.pk, 999999], "collaborator_ids": [self.collaborator_a.pk]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(ProjectTaskAssignment.objects.count(), 0)
+
+    def test_dispatch_bulk_requires_tasks_and_technicians(self):
+        self.assertEqual(
+            self.client_api.post("/api/project-tasks/dispatch-bulk/", {"task_ids": [], "collaborator_ids": [self.collaborator_a.pk]}, format="json").status_code,
+            400,
+        )
+        self.assertEqual(
+            self.client_api.post("/api/project-tasks/dispatch-bulk/", {"task_ids": [self.task.pk], "collaborator_ids": []}, format="json").status_code,
+            400,
+        )
+
 
 class TechnicianAbsenceApiTests(TestCase):
     """CRUD de TechnicianAbsence e o efeito de uma ausência ativa sobre a

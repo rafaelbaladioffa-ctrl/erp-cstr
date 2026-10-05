@@ -51,6 +51,9 @@ const TEXT = {
     poolHint: (n: number) => `${n} pendentes`,
     dispatchSelectTech: "Selecione um técnico disponível na coluna ao lado",
     dispatchTechsSelected: (n: number) => `${n} técnico(s) selecionado(s)`,
+    tasksSelected: (n: number) => `${n} ${n === 1 ? "atividade selecionada" : "atividades selecionadas"}`,
+    clearSelection: "Limpar seleção",
+    multiSelectHint: "Ctrl+clique seleciona várias; Shift+clique seleciona um intervalo.",
     dispatching: "Despachando...",
     dispatch: "Despachar",
     colActivity: "Atividade",
@@ -125,6 +128,9 @@ const TEXT = {
     poolHint: (n: number) => `${n} pending`,
     dispatchSelectTech: "Select an available technician in the column to the right",
     dispatchTechsSelected: (n: number) => `${n} technician(s) selected`,
+    tasksSelected: (n: number) => `${n} ${n === 1 ? "activity selected" : "activities selected"}`,
+    clearSelection: "Clear selection",
+    multiSelectHint: "Ctrl+click selects several; Shift+click selects a range.",
     dispatching: "Dispatching...",
     dispatch: "Dispatch",
     colActivity: "Activity",
@@ -199,6 +205,9 @@ const TEXT = {
     poolHint: (n: number) => `${n} pendientes`,
     dispatchSelectTech: "Seleccione un técnico disponible en la columna de al lado",
     dispatchTechsSelected: (n: number) => `${n} técnico(s) seleccionado(s)`,
+    tasksSelected: (n: number) => `${n} ${n === 1 ? "actividad seleccionada" : "actividades seleccionadas"}`,
+    clearSelection: "Limpiar selección",
+    multiSelectHint: "Ctrl+clic selecciona varias; Shift+clic selecciona un rango.",
     dispatching: "Despachando...",
     dispatch: "Despachar",
     colActivity: "Actividad",
@@ -274,7 +283,8 @@ export default function OperationsBoard() {
   const [loading, setLoading] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const [undispatchingId, setUndispatchingId] = useState<number | null>(null);
-  const [selectedTask, setSelectedTask] = useState<number | null>(null);
+  const [selectedTasks, setSelectedTasks] = useState<number[]>([]);
+  const anchorTaskRef = useRef<number | null>(null);
   const [selectedTechs, setSelectedTechs] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number } | null>(null);
@@ -284,7 +294,7 @@ export default function OperationsBoard() {
   const [techOpen, setTechOpen] = useState(false);
   const [othersOpen, setOthersOpen] = useState(false);
   const [absenceTech, setAbsenceTech] = useState<{ id: number; name: string } | null>(null);
-  const [dragTaskId, setDragTaskId] = useState<number | null>(null);
+  const [dragTaskIds, setDragTaskIds] = useState<number[]>([]);
   const [dragOverTechId, setDragOverTechId] = useState<number | null>(null);
   const todayStr = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
@@ -326,7 +336,7 @@ export default function OperationsBoard() {
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setTodPopup(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setTodPopup(null); setSelectedTasks([]); setSelectedTechs([]); } };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
@@ -342,18 +352,56 @@ export default function OperationsBoard() {
     });
   }
 
-  function selectTask(taskId: number) {
-    setSelectedTask((prev) => (prev === taskId ? null : taskId));
+  // Seleção de atividades do pool: clique simples seleciona uma (ou limpa, se já era a única),
+  // Ctrl/Cmd+clique alterna, Shift+clique seleciona o intervalo desde a última âncora.
+  function handleTaskClick(e: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }, taskId: number, visibleIds: number[]) {
+    const additive = e.ctrlKey || e.metaKey;
+    if (e.shiftKey && anchorTaskRef.current != null && visibleIds.includes(anchorTaskRef.current)) {
+      const from = visibleIds.indexOf(anchorTaskRef.current);
+      const to = visibleIds.indexOf(taskId);
+      const range = visibleIds.slice(Math.min(from, to), Math.max(from, to) + 1);
+      setSelectedTasks((prev) => (additive ? [...new Set([...prev, ...range])] : range));
+    } else if (additive) {
+      setSelectedTasks((prev) => (prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]));
+      anchorTaskRef.current = taskId;
+    } else {
+      setSelectedTasks((prev) => (prev.length === 1 && prev[0] === taskId ? [] : [taskId]));
+      anchorTaskRef.current = taskId;
+    }
     setSelectedTechs([]);
   }
 
+  // Botão "Despachar" da linha: garante que a atividade está na seleção (mantém as demais se já estava).
+  function prepareDispatchFor(taskId: number) {
+    setSelectedTasks((prev) => (prev.includes(taskId) ? prev : [taskId]));
+    anchorTaskRef.current = taskId;
+    setSelectedTechs([]);
+  }
+
+  function clearTaskSelection() {
+    setSelectedTasks([]);
+    setSelectedTechs([]);
+    anchorTaskRef.current = null;
+  }
+
+  // Ids na ordem em que aparecem na tela (a ordem da seleção é a ordem da fila do técnico).
+  function orderedSelection() {
+    const order = new Map<number, number>();
+    let i = 0;
+    for (const g of poolGroups) {
+      if (collapsedProjects.has(g.key)) continue;
+      for (const t of g.tasks) order.set(t.id, i++);
+    }
+    return [...selectedTasks].filter((id) => order.has(id)).sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+  }
+
   async function dispatch() {
-    if (selectedTask == null || selectedTechs.length === 0) return;
+    const ids = orderedSelection();
+    if (ids.length === 0 || selectedTechs.length === 0) return;
     setDispatching(true);
     try {
-      await operationsApi.dispatch(selectedTask, selectedTechs);
-      setSelectedTask(null);
-      setSelectedTechs([]);
+      await operationsApi.dispatchBulk(ids, selectedTechs);
+      clearTaskSelection();
       if (siteId != null) loadAll(siteId, selectedDate);
     } finally {
       setDispatching(false);
@@ -387,8 +435,14 @@ export default function OperationsBoard() {
     }
     return Array.from(byKey.values());
   }, [pool]);
+  const visibleTaskIds = poolGroups.flatMap((g) => (collapsedProjects.has(g.key) ? [] : g.tasks.map((t) => t.id)));
   const allCollapsed = poolGroups.length > 0 && poolGroups.every((g) => collapsedProjects.has(g.key));
   function toggleProject(key: string) {
+    const group = poolGroups.find((g) => g.key === key);
+    if (group && !collapsedProjects.has(key)) {
+      const hidden = new Set(group.tasks.map((t) => t.id));
+      setSelectedTasks((prev) => prev.filter((id) => !hidden.has(id)));
+    }
     setCollapsedProjects((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
@@ -580,9 +634,9 @@ export default function OperationsBoard() {
                       ? BUSY_COLOR[busyStatus]
                       : PRESENCE_COLOR[tech.presence_status];
                   const dispatchable = !tech.on_leave && tech.presence_status !== "not_started" && tech.presence_status !== "off_duty";
-                  const selectable = selectedTask != null && dispatchable;
+                  const selectable = selectedTasks.length > 0 && dispatchable;
                   const isSelected = selectedTechs.includes(tech.id);
-                  const droppable = !tech.on_leave && dragTaskId != null;
+                  const droppable = !tech.on_leave && dragTaskIds.length > 0;
                   return (
                     <div
                       key={tech.id}
@@ -602,12 +656,13 @@ export default function OperationsBoard() {
                       onDrop={async (e) => {
                         e.preventDefault();
                         setDragOverTechId(null);
-                        if (dragTaskId == null || tech.on_leave) return;
+                        if (dragTaskIds.length === 0 || tech.on_leave) return;
                         const techIds = tech.pair_partner ? [tech.id, tech.pair_partner.id] : [tech.id];
                         setDispatching(true);
                         try {
-                          await operationsApi.dispatch(dragTaskId, techIds);
-                          setDragTaskId(null);
+                          await operationsApi.dispatchBulk(dragTaskIds, techIds);
+                          setDragTaskIds([]);
+                          clearTaskSelection();
                           if (siteId != null) loadAll(siteId);
                         } finally {
                           setDispatching(false);
@@ -698,13 +753,16 @@ export default function OperationsBoard() {
               </button>
               {poolOpen && (
                 <>
-                  {selectedTask != null && (
+                  {selectedTasks.length > 0 && (
                     <div className="ops-dispatch-bar">
                       <span className="ops-dispatch-bar-text">
+                        <b>{p.tasksSelected(selectedTasks.length)}</b>
+                        {" · "}
                         {selectedTechs.length === 0
                           ? p.dispatchSelectTech
                           : p.dispatchTechsSelected(selectedTechs.length)}
                       </span>
+                      <button className="btn btn-outline btn-sm" onClick={clearTaskSelection}>{p.clearSelection}</button>
                       <button className="btn btn-primary btn-sm" disabled={selectedTechs.length === 0 || dispatching} onClick={dispatch}>
                         {dispatching ? p.dispatching : p.dispatch}
                       </button>
@@ -712,10 +770,11 @@ export default function OperationsBoard() {
                   )}
                   {poolGroups.length > 0 && (
                     <div className="ops-pool-toolbar">
+                      <span className="ops-pool-hint">{p.multiSelectHint}</span>
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
-                        onClick={() => setCollapsedProjects(allCollapsed ? new Set() : new Set(poolGroups.map((g) => g.key)))}
+                        onClick={() => { if (!allCollapsed) clearTaskSelection(); setCollapsedProjects(allCollapsed ? new Set() : new Set(poolGroups.map((g) => g.key))); }}
                       >
                         <Icon name={allCollapsed ? "unfold_more" : "unfold_less"} style={{ fontSize: 15 }} />
                         {allCollapsed ? p.expandAll : p.collapseAll}
@@ -763,16 +822,26 @@ export default function OperationsBoard() {
                                 className="ops-pool-task"
                                 draggable={true}
                                 onDragStart={(e) => {
-                                  setDragTaskId(task.id);
+                                  // Arrastar uma atividade selecionada leva toda a seleção; senão, só ela.
+                                  const ids = selectedTasks.includes(task.id) ? orderedSelection() : [task.id];
+                                  setDragTaskIds(ids);
                                   e.dataTransfer.effectAllowed = "move";
                                   e.dataTransfer.setData("taskId", String(task.id));
+                                  if (ids.length > 1) {
+                                    const badge = document.createElement("div");
+                                    badge.textContent = p.tasksSelected(ids.length);
+                                    badge.style.cssText = "position:fixed;top:-100px;left:-100px;padding:8px 14px;border-radius:8px;background:#f16023;color:#fff;font:700 13px sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+                                    document.body.appendChild(badge);
+                                    e.dataTransfer.setDragImage(badge, 12, 12);
+                                    setTimeout(() => badge.remove(), 0);
+                                  }
                                 }}
-                                onDragEnd={() => { setDragTaskId(null); setDragOverTechId(null); }}
-                                onClick={() => selectTask(task.id)}
+                                onDragEnd={() => { setDragTaskIds([]); setDragOverTechId(null); }}
+                                onClick={(e) => handleTaskClick(e, task.id, visibleTaskIds)}
                                 style={{
                                   cursor: "grab",
-                                  background: selectedTask === task.id ? "var(--orange-soft)" : dragTaskId === task.id ? "var(--bg)" : undefined,
-                                  opacity: dragTaskId === task.id ? 0.5 : 1,
+                                  background: selectedTasks.includes(task.id) ? "rgba(241, 96, 35, 0.16)" : dragTaskIds.includes(task.id) ? "var(--bg)" : undefined,
+                                  opacity: dragTaskIds.includes(task.id) ? 0.5 : 1,
                                   ["--pool-accent" as string]: `var(${accent})`,
                                 }}
                               >
@@ -798,7 +867,7 @@ export default function OperationsBoard() {
                                       className="btn btn-outline btn-sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        selectTask(task.id);
+                                        prepareDispatchFor(task.id);
                                       }}
                                     >
                                       {p.dispatchBtn}

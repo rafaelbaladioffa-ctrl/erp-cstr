@@ -527,6 +527,10 @@ export const operationsApi = {
     apiClient
       .post<ProjectTask>(`/project-tasks/${taskId}/dispatch/`, { collaborator_ids: collaboratorIds })
       .then((r) => r.data),
+  dispatchBulk: (taskIds: number[], collaboratorIds: number[]) =>
+    apiClient
+      .post<{ dispatched: number; task_ids: number[] }>("/project-tasks/dispatch-bulk/", { task_ids: taskIds, collaborator_ids: collaboratorIds })
+      .then((r) => r.data),
   undispatch: (taskId: number, collaboratorIds?: number[]) =>
     apiClient
       .post<ProjectTask>(`/project-tasks/${taskId}/undispatch/`, { collaborator_ids: collaboratorIds || [] })
