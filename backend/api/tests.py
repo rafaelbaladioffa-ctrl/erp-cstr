@@ -998,6 +998,35 @@ class ProjectTaskDispatchApiTests(TestCase):
             400,
         )
 
+    def test_return_to_pool_resets_started_task_and_removes_dispatch(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json")
+        started = timezone.now() - timedelta(hours=2)
+        ProjectTask.objects.filter(pk=self.task.pk).update(
+            status=ProjectTask.STATUS_PAUSED, actual_start=started, paused_seconds=600, paused_at=timezone.now()
+        )
+
+        response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/return-to-pool/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, ProjectTask.STATUS_NOT_STARTED)
+        self.assertIsNone(self.task.actual_start)
+        self.assertIsNone(self.task.actual_end)
+        self.assertIsNone(self.task.actual_hours)
+        self.assertEqual(self.task.paused_seconds, 0)
+        self.assertIsNone(self.task.paused_at)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
+
+    def test_return_to_pool_rejects_not_started_and_completed_tasks(self):
+        response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/return-to-pool/")
+        self.assertEqual(response.status_code, 400)
+
+        ProjectTask.objects.filter(pk=self.task.pk).update(status=ProjectTask.STATUS_COMPLETED)
+        response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/return-to-pool/")
+        self.assertEqual(response.status_code, 400)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, ProjectTask.STATUS_COMPLETED)
+
 
 class TechnicianAbsenceApiTests(TestCase):
     """CRUD de TechnicianAbsence e o efeito de uma ausência ativa sobre a

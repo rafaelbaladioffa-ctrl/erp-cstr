@@ -99,6 +99,8 @@ const TEXT = {
     viewAll: "Ver todas as atividades do dia",
     footerHint: "Clique em uma atividade para ver detalhes completos.",
     confirmUndispatch: "Remover o despacho dessa tarefa? Os técnicos voltam a ficar disponíveis pro pool.",
+    returnToPool: "Devolver ao pool",
+    confirmReturnToPool: "Devolver essa tarefa ao pool? O despacho é removido e o tempo já apontado pelo técnico (início, pausas e horas) é zerado.",
     absenceTitle: "Ausências planejadas (férias, atestado, folga)",
     noTechLinked: "Nenhum técnico vinculado a este site.",
     noTechLoggedIn: "Nenhum técnico fez login nesta data.",
@@ -176,6 +178,8 @@ const TEXT = {
     viewAll: "View all activities for the day",
     footerHint: "Click an activity to see full details.",
     confirmUndispatch: "Remove the dispatch for this task? Technicians will return to the pool.",
+    returnToPool: "Return to pool",
+    confirmReturnToPool: "Return this task to the pool? The dispatch is removed and the time already logged by the technician (start, pauses and hours) is reset.",
     absenceTitle: "Planned absences (vacation, sick leave, day off)",
     noTechLinked: "No technician linked to this site.",
     noTechLoggedIn: "No technician has logged in on this date.",
@@ -253,6 +257,8 @@ const TEXT = {
     viewAll: "Ver todas las actividades del día",
     footerHint: "Haga clic en una actividad para ver los detalles completos.",
     confirmUndispatch: "¿Eliminar el despacho de esta tarea? Los técnicos volverán a estar disponibles en el grupo.",
+    returnToPool: "Devolver al grupo",
+    confirmReturnToPool: "¿Devolver esta tarea al grupo? Se elimina el despacho y se reinicia el tiempo ya registrado por el técnico (inicio, pausas y horas).",
     absenceTitle: "Ausencias planificadas (vacaciones, baja médica, día libre)",
     noTechLinked: "Ningún técnico vinculado a este sitio.",
     noTechLoggedIn: "Ningún técnico inició sesión en esta fecha.",
@@ -414,6 +420,19 @@ export default function OperationsBoard() {
     try {
       await operationsApi.undispatch(taskId);
       if (siteId != null) loadAll(siteId, selectedDate);
+    } finally {
+      setUndispatchingId(null);
+    }
+  }
+
+  async function handleReturnToPool(taskId: number) {
+    if (!confirm(p.confirmReturnToPool)) return;
+    setUndispatchingId(taskId);
+    try {
+      await operationsApi.returnToPool(taskId);
+      if (siteId != null) loadAll(siteId, selectedDate);
+    } catch {
+      alert("Não foi possível devolver a tarefa ao pool.");
     } finally {
       setUndispatchingId(null);
     }
@@ -693,6 +712,18 @@ export default function OperationsBoard() {
                             {t.status === "in_progress" && t.actual_start && (
                               <span className="ops-tech-timer"> · {formatElapsed(t.actual_start, now)}</span>
                             )}
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              style={{ color: "var(--red)", marginLeft: 8, padding: "0 6px" }}
+                              disabled={undispatchingId === t.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReturnToPool(t.id);
+                              }}
+                            >
+                              {undispatchingId === t.id ? p.removing : p.returnToPool}
+                            </button>
                           </div>
                         ))}
                         {tech.queue.length > 0 && (

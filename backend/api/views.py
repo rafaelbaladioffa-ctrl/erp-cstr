@@ -1,6 +1,6 @@
 import csv
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models.functions import Coalesce
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
@@ -687,9 +687,9 @@ class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActi
     ).prefetch_related("collaborators__person", "rack_positions", "assignments")
     serializer_class = ProjectTaskSerializer
     permission_classes = [ViewAwareModelPermissions]
-    change_permission_actions = ("dispatch_task", "undispatch_task", "dispatch_bulk", "assignment_status")
+    change_permission_actions = ("dispatch_task", "undispatch_task", "return_to_pool", "dispatch_bulk", "assignment_status")
     # Gestor (permissão dedicada) despacha, altera status/datas/colaboradores; criar e excluir seguem restritos.
-    manage_task_actions = ("dispatch_task", "undispatch_task", "dispatch_bulk", "assignment_status", "update", "partial_update")
+    manage_task_actions = ("dispatch_task", "undispatch_task", "return_to_pool", "dispatch_bulk", "assignment_status", "update", "partial_update")
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -867,6 +867,41 @@ class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActi
 
         task.sync_from_assignments()
         task.refresh_from_db()
+        return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"], url_path="return-to-pool")
+    def return_to_pool(self, request, pk=None):
+        """Devolve ao pool uma tarefa já iniciada pelo técnico (em andamento,
+        pausada ou aguardando QA/QC): remove todos os despachos e volta o
+        status pra Não Iniciada, zerando o apontamento real (início, fim,
+        horas e pausas) — senão a tarefa voltaria ao pool com horas
+        trabalhadas fantasma nos relatórios. Datas planejadas são mantidas."""
+        task = self.get_object()
+        returnable = (
+            ProjectTask.STATUS_IN_PROGRESS,
+            ProjectTask.STATUS_PAUSED,
+            ProjectTask.STATUS_WAITING_QAQC,
+        )
+        if task.status not in returnable:
+            return Response({"detail": "Só tarefas iniciadas (em andamento, pausadas ou aguardando QA/QC) podem voltar ao pool."}, status=400)
+
+        with transaction.atomic():
+            task.assignments.all().delete()
+            # .update() de propósito: ProjectTask.save() recalcula paused_seconds
+            # ao sair de "pausada" e desfaria o zeramento abaixo.
+            ProjectTask.objects.filter(pk=task.pk).update(
+                status=ProjectTask.STATUS_NOT_STARTED,
+                actual_start=None,
+                actual_end=None,
+                actual_hours=None,
+                paused_seconds=0,
+                paused_at=None,
+                completion_outcome="",
+                quantity_done="",
+                updated_at=timezone.now(),
+            )
+
+        task = self.get_queryset().get(pk=task.pk)
         return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
 
 
