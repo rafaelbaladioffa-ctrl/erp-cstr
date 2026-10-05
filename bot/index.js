@@ -54,6 +54,18 @@ function extractText(msg) {
   return m?.conversation || m?.extendedTextMessage?.text || m?.imageMessage?.caption || m?.videoMessage?.caption || "";
 }
 
+const NAME_PARTICLES = new Set(["da", "de", "do", "das", "dos", "e"]);
+
+// "RAFAEL BALADI" -> "Rafael Baladi"; partículas (da, de, do...) ficam em minúsculo.
+function formatPersonName(name) {
+  if (!name || typeof name !== "string") return name;
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((w, i) => (i > 0 && NAME_PARTICLES.has(w.toLowerCase()) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join(" ");
+}
+
 function formatDate(iso) {
   const [y, mo, d] = iso.split("-");
   return `${d}/${mo}/${y}`;
@@ -371,9 +383,9 @@ function formatProjectDailyUpdate(p, date, workdayStart, workdayEnd, template) {
   const templated = renderTemplatedLines(template, "Atualização Diária de Projeto", [
     ["project_name", `Nome do Projeto: ${p.project}`],
     ["po", `PO: ${p.po || "Não informada"}`],
-    ["responsible_client", `Responsável AWS: ${p.responsible_client || "Não informado"}`],
-    ["responsible_cstr", `Responsável CSTR: ${p.responsible_cstr || "Não informado"}`],
-    ["collaborators", `Colaboradores: ${p.collaborators.length ? p.collaborators.join(", ") : "Não informados"}`],
+    ["responsible_client", `Responsável AWS: ${formatPersonName(p.responsible_client) || "Não informado"}`],
+    ["responsible_cstr", `Responsável CSTR: ${formatPersonName(p.responsible_cstr) || "Não informado"}`],
+    ["collaborators", `Colaboradores: ${p.collaborators.length ? p.collaborators.map(formatPersonName).join(", ") : "Não informados"}`],
     ["date", `Data: ${formatDate(date)}`],
     ["work_hours", `Hora de início: ${workdayStart}\nHora de término: ${workdayEnd}`],
     ["completion_percent", `Percentual de Conclusão: ${p.completion_percent}%`],
@@ -388,10 +400,10 @@ function formatProjectDailyUpdate(p, date, workdayStart, workdayEnd, template) {
     "",
     `Nome do Projeto: ${p.project}`,
     `PO: ${p.po || "Não informada"}`,
-    `Responsável AWS: ${p.responsible_client || "Não informado"}`,
-    `Responsável CSTR: ${p.responsible_cstr || "Não informado"}`,
+    `Responsável AWS: ${formatPersonName(p.responsible_client) || "Não informado"}`,
+    `Responsável CSTR: ${formatPersonName(p.responsible_cstr) || "Não informado"}`,
     "",
-    `👷 Colaboradores: ${p.collaborators.length ? p.collaborators.join(", ") : "Não informados"}`,
+    `👷 Colaboradores: ${p.collaborators.length ? p.collaborators.map(formatPersonName).join(", ") : "Não informados"}`,
     "",
     `📅 Data: ${formatDate(date)}`,
     `Hora de início: ${workdayStart}`,
@@ -429,8 +441,8 @@ function formatDailyProjectReport(p, date, template) {
     ["project_name", `Projeto: ${p.project}`],
     ["po", `PO: ${p.po || "Não informado"}`],
     ["site", `Site: ${p.site || "Não informado"}`],
-    ["responsible_cstr", `Responsável CSTR: ${p.responsible_cstr || "Não informado"}`],
-    ["responsible_client", `Responsável A100: ${p.responsible_client || ""}`],
+    ["responsible_cstr", `Responsável CSTR: ${formatPersonName(p.responsible_cstr) || "Não informado"}`],
+    ["responsible_client", `Responsável A100: ${formatPersonName(p.responsible_client) || ""}`],
     ["completion_percent", `* Avanço atual: ${p.completion_percent}%`],
     ["daily_delta", deltaLine],
     ["status", "* Status: Em andamento"],
@@ -448,8 +460,8 @@ function formatDailyProjectReport(p, date, template) {
     `Projeto: ${p.project}`,
     `PO: ${p.po || "Não informado"}`,
     `Site: ${p.site || "Não informado"}`,
-    `Responsável CSTR: ${p.responsible_cstr || "Não informado"}`,
-    `Responsável A100: ${p.responsible_client || ""}`,
+    `Responsável CSTR: ${formatPersonName(p.responsible_cstr) || "Não informado"}`,
+    `Responsável A100: ${formatPersonName(p.responsible_client) || ""}`,
     "",
     "📊 STATUS DO PROJETO",
     `* Avanço atual: ${p.completion_percent}%`,
@@ -465,6 +477,93 @@ function formatDailyProjectReport(p, date, template) {
   return lines.join("\n");
 }
 
+// Bloco de UM projeto dentro da mensagem consolidada (sem título/rodapé do modelo,
+// que aparecem uma única vez no cabeçalho/rodapé da mensagem).
+function formatDailyProjectReportBlock(p, template) {
+  const deltaLine =
+    p.daily_delta === null || p.daily_delta === undefined
+      ? "* Avanço no dia: primeiro registro"
+      : `* Avanço no dia: ${p.daily_delta >= 0 ? "+" : ""}${p.daily_delta}%`;
+  const risksBlock =
+    p.occurrences && p.occurrences.length
+      ? p.occurrences.map((o) => `* ${o}`).join("\n")
+      : "Nenhum bloqueio relevante identificado no período";
+  const rows = [
+    ["project_name", `*Projeto: ${p.project}*`],
+    ["po", `PO: ${p.po || "Não informado"}`],
+    ["site", `Site: ${p.site || "Não informado"}`],
+    ["responsible_cstr", `Responsável CSTR: ${formatPersonName(p.responsible_cstr) || "Não informado"}`],
+    ["responsible_client", `Responsável A100: ${formatPersonName(p.responsible_client) || ""}`],
+    ["completion_percent", `* Avanço atual: ${p.completion_percent}%`],
+    ["daily_delta", deltaLine],
+    ["status", "* Status: Em andamento"],
+    ["planned_end", `* Previsão de término: ${p.planned_end ? formatDate(p.planned_end) : "Não informada"}`],
+    ["certification", `* Certificação: ${p.certification_label}`],
+    ["project_finished", `* Projeto finalizado: ${p.project_finished ? "Sim" : "Não"}`],
+    ["occurrences", `Riscos / Bloqueios\n${risksBlock}`],
+  ];
+  return rows.filter(([key]) => templateEnabled(template, key)).map(([, line]) => line).filter(Boolean).join("\n");
+}
+
+const PROJECT_REPORT_SEPARATOR = "\n\n━━━━━━━━━━━━━━━━\n\n";
+const PROJECT_REPORT_MAX_CHARS = 12000; // acima disso divide em partes (legibilidade/limite do WhatsApp)
+
+// Monta a(s) mensagem(ns) consolidada(s): cabeçalho uma vez, um bloco por projeto, rodapé uma vez.
+function buildConsolidatedDailyProjectReport(projects, date, template) {
+  const active = template && template.is_active !== false ? template : null;
+  const title = (active && active.title) || "ATUALIZAÇÃO DIÁRIA DE PROJETO";
+  const intro = active && active.intro_text ? active.intro_text : "";
+  const footer = active && active.footer_text ? active.footer_text : "";
+  const blocks = projects.map((p) => formatDailyProjectReportBlock(p, template));
+
+  // Agrupa os blocos em partes que respeitam o limite de tamanho.
+  const parts = [];
+  let current = [];
+  let size = 0;
+  for (const block of blocks) {
+    if (current.length && size + block.length > PROJECT_REPORT_MAX_CHARS) {
+      parts.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(block);
+    size += block.length + PROJECT_REPORT_SEPARATOR.length;
+  }
+  if (current.length) parts.push(current);
+
+  return parts.map((partBlocks, index) => {
+    const partLabel = parts.length > 1 ? ` (parte ${index + 1}/${parts.length})` : "";
+    const head = [`*${title}*`, `Data: ${formatDate(date)} · ${projects.length} projeto(s)${partLabel}`];
+    if (intro) head.push("", intro);
+    let text = `${head.join("\n")}\n\n${partBlocks.join(PROJECT_REPORT_SEPARATOR)}`;
+    if (footer && index === parts.length - 1) text += `\n\n${footer}`;
+    return text.trim();
+  });
+}
+
+// Envia o relatório diário de projeto como UMA mensagem por destinatário (ou poucas, se enorme).
+async function sendConsolidatedDailyProjectReport(sock, recipients, data, template, label) {
+  const messages = buildConsolidatedDailyProjectReport(data.projects, data.date, template);
+  let sent = 0;
+  for (const r of recipients) {
+    const jid = recipientToJid(r);
+    if (!jid) {
+      console.error(`${label}: destino inválido para ${r.name} (${r.phone || ""}), pulando.`);
+      continue;
+    }
+    for (const text of messages) {
+      try {
+        await sock.sendMessage(jid, { text });
+        sent += 1;
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      } catch (err) {
+        console.error(`${label}: erro ao enviar para ${r.name}:`, err.message);
+      }
+    }
+  }
+  return sent;
+}
+
 async function runDailyProjectReportBroadcast(sock, overridePhone) {
   const data = await botGet("/bot/broadcasts/daily-project-report/");
   if (!data.projects.length) {
@@ -474,22 +573,7 @@ async function runDailyProjectReportBroadcast(sock, overridePhone) {
   const recipients = overridePhone ? [{ name: "Teste", phone: overridePhone }] : data.recipients;
   const template = await fetchMessageTemplate("daily_project_report");
   console.log(`Atualização diária de projeto (15h): enviando ${data.projects.length} projeto(s) para ${recipients.length} destinatário(s).`);
-  for (const r of recipients) {
-    const jid = recipientToJid(r);
-    if (!jid) {
-      console.error(`Atualização diária de projeto (15h): telefone inválido para ${r.name} (${r.phone}), pulando.`);
-      continue;
-    }
-    for (const p of data.projects) {
-      try {
-        await sock.sendMessage(jid, { text: formatDailyProjectReport(p, data.date, template) });
-        // Delay de 800ms entre mensagens pra evitar rate limit do WhatsApp
-        await new Promise((resolve) => setTimeout(resolve, 800));
-      } catch (err) {
-        console.error(`Atualização diária de projeto (15h): erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
-      }
-    }
-  }
+  await sendConsolidatedDailyProjectReport(sock, recipients, data, template, "Atualização diária de projeto (15h)");
 }
 
 async function captureDailyProjectReportPrint(date, projectLimit, ruleId) {
@@ -703,22 +787,7 @@ async function runBroadcastRule(sock, ruleId, overrideTo) {
     }
   } else {
     const template = await fetchMessageTemplate("daily_project_report");
-    for (const r of recipients) {
-      const jid = recipientToJid(r);
-      if (!jid) {
-        console.error(`${label}: destino inválido para ${r.name}, pulando.`);
-        continue;
-      }
-      for (const p of data.projects) {
-        try {
-          await sock.sendMessage(jid, { text: formatDailyProjectReport(p, data.date, template) });
-          sent += 1;
-          await new Promise((resolve) => setTimeout(resolve, 800));
-        } catch (err) {
-          console.error(`${label}: erro ao enviar para ${r.name} (projeto ${p.project}):`, err.message);
-        }
-      }
-    }
+    sent = await sendConsolidatedDailyProjectReport(sock, recipients, data, template, label);
   }
   return done(`Regra "${rule.name}": ${sent} mensagem(ns) enviada(s).`);
 }
