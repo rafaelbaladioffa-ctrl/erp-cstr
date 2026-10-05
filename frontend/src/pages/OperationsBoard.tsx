@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsBoard as OperationsBoardData, OperationsBoardTechnician, StatusEvent, TimelineBlock } from "../api/types";
 import TechnicianAbsenceFormModal from "../components/projects/TechnicianAbsenceFormModal";
@@ -65,6 +65,10 @@ const TEXT = {
     removing: "Removendo...",
     removeDispatch: "Remover Despacho",
     noPoolActivity: "Nenhuma atividade pendente neste site.",
+    expandAll: "Expandir todos", collapseAll: "Recolher todos",
+    projectActivities: (n: number) => `${n} ${n === 1 ? "atividade" : "atividades"}`,
+    projectWaiting: (n: number) => `${n} aguardando`, projectDispatched: (n: number) => `${n} despachada${n === 1 ? "" : "s"}`,
+    expandProject: "Expandir projeto", collapseProject: "Recolher projeto",
     techniciansLabel: (n: number) => `TÉCNICOS (${n})`,
     rowStats: (done: number, doneLabel: string, pending: number, pendingLabel: string) =>
       `${done} ${doneLabel} · ${pending} ${pendingLabel}`,
@@ -135,6 +139,10 @@ const TEXT = {
     removing: "Removing...",
     removeDispatch: "Remove Dispatch",
     noPoolActivity: "No pending activities at this site.",
+    expandAll: "Expand all", collapseAll: "Collapse all",
+    projectActivities: (n: number) => `${n} ${n === 1 ? "activity" : "activities"}`,
+    projectWaiting: (n: number) => `${n} waiting`, projectDispatched: (n: number) => `${n} dispatched`,
+    expandProject: "Expand project", collapseProject: "Collapse project",
     techniciansLabel: (n: number) => `TECHNICIANS (${n})`,
     rowStats: (done: number, doneLabel: string, pending: number, pendingLabel: string) =>
       `${done} ${doneLabel} · ${pending} ${pendingLabel}`,
@@ -205,6 +213,10 @@ const TEXT = {
     removing: "Eliminando...",
     removeDispatch: "Eliminar Despacho",
     noPoolActivity: "No hay actividades pendientes en este sitio.",
+    expandAll: "Expandir todos", collapseAll: "Contraer todos",
+    projectActivities: (n: number) => `${n} ${n === 1 ? "actividad" : "actividades"}`,
+    projectWaiting: (n: number) => `${n} en espera`, projectDispatched: (n: number) => `${n} despachada${n === 1 ? "" : "s"}`,
+    expandProject: "Expandir proyecto", collapseProject: "Contraer proyecto",
     techniciansLabel: (n: number) => `TÉCNICOS (${n})`,
     rowStats: (done: number, doneLabel: string, pending: number, pendingLabel: string) =>
       `${done} ${doneLabel} · ${pending} ${pendingLabel}`,
@@ -248,6 +260,8 @@ function formatElapsed(startIso: string | null, now: number) {
   return h > 0 ? `${h}h ${m}min` : `${m}min`;
 }
 
+const POOL_ACCENTS = ["--blue", "--teal", "--purple", "--pink", "--amber"];
+
 export default function OperationsBoard() {
   const p = usePageText(TEXT);
   const { locale } = useI18n();
@@ -266,6 +280,7 @@ export default function OperationsBoard() {
   const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number } | null>(null);
   const todPopupRef = useRef<HTMLDivElement>(null);
   const [poolOpen, setPoolOpen] = useState(false);
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [techOpen, setTechOpen] = useState(false);
   const [othersOpen, setOthersOpen] = useState(false);
   const [absenceTech, setAbsenceTech] = useState<{ id: number; name: string } | null>(null);
@@ -358,6 +373,28 @@ export default function OperationsBoard() {
 
   const technicians = board?.technicians || [];
   const pool = board?.pool || [];
+  // Pool agrupado por projeto: a barra do projeto identifica a sequência de atividades abaixo dela.
+  const poolGroups = useMemo(() => {
+    const byKey = new Map<string, { key: string; name: string; code: string; site: string; tasks: typeof pool }>();
+    for (const task of pool) {
+      const key = task.project_code || task.project_name;
+      let g = byKey.get(key);
+      if (!g) {
+        g = { key, name: task.project_name, code: task.project_code, site: task.site_name, tasks: [] };
+        byKey.set(key, g);
+      }
+      g.tasks.push(task);
+    }
+    return Array.from(byKey.values());
+  }, [pool]);
+  const allCollapsed = poolGroups.length > 0 && poolGroups.every((g) => collapsedProjects.has(g.key));
+  function toggleProject(key: string) {
+    setCollapsedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
   const stats = board?.stats;
   const nowDate = isToday ? new Date(now) : new Date(selectedDate + "T18:00:00");
   const base = isToday ? nowDate : new Date(selectedDate + "T07:00:00");
@@ -673,82 +710,119 @@ export default function OperationsBoard() {
                       </button>
                     </div>
                   )}
+                  {poolGroups.length > 0 && (
+                    <div className="ops-pool-toolbar">
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => setCollapsedProjects(allCollapsed ? new Set() : new Set(poolGroups.map((g) => g.key)))}
+                      >
+                        <Icon name={allCollapsed ? "unfold_more" : "unfold_less"} style={{ fontSize: 15 }} />
+                        {allCollapsed ? p.expandAll : p.collapseAll}
+                      </button>
+                    </div>
+                  )}
                   <div className="table-wrap">
                     <table className="table">
                       <thead>
                         <tr>
                           <th>{p.colActivity}</th>
-                          <th>{p.colProject}</th>
-                          {siteId === "all" && <th>{p.colSite}</th>}
                           <th>{p.colDuration}</th>
                           <th>{p.colStatus}</th>
                           <th>{p.colActions}</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {pool.map((task) => (
-                          <tr
-                            key={task.id}
-                            draggable={true}
-                            onDragStart={(e) => {
-                              setDragTaskId(task.id);
-                              e.dataTransfer.effectAllowed = "move";
-                              e.dataTransfer.setData("taskId", String(task.id));
-                            }}
-                            onDragEnd={() => { setDragTaskId(null); setDragOverTechId(null); }}
-                            onClick={() => selectTask(task.id)}
-                            style={{
-                              cursor: "grab",
-                              background: selectedTask === task.id ? "var(--orange-soft)" : dragTaskId === task.id ? "var(--bg)" : undefined,
-                              opacity: dragTaskId === task.id ? 0.5 : 1,
-                            }}
-                          >
-                            <td style={{ fontWeight: 700 }}>{task.name}</td>
-                            <td>
-                              {task.project_name} {task.project_code ? `· ${task.project_code}` : ""}
-                            </td>
-                            {siteId === "all" && <td>{task.site_name}</td>}
-                            <td>{task.estimated_hours ? `${task.estimated_hours}h` : "—"}</td>
-                            <td>
-                              {task.assignees.length > 0 ? (
-                                <span className="badge" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>
-                                  {p.badgeDispatched(task.assignees.map((a) => a.name).join(", "))}
-                                </span>
-                              ) : (
-                                <span className="badge" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>
-                                  {p.badgeWaiting}
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <button
-                                  className="btn btn-outline btn-sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    selectTask(task.id);
-                                  }}
-                                >
-                                  {p.dispatchBtn}
-                                </button>
-                                {task.assignees.length > 0 && (
-                                  <button
-                                    className="btn btn-outline btn-sm"
-                                    style={{ color: "var(--red)" }}
-                                    disabled={undispatchingId === task.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleUndispatch(task.id);
-                                    }}
-                                  >
-                                    {undispatchingId === task.id ? p.removing : p.removeDispatch}
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
+                      {poolGroups.map((group, gi) => {
+                        const collapsed = collapsedProjects.has(group.key);
+                        const accent = POOL_ACCENTS[gi % POOL_ACCENTS.length];
+                        const dispatched = group.tasks.filter((t) => t.assignees.length > 0).length;
+                        const waiting = group.tasks.length - dispatched;
+                        return (
+                          <tbody key={group.key}>
+                            <tr
+                              className="ops-pool-group"
+                              onClick={() => toggleProject(group.key)}
+                              style={{ ["--pool-accent" as string]: `var(${accent})`, ["--pool-accent-soft" as string]: `var(${accent}-soft)` }}
+                            >
+                              <td colSpan={4}>
+                                <div className="ops-pool-group-bar">
+                                  <Icon name={collapsed ? "chevron_right" : "expand_more"} style={{ fontSize: 20 }} />
+                                  <span className="ops-pool-group-name">{group.name}</span>
+                                  {group.code && <span className="ops-pool-group-code">{group.code}</span>}
+                                  {siteId === "all" && <span className="ops-pool-group-site">{group.site}</span>}
+                                  <span className="ops-pool-group-spacer" />
+                                  <span className="ops-pool-group-count">{p.projectActivities(group.tasks.length)}</span>
+                                  {waiting > 0 && <span className="ops-pool-group-sub">{p.projectWaiting(waiting)}</span>}
+                                  {dispatched > 0 && <span className="ops-pool-group-sub ops-pool-group-sub-ok">{p.projectDispatched(dispatched)}</span>}
+                                </div>
+                              </td>
+                            </tr>
+                            {!collapsed && group.tasks.map((task, ti) => (
+                              <tr
+                                key={task.id}
+                                className="ops-pool-task"
+                                draggable={true}
+                                onDragStart={(e) => {
+                                  setDragTaskId(task.id);
+                                  e.dataTransfer.effectAllowed = "move";
+                                  e.dataTransfer.setData("taskId", String(task.id));
+                                }}
+                                onDragEnd={() => { setDragTaskId(null); setDragOverTechId(null); }}
+                                onClick={() => selectTask(task.id)}
+                                style={{
+                                  cursor: "grab",
+                                  background: selectedTask === task.id ? "var(--orange-soft)" : dragTaskId === task.id ? "var(--bg)" : undefined,
+                                  opacity: dragTaskId === task.id ? 0.5 : 1,
+                                  ["--pool-accent" as string]: `var(${accent})`,
+                                }}
+                              >
+                                <td style={{ fontWeight: 700 }}>
+                                  <span className="ops-pool-seq">{ti + 1}</span>
+                                  {task.name}
+                                </td>
+                                <td>{task.estimated_hours ? `${task.estimated_hours}h` : "—"}</td>
+                                <td>
+                                  {task.assignees.length > 0 ? (
+                                    <span className="badge" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>
+                                      {p.badgeDispatched(task.assignees.map((a) => a.name).join(", "))}
+                                    </span>
+                                  ) : (
+                                    <span className="badge" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>
+                                      {p.badgeWaiting}
+                                    </span>
+                                  )}
+                                </td>
+                                <td>
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button
+                                      className="btn btn-outline btn-sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        selectTask(task.id);
+                                      }}
+                                    >
+                                      {p.dispatchBtn}
+                                    </button>
+                                    {task.assignees.length > 0 && (
+                                      <button
+                                        className="btn btn-outline btn-sm"
+                                        style={{ color: "var(--red)" }}
+                                        disabled={undispatchingId === task.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleUndispatch(task.id);
+                                        }}
+                                      >
+                                        {undispatchingId === task.id ? p.removing : p.removeDispatch}
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        );
+                      })}
                     </table>
                     {pool.length === 0 && <div className="table-empty">{p.noPoolActivity}</div>}
                   </div>

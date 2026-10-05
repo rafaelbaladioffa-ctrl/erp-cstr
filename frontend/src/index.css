@@ -6024,3 +6024,18 @@ button.sp-card:hover {
   font-size: 11px;
   color: var(--text-faint);
 }
+
+/* Operação do Dia — pool agrupado por projeto */
+.ops-pool-toolbar { display: flex; justify-content: flex-end; padding: 8px 12px 0; }
+.ops-pool-group { cursor: pointer; }
+.ops-pool-group > td { padding: 0 !important; background: var(--pool-accent-soft); border-top: 10px solid var(--white); }
+.ops-pool-group-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-left: 5px solid var(--pool-accent); color: var(--text); }
+.ops-pool-group-name { font-weight: 800; font-size: 14px; }
+.ops-pool-group-code { font-size: 12px; color: var(--text-muted); }
+.ops-pool-group-site { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 10px; background: var(--white); color: var(--pool-accent); border: 1px solid var(--pool-accent); }
+.ops-pool-group-spacer { flex: 1; }
+.ops-pool-group-count { font-size: 12px; font-weight: 800; color: var(--pool-accent); }
+.ops-pool-group-sub { font-size: 11px; color: var(--text-muted); }
+.ops-pool-group-sub-ok { color: var(--blue); }
+.ops-pool-task > td:first-child { border-left: 5px solid var(--pool-accent); }
+.ops-pool-seq { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 10px; border-radius: 50%; font-size: 11px; font-weight: 800; color: var(--pool-accent); border: 1.5px solid var(--pool-accent); }
