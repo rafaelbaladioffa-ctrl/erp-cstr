@@ -283,8 +283,8 @@ export default function MyTasks() {
             <div className="mt-presence-dot" style={{ background: PRESENCE_DOT_COLOR[presence.status] }} />
             <div>
               <div className="mt-presence-label">{presence.status_display}</div>
-              {presence.checked_in_at && !isOffDuty && (
-                <div className="mt-presence-since">{p.since} {formatTime(presence.checked_in_at)}</div>
+              {(presence.status_since || presence.checked_in_at) && !isOffDuty && (
+                <div className="mt-presence-since">{p.since} {formatTime(presence.status_since || presence.checked_in_at)}</div>
               )}
               {isOffDuty && presence.checked_out_at && (
                 <div className="mt-presence-since">{p.at} {formatTime(presence.checked_out_at)}</div>

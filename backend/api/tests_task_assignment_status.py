@@ -14,10 +14,11 @@ from unittest.mock import patch
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
 from core.models import Collaborator, Company, Person
-from dispatch.models import TechnicianDailyPresence
+from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import Project, ProjectTask, ProjectTaskAssignment
 from users.models import User
 
@@ -199,6 +200,28 @@ class TaskAssignmentStatusTests(TestCase):
         self.assertEqual(presence_a.status, TechnicianDailyPresence.STATUS_IN_PROGRESS)
         presence_b = TechnicianDailyPresence.objects.filter(collaborator=self.tech_b, date=timezone.localdate()).first()
         self.assertFalse(presence_b and presence_b.status == TechnicianDailyPresence.STATUS_IN_PROGRESS)
+
+    def test_status_since_is_when_the_current_status_started_not_the_checkin(self):
+        P = TechnicianDailyPresence
+        day = timezone.localdate()
+
+        def at(hour, minute=0):
+            return timezone.make_aware(datetime(day.year, day.month, day.day, hour, minute))
+
+        presence = P.objects.create(collaborator=self.tech_a, date=day, status=P.STATUS_IN_PROGRESS, checked_in_at=at(7))
+        for status, when in (
+            (P.STATUS_IN_PROGRESS, at(7)),
+            (P.STATUS_MEAL, at(9)),
+            (P.STATUS_IN_PROGRESS, at(9, 30)),
+            (P.STATUS_IN_PROGRESS, at(10)),  # reselecionar o mesmo status não reinicia o horário
+        ):
+            TechnicianStatusEvent.objects.create(collaborator=self.tech_a, date=day, status=status, changed_at=when)
+
+        response = self.client_a.get("/api/technician-presence/me/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(parse_datetime(response.data["status_since"]), at(9, 30))
+        self.assertEqual(presence.checked_in_at, at(7))
 
     def test_site_block_pauses_only_the_blocked_technician(self):
         self._patch_my_task(self.client_a, status=ProjectTask.STATUS_IN_PROGRESS)

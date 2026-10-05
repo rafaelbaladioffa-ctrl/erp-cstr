@@ -20,7 +20,7 @@ from core.models import (
     get_or_create_person,
     update_person,
 )
-from dispatch.models import TechnicianAbsence, TechnicianDailyPresence
+from dispatch.models import TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
 from master_data.models import (
     Activity,
     CableAlias,
@@ -1962,11 +1962,27 @@ class MyTaskUpdateSerializer(serializers.Serializer):
 
 class TechnicianDailyPresenceSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    status_since = serializers.SerializerMethodField()
 
     class Meta:
         model = TechnicianDailyPresence
-        fields = ("id", "collaborator", "date", "status", "status_display", "checked_in_at", "checked_out_at")
-        read_only_fields = ("collaborator", "date", "status", "checked_in_at", "checked_out_at")
+        fields = ("id", "collaborator", "date", "status", "status_display", "status_since", "checked_in_at", "checked_out_at")
+        read_only_fields = ("collaborator", "date", "status", "status_since", "checked_in_at", "checked_out_at")
+
+    def get_status_since(self, obj):
+        """Desde quando o status ATUAL vale. checked_in_at é gravado só uma vez
+        por dia (no primeiro status), então não serve pra isso: aqui pega o
+        início da sequência final de eventos com o status atual (reselecionar
+        o mesmo status não reinicia o horário)."""
+        events = TechnicianStatusEvent.objects.filter(
+            collaborator_id=obj.collaborator_id, date=obj.date
+        ).order_by("-changed_at", "-id").values_list("status", "changed_at")
+        since = None
+        for status, changed_at in events:
+            if status != obj.status:
+                break
+            since = changed_at
+        return since or obj.checked_in_at
 
 
 class TechnicianAbsenceSerializer(serializers.ModelSerializer):
