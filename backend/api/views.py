@@ -872,25 +872,37 @@ class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActi
     @action(detail=True, methods=["post"], url_path="return-to-pool")
     def return_to_pool(self, request, pk=None):
         """Devolve ao pool uma tarefa em QUALQUER status (inclusive concluída ou
-        cancelada): remove todos os despachos e volta o status pra Não Iniciada, zerando o apontamento real (início, fim,
-        horas e pausas) — senão a tarefa voltaria ao pool com horas
-        trabalhadas fantasma nos relatórios. Datas planejadas são mantidas."""
+        cancelada). Com `collaborator_ids`, retira SÓ esses técnicos (sem
+        expandir duplas — a escolha é explícita): o apontamento deles some e a
+        tarefa é recalculada a partir de quem sobrou. Sem `collaborator_ids`,
+        ou quando ninguém sobra, a tarefa volta inteira pra Não Iniciada,
+        zerando o apontamento real (início, fim, horas e pausas) — senão
+        voltaria ao pool com horas fantasma nos relatórios. Datas planejadas
+        são mantidas."""
         task = self.get_object()
+        collaborator_ids = list(request.data.get("collaborator_ids") or [])
         with transaction.atomic():
-            task.assignments.all().delete()
-            # .update() de propósito: ProjectTask.save() recalcula paused_seconds
-            # ao sair de "pausada" e desfaria o zeramento abaixo.
-            ProjectTask.objects.filter(pk=task.pk).update(
-                status=ProjectTask.STATUS_NOT_STARTED,
-                actual_start=None,
-                actual_end=None,
-                actual_hours=None,
-                paused_seconds=0,
-                paused_at=None,
-                completion_outcome="",
-                quantity_done="",
-                updated_at=timezone.now(),
-            )
+            if collaborator_ids:
+                task.assignments.filter(collaborator_id__in=collaborator_ids).delete()
+            else:
+                task.assignments.all().delete()
+
+            if task.assignments.exists():
+                task.sync_from_assignments()
+            else:
+                # .update() de propósito: ProjectTask.save() recalcula paused_seconds
+                # ao sair de "pausada" e desfaria o zeramento abaixo.
+                ProjectTask.objects.filter(pk=task.pk).update(
+                    status=ProjectTask.STATUS_NOT_STARTED,
+                    actual_start=None,
+                    actual_end=None,
+                    actual_hours=None,
+                    paused_seconds=0,
+                    paused_at=None,
+                    completion_outcome="",
+                    quantity_done="",
+                    updated_at=timezone.now(),
+                )
 
         task = self.get_queryset().get(pk=task.pk)
         return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)

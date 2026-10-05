@@ -1034,6 +1034,46 @@ class ProjectTaskDispatchApiTests(TestCase):
         self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
 
 
+    def test_return_to_pool_for_one_technician_keeps_the_other(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk, self.collaborator_b.pk]}, format="json")
+        now = timezone.now()
+        ProjectTaskAssignment.objects.filter(project_task=self.task, collaborator=self.collaborator_a).update(
+            status=ProjectTask.STATUS_IN_PROGRESS, assignment_start=now - timedelta(hours=2)
+        )
+        ProjectTaskAssignment.objects.filter(project_task=self.task, collaborator=self.collaborator_b).update(
+            status=ProjectTask.STATUS_IN_PROGRESS, assignment_start=now - timedelta(hours=1)
+        )
+        self.task.sync_from_assignments()
+
+        response = self.client_api.post(
+            f"/api/project-tasks/{self.task.pk}/return-to-pool/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        remaining = ProjectTaskAssignment.objects.filter(project_task=self.task)
+        self.assertEqual([a.collaborator_id for a in remaining], [self.collaborator_b.pk])
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, ProjectTask.STATUS_IN_PROGRESS)
+        self.assertEqual(self.task.actual_start, remaining.first().assignment_start)
+
+    def test_return_to_pool_for_last_technician_resets_task(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json")
+        ProjectTaskAssignment.objects.filter(project_task=self.task).update(
+            status=ProjectTask.STATUS_IN_PROGRESS, assignment_start=timezone.now() - timedelta(hours=1)
+        )
+        self.task.sync_from_assignments()
+
+        response = self.client_api.post(
+            f"/api/project-tasks/{self.task.pk}/return-to-pool/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, ProjectTask.STATUS_NOT_STARTED)
+        self.assertIsNone(self.task.actual_start)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
+
+
 class TechnicianAbsenceApiTests(TestCase):
     """CRUD de TechnicianAbsence e o efeito de uma ausência ativa sobre a
     Central de Operações (build_board_data)."""

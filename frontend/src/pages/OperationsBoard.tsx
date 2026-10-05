@@ -100,7 +100,7 @@ const TEXT = {
     footerHint: "Clique em uma atividade para ver detalhes completos.",
     confirmUndispatch: "Remover o despacho dessa tarefa? Os técnicos voltam a ficar disponíveis pro pool.",
     returnToPool: "Devolver ao pool",
-    confirmReturnToPool: "Devolver essa tarefa ao pool? O despacho é removido e o tempo já apontado pelo técnico (início, pausas e horas) é zerado.",
+    confirmReturnToPool: "Devolver essa tarefa ao pool para este técnico? O despacho dele é removido e o tempo que ele já apontou (início, pausas e horas) é zerado. Os demais técnicos da tarefa não são afetados.",
     absenceTitle: "Ausências planejadas (férias, atestado, folga)",
     noTechLinked: "Nenhum técnico vinculado a este site.",
     noTechLoggedIn: "Nenhum técnico fez login nesta data.",
@@ -179,7 +179,7 @@ const TEXT = {
     footerHint: "Click an activity to see full details.",
     confirmUndispatch: "Remove the dispatch for this task? Technicians will return to the pool.",
     returnToPool: "Return to pool",
-    confirmReturnToPool: "Return this task to the pool? The dispatch is removed and the time already logged by the technician (start, pauses and hours) is reset.",
+    confirmReturnToPool: "Return this task to the pool for this technician? Their dispatch is removed and the time they already logged (start, pauses and hours) is reset. Other technicians on the task are not affected.",
     absenceTitle: "Planned absences (vacation, sick leave, day off)",
     noTechLinked: "No technician linked to this site.",
     noTechLoggedIn: "No technician has logged in on this date.",
@@ -258,7 +258,7 @@ const TEXT = {
     footerHint: "Haga clic en una actividad para ver los detalles completos.",
     confirmUndispatch: "¿Eliminar el despacho de esta tarea? Los técnicos volverán a estar disponibles en el grupo.",
     returnToPool: "Devolver al grupo",
-    confirmReturnToPool: "¿Devolver esta tarea al grupo? Se elimina el despacho y se reinicia el tiempo ya registrado por el técnico (inicio, pausas y horas).",
+    confirmReturnToPool: "¿Devolver esta tarea al grupo para este técnico? Se elimina su despacho y se reinicia el tiempo que ya registró (inicio, pausas y horas). Los demás técnicos de la tarea no se ven afectados.",
     absenceTitle: "Ausencias planificadas (vacaciones, baja médica, día libre)",
     noTechLinked: "Ningún técnico vinculado a este sitio.",
     noTechLoggedIn: "Ningún técnico inició sesión en esta fecha.",
@@ -293,7 +293,7 @@ export default function OperationsBoard() {
   const anchorTaskRef = useRef<number | null>(null);
   const [selectedTechs, setSelectedTechs] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
-  const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number; taskId?: number } | null>(null);
+  const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number; taskId?: number; collaboratorId?: number } | null>(null);
   const todPopupRef = useRef<HTMLDivElement>(null);
   const [poolOpen, setPoolOpen] = useState(false);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
@@ -425,11 +425,11 @@ export default function OperationsBoard() {
     }
   }
 
-  async function handleReturnToPool(taskId: number) {
+  async function handleReturnToPool(taskId: number, collaboratorId: number) {
     if (!confirm(p.confirmReturnToPool)) return;
     setUndispatchingId(taskId);
     try {
-      await operationsApi.returnToPool(taskId);
+      await operationsApi.returnToPool(taskId, [collaboratorId]);
       if (siteId != null) loadAll(siteId, selectedDate);
     } catch {
       alert("Não foi possível devolver a tarefa ao pool.");
@@ -719,7 +719,7 @@ export default function OperationsBoard() {
                               disabled={undispatchingId === t.id}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleReturnToPool(t.id);
+                                handleReturnToPool(t.id, tech.id);
                               }}
                             >
                               {undispatchingId === t.id ? p.removing : p.returnToPool}
@@ -740,7 +740,7 @@ export default function OperationsBoard() {
                                   style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "0 0 0 6px", fontWeight: 700 }}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleReturnToPool(q.task_id);
+                                    handleReturnToPool(q.task_id, tech.id);
                                   }}
                                 >
                                   ×
@@ -1034,7 +1034,7 @@ export default function OperationsBoard() {
                                   setTodPopup((prev) =>
                                     prev?.key === barKey
                                       ? null
-                                      : { key: barKey, label: segment.label, start: segment.start, end: segment.end ?? null, color: segment.color, top: rect.bottom + 6, left: rect.left, taskId: segment.taskId }
+                                      : { key: barKey, label: segment.label, start: segment.start, end: segment.end ?? null, color: segment.color, top: rect.bottom + 6, left: rect.left, taskId: segment.taskId, collaboratorId: tech.id }
                                   );
                                 }}
                                 style={{ left: `${left}%`, width: `${width}%`, top: barT(lane), height: barH, background: segment.color }}
@@ -1056,7 +1056,7 @@ export default function OperationsBoard() {
                                   setTodPopup((prev) =>
                                     prev?.key === barKey
                                       ? null
-                                      : { key: barKey, label: bar.label, start: bar.start, end: bar.end, color: "transparent", top: rect.bottom + 6, left: rect.left, taskId: bar.key }
+                                      : { key: barKey, label: bar.label, start: bar.start, end: bar.end, color: "transparent", top: rect.bottom + 6, left: rect.left, taskId: bar.key, collaboratorId: tech.id }
                                   );
                                 }}
                                 style={{
@@ -1156,7 +1156,7 @@ export default function OperationsBoard() {
                           disabled={undispatchingId === q.task_id}
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleReturnToPool(q.task_id);
+                            handleReturnToPool(q.task_id, tech.id);
                           }}
                         >
                           {undispatchingId === q.task_id ? p.removing : p.returnToPool}
@@ -1192,7 +1192,7 @@ export default function OperationsBoard() {
                             disabled={undispatchingId === q.task_id}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleReturnToPool(q.task_id);
+                              handleReturnToPool(q.task_id, tech.id);
                             }}
                           >
                             {undispatchingId === q.task_id ? p.removing : p.returnToPool}
@@ -1228,15 +1228,15 @@ export default function OperationsBoard() {
                 {formatTime(todPopup.start.toISOString())}
                 {todPopup.end ? ` – ${formatTime(todPopup.end.toISOString())}` : p.inProgress}
               </div>
-              {todPopup.taskId != null && (
+              {todPopup.taskId != null && todPopup.collaboratorId != null && (
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
                   style={{ color: "var(--red)", marginTop: 6 }}
                   onClick={() => {
-                    const id = todPopup.taskId!;
+                    const { taskId, collaboratorId } = todPopup;
                     setTodPopup(null);
-                    handleReturnToPool(id);
+                    handleReturnToPool(taskId!, collaboratorId!);
                   }}
                 >
                   {p.returnToPool}

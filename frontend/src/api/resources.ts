@@ -535,8 +535,10 @@ export const operationsApi = {
     apiClient
       .post<ProjectTask>(`/project-tasks/${taskId}/undispatch/`, { collaborator_ids: collaboratorIds || [] })
       .then((r) => r.data),
-  returnToPool: (taskId: number) =>
-    apiClient.post<ProjectTask>(`/project-tasks/${taskId}/return-to-pool/`).then((r) => r.data),
+  returnToPool: (taskId: number, collaboratorIds?: number[]) =>
+    apiClient
+      .post<ProjectTask>(`/project-tasks/${taskId}/return-to-pool/`, { collaborator_ids: collaboratorIds || [] })
+      .then((r) => r.data),
   timeline: (siteId: number | "all", date?: string) =>
     apiClient
       .get<OperationsTimeline>("/operations/timeline/", { params: { site: String(siteId), ...(date ? { date } : {}) } })
