@@ -887,7 +887,8 @@ class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActi
             else:
                 task.assignments.all().delete()
 
-            if task.assignments.exists():
+            # Consulta direta: task.assignments vem do prefetch do get_object() e estaria desatualizado.
+            if ProjectTaskAssignment.objects.filter(project_task=task).exists():
                 task.sync_from_assignments()
             else:
                 # .update() de propósito: ProjectTask.save() recalcula paused_seconds
