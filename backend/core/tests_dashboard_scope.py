@@ -154,7 +154,9 @@ class OperationsBoardSupervisorScopeTests(DashboardProjectsScopeTests):
         from projects.models import ProjectTask, ProjectTaskAssignment
 
         today = timezone.localdate()
-        now = timezone.now()
+        # horários fixos ao meio do dia: evitam flutuar entre dias perto da meia-noite
+        started = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time())) + timedelta(hours=10)
+        ended = started + timedelta(hours=1)
         catalog = Task.objects.create(name="Tarefa")
         supervisor = Collaborator.objects.get(person__user=self.user)
         member = Collaborator.objects.create(
@@ -164,10 +166,10 @@ class OperationsBoardSupervisorScopeTests(DashboardProjectsScopeTests):
         def completed(project, order):
             t = ProjectTask.objects.create(
                 project=project, task=catalog, order=order, status=ProjectTask.STATUS_COMPLETED,
-                actual_start=now - timedelta(hours=2), actual_end=now - timedelta(hours=1),
+                actual_start=started, actual_end=ended,
             )
             ProjectTaskAssignment.objects.create(
-                project_task=t, collaborator=member, assignment_start=now - timedelta(hours=2), assignment_end=now - timedelta(hours=1)
+                project_task=t, collaborator=member, assignment_start=started, assignment_end=ended
             )
             return t
 
