@@ -38,6 +38,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
+from dispatch.services import release_stuck_execution
 from master_data.models import (
     Activity,
     CableAlias,
@@ -2650,10 +2651,10 @@ class MyTaskViewSet(
         if assignment_status == ProjectTask.STATUS_IN_PROGRESS:
             new_status = TechnicianDailyPresence.STATUS_IN_PROGRESS
         elif assignment_status in (ProjectTask.STATUS_PAUSED, ProjectTask.STATUS_COMPLETED):
-            still_active = collaborator.task_assignments.filter(status=ProjectTask.STATUS_IN_PROGRESS).exists()
-            if still_active:
-                return
-            new_status = TechnicianDailyPresence.STATUS_AVAILABLE
+            # Só sai de "Em Execução" (e só sem outra tarefa rodando): um status que
+            # o técnico escolheu (Café, Almoço, Fim de Expediente...) não é atropelado.
+            release_stuck_execution(collaborator.pk)
+            return
         else:
             return
 
@@ -2701,6 +2702,9 @@ class TechnicianPresenceViewSet(viewsets.GenericViewSet):
         presence = self._get_or_create_today(request)
         if presence is None:
             return Response({"detail": "Usuário sem Técnico vinculado."}, status=404)
+        # Cura registros que já ficaram presos em "Em Execução" sem tarefa rodando.
+        if release_stuck_execution(presence.collaborator_id):
+            presence.refresh_from_db()
         return Response(TechnicianDailyPresenceSerializer(presence).data)
 
     @action(detail=False, methods=["post"], url_path="check-in")

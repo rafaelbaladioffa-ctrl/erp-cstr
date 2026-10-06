@@ -311,10 +311,14 @@ class TechnicianPresenceStatusTests(TestCase):
         self.assertEqual(presence.status, P.STATUS_IN_PROGRESS)
         self.assertIsNone(presence.checked_out_at)
 
-    def test_cannot_start_a_task_twice_or_pause_one_not_running(self):
+    def test_starting_twice_is_a_noop_and_pausing_one_not_running_is_refused(self):
         self._start(self.client_a, self.task2)
-        response = self.client_a.patch(f"/api/my-tasks/{self.task2.pk}/", {"status": ProjectTask.STATUS_IN_PROGRESS}, format="json")
-        self.assertEqual(response.status_code, 400)
+        started_at = ProjectTaskAssignment.objects.get(project_task=self.task2, collaborator=self.tech_a).assignment_start
+        self._tick()
+        self._start(self.client_a, self.task2)  # idempotente: não reinicia o relógio
+        self.assertEqual(
+            ProjectTaskAssignment.objects.get(project_task=self.task2, collaborator=self.tech_a).assignment_start, started_at
+        )
 
         response = self.client_a.patch(f"/api/my-tasks/{self.task1.pk}/", {"status": ProjectTask.STATUS_PAUSED}, format="json")
         self.assertEqual(response.status_code, 400)
