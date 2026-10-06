@@ -239,8 +239,12 @@ class TechnicianPresenceStatusTests(TestCase):
     # --- pausar / concluir não atropela o status escolhido -------------
 
     def test_pausing_while_on_coffee_break_keeps_the_chosen_status(self):
-        self._start(self.client_a, self.task2)
+        # Pausar manualmente uma tarefa que já ficou "em andamento" por outro caminho
+        # (ex.: ajuste do admin) com o técnico em Café não pode virar "Disponível".
         self._set_presence(self.client_a, P.STATUS_MEAL)
+        ProjectTaskAssignment.objects.filter(project_task=self.task2, collaborator=self.tech_a).update(
+            status=ProjectTask.STATUS_IN_PROGRESS, assignment_start=self.clock
+        )
 
         self._set_own(self.client_a, self.task2, ProjectTask.STATUS_PAUSED)
 
@@ -286,6 +290,75 @@ class TechnicianPresenceStatusTests(TestCase):
         self.assertEqual(self._presence(self.tech_b), P.STATUS_AVAILABLE)
 
     # --- regras do dropdown ---------------------------------------------
+
+    # --- escolher um status pausa as tarefas em andamento -----------------
+
+    def _assignment_status(self, task, collaborator):
+        return ProjectTaskAssignment.objects.get(project_task=task, collaborator=collaborator).status
+
+    def test_every_selectable_status_pauses_running_tasks(self):
+        for status in P.SELECTABLE_STATUSES:
+            if status == P.STATUS_OFF_DUTY:
+                continue
+            with self.subTest(status=status):
+                ProjectTaskAssignment.objects.filter(collaborator=self.tech_a).update(status=ProjectTask.STATUS_NOT_STARTED)
+                self._start(self.client_a, self.task1)
+                self._start(self.client_a, self.task2)
+
+                self._set_presence(self.client_a, status)
+
+                self.assertEqual(self._presence(self.tech_a), status)
+                self.assertEqual(self._assignment_status(self.task1, self.tech_a), ProjectTask.STATUS_PAUSED)
+                self.assertEqual(self._assignment_status(self.task2, self.tech_a), ProjectTask.STATUS_PAUSED)
+
+    def test_end_of_shift_pauses_running_tasks_too(self):
+        self._start(self.client_a, self.task2)
+
+        self._set_presence(self.client_a, P.STATUS_OFF_DUTY)
+
+        self.assertEqual(self._assignment_status(self.task2, self.tech_a), ProjectTask.STATUS_PAUSED)
+        self.assertEqual(self._presence(self.tech_a), P.STATUS_OFF_DUTY)
+
+    def test_status_change_pauses_only_my_running_tasks(self):
+        self._start(self.client_a, self.task1)
+        self._start(self.client_b, self.task1)
+        self._set_own(self.client_a, self.task2, ProjectTask.STATUS_IN_PROGRESS)
+        self._set_own(self.client_a, self.task2, ProjectTask.STATUS_COMPLETED)
+
+        self._set_presence(self.client_a, P.STATUS_MEAL)
+
+        self.assertEqual(self._assignment_status(self.task1, self.tech_a), ProjectTask.STATUS_PAUSED)
+        self.assertEqual(self._assignment_status(self.task1, self.tech_b), ProjectTask.STATUS_IN_PROGRESS)  # colega segue
+        self.assertEqual(self._assignment_status(self.task2, self.tech_a), ProjectTask.STATUS_COMPLETED)  # concluída intacta
+        self.assertEqual(self._presence(self.tech_b), P.STATUS_IN_PROGRESS)
+        self.task1.refresh_from_db()
+        self.assertEqual(self.task1.status, ProjectTask.STATUS_IN_PROGRESS)  # agregado: o colega ainda executa
+
+    def test_paused_time_is_not_counted_and_resume_is_manual(self):
+        self._start(self.client_a, self.task2)
+        self._tick(2)
+        self._set_presence(self.client_a, P.STATUS_LUNCH)
+        paused_at = ProjectTaskAssignment.objects.get(project_task=self.task2, collaborator=self.tech_a).paused_at
+        self.assertEqual(paused_at, self.clock)
+
+        self._tick(1)
+        self._set_presence(self.client_a, P.STATUS_AVAILABLE)  # voltar do almoço não retoma sozinho
+        self.assertEqual(self._assignment_status(self.task2, self.tech_a), ProjectTask.STATUS_PAUSED)
+
+        self._start(self.client_a, self.task2)
+        assignment = ProjectTaskAssignment.objects.get(project_task=self.task2, collaborator=self.tech_a)
+        self.assertEqual(assignment.status, ProjectTask.STATUS_IN_PROGRESS)
+        self.assertEqual(assignment.paused_seconds, 3600)  # 1h de almoço descontada
+        self.assertEqual(self._presence(self.tech_a), P.STATUS_IN_PROGRESS)
+
+    def test_changing_status_without_running_tasks_changes_nothing_else(self):
+        self._set_own(self.client_a, self.task2, ProjectTask.STATUS_IN_PROGRESS)
+        self._set_own(self.client_a, self.task2, ProjectTask.STATUS_PAUSED)
+
+        self._set_presence(self.client_a, P.STATUS_MEAL)
+
+        self.assertEqual(self._assignment_status(self.task2, self.tech_a), ProjectTask.STATUS_PAUSED)
+        self.assertEqual(self._assignment_status(self.task1, self.tech_a), ProjectTask.STATUS_NOT_STARTED)
 
     def test_in_progress_cannot_be_chosen_manually(self):
         response = self.client_a.post("/api/technician-presence/set-status/", {"status": P.STATUS_IN_PROGRESS}, format="json")

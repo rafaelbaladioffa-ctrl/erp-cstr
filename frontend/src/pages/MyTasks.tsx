@@ -24,6 +24,9 @@ const TEXT = {
     notes: "Observações", notesPlaceholder: "Anote algo sobre esta tarefa...",
     noTasks: "Nenhuma tarefa nesta aba.",
     since: "desde", at: "às",
+    pauseWarning: (names: string) => `Suas tarefas em andamento serão pausadas: ${names}. Para retomar, toque em Iniciar na tarefa.`,
+    changeStatusQ: (label: string) => `Alterar seu status para "${label}"?`,
+    endShiftQ: "Encerrar seu expediente?",
     statusLabels: { not_started: "Não Iniciada", in_progress: "Em Andamento", paused: "Pausada", completed: "Concluída", canceled: "Cancelada" } as Record<string, string>,
     presenceOptions: [
       { key: "available", label: "Disponível" },
@@ -65,6 +68,9 @@ const TEXT = {
     notes: "Notes", notesPlaceholder: "Add a note about this task...",
     noTasks: "No tasks in this tab.",
     since: "since", at: "at",
+    pauseWarning: (names: string) => `Your running tasks will be paused: ${names}. To resume, tap Start on the task.`,
+    changeStatusQ: (label: string) => `Change your status to "${label}"?`,
+    endShiftQ: "End your shift?",
     statusLabels: { not_started: "Not Started", in_progress: "In Progress", paused: "Paused", completed: "Completed", canceled: "Canceled" } as Record<string, string>,
     presenceOptions: [
       { key: "available", label: "Available" },
@@ -106,6 +112,9 @@ const TEXT = {
     notes: "Observaciones", notesPlaceholder: "Añade una nota sobre esta tarea...",
     noTasks: "Sin tareas en esta pestaña.",
     since: "desde", at: "a las",
+    pauseWarning: (names: string) => `Sus tareas en curso se pausarán: ${names}. Para retomar, toque Iniciar en la tarea.`,
+    changeStatusQ: (label: string) => `¿Cambiar su estado a "${label}"?`,
+    endShiftQ: "¿Finalizar su jornada?",
     statusLabels: { not_started: "No Iniciada", in_progress: "En Curso", paused: "Pausada", completed: "Completada", canceled: "Cancelada" } as Record<string, string>,
     presenceOptions: [
       { key: "available", label: "Disponible" },
@@ -218,10 +227,16 @@ export default function MyTasks() {
 
   async function setPresenceStatus(status: string) {
     const label = p.presenceOptions.find((opt) => opt.key === status)?.label || status;
-    const question = status === "off_duty" ? "Encerrar seu expediente?" : `Alterar seu status para "${label}"?`;
-    if (!confirm(question)) return;
+    const running = tasks.filter((t) => t.status === "in_progress");
+    const question = status === "off_duty" ? p.endShiftQ : p.changeStatusQ(label);
+    // Qualquer status escolhido tira o técnico da execução: avisa que as tarefas em andamento serão pausadas.
+    const warning = running.length > 0 ? `
+
+${p.pauseWarning(running.map((t) => t.task_name).join(", "))}` : "";
+    if (!confirm(question + warning)) return;
     const updated = await presenceApi.setStatus(status);
     setPresence(updated);
+    if (running.length > 0) loadTasks();
   }
 
   async function save(id: number, patch: Partial<ProjectTask>) {

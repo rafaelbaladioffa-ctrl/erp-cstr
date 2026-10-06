@@ -2729,13 +2729,6 @@ class TechnicianPresenceViewSet(viewsets.GenericViewSet):
             return Response({"detail": "Status inválido."}, status=400)
         return self._apply_status(request, status_value)
 
-    # Statuses que indicam que o técnico perdeu acesso ao site — qualquer
-    # tarefa em execução deve ser pausada automaticamente.
-    _BLOCKING_STATUSES = (
-        TechnicianDailyPresence.STATUS_SITE_BLOCKED,
-        TechnicianDailyPresence.STATUS_AWAITING_RELEASE,
-    )
-
     def _apply_status(self, request, status_value):
         presence = self._get_or_create_today(request)
         if presence is None:
@@ -2751,15 +2744,17 @@ class TechnicianPresenceViewSet(viewsets.GenericViewSet):
         TechnicianStatusEvent.objects.create(
             collaborator=presence.collaborator, date=presence.date, status=status_value, changed_at=now
         )
-        if status_value in self._BLOCKING_STATUSES:
-            self._pause_active_tasks(presence.collaborator, now)
+        # O status é livre, mas qualquer escolha do técnico tira ele da execução:
+        # as tarefas dele em andamento são pausadas (o tempo fora não conta como
+        # trabalhado). Retomar é manual, pelo botão Iniciar da tarefa.
+        self._pause_active_tasks(presence.collaborator, now)
         return Response(TechnicianDailyPresenceSerializer(presence).data)
 
     def _pause_active_tasks(self, collaborator, now):
         """Pausa as tarefas EM ANDAMENTO deste técnico (só o despacho dele — os
         colegas da mesma tarefa continuam trabalhando). Chamado quando o técnico
-        perde acesso ao site, para que o período bloqueado não conte como horas
-        trabalhadas."""
+        escolhe um status no dropdown, para que o período fora não conte como
+        horas trabalhadas."""
         active = collaborator.task_assignments.select_related("project_task").filter(
             status=ProjectTask.STATUS_IN_PROGRESS
         )
