@@ -208,6 +208,10 @@ class TaskAssignmentStatusTests(TestCase):
             return timezone.make_aware(datetime(day.year, day.month, day.day, hour, minute))
 
         presence = P.objects.create(collaborator=self.tech_a, date=day, status=P.STATUS_IN_PROGRESS, checked_in_at=at(7))
+        # Execução de verdade: sem despacho em andamento a presença seria curada ao abrir o app.
+        ProjectTaskAssignment.objects.filter(project_task=self.task, collaborator=self.tech_a).update(
+            status=ProjectTask.STATUS_IN_PROGRESS, assignment_start=at(7)
+        )
         for status, when in (
             (P.STATUS_IN_PROGRESS, at(7)),
             (P.STATUS_MEAL, at(9)),
