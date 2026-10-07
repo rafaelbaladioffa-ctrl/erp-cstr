@@ -83,6 +83,20 @@ TECH_NO_CHECKIN = "no_checkin"
 PRESENT_CATEGORIES = (TECH_EXECUTING, TECH_UNPRODUCTIVE, TECH_BREAK, TECH_OFF_DUTY)
 
 GROUP_BY_CHOICES = ("site", "region", "client", "responsible")
+# Ordem (hierarquia) usada ao combinar mais de uma dimensão de agrupamento.
+GROUP_BY_ORDER = ("region", "client", "site", "responsible")
+
+
+def parse_group_by(value):
+    """Aceita uma dimensão ("site"), uma lista CSV ("region,client") ou um iterável e devolve
+    a tupla de dimensões válidas na hierarquia Regional > Cliente > Site > Responsável.
+    Valor vazio ou inválido cai no padrão ("site",)."""
+    if isinstance(value, str):
+        items = [v.strip() for v in value.split(",")]
+    else:
+        items = [str(v).strip() for v in (value or ())]
+    chosen = {i for i in items if i in GROUP_BY_CHOICES}
+    return tuple(d for d in GROUP_BY_ORDER if d in chosen) or ("site",)
 
 
 def get_thresholds():
@@ -388,7 +402,7 @@ def _update_status(updates, today):
     return "missing"
 
 
-def _group_key(project, group_by):
+def _single_group_key(project, group_by):
     if group_by == "region":
         region = project.site.region if project.site_id else None
         if region:
@@ -411,10 +425,19 @@ def _group_key(project, group_by):
     return "site:none", "Sem site", ""
 
 
+def _group_key(project, group_by):
+    """(chave, rótulo, sub-rótulo) do grupo do projeto. Com mais de uma dimensão, as chaves
+    e os rótulos das dimensões são combinados (ex.: "Sudeste · Alfa Data Centers")."""
+    dims = group_by if isinstance(group_by, tuple) else parse_group_by(group_by)
+    if len(dims) == 1:
+        return _single_group_key(project, dims[0])
+    parts = [_single_group_key(project, d) for d in dims]
+    return "|".join(x[0] for x in parts), " · ".join(x[1] for x in parts), ""
+
+
 def build_sites_panel(user, *, group_by="site", today=None, filters=None, include_technicians=True):
     filters = filters or {}
-    if group_by not in GROUP_BY_CHOICES:
-        group_by = "site"
+    group_by = parse_group_by(group_by)
     thresholds = get_thresholds()
     today = today or timezone.localdate()
     now = timezone.now()
@@ -425,8 +448,9 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
     projects_qs = scope_project_queryset(projects_qs, user)
     # Supervisor só enxerga os projetos em que é Responsável CSTR.
     projects_qs = scope_supervisor_projects(projects_qs, user)
-    if filters.get("country"):
-        projects_qs = projects_qs.filter(site__region__country=filters["country"])
+    countries = [c.strip() for c in str(filters.get("country") or "").split(",") if c.strip()]
+    if countries:
+        projects_qs = projects_qs.filter(site__region__country__in=countries)
     if filters.get("region"):
         projects_qs = projects_qs.filter(site__region_id=filters["region"])
     if filters.get("client"):
@@ -582,7 +606,7 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
             project = projects_by_id.get(t["project_id"]) if t["project_id"] else None
             if project is not None:
                 key, label, sublabel = _group_key(project, group_by)
-            elif group_by in ("site", "region") and t["site_id"] in site_objs:
+            elif set(group_by) <= {"site", "region"} and t["site_id"] in site_objs:
                 # Sem despacho, lotação única: conta no site da lotação.
                 site = site_objs[t["site_id"]]
                 key, label, sublabel = _group_key(Project(site=site, client=site.client), group_by)
@@ -675,7 +699,7 @@ def build_sites_panel(user, *, group_by="site", today=None, filters=None, includ
 
     return {
         "date": today,
-        "group_by": group_by,
+        "group_by": ",".join(group_by),
         "status_filters": status_keys,
         "include_technicians": include_technicians,
         "summary": summary,

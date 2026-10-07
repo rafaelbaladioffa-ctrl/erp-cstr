@@ -1418,7 +1418,7 @@ export interface SitesPanelException {
 
 export interface SitesPanelData {
   date: string;
-  group_by: SitesPanelGroupBy;
+  group_by: string; // uma ou mais dimensões separadas por vírgula (ex.: "region,client")
   status_filters: string[];
   include_technicians: boolean;
   summary: {
