@@ -718,12 +718,15 @@ class AuditLogApiTests(TestCase):
         searched = self.client_api.get("/api/audit-logs/", {"search": "Projeto X"})
         self.assertEqual(searched.data["count"], 1)
 
-        several = self.client_api.get("/api/audit-logs/", {"action": "create,update"})
-        self.assertEqual(several.data["count"], 2)
-        only_create = self.client_api.get("/api/audit-logs/", {"action": "create"})
-        self.assertEqual(only_create.data["count"], 1)
-        two_apps = self.client_api.get("/api/audit-logs/", {"app_label": "core,projects"})
-        self.assertEqual(two_apps.data["count"], 2)
+        # vários valores no mesmo filtro (CSV); a busca isola as linhas deste teste dos logs automáticos
+        both_actions = {"action": "create,update"}
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {**both_actions, "search": "Empresa A"}).data["count"], 1)
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {**both_actions, "search": "Projeto X"}).data["count"], 1)
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {"action": "create", "search": "Projeto X"}).data["count"], 0)
+        both_apps = {"app_label": "core,projects"}
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {**both_apps, "search": "Empresa A"}).data["count"], 1)
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {**both_apps, "search": "Projeto X"}).data["count"], 1)
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {"app_label": "core", "search": "Projeto X"}).data["count"], 0)
 
     def test_readonly_no_write_actions(self):
         superuser = User.objects.create_superuser(username="auditor2", email="auditor2@example.com", password="test-password")
