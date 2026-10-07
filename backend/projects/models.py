@@ -612,6 +612,9 @@ class ProjectTaskAssignment(TimestampedModel):
     pause_log = models.JSONField("pausas do técnico", default=list, blank=True)
     # Apontamento corrigido pelo administrador (ver dispatch.adjustments) — vale como real.
     is_adjusted = models.BooleanField("ajustado pelo administrador", default=False)
+    # Horas repartidas de um bloco de trabalho apontado pelo técnico (dispatch.blocks): estimativa
+    # dentro do bloco, não um cronômetro da tarefa.
+    time_allocated = models.BooleanField("horas alocadas de um bloco", default=False)
 
     class Meta:
         verbose_name = "Despacho de Tarefa"

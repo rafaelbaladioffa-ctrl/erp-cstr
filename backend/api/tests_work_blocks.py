@@ -1,0 +1,184 @@
+"""Apontamento por bloco do técnico (dispatch.blocks): tempo repartido em sequência, sem sobreposição."""
+from datetime import datetime, timedelta
+from decimal import Decimal
+from unittest.mock import patch
+
+from django.contrib.auth.models import Permission
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from api.reports import presence_durations
+from core.models import Collaborator, Company, Person
+from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
+from projects.models import Project, ProjectTask, ProjectTaskAssignment
+from users.models import User
+
+P = TechnicianDailyPresence
+
+
+class WorkBlockTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.project = Project.objects.create(company=self.company, name="Projeto Bloco", status=Project.STATUS_IN_PROGRESS)
+        self.user = User.objects.create_user(username="tech_block", email="tech_block@example.com", password="x", company=self.company)
+        for codename in ("view_mytask", "change_mytask"):
+            self.user.user_permissions.add(Permission.objects.get(codename=codename, content_type__app_label="technical"))
+        self.tech = Collaborator.objects.create(person=Person.objects.create(name="Técnico Bloco", company=self.company, user=self.user))
+        self.client_tech = APIClient()
+        self.client_tech.force_authenticate(user=self.user)
+        self.day = timezone.localdate() - timedelta(days=2)
+
+    # --- helpers -----------------------------------------------------------
+
+    def at(self, hour, minute=0):
+        return timezone.make_aware(datetime(self.day.year, self.day.month, self.day.day, hour, minute))
+
+    def iso(self, hour, minute=0):
+        return self.at(hour, minute).isoformat()
+
+    def make_task(self, name, quantity=None, estimated=None, dispatch=True):
+        task = ProjectTask.objects.create(
+            project=self.project, custom_name=name, order=ProjectTask.objects.count() + 1,
+            quantity_planned=Decimal(quantity) if quantity is not None else None,
+            estimated_hours=Decimal(estimated) if estimated is not None else None,
+        )
+        if dispatch:
+            ProjectTaskAssignment.objects.create(project_task=task, collaborator=self.tech)
+        return task
+
+    def block(self, tasks, start, end, client=None, **extra):
+        payload = {
+            "start": self.iso(*start), "end": self.iso(*end),
+            "tasks": [t if isinstance(t, dict) else {"task_id": t.pk} for t in tasks],
+            **extra,
+        }
+        return (client or self.client_tech).post("/api/my-tasks/block/", payload, format="json")
+
+    def assignment(self, task):
+        return ProjectTaskAssignment.objects.get(project_task=task, collaborator=self.tech)
+
+    # --- repartição do tempo ---------------------------------------------
+
+    def test_time_is_split_by_quantity_in_sequence_without_overlap(self):
+        a, b, c = self.make_task("A", 10), self.make_task("B", 10), self.make_task("C", 20)
+
+        response = self.block([a, b, c], (8, 0), (10, 0))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        assignments = [self.assignment(t) for t in (a, b, c)]
+        self.assertEqual([float(x.actual_hours) for x in assignments], [0.5, 0.5, 1.0])
+        self.assertEqual(assignments[0].assignment_start, self.at(8))
+        self.assertEqual(assignments[0].assignment_end, assignments[1].assignment_start)  # em sequência
+        self.assertEqual(assignments[1].assignment_end, assignments[2].assignment_start)
+        self.assertEqual(assignments[2].assignment_end, self.at(10))
+        for x in assignments:
+            self.assertEqual(x.status, ProjectTask.STATUS_COMPLETED)
+            self.assertTrue(x.time_allocated)
+            self.assertFalse(x.is_adjusted)
+        a.refresh_from_db()
+        self.assertEqual(a.status, ProjectTask.STATUS_COMPLETED)
+
+    def test_estimated_hours_are_the_preferred_weight_then_equal_split(self):
+        x, y = self.make_task("X", 10, estimated=1), self.make_task("Y", 10, estimated=3)
+        self.block([x, y], (8, 0), (12, 0))
+        self.assertEqual([float(self.assignment(t).actual_hours) for t in (x, y)], [1.0, 3.0])
+
+        p, q = self.make_task("P"), self.make_task("Q")  # sem quantidade nem horas estimadas
+        self.block([p, q], (13, 0), (15, 0))
+        self.assertEqual([float(self.assignment(t).actual_hours) for t in (p, q)], [1.0, 1.0])
+
+    def test_block_hours_count_once_as_productive_presence(self):
+        a, b = self.make_task("A", 10), self.make_task("B", 10)
+        TechnicianStatusEvent.objects.create(collaborator=self.tech, date=self.day, status=P.STATUS_AVAILABLE, changed_at=self.at(7))
+        TechnicianStatusEvent.objects.create(collaborator=self.tech, date=self.day, status=P.STATUS_OFF_DUTY, changed_at=self.at(17))
+
+        self.block([a, b], (8, 0), (10, 0))
+
+        per_day, _ = presence_durations([self.tech.pk], self.day, self.day, timezone.now())
+        durations = per_day[(self.tech.pk, self.day)]
+        self.assertEqual(round(durations[P.STATUS_IN_PROGRESS], 2), 2.0)  # o bloco, não a soma das tarefas
+        presence = P.objects.get(collaborator=self.tech, date=self.day)
+        self.assertEqual(presence.status, P.STATUS_OFF_DUTY)
+
+    def test_unfinished_task_stays_open_and_the_next_block_continues_it(self):
+        a = self.make_task("A", 10)
+
+        self.block([{"task_id": a.pk, "complete": False}], (8, 0), (9, 0))
+        first = self.assignment(a)
+        self.assertEqual(first.status, ProjectTask.STATUS_PAUSED)
+        self.assertEqual(first.paused_at, self.at(9))
+        self.assertIsNone(first.assignment_end)
+
+        self.block([a], (10, 0), (11, 0))
+        done = self.assignment(a)
+        self.assertEqual(done.status, ProjectTask.STATUS_COMPLETED)
+        self.assertEqual(float(done.actual_hours), 2.0)  # 1h + 1h, sem a pausa entre os blocos
+        self.assertEqual(done.paused_seconds, 3600)
+        self.assertEqual(len(done.pause_log), 1)
+
+    # --- regras ------------------------------------------------------------
+
+    def test_overlap_with_existing_record_is_refused(self):
+        a, b = self.make_task("A", 10), self.make_task("B", 10)
+        self.block([a], (8, 0), (9, 0))
+
+        response = self.block([b], (8, 30), (9, 30))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("A", response.data["detail"])
+        self.assertEqual(self.assignment(b).status, ProjectTask.STATUS_NOT_STARTED)
+
+    def test_invalid_blocks_are_refused_and_nothing_is_saved(self):
+        a = self.make_task("A", 10)
+        other = self.make_task("Outro", 10, dispatch=False)
+        running = self.make_task("Rodando", 10)
+        ProjectTaskAssignment.objects.filter(project_task=running).update(status=ProjectTask.STATUS_IN_PROGRESS, assignment_start=self.at(6))
+        done = self.make_task("Pronta", 10)
+        ProjectTaskAssignment.objects.filter(project_task=done).update(status=ProjectTask.STATUS_COMPLETED)
+
+        self.assertEqual(self.block([], (8, 0), (9, 0)).status_code, 400)                  # sem tarefas
+        self.assertEqual(self.block([a], (9, 0), (8, 0)).status_code, 400)                  # fim antes do início
+        self.assertEqual(self.block([a], (8, 0), (8, 0)).status_code, 400)                  # sem duração
+        self.assertEqual(self.block([other], (8, 0), (9, 0)).status_code, 400)              # não despachada
+        self.assertEqual(self.block([running], (8, 0), (9, 0)).status_code, 400)            # em andamento
+        self.assertEqual(self.block([done], (8, 0), (9, 0)).status_code, 400)               # já concluída
+        self.assertEqual(self.block([a, a], (8, 0), (9, 0)).status_code, 400)               # repetida
+        two_days = {"start": self.iso(8), "end": (self.at(8) + timedelta(days=1)).isoformat(), "tasks": [{"task_id": a.pk}]}
+        self.assertEqual(self.client_tech.post("/api/my-tasks/block/", two_days, format="json").status_code, 400)
+        self.assertEqual(self.assignment(a).status, ProjectTask.STATUS_NOT_STARTED)
+        self.assertFalse(TechnicianStatusEvent.objects.filter(collaborator=self.tech).exists())
+
+    def test_permissions(self):
+        a = self.make_task("A", 10)
+        outsider = User.objects.create_user(username="no_perm", email="no_perm@example.com", password="x", company=self.company)
+        client = APIClient()
+        client.force_authenticate(user=outsider)
+        self.assertEqual(self.block([a], (8, 0), (9, 0), client=client).status_code, 403)
+        self.assertEqual(client.get("/api/my-tasks/block/suggestion/").status_code, 403)
+
+        no_collaborator = User.objects.create_superuser(username="adm_blk", email="adm_blk@example.com", password="x")
+        client.force_authenticate(user=no_collaborator)  # superusuário sem Técnico vinculado
+        self.assertEqual(self.block([a], (8, 0), (9, 0), client=client).status_code, 403)
+
+    def test_suggestion_starts_after_the_last_break_or_record(self):
+        fixed_now = timezone.make_aware(datetime(2026, 10, 5, 15, 0))
+        with patch("django.utils.timezone.now", side_effect=lambda: fixed_now):
+            day = timezone.localdate()
+
+            def t(h, m=0):
+                return timezone.make_aware(datetime(day.year, day.month, day.day, h, m))
+
+            P.objects.create(collaborator=self.tech, date=day, status=P.STATUS_AVAILABLE, checked_in_at=t(7))
+            for status, when in ((P.STATUS_AVAILABLE, t(7)), (P.STATUS_LUNCH, t(11, 44)), (P.STATUS_AVAILABLE, t(12, 45))):
+                TechnicianStatusEvent.objects.create(collaborator=self.tech, date=day, status=status, changed_at=when)
+            task = self.make_task("Feita pela manhã", 10)
+            ProjectTaskAssignment.objects.filter(project_task=task).update(
+                status=ProjectTask.STATUS_COMPLETED, assignment_start=t(8), assignment_end=t(10)
+            )
+
+            response = self.client_tech.get("/api/my-tasks/block/suggestion/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["start"], t(12, 45))  # voltou do almoço depois do último apontamento
+        self.assertEqual(response.data["end"], fixed_now)

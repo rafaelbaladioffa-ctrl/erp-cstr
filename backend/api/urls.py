@@ -12,6 +12,7 @@ from .adjustments import (
     StatusEventsAdjustmentView,
     StatusWindowAdjustmentView,
 )
+from .work_blocks import WorkBlockSuggestionView, WorkBlockView
 from .operations import (
     OperationsBoardView,
     OperationsManagementReportView,
@@ -93,6 +94,8 @@ urlpatterns = [
     path("dashboard/projects/", ProjectsPerformanceView.as_view(), name="dashboard-projects"),
     path("dashboard/technical/", TechnicalPerformanceView.as_view(), name="dashboard-technical"),
     path("dashboard/sites/", SitesPanelView.as_view(), name="dashboard-sites"),
+    path("my-tasks/block/suggestion/", WorkBlockSuggestionView.as_view(), name="my-tasks-block-suggestion"),
+    path("my-tasks/block/", WorkBlockView.as_view(), name="my-tasks-block"),
     path("operations/board/", OperationsBoardView.as_view(), name="operations-board"),
     path("operations/timeline/", OperationsTimelineView.as_view(), name="operations-timeline"),
     path("operations/reports/", OperationsReportsView.as_view(), name="operations-reports"),
