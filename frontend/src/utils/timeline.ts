@@ -151,15 +151,17 @@ function subtractIntervals(base: Interval, cuts: Interval[]): Interval[] {
   return pieces.filter((p) => p.end - p.start >= 60000);
 }
 
-const BLOCKING_STATUSES = new Set(["site_blocked", "awaiting_release"]);
+const AWAY_STATUS_SET = new Set(AWAY_STATUSES);
 
-/** Extrai os intervalos de tempo em que o técnico estava bloqueado (sem
- * acesso ao site ou aguardando liberações) a partir do histórico de eventos
- * de presença já ordenado. */
-function getBlockedIntervals(sortedEvents: StatusEventLike[], nowMs: number): Interval[] {
+/** Extrai os intervalos de tempo em que o técnico estava FORA da execução
+ * (almoço, café, reunião, deslocamento, apoio, sem acesso ao site, aguardando
+ * liberações...) a partir do histórico de eventos de presença já ordenado.
+ * Escolher qualquer um desses status pausa as tarefas dele, então nesses
+ * trechos a barra da tarefa não pode cobrir a barra do status. */
+function getAwayIntervals(sortedEvents: StatusEventLike[], nowMs: number): Interval[] {
   const result: Interval[] = [];
   for (let i = 0; i < sortedEvents.length; i++) {
-    if (!BLOCKING_STATUSES.has(sortedEvents[i].status)) continue;
+    if (!AWAY_STATUS_SET.has(sortedEvents[i].status)) continue;
     const startMs = new Date(sortedEvents[i].changed_at).getTime();
     const endMs =
       i + 1 < sortedEvents.length ? new Date(sortedEvents[i + 1].changed_at).getTime() : nowMs;
@@ -177,10 +179,10 @@ function getBlockedIntervals(sortedEvents: StatusEventLike[], nowMs: number): In
  * antiga (só a barra do status ATUAL) por uma timeline fiel a cada mudança
  * que realmente aconteceu no dia.
  *
- * Tarefas concluídas são recortadas pelos intervalos de bloqueio do técnico
- * (SITE_BLOCKED / AWAITING_RELEASE): se o técnico ficou sem acesso durante
- * parte de uma tarefa, esse trecho não aparece como barra azul — aparece
- * como a barra de presença vermelha correspondente.
+ * Tarefas concluídas são recortadas pelos intervalos em que o técnico esteve
+ * fora da execução (almoço, café, deslocamento, bloqueio de site, aguardando
+ * liberações... — ver AWAY_STATUSES): esse trecho não aparece como barra azul,
+ * aparece como a barra de presença do status correspondente.
  *
  * `isLive`: true = timeline ao vivo (barras abertas vão até "agora" de
  * verdade e pulsam); false = dia fechado no histórico (barras abertas —
@@ -200,7 +202,7 @@ export function buildTechSegments(
     (a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime()
   );
   const lastStatus = sortedEvents.length > 0 ? sortedEvents[sortedEvents.length - 1].status : null;
-  const blockedIntervals = getBlockedIntervals(sortedEvents, nowMs);
+  const awayIntervals = getAwayIntervals(sortedEvents, nowMs);
 
   for (const b of blocks) {
     if (b.status === "completed" && b.actual_start && b.actual_end) {
@@ -208,12 +210,12 @@ export function buildTechSegments(
       const endMs = new Date(b.actual_end).getTime();
       const taskInterval = { start: startMs, end: endMs };
 
-      // Recorta a barra nos períodos em que o técnico estava bloqueado —
-      // esses trechos ficam visíveis como barra de presença (vermelha).
+      // Recorta a barra nos períodos em que o técnico estava fora da execução
+      // (almoço, deslocamento, bloqueio...): esses trechos aparecem como a barra
+      // do próprio status, e NÃO entram em taskIntervals — senão o laço de
+      // presença os descartaria e sobraria um buraco na linha do técnico.
       const effectivePieces =
-        blockedIntervals.length > 0
-          ? subtractIntervals(taskInterval, blockedIntervals)
-          : [taskInterval];
+        awayIntervals.length > 0 ? subtractIntervals(taskInterval, awayIntervals) : [taskInterval];
 
       for (const piece of effectivePieces) {
         segments.push({
@@ -225,16 +227,6 @@ export function buildTechSegments(
           taskId: b.id,
         });
         taskIntervals.push(piece);
-      }
-      // Registra o intervalo bloqueado que sobrepõe essa tarefa como
-      // "ocupado" pra evitar que a barra de presença duplique ali.
-      for (const blocked of blockedIntervals) {
-        if (blocked.end > startMs && blocked.start < endMs) {
-          taskIntervals.push({
-            start: Math.max(blocked.start, startMs),
-            end: Math.min(blocked.end, endMs),
-          });
-        }
       }
     } else if ((b.status === "in_progress" || b.status === "paused") && b.actual_start) {
       const start = new Date(b.actual_start);

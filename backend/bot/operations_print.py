@@ -102,11 +102,25 @@ def _build_tech_segments(blocks, status_events, now):
     sorted_events = sorted(status_events, key=lambda e: e["changed_at"])
     last_status = sorted_events[-1]["status"] if sorted_events else None
 
+    # Trechos em que o técnico estava fora da execução (almoço, café, deslocamento,
+    # bloqueio...): escolher esses status pausa as tarefas, então a barra da tarefa
+    # concluída é recortada ali e o trecho aparece como a barra do próprio status.
+    # Esses trechos NÃO entram em task_intervals — senão o laço de presença os
+    # descartaria e sobraria um buraco na linha do técnico.
+    away_intervals = []
+    for i, ev in enumerate(sorted_events):
+        if ev["status"] not in AWAY_STATUSES:
+            continue
+        away_end = sorted_events[i + 1]["changed_at"] if i + 1 < len(sorted_events) else now
+        if away_end > ev["changed_at"]:
+            away_intervals.append((ev["changed_at"], away_end))
+
     for b in blocks:
         if b["status"] == "completed" and b["actual_start"] and b["actual_end"]:
             start, end = b["actual_start"], b["actual_end"]
-            segments.append({"color": DONE_COLOR, "label": b["name"], "start": start, "end": end})
-            task_intervals.append((start, end))
+            for piece_start, piece_end in _subtract_intervals((start, end), away_intervals):
+                segments.append({"color": DONE_COLOR, "label": b["name"], "start": piece_start, "end": piece_end})
+                task_intervals.append((piece_start, piece_end))
         elif b["status"] in ("in_progress", "paused") and b["actual_start"]:
             start = b["actual_start"]
             task_intervals.append((start, now))

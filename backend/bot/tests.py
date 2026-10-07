@@ -395,3 +395,43 @@ class BotAllocationManagerFilterTests(TestCase):
         self.assertEqual(names(), {"TEC A"})
         rule.managers.set([boss_a, boss_b])
         self.assertEqual(names(), {"TEC A", "TEC B"})
+
+
+class OperationsPrintTimelineSegmentsTests(TestCase):
+    """Timeline da imagem do bot: tarefa concluída e status de presença não podem
+    deixar buraco nem esconder o almoço (caso real de 06/10: tarefa de 09:38 a
+    14:59 com pausa, almoço 11:44–12:45 e Aguardando Liberações 12:59–13:58)."""
+
+    def test_away_statuses_are_visible_and_leave_no_gap_inside_a_long_task(self):
+        from datetime import datetime, timedelta
+
+        from django.utils import timezone
+
+        from bot.operations_print import _build_tech_segments
+
+        day = timezone.make_aware(datetime(2026, 10, 6))
+
+        def at(hour, minute=0):
+            return day + timedelta(hours=hour, minutes=minute)
+
+        events = [
+            {"status": "in_progress", "status_display": "", "changed_at": at(9, 38)},
+            {"status": "lunch", "status_display": "", "changed_at": at(11, 44)},
+            {"status": "traveling", "status_display": "", "changed_at": at(12, 45)},
+            {"status": "awaiting_release", "status_display": "", "changed_at": at(12, 59)},
+            {"status": "in_progress", "status_display": "", "changed_at": at(13, 58)},
+            {"status": "off_duty", "status_display": "", "changed_at": at(14, 59)},
+        ]
+        blocks = [{"status": "completed", "name": "Trocar Etiquetas", "actual_start": at(9, 38), "actual_end": at(14, 59)}]
+
+        segments = _build_tech_segments(blocks, events, at(18))
+
+        labels = [s["label"] for s in segments]
+        self.assertIn("Horário de Almoço", labels)
+        self.assertIn("Aguardando Liberações", labels)
+        covered_until = at(9, 38)
+        for segment in segments:
+            if segment["start"] < at(14, 59) and segment["end"] and segment["end"] > covered_until:
+                self.assertLessEqual(segment["start"], covered_until + timedelta(seconds=60), f"buraco antes de {segment['label']}")
+                covered_until = segment["end"]
+        self.assertGreaterEqual(covered_until, at(14, 59))
