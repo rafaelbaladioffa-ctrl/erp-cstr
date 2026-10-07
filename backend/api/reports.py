@@ -24,6 +24,7 @@ from django.utils import timezone
 from core.models import Collaborator
 
 from core.collaborator_scope import managed_collaborator_ids, scope_collaborators, supervisor_project_ids
+from dispatch.adjustments import assignment_worked_intervals
 from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import ProjectTask, ProjectTaskAssignment
 
@@ -50,6 +51,8 @@ PRODUCTIVE_STATUSES = (
 # bloqueio externo; neutro = intervalos do próprio técnico (almoço, café...).
 # "Fim de Expediente" e "Indisponível" ficam de fora: não são tempo de jornada.
 _P = TechnicianDailyPresence
+# Apontamento mais curto que isso (tarefa iniciada e concluída em lote) não mede trabalho: fica fora da taxa por hora.
+MIN_RELIABLE_SECONDS = 60
 LABEL_ACTIVITY_CODE = "CAB-LABEL"  # a produção dessa atividade é medida em labels (ver labels_per_cable)
 STATUS_CATEGORIES = (
     (_P.STATUS_IN_PROGRESS, "productive"),
@@ -168,6 +171,23 @@ def labels_per_cable(family):
     if family is None:
         return 0
     return _end_labels(family.connector_a, family.fiber_count) + _end_labels(family.connector_b, family.fiber_count)
+
+
+def _union_hours(intervals):
+    """Horas de relógio cobertas por uma lista de intervalos [(início, fim)], contando uma só vez
+    o tempo em que vários se sobrepõem (tarefas simultâneas)."""
+    total = 0.0
+    current_start = current_end = None
+    for start, end in sorted(intervals):
+        if current_end is None or start > current_end:
+            if current_end is not None:
+                total += (current_end - current_start).total_seconds()
+            current_start, current_end = start, end
+        else:
+            current_end = max(current_end, end)
+    if current_end is not None:
+        total += (current_end - current_start).total_seconds()
+    return total / 3600
 
 
 def _activity_unit(generated):
@@ -363,8 +383,13 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         credited = [a for a in task.assignments.all() if a.status == ProjectTask.STATUS_COMPLETED]
         if not credited:
             continue
-        hours_of = [float(a.actual_hours) if a.actual_hours is not None else 0.0 for a in credited]
-        total_hours = sum(hours_of)
+        # Horas de cada técnico a partir dos trechos realmente trabalhados. Apontamento com fim antes
+        # do início ou concluído em menos de MIN_RELIABLE_SECONDS não é confiável: não entra na taxa
+        # por hora e, se algum dos técnicos da tarefa estiver nessa situação, o crédito é dividido igual.
+        interval_lists = [assignment_worked_intervals(a, now) for a in credited]
+        hours_of = [sum((end - start).total_seconds() for start, end in iv) / 3600 for iv in interval_lists]
+        valid = [h * 3600 >= MIN_RELIABLE_SECONDS for h in hours_of]
+        total_hours = sum(hours_of) if all(valid) else 0.0
         unit = _activity_unit(generated)
         length_m = generated.scope_item.length_m
         family = generated.scope_item.cable_family
@@ -378,18 +403,28 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         production_activities.setdefault(
             generated.activity.code, {"code": generated.activity.code, "name": generated.activity.name, "unit": unit}
         )
-        for assignment, hours in zip(credited, hours_of):
+        credits = {"quantity": quantity, "labels": 0.0, "meters": total_meters, "meters_utp": total_meters if is_utp else 0.0}
+        if generated.activity.code == LABEL_ACTIVITY_CODE:
+            credits["labels"] = quantity * labels_per_cable(family)
+        for assignment, hours, is_valid, intervals in zip(credited, hours_of, valid, interval_lists):
             share = hours / total_hours if total_hours > 0 else 1 / len(credited)
             row = production_by_tech.setdefault(assignment.collaborator_id, {}).setdefault(
-                generated.activity.code, {"quantity": 0.0, "labels": 0.0, "meters": 0.0, "meters_utp": 0.0, "hours": 0.0}
+                generated.activity.code,
+                {
+                    "totals": dict.fromkeys(credits, 0.0),
+                    "rate_base": dict.fromkeys(credits, 0.0),  # só o que tem horário confiável
+                    "intervals": [],
+                    "unreliable_count": 0,
+                },
             )
-            row["quantity"] += quantity * share
-            if generated.activity.code == LABEL_ACTIVITY_CODE:
-                row["labels"] += quantity * labels_per_cable(family) * share
-            row["meters"] += total_meters * share
-            if is_utp:
-                row["meters_utp"] += total_meters * share
-            row["hours"] += hours
+            for key, amount in credits.items():
+                row["totals"][key] += amount * share
+                if is_valid:
+                    row["rate_base"][key] += amount * share
+            if is_valid:
+                row["intervals"].extend(intervals)
+            else:
+                row["unreliable_count"] += 1
 
     # Supervisor só enxerga os colaboradores sob a sua gestão.
     allowed_ids = managed_collaborator_ids(user)
@@ -478,7 +513,13 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                     for status, _category in STATUS_CATEGORIES
                 },
                 "production": {
-                    code: {key: round(value, 2) for key, value in values.items()}
+                    code: {
+                        **{key: round(value, 2) for key, value in values["totals"].items()},
+                        "rate_base": {key: round(value, 2) for key, value in values["rate_base"].items()},
+                        # tempo de relógio com ao menos uma tarefa da atividade aberta (simultâneas contam uma vez)
+                        "hours": round(_union_hours(values["intervals"]), 2),
+                        "unreliable_count": values["unreliable_count"],
+                    }
                     for code, values in production_by_tech.get(collaborator_id, {}).items()
                 },
             }
