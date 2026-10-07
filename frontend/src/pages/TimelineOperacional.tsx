@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import TimelineAdjustModal from "../components/projects/TimelineAdjustModal";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsTimeline } from "../api/types";
 import DateInput from "../components/ui/DateInput";
@@ -210,6 +212,8 @@ export default function TimelineOperacional() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  const { user } = useAuth();
+  const [adjustTech, setAdjustTech] = useState<{ id: number; name: string } | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   function toggleRow(techId: number) {
     setExpandedRows((prev) => {
@@ -394,6 +398,11 @@ export default function TimelineOperacional() {
                       <div className="tl-row-overview">
                         {p.doneCount(doneCount)}
                       </div>
+                      {user?.is_superuser && (
+                        <button type="button" className="tl-expand-btn" style={{ marginRight: 6 }} onClick={() => setAdjustTech({ id: tech.id, name: tech.name })}>
+                          ✎ Ajustar
+                        </button>
+                      )}
                       {collapsible && (
                         <button type="button" className="tl-expand-btn" onClick={() => toggleRow(tech.id)}>
                           {expanded ? p.collapseLanes : p.expandLanes(hiddenCount)}
@@ -492,6 +501,15 @@ export default function TimelineOperacional() {
             </div>
           )}
         </div>
+      )}
+      {adjustTech && (
+        <TimelineAdjustModal
+          collaboratorId={adjustTech.id}
+          collaboratorName={adjustTech.name}
+          date={date}
+          onClose={() => setAdjustTech(null)}
+          onSaved={() => operationsApi.timeline(siteId, date).then(setData)}
+        />
       )}
       {popup && (
         <>

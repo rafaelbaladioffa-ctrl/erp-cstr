@@ -579,3 +579,31 @@ export const botRulesApi = {
   test: (rule: BotBroadcastRule, to: string) =>
     apiClient.post<{ detail: string }>("/bot/broadcast-rules/test/", { to, rule }, { timeout: 130000 }).then((r) => r.data),
 };
+
+export interface AdjustmentTask {
+  task_id: number;
+  name: string;
+  project_name: string;
+  status: string;
+  assignment_start: string | null;
+  assignment_end: string | null;
+  adjusted: boolean;
+}
+
+/** Ajustes administrativos da timeline (somente superusuário). */
+export const adjustmentsApi = {
+  tasks: (collaboratorId: number, date: string) =>
+    apiClient
+      .get<AdjustmentTask[]>("/operations/adjustments/tasks/", { params: { collaborator: collaboratorId, date } })
+      .then((r) => r.data),
+  execution: (payload: {
+    collaborator_id: number;
+    task_id: number;
+    start: string;
+    end: string;
+    pauses: { start: string; end: string }[];
+    reason: string;
+  }) => apiClient.post("/operations/adjustments/execution/", payload).then((r) => r.data),
+  statusWindow: (payload: { collaborator_id: number; start: string; end: string; status: string; reason: string }) =>
+    apiClient.post("/operations/adjustments/status-window/", payload).then((r) => r.data),
+};

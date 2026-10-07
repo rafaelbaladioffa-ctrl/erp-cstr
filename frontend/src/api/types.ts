@@ -857,6 +857,8 @@ export interface StatusEvent {
   status: string;
   status_display: string;
   changed_at: string;
+  /** Trecho corrigido pelo administrador. */
+  adjusted?: boolean;
 }
 
 export interface PairPartner {
@@ -950,6 +952,8 @@ export interface TimelineBlock {
   estimated_hours: string | null;
   /** Trechos em que o técnico executou de fato (sem as pausas); null = dado antigo sem rastreamento próprio. */
   working_intervals?: { start: string; end: string | null }[] | null;
+  /** Apontamento corrigido pelo administrador. */
+  adjusted?: boolean;
 }
 
 export interface TimelineTechnician {

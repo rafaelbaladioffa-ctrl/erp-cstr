@@ -122,6 +122,7 @@ export interface StatusEventLike {
   status: string;
   status_display: string;
   changed_at: string;
+  adjusted?: boolean;
 }
 
 interface Interval {
@@ -219,7 +220,7 @@ export function buildTechSegments(
           const isOpenTail = open && piece.end === endMs;
           segments.push({
             color: b.status === "completed" ? DONE_COLOR : BUSY_COLOR.in_progress,
-            label: b.name,
+            label: b.adjusted ? `${b.name} ✎` : b.name,
             start: new Date(piece.start),
             end: isOpenTail && isLive ? null : new Date(piece.end),
             live: isOpenTail && isLive && b.status === "in_progress",
@@ -287,7 +288,7 @@ export function buildTechSegments(
       const isOpenTail = isLastEvent && piece.end === endMs;
       segments.push({
         color: PRESENCE_COLOR[ev.status] || "var(--text-faint)",
-        label: presenceLabel(ev.status, locale, ev.status_display),
+        label: presenceLabel(ev.status, locale, ev.status_display) + (ev.adjusted ? " ✎" : ""),
         start: new Date(piece.start),
         end: isOpenTail && isLive ? null : new Date(piece.end),
         live: false,
