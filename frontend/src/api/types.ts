@@ -1012,7 +1012,7 @@ export interface ReportsTechnician {
   /** Horas por status de presença no período (chaves = status de OperationsReports.status_categories). */
   status_hours: Record<string, number>;
   /** Produção física por código de atividade (crédito proporcional às horas, só tarefas fechadas). */
-  production: Record<string, { quantity: number; meters: number; meters_utp: number; hours: number }>;
+  production: Record<string, { quantity: number; labels: number; meters: number; meters_utp: number; hours: number }>;
   productive_hours: number;
   /** @deprecated v1 — usar productive_hours. */
   worked_hours?: number;

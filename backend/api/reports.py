@@ -50,6 +50,7 @@ PRODUCTIVE_STATUSES = (
 # bloqueio externo; neutro = intervalos do próprio técnico (almoço, café...).
 # "Fim de Expediente" e "Indisponível" ficam de fora: não são tempo de jornada.
 _P = TechnicianDailyPresence
+LABEL_ACTIVITY_CODE = "CAB-LABEL"  # a produção dessa atividade é medida em labels (ver labels_per_cable)
 STATUS_CATEGORIES = (
     (_P.STATUS_IN_PROGRESS, "productive"),
     (_P.STATUS_SUPPORT, "productive"),
@@ -149,6 +150,24 @@ def _activity_quantity(task, generated):
         if value is not None and float(value) > 0:
             return float(value)
     return None
+
+
+def _end_labels(connector, fiber_count):
+    """Labels de UMA ponta do cabo: conector LC/LCU é duplex (2 fibras por conector,
+    1 label por duplex), MPO/MTP, RJ45 e transceptores (QSFP/SFP) levam 1 label."""
+    connector = (connector or "").strip().upper()
+    if connector.startswith(("MPO", "MTP", "RJ", "QSFP", "SFP")):
+        return 1
+    # LC, LCU e cabos sem conector cadastrado (ex.: RAF): 1 label por par de fibras.
+    return max(1, -(-(fiber_count or 2) // 2))
+
+
+def labels_per_cable(family):
+    """Labels coladas por cabo, somando as duas pontas. Ex.: 8F LC-LC = 4+4 = 8;
+    2F Robust/RAF = 1+1 = 2; breakout MPO↔4×LC (8F) = 1+4 = 5; UTP = 1+1 = 2."""
+    if family is None:
+        return 0
+    return _end_labels(family.connector_a, family.fiber_count) + _end_labels(family.connector_b, family.fiber_count)
 
 
 def _activity_unit(generated):
@@ -344,9 +363,11 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         for assignment, hours in zip(credited, hours_of):
             share = hours / total_hours if total_hours > 0 else 1 / len(credited)
             row = production_by_tech.setdefault(assignment.collaborator_id, {}).setdefault(
-                generated.activity.code, {"quantity": 0.0, "meters": 0.0, "meters_utp": 0.0, "hours": 0.0}
+                generated.activity.code, {"quantity": 0.0, "labels": 0.0, "meters": 0.0, "meters_utp": 0.0, "hours": 0.0}
             )
             row["quantity"] += quantity * share
+            if generated.activity.code == LABEL_ACTIVITY_CODE:
+                row["labels"] += quantity * labels_per_cable(family) * share
             row["meters"] += total_meters * share
             if is_utp:
                 row["meters_utp"] += total_meters * share

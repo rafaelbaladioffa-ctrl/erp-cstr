@@ -6719,6 +6719,35 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(run_a["meters_utp"], 0.0)  # família do teste não é UTP
         self.assertEqual([a["code"] for a in data["production_activities"]], ["TST-RPT-RUN"])
 
+    def test_labels_per_cable_follows_the_connector_layout_of_each_family(self):
+        from api.reports import labels_per_cable
+
+        def family(connector_a, connector_b, fibers):
+            return CableFamily(code="X", name="X", medium="FIBER", connector_a=connector_a, connector_b=connector_b, fiber_count=fibers)
+
+        self.assertEqual(labels_per_cable(family("LC", "LC", 8)), 8)       # 4 + 4
+        self.assertEqual(labels_per_cable(family("LC", "LC", 36)), 36)     # 18 + 18
+        self.assertEqual(labels_per_cable(family("LC", "LC", 2)), 2)       # Robust: 1 + 1
+        self.assertEqual(labels_per_cable(family("", "", 2)), 2)           # RAF (sem conector cadastrado)
+        self.assertEqual(labels_per_cable(family("MPO", "LC", 8)), 5)      # breakout: 1 + 4
+        self.assertEqual(labels_per_cable(family("MPO", "MPO", 288)), 2)   # tronco MPO-MPO
+        self.assertEqual(labels_per_cable(family("RJ45", "RJ45", None)), 2)  # UTP
+        self.assertEqual(labels_per_cable(None), 0)
+
+    def test_label_production_counts_labels_not_cables(self):
+        self.setup_catalog()
+        Activity.objects.filter(pk=self.activity.pk).update(code="CAB-LABEL")
+        CableFamily.objects.filter(pk=self.family.pk).update(connector_a="LC", connector_b="LC", fiber_count=8)
+        generated = self.make_generated(10)  # 10 cabos 8F LC-LC = 80 labels
+        self.make_task(
+            self.at(8), self.at(10), 2,
+            [(self.tech_a, self.at(8), self.at(10), 2)],
+            generated=generated,
+        )
+        row = self.tech_row(self.get(), self.tech_a)["production"]["CAB-LABEL"]
+        self.assertEqual(row["quantity"], 10.0)
+        self.assertEqual(row["labels"], 80.0)
+
     def test_internal_idle_limit_is_30_minutes_per_day(self):
         P = self.Presence
         self.check_in(self.tech_a, [

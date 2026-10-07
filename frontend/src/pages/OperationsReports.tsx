@@ -2240,7 +2240,7 @@ export default function OperationsReportsPage() {
     const sumHours = (code: string) => technicians.reduce((s, t) => s + (t.production?.[code]?.hours ?? 0), 0);
     const defs = [
       { code: "CAB-RUN", label: p.prodMetrosLancados, unit: "m", pick: (x: { meters: number }) => x.meters },
-      { code: "CAB-LABEL", label: p.prodLabels, unit: "un", pick: (x: { quantity: number }) => x.quantity },
+      { code: "CAB-LABEL", label: p.prodLabels, unit: "un", pick: (x: { labels: number }) => x.labels },
       { code: "CAB-CUT", label: p.prodMetrosUtp, unit: "m", pick: (x: { meters_utp: number }) => x.meters_utp },
       { code: "CAB-CRIMP", label: p.prodConectoresRj, unit: "un", pick: (x: { quantity: number }) => x.quantity },
       { code: "CAB-PATCH", label: p.prodPatching, unit: "un", pick: (x: { quantity: number }) => x.quantity },
