@@ -116,6 +116,26 @@ def _build_tech_segments(blocks, status_events, now):
             away_intervals.append((ev["changed_at"], away_end))
 
     for b in blocks:
+        # Rastreamento próprio do técnico: uma barra por trecho trabalhado; a pausa
+        # vira um vão ocupado pela barra do status, e ao voltar a tarefa recomeça.
+        if b.get("working_intervals") is not None:
+            for iv in b["working_intervals"]:
+                iv_start = iv["start"]
+                iv_end = iv["end"] or now
+                if iv_end <= iv_start:
+                    continue
+                for piece_start, piece_end in _subtract_intervals((iv_start, iv_end), away_intervals):
+                    is_open_tail = iv["end"] is None and piece_end == iv_end
+                    segments.append(
+                        {
+                            "color": DONE_COLOR if b["status"] == "completed" else BUSY_COLOR["in_progress"],
+                            "label": b["name"],
+                            "start": piece_start,
+                            "end": None if is_open_tail else piece_end,
+                        }
+                    )
+                    task_intervals.append((piece_start, piece_end))
+            continue
         if b["status"] == "completed" and b["actual_start"] and b["actual_end"]:
             start, end = b["actual_start"], b["actual_end"]
             for piece_start, piece_end in _subtract_intervals((start, end), away_intervals):

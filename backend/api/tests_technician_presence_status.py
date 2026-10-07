@@ -423,3 +423,55 @@ class TechnicianPresenceStatusTests(TestCase):
 
         self.assertEqual(self._presence(self.tech_a), P.STATUS_AVAILABLE)
         self.assertEqual(self._presence(self.tech_b), P.STATUS_IN_PROGRESS)
+
+
+class TimelineWorkingIntervalsTests(TestCase):
+    """Timeline: a barra da tarefa tem um vão enquanto o técnico está em outro status
+    (almoço, café...) e recomeça com barra nova ao voltar."""
+
+    # Reaproveita só o cenário e os auxiliares da classe acima (sem reexecutar os testes dela).
+    setUp = TechnicianPresenceStatusTests.setUp
+    _make_technician = TechnicianPresenceStatusTests._make_technician
+    _dispatch = TechnicianPresenceStatusTests._dispatch
+    _tick = TechnicianPresenceStatusTests._tick
+    _start = TechnicianPresenceStatusTests._start
+    _set_own = TechnicianPresenceStatusTests._set_own
+    _set_presence = TechnicianPresenceStatusTests._set_presence
+
+    def _blocks(self, collaborator):
+        from api.operations import build_timeline_data
+
+        data = build_timeline_data(None, timezone.localdate(), user=self.admin)
+        tech = next(t for t in data["technicians"] if t["id"] == collaborator.pk)
+        return {b["id"]: b for b in tech["blocks"]}
+
+    def test_lunch_splits_the_task_bar_and_return_starts_a_new_one(self):
+        self._start(self.client_a, self.task2)             # 07:00
+        self._tick(4)                                       # 11:00
+        self._set_presence(self.client_a, P.STATUS_LUNCH)  # pausa automática
+        self._tick(1)                                       # 12:00
+        self._start(self.client_a, self.task2)             # volta
+        self._tick(2)                                       # 14:00
+        self._set_own(self.client_a, self.task2, ProjectTask.STATUS_COMPLETED)
+
+        intervals = self._blocks(self.tech_a)[self.task2.pk]["working_intervals"]
+
+        self.assertEqual(
+            [(i["start"].hour, i["end"].hour) for i in intervals],
+            [(7, 11), (12, 14)],
+        )
+
+    def test_open_interval_while_running_and_none_while_paused(self):
+        self._start(self.client_a, self.task2)
+        self._tick(1)
+        running = self._blocks(self.tech_a)[self.task2.pk]["working_intervals"]
+        self.assertEqual(len(running), 1)
+        self.assertIsNone(running[0]["end"])
+
+        self._set_presence(self.client_a, P.STATUS_MEAL)
+        paused = self._blocks(self.tech_a)[self.task2.pk]["working_intervals"]
+        self.assertEqual(len(paused), 1)
+        self.assertIsNotNone(paused[0]["end"])  # fechado na hora em que pausou
+
+    def test_assignment_without_own_tracking_has_no_intervals(self):
+        self.assertIsNone(self._blocks(self.tech_a)[self.task1.pk]["working_intervals"])

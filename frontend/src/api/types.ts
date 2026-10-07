@@ -948,6 +948,8 @@ export interface TimelineBlock {
   actual_start: string | null;
   actual_end: string | null;
   estimated_hours: string | null;
+  /** Trechos em que o técnico executou de fato (sem as pausas); null = dado antigo sem rastreamento próprio. */
+  working_intervals?: { start: string; end: string | null }[] | null;
 }
 
 export interface TimelineTechnician {

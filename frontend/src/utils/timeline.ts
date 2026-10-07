@@ -205,6 +205,31 @@ export function buildTechSegments(
   const awayIntervals = getAwayIntervals(sortedEvents, nowMs);
 
   for (const b of blocks) {
+    // Rastreamento próprio do técnico: uma barra por trecho trabalhado. A pausa
+    // (almoço, café...) vira um vão na barra da tarefa — ocupado pela barra do
+    // status, nunca sobreposto — e ao voltar a tarefa recomeça com barra nova.
+    if (b.working_intervals) {
+      for (const iv of b.working_intervals) {
+        const startMs = new Date(iv.start).getTime();
+        const endMs = iv.end ? new Date(iv.end).getTime() : nowMs;
+        if (endMs <= startMs) continue;
+        const open = iv.end == null;
+        const pieces = awayIntervals.length > 0 ? subtractIntervals({ start: startMs, end: endMs }, awayIntervals) : [{ start: startMs, end: endMs }];
+        for (const piece of pieces) {
+          const isOpenTail = open && piece.end === endMs;
+          segments.push({
+            color: b.status === "completed" ? DONE_COLOR : BUSY_COLOR.in_progress,
+            label: b.name,
+            start: new Date(piece.start),
+            end: isOpenTail && isLive ? null : new Date(piece.end),
+            live: isOpenTail && isLive && b.status === "in_progress",
+            taskId: b.id,
+          });
+          taskIntervals.push(piece);
+        }
+      }
+      continue;
+    }
     if (b.status === "completed" && b.actual_start && b.actual_end) {
       const startMs = new Date(b.actual_start).getTime();
       const endMs = new Date(b.actual_end).getTime();

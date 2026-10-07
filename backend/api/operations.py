@@ -9,7 +9,7 @@ from datetime import timedelta
 
 from django.db.models import Q
 from django.utils import timezone
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -294,6 +294,44 @@ class OperationsBoardView(APIView):
         return Response(build_board_data(site_id, date=date, user=request.user))
 
 
+def _working_intervals(assignment, task):
+    """Intervalos [início, fim] em que ESTE técnico esteve de fato executando a
+    tarefa: do início até a primeira pausa, da retomada até a pausa seguinte, e
+    assim por diante (assignment.pause_log + pausa em aberto). O último intervalo
+    fica em aberto (fim None) enquanto ele ainda executa. Devolve None quando o
+    despacho não tem rastreamento próprio (dado antigo) — a timeline cai no
+    comportamento anterior (início/fim da tarefa)."""
+    start = assignment.assignment_start
+    if start is None:
+        return None
+    end = assignment.assignment_end
+    if assignment.status == ProjectTask.STATUS_COMPLETED and end is None:
+        end = task.actual_end  # concluída por ajuste do admin: sem fim próprio
+    pauses = []
+    for pair in assignment.pause_log or []:
+        try:
+            pauses.append((parse_datetime(pair[0]), parse_datetime(pair[1])))
+        except (TypeError, IndexError, ValueError):
+            continue
+    pauses = sorted(p for p in pauses if p[0] and p[1])
+    if assignment.paused_at:
+        pauses.append((assignment.paused_at, None))  # pausa em aberto: encerra o último trecho
+    intervals = []
+    cursor = start
+    for pause_start, pause_end in pauses:
+        if pause_start > cursor:
+            intervals.append({"start": cursor, "end": pause_start})
+        if pause_end is None:
+            return intervals
+        cursor = max(cursor, pause_end)
+    if end is not None and cursor >= end:
+        return intervals
+    if end is None and assignment.status not in (ProjectTask.STATUS_IN_PROGRESS,):
+        return intervals  # sem fim e sem execução em curso: não há trecho aberto
+    intervals.append({"start": cursor, "end": end})
+    return intervals
+
+
 def build_timeline_data(site_id, date, user=None):
     """Monta os mesmos dados de OperationsTimelineView.get() — extraído à
     parte pra ser reaproveitado pela view de "print" (bot do WhatsApp)."""
@@ -359,6 +397,7 @@ def build_timeline_data(site_id, date, user=None):
                 "actual_start": actual_start,
                 "actual_end": actual_end,
                 "estimated_hours": t.estimated_hours,
+                "working_intervals": _working_intervals(a, t),
             })
         technicians.append(
             {
