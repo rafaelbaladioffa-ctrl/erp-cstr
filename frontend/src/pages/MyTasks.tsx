@@ -12,7 +12,6 @@ const TEXT = {
     noProfile: "Seu usuário ainda não está vinculado a um Técnico. Peça para o administrador vincular seu usuário no cadastro de Técnicos.",
     loading: "Carregando...",
     myStatus: "Meu status",
-    autoInProgress: "Em Execução — definido automaticamente enquanto uma tarefa está em andamento",
     selectStatus: "Selecione seu status",
     reopenHint: 'Expediente encerrado — escolha "Disponível" acima pra reabrir, se precisar.',
     queueBadge: (n: number) => `Fila #${n}`,
@@ -56,7 +55,6 @@ const TEXT = {
     noProfile: "Your user is not yet linked to a Technician. Ask an administrator to link your user in the Technicians register.",
     loading: "Loading...",
     myStatus: "My status",
-    autoInProgress: "In Progress — set automatically while a task is running",
     selectStatus: "Select your status",
     reopenHint: 'Shift ended — choose "Available" above to reopen if needed.',
     queueBadge: (n: number) => `Queue #${n}`,
@@ -100,7 +98,6 @@ const TEXT = {
     noProfile: "Tu usuario aún no está vinculado a un Técnico. Pide al administrador que vincule tu usuario en el registro de Técnicos.",
     loading: "Cargando...",
     myStatus: "Mi estado",
-    autoInProgress: "En Ejecución — definido automáticamente mientras una tarea está en curso",
     selectStatus: "Selecciona tu estado",
     reopenHint: 'Jornada cerrada — elige "Disponible" arriba para reabrir si es necesario.',
     queueBadge: (n: number) => `Cola #${n}`,
@@ -286,7 +283,6 @@ ${p.pauseWarning(running.map((t) => t.task_name).join(", "))}` : "";
 
   const visibleTasks = tasks.filter((t) => tabOf(t.status) === activeTab);
   const isOffDuty = presence?.status === "off_duty";
-  const isAutoInProgress = presence?.status === "in_progress";
 
   return (
     <div className="mt-screen">
@@ -312,28 +308,29 @@ ${p.pauseWarning(running.map((t) => t.task_name).join(", "))}` : "";
       {presence && (
         <div className="mt-status-select-row">
           <label className="mt-status-select-label">{p.myStatus}</label>
-          {isAutoInProgress ? (
-            <div className="input" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
-              {p.autoInProgress}
-            </div>
-          ) : (
-            <select
-              className="select"
-              value={presence.status === "not_started" ? "" : presence.status}
-              onChange={(e) => setPresenceStatus(e.target.value)}
-            >
-              {presence.status === "not_started" && (
-                <option value="" disabled>
-                  {p.selectStatus}
-                </option>
-              )}
-              {p.presenceOptions.map((opt) => (
-                <option key={opt.key} value={opt.key}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          )}
+          <select
+            className="select"
+            value={presence.status === "not_started" ? "" : presence.status}
+            onChange={(e) => setPresenceStatus(e.target.value)}
+          >
+            {presence.status === "not_started" && (
+              <option value="" disabled>
+                {p.selectStatus}
+              </option>
+            )}
+            {/* "Em Execução" é definido pelo sistema (não dá pra escolher), mas o técnico
+                precisa poder sair dele: escolher outro status pausa as tarefas em andamento. */}
+            {presence.status === "in_progress" && (
+              <option value="in_progress" disabled>
+                {presence.status_display}
+              </option>
+            )}
+            {p.presenceOptions.map((opt) => (
+              <option key={opt.key} value={opt.key}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           {isOffDuty && (
             <div className="mt-status-reopen-hint">
               {p.reopenHint}
