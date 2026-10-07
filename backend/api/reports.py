@@ -310,6 +310,48 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
             group["hh_per_meter"].append(task_man_hours / meters)
             group["total_meters"] += meters
 
+    # --- Produção física por técnico (simulação de remuneração variável) ---
+    # Só tarefas FECHADAS no período (todos concluíram) e concluídas por completo.
+    # A quantidade (planejada da tarefa) é dividida entre quem concluiu, proporcional
+    # às horas de cada um (RN-04); sem horas apontadas, divide igualmente.
+    production_by_tech = {}
+    production_activities = {}
+    for task in tasks:
+        generated = task.generated_task
+        if generated is None or task.completion_outcome not in ("", ProjectTask.COMPLETION_OUTCOME_COMPLETED):
+            continue
+        quantity = _activity_quantity(task, generated)
+        if not quantity:
+            continue
+        credited = [a for a in task.assignments.all() if a.status == ProjectTask.STATUS_COMPLETED]
+        if not credited:
+            continue
+        hours_of = [float(a.actual_hours) if a.actual_hours is not None else 0.0 for a in credited]
+        total_hours = sum(hours_of)
+        unit = _activity_unit(generated)
+        length_m = generated.scope_item.length_m
+        family = generated.scope_item.cable_family
+        is_utp = bool(family and "UTP" in f"{family.name} {family.code}".upper())
+        if unit.strip() in METER_UNITS:
+            total_meters = quantity
+        elif length_m and float(length_m) > 0:
+            total_meters = quantity * float(length_m)
+        else:
+            total_meters = 0.0
+        production_activities.setdefault(
+            generated.activity.code, {"code": generated.activity.code, "name": generated.activity.name, "unit": unit}
+        )
+        for assignment, hours in zip(credited, hours_of):
+            share = hours / total_hours if total_hours > 0 else 1 / len(credited)
+            row = production_by_tech.setdefault(assignment.collaborator_id, {}).setdefault(
+                generated.activity.code, {"quantity": 0.0, "meters": 0.0, "meters_utp": 0.0, "hours": 0.0}
+            )
+            row["quantity"] += quantity * share
+            row["meters"] += total_meters * share
+            if is_utp:
+                row["meters_utp"] += total_meters * share
+            row["hours"] += hours
+
     # Supervisor só enxerga os colaboradores sob a sua gestão.
     allowed_ids = managed_collaborator_ids(user)
     if allowed_ids is not None:
@@ -395,6 +437,10 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                 "status_hours": {
                     status: round(status_hours_by_tech.get(collaborator_id, {}).get(status, 0.0), 2)
                     for status, _category in STATUS_CATEGORIES
+                },
+                "production": {
+                    code: {key: round(value, 2) for key, value in values.items()}
+                    for code, values in production_by_tech.get(collaborator_id, {}).items()
                 },
             }
         )
@@ -584,5 +630,6 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         "today_technicians": today_technicians,
         "unproductive_by_reason": unproductive_by_reason,
         "status_categories": [{"status": s, "category": c} for s, c in STATUS_CATEGORIES],
+        "production_activities": sorted(production_activities.values(), key=lambda a: a["code"]),
         "log_entries": log_entries,
     }

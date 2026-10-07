@@ -6693,6 +6693,32 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(categories[P.STATUS_LUNCH], "neutral")
         self.assertNotIn(P.STATUS_OFF_DUTY, categories)
 
+    def test_production_is_split_by_hours_and_counts_only_fully_completed_tasks(self):
+        self.setup_catalog()
+        generated = self.make_generated(10, length_m=Decimal(50))  # 10 cabos × 50 m = 500 m
+        self.make_task(
+            self.at(8), self.at(11), 3,
+            [(self.tech_a, self.at(8), self.at(11), 3), (self.tech_b, self.at(10), self.at(11), 1)],
+            generated=generated,
+        )
+        partial = self.make_generated(10, length_m=Decimal(50))
+        self.make_task(
+            self.at(8), self.at(10), 2,
+            [(self.tech_a, self.at(8), self.at(10), 2)],
+            generated=partial,
+            outcome=ProjectTask.COMPLETION_OUTCOME_PARTIAL,
+        )
+        data = self.get()
+        run_a = self.tech_row(data, self.tech_a)["production"]["TST-RPT-RUN"]
+        run_b = self.tech_row(data, self.tech_b)["production"]["TST-RPT-RUN"]
+        self.assertEqual(run_a["quantity"], 7.5)  # 3h de 4h → 75%
+        self.assertEqual(run_a["meters"], 375.0)
+        self.assertEqual(run_a["hours"], 3.0)
+        self.assertEqual(run_b["quantity"], 2.5)
+        self.assertEqual(run_b["meters"], 125.0)
+        self.assertEqual(run_a["meters_utp"], 0.0)  # família do teste não é UTP
+        self.assertEqual([a["code"] for a in data["production_activities"]], ["TST-RPT-RUN"])
+
     def test_internal_idle_limit_is_30_minutes_per_day(self):
         P = self.Presence
         self.check_in(self.tech_a, [

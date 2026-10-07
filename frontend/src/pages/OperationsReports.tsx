@@ -235,6 +235,16 @@ const TEXT = {
     cardTecnicos: "Técnicos no período",
     nTecnicos: (n: number) => `${n} técnicos`,
     cardImprodutivo: "Improdutivo por motivo",
+    cardProducao: "Produção por técnico",
+    hintProducao: "Simulação para remuneração variável (não gera pagamento). Quantidade planejada das tarefas fechadas e concluídas por completo, dividida entre os técnicos proporcional às horas de cada um. A taxa divide pela soma das horas apontadas nessa atividade: tarefas simultâneas somam horas em duplicidade e reduzem a taxa.",
+    prodMetrosLancados: "Metros lançados",
+    prodLabels: "Labels coladas",
+    prodMetrosUtp: "Metros de UTP cortados",
+    prodConectoresRj: "Conectores RJ crimpados",
+    prodPatching: "Patching (conexões)",
+    prodLinks: "Links certificados",
+    csvProducao: "producao-por-tecnico",
+    semProducao: "Sem produção física no período.",
     cardStatusHoras: "Horas por status",
     totalLabel: "Total",
     hintStatusHoras: "Tempo em cada status de presença, por técnico, no período. Produtivo = execução e apoio; improdutivo = disponível sem tarefa e bloqueio externo; neutro = intervalos do técnico, que não entram na conta.",
@@ -464,6 +474,16 @@ const TEXT = {
     cardTecnicos: "Technicians in the period",
     nTecnicos: (n: number) => `${n} technicians`,
     cardImprodutivo: "Non-productive time by reason",
+    cardProducao: "Production by technician",
+    hintProducao: "Simulation for variable pay (no payout). Planned quantity of closed, fully completed tasks, split among technicians in proportion to each one's hours. The rate divides by the hours logged on that activity: simultaneous tasks add hours twice and lower the rate.",
+    prodMetrosLancados: "Meters pulled",
+    prodLabels: "Labels applied",
+    prodMetrosUtp: "UTP meters cut",
+    prodConectoresRj: "RJ connectors crimped",
+    prodPatching: "Patching (connections)",
+    prodLinks: "Links certified",
+    csvProducao: "production-by-technician",
+    semProducao: "No physical output in the period.",
     cardStatusHoras: "Hours by status",
     totalLabel: "Total",
     hintStatusHoras: "Time in each presence status, per technician, in the period. Productive = execution and support; non-productive = available without a task and external blocks; neutral = the technician's breaks, which are not counted.",
@@ -686,6 +706,16 @@ const TEXT = {
     cardTecnicos: "Técnicos en el período",
     nTecnicos: (n: number) => `${n} técnicos`,
     cardImprodutivo: "Tiempo improductivo por motivo",
+    cardProducao: "Producción por técnico",
+    hintProducao: "Simulación para remuneración variable (no genera pago). Cantidad planificada de las tareas cerradas y completadas por completo, dividida entre los técnicos en proporción a las horas de cada uno. La tasa divide por las horas registradas en esa actividad: las tareas simultáneas suman horas por duplicado y reducen la tasa.",
+    prodMetrosLancados: "Metros tendidos",
+    prodLabels: "Etiquetas aplicadas",
+    prodMetrosUtp: "Metros de UTP cortados",
+    prodConectoresRj: "Conectores RJ crimpados",
+    prodPatching: "Patching (conexiones)",
+    prodLinks: "Enlaces certificados",
+    csvProducao: "produccion-por-tecnico",
+    semProducao: "Sin producción física en el período.",
     cardStatusHoras: "Horas por estado",
     totalLabel: "Total",
     hintStatusHoras: "Tiempo en cada estado de presencia, por técnico, en el período. Productivo = ejecución y apoyo; improductivo = disponible sin tarea y bloqueo externo; neutro = pausas del técnico, que no se cuentan.",
@@ -2192,6 +2222,127 @@ export default function OperationsReportsPage() {
     );
   }
 
+  function exportProduction() {
+    const cols = productionColumns();
+    const header: CsvCell[] = [p.thTecnico, ...cols.flatMap((c) => [c.label, `${c.label} (${c.rate})`])];
+    const rows: CsvCell[][] = sortedTechsAll().map((t) => [
+      t.name,
+      ...cols.flatMap((c) => {
+        const v = c.value(t);
+        const h = t.production?.[c.code]?.hours ?? 0;
+        return [v > 0 ? Math.round(v * 100) / 100 : 0, v > 0 && h > 0 ? Math.round((v / h) * 100) / 100 : null];
+      }),
+    ]);
+    downloadCsv(`${p.csvProducao}_${csvSuffix}.csv`, [header, ...rows], locale);
+  }
+
+  function productionColumns() {
+    const sumHours = (code: string) => technicians.reduce((s, t) => s + (t.production?.[code]?.hours ?? 0), 0);
+    const defs = [
+      { code: "CAB-RUN", label: p.prodMetrosLancados, unit: "m", pick: (x: { meters: number }) => x.meters },
+      { code: "CAB-LABEL", label: p.prodLabels, unit: "un", pick: (x: { quantity: number }) => x.quantity },
+      { code: "CAB-CUT", label: p.prodMetrosUtp, unit: "m", pick: (x: { meters_utp: number }) => x.meters_utp },
+      { code: "CAB-CRIMP", label: p.prodConectoresRj, unit: "un", pick: (x: { quantity: number }) => x.quantity },
+      { code: "CAB-PATCH", label: p.prodPatching, unit: "un", pick: (x: { quantity: number }) => x.quantity },
+      { code: "CERTIFY", label: p.prodLinks, unit: "un", pick: (x: { quantity: number }) => x.quantity },
+    ];
+    return defs.map((d) => ({
+      code: d.code,
+      label: d.label,
+      unit: d.unit,
+      rate: `${d.unit}/h`,
+      value: (t: ReportsTechnician) => {
+        const row = t.production?.[d.code];
+        return row ? d.pick(row as never) : 0;
+      },
+      total: () => technicians.reduce((s, t) => s + (t.production?.[d.code] ? d.pick(t.production[d.code] as never) : 0), 0),
+      totalHours: () => sumHours(d.code),
+    }));
+  }
+
+  function renderProduction() {
+    if (!stats) return null;
+    const cols = productionColumns();
+    const rowsTechs = sortedTechsAll();
+    const anyProduction = cols.some((c) => c.total() > 0);
+    return (
+      <div className="ops-pool-card rpt-card">
+        <div className="ops-card-head rpt-card-head-wrap">
+          <div>
+            <div className="ops-card-title">{p.cardProducao}</div>
+            <div className="ops-card-hint">{p.hintProducao}</div>
+          </div>
+          <button type="button" className="btn btn-outline btn-sm" onClick={exportProduction} disabled={!anyProduction}>
+            <Icon name="download" style={{ fontSize: 16 }} />
+            {p.exportarCsv}
+          </button>
+        </div>
+        {rowsTechs.length === 0 || !anyProduction ? (
+          <div className="table-empty rpt-empty-block">{p.semProducao}</div>
+        ) : (
+          <div className="table-wrap rpt-scroll">
+            <table className="table rpt-table-dense">
+              <thead>
+                <tr>
+                  <th className="rpt-sticky-col">{p.thTecnico}</th>
+                  {cols.map((c) => (
+                    <th key={c.code} className="rpt-num">{c.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rowsTechs.map((t) => (
+                  <tr key={t.id}>
+                    <td className="rpt-sticky-col">
+                      <div className="rpt-strong">{t.name}</div>
+                    </td>
+                    {cols.map((c) => {
+                      const v = c.value(t);
+                      const h = t.production?.[c.code]?.hours ?? 0;
+                      return (
+                        <td key={c.code} className="rpt-num">
+                          {v > 0 ? (
+                            <>
+                              <div className="rpt-strong">{nf(v, v % 1 === 0 ? 0 : 1)} {c.unit}</div>
+                              {h > 0 && <div className="rpt-num-sub">{nf(v / h, 1)} {c.rate}</div>}
+                            </>
+                          ) : (
+                            <span className="rpt-cell-muted">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="rpt-sticky-col rpt-strong">{p.totalLabel}</td>
+                  {cols.map((c) => {
+                    const v = c.total();
+                    const h = c.totalHours();
+                    return (
+                      <td key={c.code} className="rpt-num">
+                        {v > 0 ? (
+                          <>
+                            <div className="rpt-strong">{nf(v, v % 1 === 0 ? 0 : 1)} {c.unit}</div>
+                            {h > 0 && <div className="rpt-num-sub">{nf(v / h, 1)} {c.rate}</div>}
+                          </>
+                        ) : (
+                          <span className="rpt-cell-muted">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function renderUnproductive() {
     if (!stats) return null;
     const external = reasons.filter((r) => r.category === "external");
@@ -2543,6 +2694,7 @@ export default function OperationsReportsPage() {
             {renderPeriodKpis()}
             {renderTechTable()}
             {renderStatusHours()}
+            {renderProduction()}
             {renderUnproductive()}
             {renderActivities()}
           </>

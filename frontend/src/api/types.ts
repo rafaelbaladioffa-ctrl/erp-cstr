@@ -1011,6 +1011,8 @@ export interface ReportsTechnician {
   site_name: string;
   /** Horas por status de presença no período (chaves = status de OperationsReports.status_categories). */
   status_hours: Record<string, number>;
+  /** Produção física por código de atividade (crédito proporcional às horas, só tarefas fechadas). */
+  production: Record<string, { quantity: number; meters: number; meters_utp: number; hours: number }>;
   productive_hours: number;
   /** @deprecated v1 — usar productive_hours. */
   worked_hours?: number;
@@ -1110,6 +1112,7 @@ export interface OperationsReports {
   today_technicians: ReportsTechnicianToday[];
   unproductive_by_reason: ReportsUnproductiveReason[];
   /** Status contabilizados no card "Horas por status", na ordem de exibição, com a classificação. */
+  production_activities: { code: string; name: string; unit: string }[];
   status_categories: { status: string; category: "productive" | "unproductive" | "neutral" }[];
   log_entries: ReportsLogEntry[];
 }
