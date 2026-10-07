@@ -6790,6 +6790,21 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(row["hh_per_meter"]["median"], 0.0057)  # 4 HH / 700 m (mediana)
         self.assertEqual(data["activity_excluded_no_catalog"], 0)
 
+    def test_activity_reference_includes_mean_standard_deviation_and_cv(self):
+        self.setup_catalog()
+        for hours in (2, 3, 4, 5, 6):  # 10 cabos cada → HH/unidade 0,2 · 0,3 · 0,4 · 0,5 · 0,6
+            generated = self.make_generated(10)
+            self.make_task(
+                self.at(8), self.at(8 + hours), hours,
+                [(self.tech_a, self.at(8), self.at(8 + hours), hours)],
+                generated=generated,
+            )
+        dist = self.get()["activity_productivity"][0]["hh_per_unit"]
+        self.assertEqual(dist["median"], 0.4)
+        self.assertEqual(dist["mean"], 0.4)
+        self.assertEqual(dist["std_dev"], 0.1581)  # amostral: √(0,10 ÷ 4)
+        self.assertEqual(dist["cv_pct"], 39.5)
+
     def test_activity_with_small_sample_has_no_reference(self):
         self.setup_catalog()
         for _ in range(3):

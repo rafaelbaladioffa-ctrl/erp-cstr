@@ -144,10 +144,18 @@ def _distribution(values):
         q1 = q3 = values[0]
     else:
         q1, _, q3 = statistics.quantiles(values, n=4, method="inclusive")
+    mean = statistics.fmean(values)
+    # Desvio padrão AMOSTRAL (n−1): as execuções são uma amostra do que a atividade
+    # costuma gastar. Com uma só execução não há dispersão (0).
+    std_dev = statistics.stdev(values) if len(values) > 1 else 0.0
     return {
         "median": round(statistics.median(values), 4),
         "p25": round(q1, 4),
         "p75": round(q3, 4),
+        "mean": round(mean, 4),
+        "std_dev": round(std_dev, 4),
+        # Coeficiente de variação = desvio ÷ média: compara variabilidade entre atividades de escalas diferentes.
+        "cv_pct": round(std_dev / mean * 100, 1) if mean else None,
     }
 
 

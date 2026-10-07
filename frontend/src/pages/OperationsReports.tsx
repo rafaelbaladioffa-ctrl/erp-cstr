@@ -92,6 +92,14 @@ function formatDuration(value: number) {
 }
 
 /** Casas decimais da referência de estimativa (layout §3.2). */
+// Faixas do coeficiente de variação do HH por unidade: até 15% regular, até 30% moderado, acima irregular.
+function cvColor(cv: number | null): string | undefined {
+  if (cv == null) return undefined;
+  if (cv <= 15) return "var(--green)";
+  if (cv <= 30) return "var(--amber)";
+  return "var(--red)";
+}
+
 function refDigits(v: number) {
   const a = Math.abs(v);
   if (a < 0.1) return 3;
@@ -267,6 +275,13 @@ const TEXT = {
     thGrupoExecucao: "Por execução (mediana)",
     thHHUnidade: "HH por unidade",
     thHHMetro: "HH por metro",
+    thVariacao: "Variação (σ)",
+    tipVariacao:
+      "Desvio padrão do HH por unidade entre as execuções (amostral, n−1). CV = desvio ÷ média: até 15% é regular, de 15% a 30% é moderado, acima de 30% é irregular — a mediana sozinha esconde isso.",
+    mediaCV: (mean: string, cv: string) => `média ${mean} · CV ${cv}`,
+    csvMedia: "média",
+    csvDesvio: "desvio padrão",
+    csvCV: "CV (%)",
     thHHMediano: "HH",
     thDuracao: "Duração",
     thEquipe: "Equipe média",
@@ -479,6 +494,13 @@ const TEXT = {
     thGrupoExecucao: "Per run (median)",
     thHHUnidade: "MH per unit",
     thHHMetro: "MH per meter",
+    thVariacao: "Variation (σ)",
+    tipVariacao:
+      "Standard deviation of MH per unit across executions (sample, n−1). CV = deviation ÷ mean: up to 15% is steady, 15–30% moderate, above 30% erratic — the median alone hides this.",
+    mediaCV: (mean: string, cv: string) => `mean ${mean} · CV ${cv}`,
+    csvMedia: "mean",
+    csvDesvio: "standard deviation",
+    csvCV: "CV (%)",
     thHHMediano: "MH",
     thDuracao: "Duration",
     thEquipe: "Avg crew",
@@ -687,6 +709,13 @@ const TEXT = {
     thGrupoExecucao: "Por ejecución (mediana)",
     thHHUnidade: "HH por unidad",
     thHHMetro: "HH por metro",
+    thVariacao: "Variación (σ)",
+    tipVariacao:
+      "Desviación estándar del HH por unidad entre las ejecuciones (muestral, n−1). CV = desviación ÷ media: hasta 15% es regular, de 15% a 30% moderado, más de 30% irregular — la mediana sola lo oculta.",
+    mediaCV: (mean: string, cv: string) => `media ${mean} · CV ${cv}`,
+    csvMedia: "media",
+    csvDesvio: "desviación estándar",
+    csvCV: "CV (%)",
     thHHMediano: "HH",
     thDuracao: "Duración",
     thEquipe: "Equipo medio",
@@ -921,6 +950,7 @@ type ActSortKey =
   | "executions_used"
   | "hh_per_unit"
   | "hh_per_meter"
+  | "hh_cv"
   | "median_man_hours"
   | "median_duration_hours"
   | "avg_crew_size";
@@ -1202,6 +1232,8 @@ export default function OperationsReportsPage() {
         }
         case "hh_per_meter":
           return cmpNullable(a.hh_per_meter?.median, b.hh_per_meter?.median, dir);
+        case "hh_cv":
+          return cmpNullable(a.hh_per_unit?.cv_pct, b.hh_per_unit?.cv_pct, dir);
         default:
           return cmpNullable(a[key], b[key], dir);
       }
@@ -1304,6 +1336,9 @@ export default function OperationsReportsPage() {
       `${hu} (${p.csvMediana})`,
       `${hu} (P25)`,
       `${hu} (P75)`,
+      `${hu} (${p.csvMedia})`,
+      `${hu} (${p.csvDesvio})`,
+      `${hu} (${p.csvCV})`,
       `${hm} (${p.csvMediana})`,
       `${hm} (P25)`,
       `${hm} (P75)`,
@@ -1334,6 +1369,9 @@ export default function OperationsReportsPage() {
         ok ? a.hh_per_unit?.median : null,
         ok ? a.hh_per_unit?.p25 : null,
         ok ? a.hh_per_unit?.p75 : null,
+        ok ? a.hh_per_unit?.mean : null,
+        ok ? a.hh_per_unit?.std_dev : null,
+        ok ? a.hh_per_unit?.cv_pct : null,
         ok ? a.hh_per_meter?.median : null,
         ok ? a.hh_per_meter?.p25 : null,
         ok ? a.hh_per_meter?.p75 : null,
@@ -2169,9 +2207,23 @@ export default function OperationsReportsPage() {
                 empty(p.semComprimento)
               )}
             </td>
+            <td className="rpt-num">
+              {unitDist ? (
+                <>
+                  <div className="rpt-strong" style={{ color: cvColor(unitDist.cv_pct) }}>
+                    ± {fmtRef(unitDist.std_dev, refDigits(unitDist.median))} {perUnit}
+                  </div>
+                  <div className="rpt-num-sub">
+                    {p.mediaCV(fmtRef(unitDist.mean, refDigits(unitDist.median)), unitDist.cv_pct == null ? "—" : `${nf(unitDist.cv_pct, 0)}%`)}
+                  </div>
+                </>
+              ) : (
+                empty()
+              )}
+            </td>
           </>
         ) : (
-          <td colSpan={2} className="rpt-num">
+          <td colSpan={3} className="rpt-num">
             <span className="rpt-insufficient">
               <Icon name="info" style={{ fontSize: 14 }} />
               {p.dadosInsuficientes(a.executions_used)}
@@ -2231,7 +2283,7 @@ export default function OperationsReportsPage() {
               <tr className="rpt-th-group">
                 <th className="rpt-sticky-col" />
                 <th colSpan={3} />
-                <th colSpan={2}>{p.thGrupoReferencia}</th>
+                <th colSpan={3}>{p.thGrupoReferencia}</th>
                 <th colSpan={3}>{p.thGrupoExecucao}</th>
               </tr>
               <tr>
@@ -2241,6 +2293,7 @@ export default function OperationsReportsPage() {
                 {sh(p.thExecucoesUsadas, "executions_used")}
                 {sh(p.thHHUnidade, "hh_per_unit", p.tipHHUnidade, "asc")}
                 {sh(p.thHHMetro, "hh_per_meter", undefined, "asc")}
+                {sh(p.thVariacao, "hh_cv", p.tipVariacao, "asc")}
                 {sh(p.thHHMediano, "median_man_hours", p.tipHHMediano)}
                 {sh(p.thDuracao, "median_duration_hours", p.tipDuracao)}
                 {sh(p.thEquipe, "avg_crew_size")}

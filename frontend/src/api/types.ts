@@ -1037,6 +1037,9 @@ export interface ReportsDistribution {
   median: number;
   p25: number;
   p75: number;
+  mean: number;
+  std_dev: number;
+  cv_pct: number | null;
 }
 
 export interface ReportsActivityProductivity {
