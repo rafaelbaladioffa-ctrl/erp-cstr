@@ -1016,21 +1016,7 @@ export interface ReportsTechnician {
   /** Horas por status de presença no período (chaves = status de OperationsReports.status_categories). */
   status_hours: Record<string, number>;
   /** Produção física por código de atividade (crédito proporcional às horas, só tarefas fechadas). */
-  production: Record<
-    string,
-    {
-      quantity: number;
-      labels: number;
-      meters: number;
-      meters_utp: number;
-      /** Parte da produção com horário confiável: base da taxa por hora. */
-      rate_base: { quantity: number; labels: number; meters: number; meters_utp: number };
-      /** Tempo de relógio com ao menos uma tarefa da atividade aberta (simultâneas contam uma vez). */
-      hours: number;
-      /** Tarefas fora da taxa por horário inconsistente (concluídas em lote ou fim antes do início). */
-      unreliable_count: number;
-    }
-  >;
+  production: Record<string, { quantity: number; labels: number; meters: number; meters_utp: number; hours: number }>;
   productive_hours: number;
   /** @deprecated v1 — usar productive_hours. */
   worked_hours?: number;
