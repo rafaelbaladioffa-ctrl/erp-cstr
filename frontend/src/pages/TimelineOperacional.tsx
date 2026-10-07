@@ -1,4 +1,7 @@
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import TimelineAdjustModal from "../components/projects/TimelineAdjustModal";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsTimeline } from "../api/types";
 import DateInput from "../components/ui/DateInput";
@@ -14,6 +17,7 @@ import {
   WINDOW_START_HOUR,
   assignLanes,
   buildTechSegments,
+  collapseLanes,
   formatTime,
   initials,
   pairRowClass,
@@ -38,6 +42,7 @@ const TEXT = {
     allSites: "Todos os sites",
     techniciansLabel: (n: number) => `Técnicos${n > 0 ? ` (${n} selecionado(s))` : ""}`,
     clearSelection: "Limpar seleção",
+    allTechnicians: "Todos",
     loading: "Carregando...",
     legendDone: "Concluída",
     legendInProgress: "Em execução",
@@ -45,8 +50,12 @@ const TEXT = {
     legendPause: "Pausa",
     legendLunch: "Horário de Almoço",
     legendPersonal: "Particular",
-    legendMeal: "Refeição",
+    legendMeal: "Café",
     legendMeeting: "Reunião",
+    legendTraveling: "Em Deslocamento",
+    legendSupport: "Apoio a outro técnico",
+    expandLanes: (n: number) => `▾ +${n} simultâneas`,
+    collapseLanes: "▴ Recolher",
     legendSiteBlocked: "Sem Acesso ao Site",
     legendAwaitingRelease: "Aguardando Liberações",
     legendIdle: "Não iniciado / Fim de Expediente",
@@ -74,6 +83,7 @@ const TEXT = {
     allSites: "All sites",
     techniciansLabel: (n: number) => `Technicians${n > 0 ? ` (${n} selected)` : ""}`,
     clearSelection: "Clear selection",
+    allTechnicians: "All",
     loading: "Loading...",
     legendDone: "Completed",
     legendInProgress: "In progress",
@@ -81,8 +91,12 @@ const TEXT = {
     legendPause: "Break",
     legendLunch: "Lunch break",
     legendPersonal: "Personal",
-    legendMeal: "Meal",
+    legendMeal: "Coffee Break",
     legendMeeting: "Meeting",
+    legendTraveling: "Traveling",
+    legendSupport: "Supporting another technician",
+    expandLanes: (n: number) => `▾ +${n} concurrent`,
+    collapseLanes: "▴ Collapse",
     legendSiteBlocked: "No Site Access",
     legendAwaitingRelease: "Awaiting Releases",
     legendIdle: "Not started / End of shift",
@@ -110,6 +124,7 @@ const TEXT = {
     allSites: "Todos los sitios",
     techniciansLabel: (n: number) => `Técnicos${n > 0 ? ` (${n} seleccionado(s))` : ""}`,
     clearSelection: "Limpiar selección",
+    allTechnicians: "Todos",
     loading: "Cargando...",
     legendDone: "Completada",
     legendInProgress: "En ejecución",
@@ -117,8 +132,12 @@ const TEXT = {
     legendPause: "Pausa",
     legendLunch: "Hora de almuerzo",
     legendPersonal: "Personal",
-    legendMeal: "Comida",
+    legendMeal: "Café",
     legendMeeting: "Reunión",
+    legendTraveling: "En desplazamiento",
+    legendSupport: "Apoyo a otro técnico",
+    expandLanes: (n: number) => `▾ +${n} simultáneas`,
+    collapseLanes: "▴ Contraer",
     legendSiteBlocked: "Sin acceso al sitio",
     legendAwaitingRelease: "Esperando liberaciones",
     legendIdle: "No iniciado / Fin de jornada",
@@ -163,7 +182,9 @@ export default function TimelineOperacional() {
   const p = usePageText(TEXT);
   const { locale } = useI18n();
   const [sites, setSites] = useState<Site[]>([]);
-  const [siteId, setSiteId] = useState<number | "all">("all");
+  // "all" ou um ou mais ids separados por vírgula ("12,15")
+  const [siteId, setSiteId] = useState<string>("all");
+  const showSiteLabels = !/^\d+$/.test(siteId);
   const [selectedTechIds, setSelectedTechIds] = useState<number[]>([]);
   const [date, setDate] = useState(() => todayISO());
   const [viewMode, setViewMode] = useState<ViewMode>("day");
@@ -197,6 +218,17 @@ export default function TimelineOperacional() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  const { user } = useAuth();
+  const [adjustTech, setAdjustTech] = useState<{ id: number; name: string } | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  function toggleRow(techId: number) {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(techId)) next.delete(techId); else next.add(techId);
+      return next;
+    });
+  }
+
   const technicians = data?.technicians || [];
   const isToday = data?.is_today ?? date === todayISO();
   const base = data?.date ? new Date(`${data.date}T00:00:00`) : new Date();
@@ -207,11 +239,14 @@ export default function TimelineOperacional() {
       .filter((tech) => selectedTechIds.length === 0 || selectedTechIds.includes(tech.id))
       .map((tech) => {
         const segments = buildTechSegments(tech.blocks, tech.status_events, now, isToday, locale);
-        const lanedSegments = assignLanes(segments);
+        const lanes = collapseLanes(assignLanes(segments), expandedRows.has(tech.id));
         return {
           tech,
-          lanedSegments,
-          laneCount: lanedSegments[0]?.laneCount ?? 1,
+          lanedSegments: lanes.visible,
+          laneCount: lanes.laneCount,
+          hiddenCount: lanes.hiddenCount,
+          collapsible: lanes.collapsible,
+          expanded: lanes.expanded,
           doneCount: tech.blocks.filter((b) => b.status === "completed").length,
         };
       })
@@ -258,40 +293,21 @@ export default function TimelineOperacional() {
 
       {filtersOpen && (
         <div className="tl-filters-panel">
-          <div className="field-group">
-            <label className="field-label">{p.siteLabel}</label>
-            <select className="select" value={siteId} onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}>
-              <option value="all">{p.allSites}</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field-group">
-            <label className="field-label">
-              {p.techniciansLabel(selectedTechIds.length)}
-            </label>
-            <select
-              multiple
-              className="input"
-              style={{ height: 96, minWidth: 220 }}
-              value={selectedTechIds.map(String)}
-              onChange={(e) => setSelectedTechIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
-            >
-              {technicians.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            {selectedTechIds.length > 0 && (
-              <button className="btn btn-outline btn-sm" style={{ marginTop: 6 }} onClick={() => setSelectedTechIds([])}>
-                {p.clearSelection}
-              </button>
-            )}
-          </div>
+          <MultiSelectFilter
+            label={p.siteLabel}
+            options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+            selected={siteId === "all" ? [] : String(siteId).split(",")}
+            onChange={(next) => setSiteId(next.length ? next.join(",") : "all")}
+            allLabel={p.allSites}
+          />
+          <MultiSelectFilter
+            label={p.techniciansLabel(0)}
+            options={technicians.map((t) => ({ value: String(t.id), label: t.name }))}
+            selected={selectedTechIds.map(String)}
+            onChange={(next) => setSelectedTechIds(next.map(Number))}
+            allLabel={p.allTechnicians}
+            clearLabel={p.clearSelection}
+          />
         </div>
       )}
 
@@ -333,6 +349,14 @@ export default function TimelineOperacional() {
               {p.legendMeeting}
             </div>
             <div className="legend-item">
+              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.traveling }} />
+              {p.legendTraveling}
+            </div>
+            <div className="legend-item">
+              <span className="legend-swatch" style={{ background: PRESENCE_COLOR.support }} />
+              {p.legendSupport}
+            </div>
+            <div className="legend-item">
               <span className="legend-swatch" style={{ background: PRESENCE_COLOR.site_blocked }} />
               {p.legendSiteBlocked}
             </div>
@@ -349,18 +373,28 @@ export default function TimelineOperacional() {
           <div className="tl-grid-wrap">
             <div className="tl-labels">
               <div className="tl-ruler" />
-              {techRows.map(({ tech, laneCount, doneCount }, rowIdx) => (
+              {techRows.map(({ tech, laneCount, doneCount, hiddenCount, collapsible, expanded }, rowIdx) => (
                 <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
                   <div className="tl-row-label">
                     <div className="tl-avatar">{initials(tech.name)}</div>
                     <div style={{ minWidth: 0 }}>
                       <div className="tl-row-name">
                         {tech.name}
-                        {siteId === "all" && <span className="tl-row-site"> · {tech.site_name}</span>}
+                        {showSiteLabels && tech.site_name && <span className="tl-row-site"> · {tech.site_name}</span>}
                       </div>
                       <div className="tl-row-overview">
                         {p.doneCount(doneCount)}
                       </div>
+                      {user?.is_superuser && (
+                        <button type="button" className="tl-expand-btn" style={{ marginRight: 6 }} onClick={() => setAdjustTech({ id: tech.id, name: tech.name })}>
+                          ✎ Ajustar
+                        </button>
+                      )}
+                      {collapsible && (
+                        <button type="button" className="tl-expand-btn" onClick={() => toggleRow(tech.id)}>
+                          {expanded ? p.collapseLanes : p.expandLanes(hiddenCount)}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -454,6 +488,15 @@ export default function TimelineOperacional() {
             </div>
           )}
         </div>
+      )}
+      {adjustTech && (
+        <TimelineAdjustModal
+          collaboratorId={adjustTech.id}
+          collaboratorName={adjustTech.name}
+          date={date}
+          onClose={() => setAdjustTech(null)}
+          onSaved={() => operationsApi.timeline(siteId, date).then(setData)}
+        />
       )}
       {popup && (
         <>

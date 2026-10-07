@@ -523,27 +523,35 @@ export const presenceApi = {
 };
 
 export const operationsApi = {
-  board: (siteId: number | "all", date?: string) =>
+  board: (siteId: number | string, date?: string) =>
     apiClient.get<OperationsBoard>("/operations/board/", { params: { site: String(siteId), ...(date ? { date } : {}) } }).then((r) => r.data),
   dispatch: (taskId: number, collaboratorIds: number[]) =>
     apiClient
       .post<ProjectTask>(`/project-tasks/${taskId}/dispatch/`, { collaborator_ids: collaboratorIds })
       .then((r) => r.data),
+  dispatchBulk: (taskIds: number[], collaboratorIds: number[]) =>
+    apiClient
+      .post<{ dispatched: number; task_ids: number[] }>("/project-tasks/dispatch-bulk/", { task_ids: taskIds, collaborator_ids: collaboratorIds })
+      .then((r) => r.data),
   undispatch: (taskId: number, collaboratorIds?: number[]) =>
     apiClient
       .post<ProjectTask>(`/project-tasks/${taskId}/undispatch/`, { collaborator_ids: collaboratorIds || [] })
       .then((r) => r.data),
-  timeline: (siteId: number | "all", date?: string) =>
+  returnToPool: (taskId: number, collaboratorIds?: number[]) =>
+    apiClient
+      .post<ProjectTask>(`/project-tasks/${taskId}/return-to-pool/`, { collaborator_ids: collaboratorIds || [] })
+      .then((r) => r.data),
+  timeline: (siteId: number | string, date?: string) =>
     apiClient
       .get<OperationsTimeline>("/operations/timeline/", { params: { site: String(siteId), ...(date ? { date } : {}) } })
       .then((r) => r.data),
-  reports: (siteId: number | "all", dateFrom?: string, dateTo?: string) =>
+  reports: (siteId: number | string, dateFrom?: string, dateTo?: string) =>
     apiClient
       .get<OperationsReports>("/operations/reports/", {
         params: { site: String(siteId), ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) },
       })
       .then((r) => r.data),
-  managementReport: (siteId: number | "all", dateFrom: string, dateTo: string, group?: ManagementGroup) =>
+  managementReport: (siteId: number | string, dateFrom: string, dateTo: string, group?: ManagementGroup) =>
     apiClient
       .get<ManagementReport>("/operations/reports/management/", {
         params: { site: String(siteId), date_from: dateFrom, date_to: dateTo, ...(group ? { group } : {}) },
@@ -578,4 +586,48 @@ export const botRulesApi = {
   remove: (id: number) => apiClient.delete(`/bot/broadcast-rules/${id}/`),
   test: (rule: BotBroadcastRule, to: string) =>
     apiClient.post<{ detail: string }>("/bot/broadcast-rules/test/", { to, rule }, { timeout: 130000 }).then((r) => r.data),
+};
+
+export interface AdjustmentTask {
+  task_id: number;
+  name: string;
+  project_name: string;
+  status: string;
+  assignment_start: string | null;
+  assignment_end: string | null;
+  adjusted: boolean;
+}
+
+/** Ajustes administrativos da timeline (somente superusuário). */
+export const adjustmentsApi = {
+  tasks: (collaboratorId: number, date: string) =>
+    apiClient
+      .get<AdjustmentTask[]>("/operations/adjustments/tasks/", { params: { collaborator: collaboratorId, date } })
+      .then((r) => r.data),
+  execution: (payload: {
+    collaborator_id: number;
+    task_id: number;
+    start: string;
+    end: string;
+    pauses: { start: string; end: string }[];
+    reason: string;
+  }) => apiClient.post("/operations/adjustments/execution/", payload).then((r) => r.data),
+  statusEvents: (collaboratorId: number, date: string) =>
+    apiClient
+      .get<{ status: string; changed_at: string; adjusted: boolean }[]>("/operations/adjustments/status-events/", {
+        params: { collaborator: collaboratorId, date },
+      })
+      .then((r) => r.data),
+  saveStatusEvents: (payload: {
+    collaborator_id: number;
+    date: string;
+    events: { status: string; changed_at: string }[];
+    /** Horários originais dos registros excluídos: a barra some (não é o status anterior que se estende). */
+    deleted?: string[];
+    reason: string;
+  }) => apiClient.post("/operations/adjustments/status-events/", payload).then((r) => r.data),
+  removeExecution: (payload: { collaborator_id: number; task_id: number; reason: string }) =>
+    apiClient.post("/operations/adjustments/execution/remove/", payload).then((r) => r.data),
+  statusWindow: (payload: { collaborator_id: number; start: string; end: string; status: string; reason: string }) =>
+    apiClient.post("/operations/adjustments/status-window/", payload).then((r) => r.data),
 };

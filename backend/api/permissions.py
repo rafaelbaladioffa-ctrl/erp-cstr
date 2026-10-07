@@ -55,6 +55,45 @@ class _HasChangePermission(DjangoModelPermissions):
         return request.user and request.user.has_perms(perms)
 
 
+MANAGE_PROJECT_TASKS_PERM = "projects.manage_project_tasks"
+
+
+class _AnyOfPermissions(BasePermission):
+    """Passa quando TODAS as permissões padrão da ação passam OU quando o usuário tem a
+    permissão dedicada (ex.: 'gerenciar tarefas do projeto')."""
+
+    def __init__(self, default_permissions, dedicated_perm):
+        self.default_permissions = default_permissions
+        self.dedicated_perm = dedicated_perm
+
+    def _has_dedicated(self, request):
+        user = request.user
+        return bool(user and user.is_authenticated and user.has_perm(self.dedicated_perm))
+
+    def has_permission(self, request, view):
+        return self._has_dedicated(request) or all(p.has_permission(request, view) for p in self.default_permissions)
+
+    def has_object_permission(self, request, view, obj):
+        return self._has_dedicated(request) or all(
+            p.has_object_permission(request, view, obj) for p in self.default_permissions
+        )
+
+
+class AllowManageProjectTasks:
+    """Mixin para ViewSets: nas ações de `manage_task_actions`, além das permissões padrão
+    (que exigem add_/change_ do modelo), aceita quem tem a permissão dedicada
+    'projects.manage_project_tasks'. Serve para o gestor despachar e ajustar tarefas sem
+    precisar poder criar/excluir projetos ou tarefas."""
+
+    manage_task_actions: tuple[str, ...] = ()
+
+    def get_permissions(self):
+        permissions = super().get_permissions()
+        if self.action in self.manage_task_actions:
+            return [_AnyOfPermissions(permissions, MANAGE_PROJECT_TASKS_PERM)]
+        return permissions
+
+
 class RequireViewPermissionForActions:
     """Mixin para ViewSets: exige só a permissão 'view_<model>' do Django
     para as actions customizadas listadas em `view_permission_actions` —

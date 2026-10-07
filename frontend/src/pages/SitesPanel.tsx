@@ -14,6 +14,7 @@ import type {
 } from "../api/types";
 import { FilterTh, useColumnFilters } from "../components/ui/ColumnFilter";
 import Icon from "../components/ui/Icon";
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import PageHeader from "../components/ui/PageHeader";
 import { useAuth } from "../context/AuthContext";
 import { usePageText } from "../i18n";
@@ -47,6 +48,8 @@ const TEXT = {
     refresh: "Atualizar",
     groupBy: "Agrupar por",
     groupByOptions: { site: "Site", region: "Regional", client: "Cliente", responsible: "Responsável" } as Record<SitesPanelGroupBy, string>,
+    groupByHint: "Marque mais de uma opção para combinar os grupos (ex.: Regional · Cliente).",
+    countryHint: "Marque um ou mais países.",
     country: "País", allCountries: "Todos os países",
     countries: { BR: "Brasil", US: "EUA", CL: "Chile", MX: "México" } as Record<string, string>,
     status: "Status",
@@ -111,6 +114,8 @@ const TEXT = {
     refresh: "Refresh",
     groupBy: "Group by",
     groupByOptions: { site: "Site", region: "Region", client: "Client", responsible: "Owner" } as Record<SitesPanelGroupBy, string>,
+    groupByHint: "Check more than one option to combine the groups (e.g. Region · Client).",
+    countryHint: "Check one or more countries.",
     country: "Country", allCountries: "All countries",
     countries: { BR: "Brazil", US: "USA", CL: "Chile", MX: "Mexico" } as Record<string, string>,
     status: "Status",
@@ -175,6 +180,8 @@ const TEXT = {
     refresh: "Actualizar",
     groupBy: "Agrupar por",
     groupByOptions: { site: "Sitio", region: "Regional", client: "Cliente", responsible: "Responsable" } as Record<SitesPanelGroupBy, string>,
+    groupByHint: "Marca más de una opción para combinar los grupos (ej.: Regional · Cliente).",
+    countryHint: "Marca uno o más países.",
     country: "País", allCountries: "Todos los países",
     countries: { BR: "Brasil", US: "EE. UU.", CL: "Chile", MX: "México" } as Record<string, string>,
     status: "Estado",
@@ -265,7 +272,7 @@ const EXCEPTION_COLOR: Record<SitesPanelException["level"], string> = {
 
 const STORAGE_KEY = "sites-panel:prefs";
 
-function loadPrefs(): { tab?: Tab; groupBy?: SitesPanelGroupBy; status?: StatusKey[] } {
+function loadPrefs(): { tab?: Tab; groupBy?: SitesPanelGroupBy | SitesPanelGroupBy[]; status?: StatusKey[] } {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
   } catch {
@@ -273,7 +280,7 @@ function loadPrefs(): { tab?: Tab; groupBy?: SitesPanelGroupBy; status?: StatusK
   }
 }
 
-function savePrefs(prefs: { tab: Tab; groupBy: SitesPanelGroupBy; status: StatusKey[] }) {
+function savePrefs(prefs: { tab: Tab; groupBy: SitesPanelGroupBy[]; status: StatusKey[] }) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
   } catch {
@@ -310,8 +317,13 @@ export default function SitesPanel() {
   const navigate = useNavigate();
   const prefs = useMemo(loadPrefs, []);
   const [tab, setTab] = useState<Tab>(prefs.tab ?? "overview");
-  const [groupBy, setGroupBy] = useState<SitesPanelGroupBy>(prefs.groupBy ?? "site");
-  const [country, setCountry] = useState("");
+  const [groupBy, setGroupBy] = useState<SitesPanelGroupBy[]>(() => {
+    const saved = ([] as string[]).concat(prefs.groupBy ?? []).filter((k): k is SitesPanelGroupBy => GROUP_BY_KEYS.includes(k as SitesPanelGroupBy));
+    return GROUP_BY_KEYS.filter((k) => saved.includes(k)).length ? GROUP_BY_KEYS.filter((k) => saved.includes(k)) : ["site"];
+  });
+  const [countries, setCountries] = useState<string[]>([]);
+  const groupByParam = GROUP_BY_KEYS.filter((k) => groupBy.includes(k)).join(",");
+  const countryParam = countries.join(",");
   const [statusKeys, setStatusKeys] = useState<StatusKey[]>(() => {
     const saved = (prefs.status ?? []).filter((k) => STATUS_KEYS.includes(k));
     return saved.length ? saved : DEFAULT_STATUS;
@@ -328,8 +340,8 @@ export default function SitesPanel() {
   const load = useCallback(() => {
     setLoading(true);
     setError(false);
-    const params: Record<string, string> = { group_by: groupBy };
-    if (country) params.country = country;
+    const params: Record<string, string> = { group_by: groupByParam };
+    if (countryParam) params.country = countryParam;
     params.status = statusParam;
     dashboardApi
       .sites(params)
@@ -339,7 +351,7 @@ export default function SitesPanel() {
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [groupBy, country, statusParam]);
+  }, [groupByParam, countryParam, statusParam]);
 
   useEffect(() => {
     load();
@@ -352,7 +364,7 @@ export default function SitesPanel() {
   // Ao trocar agrupamento/filtros, o grupo em foco deixa de existir.
   useEffect(() => {
     setFocusGroup(null);
-  }, [groupBy, country, statusParam]);
+  }, [groupByParam, countryParam, statusParam]);
 
   const projectsById = useMemo(() => new Map((data?.projects ?? []).map((pr) => [pr.id, pr])), [data]);
   const selectedProject = selectedProjectId != null ? projectsById.get(selectedProjectId) ?? null : null;
@@ -368,12 +380,6 @@ export default function SitesPanel() {
     return rows;
   }, [data, focusGroup, onlyAlerts]);
 
-  function toggleStatus(key: StatusKey) {
-    // Combinação livre, mas sempre com pelo menos um status marcado.
-    setStatusKeys((current) =>
-      current.includes(key) ? (current.length > 1 ? current.filter((k) => k !== key) : current) : [...current, key],
-    );
-  }
 
   function openGroup(group: SitesPanelGroup) {
     setFocusGroup(group);
@@ -400,23 +406,34 @@ export default function SitesPanel() {
 
       {/* ---- Parte fixa: filtros ---- */}
       <div className="sp-filters">
-        <div className="sp-segmented" role="group" aria-label={p.groupBy}>
-          <span className="sp-filter-label">{p.groupBy}</span>
-          {(Object.keys(p.groupByOptions) as SitesPanelGroupBy[]).map((key) => (
-            <button key={key} className={groupBy === key ? "active" : ""} onClick={() => setGroupBy(key)}>
-              {p.groupByOptions[key]}
-            </button>
-          ))}
-        </div>
-        <select className="sp-select" value={country} onChange={(e) => setCountry(e.target.value)} aria-label={p.country}>
-          <option value="">{p.allCountries}</option>
-          {Object.entries(p.countries).map(([code, label]) => (
-            <option key={code} value={code}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <StatusDropdown p={p} selected={statusKeys} onToggle={toggleStatus} />
+        <MultiSelectFilter
+          label={p.groupBy}
+          hint={p.groupByHint}
+          options={GROUP_BY_KEYS.map((k) => ({ value: k, label: p.groupByOptions[k] }))}
+          selected={groupBy}
+          onChange={(next) => setGroupBy(next as SitesPanelGroupBy[])}
+          allLabel={p.groupByOptions.site}
+          separator=" · "
+          requireOne
+        />
+        <MultiSelectFilter
+          label={p.country}
+          hint={p.countryHint}
+          options={Object.entries(p.countries).map(([code, label]) => ({ value: code, label }))}
+          selected={countries}
+          onChange={setCountries}
+          allLabel={p.allCountries}
+          clearLabel={p.clearFilter}
+        />
+        <MultiSelectFilter
+          label={p.status}
+          options={STATUS_KEYS.map((k) => ({ value: k, label: p.statusOptions[k], hint: p.statusHints[k] }))}
+          selected={statusKeys}
+          onChange={(next) => setStatusKeys(next as StatusKey[])}
+          allLabel={p.statusAll}
+          allWhenFull
+          requireOne
+        />
         <label className="sp-toggle">
           <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} />
           {p.onlyAlerts}
@@ -474,7 +491,7 @@ export default function SitesPanel() {
                 onOpenSite={(siteId) => {
                   const group = data.groups.find((g) => g.key === `site:${siteId}`);
                   if (group) openGroup(group);
-                  else setGroupBy("site");
+                  else setGroupBy(["site"]);
                 }}
               />
             )}
@@ -500,72 +517,7 @@ export default function SitesPanel() {
 // Filtro de status (dropdown com checkbox)
 // ---------------------------------------------------------------------------
 
-function StatusDropdown({
-  p,
-  selected,
-  onToggle,
-}: {
-  p: PanelText;
-  selected: StatusKey[];
-  onToggle: (key: StatusKey) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const ordered = STATUS_KEYS.filter((k) => selected.includes(k));
-  const summary =
-    ordered.length === STATUS_KEYS.length
-      ? p.statusAll
-      : ordered.length <= 2
-        ? ordered.map((k) => p.statusOptions[k]).join(", ")
-        : `${p.statusOptions[ordered[0]]} +${ordered.length - 1}`;
-
-  return (
-    <div className="sp-dropdown" ref={ref}>
-      <button
-        type="button"
-        className="sp-select sp-dropdown-trigger"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="sp-muted">{p.status}:</span> {summary}
-        <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 18 }} />
-      </button>
-      {open && (
-        <div className="sp-dropdown-menu" role="listbox" aria-multiselectable="true">
-          {STATUS_KEYS.map((key) => {
-            const checked = selected.includes(key);
-            const locked = checked && selected.length === 1;
-            return (
-              <label key={key} className={`sp-dropdown-option${locked ? " locked" : ""}`}>
-                <input type="checkbox" checked={checked} disabled={locked} onChange={() => onToggle(key)} />
-                <span>
-                  {p.statusOptions[key]}
-                  <small>{p.statusHints[key]}</small>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
+const GROUP_BY_KEYS: SitesPanelGroupBy[] = ["region", "client", "site", "responsible"];
 
 // ---------------------------------------------------------------------------
 // Indicadores (parte fixa)

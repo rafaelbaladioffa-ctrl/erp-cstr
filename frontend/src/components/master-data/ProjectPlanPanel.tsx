@@ -1,3 +1,4 @@
+import MultiSelectFilter from "../ui/MultiSelectFilter";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { collaboratorsApi, planningApi, projectTasksApi, projectsApi } from "../../api/resources";
@@ -203,9 +204,9 @@ export default function ProjectPlanPanel() {
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set());
-  const [filterActivity, setFilterActivity] = useState("");
-  const [filterPath, setFilterPath] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
+  const [filterActivity, setFilterActivity] = useState<string[]>([]);
+  const [filterPath, setFilterPath] = useState<string[]>([]);
+  const [filterStatus, setFilterStatus] = useState<string[]>([]);
 
   const [assignCollaboratorIds, setAssignCollaboratorIds] = useState<number[]>([]);
   const [assignDeadline, setAssignDeadline] = useState("");
@@ -293,9 +294,9 @@ export default function ProjectPlanPanel() {
   }
 
   const filteredTasks = tasks.filter((t) => {
-    if (filterActivity && t.activity_code !== filterActivity) return false;
-    if (filterPath && t.path_code !== filterPath) return false;
-    if (filterStatus && t.status !== filterStatus) return false;
+    if (filterActivity.length && !filterActivity.includes(t.activity_code ?? "")) return false;
+    if (filterPath.length && !filterPath.includes(t.path_code ?? "")) return false;
+    if (filterStatus.length && !filterStatus.includes(t.status)) return false;
     return true;
   });
 
@@ -444,18 +445,27 @@ export default function ProjectPlanPanel() {
             </div>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-              <select className="select" style={{ maxWidth: 200 }} value={filterActivity} onChange={(e) => setFilterActivity(e.target.value)}>
-                <option value="">{p.todasAtividades}</option>
-                {distinctActivities.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
-              <select className="select" style={{ maxWidth: 160 }} value={filterPath} onChange={(e) => setFilterPath(e.target.value)}>
-                <option value="">{p.todosPaths}</option>
-                {distinctPaths.map((pp) => <option key={pp} value={pp}>{pp}</option>)}
-              </select>
-              <select className="select" style={{ maxWidth: 180 }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-                <option value="">{p.todosStatus}</option>
-                {distinctStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <MultiSelectFilter
+                label={p.atividade}
+                options={distinctActivities.map((a) => ({ value: a, label: a }))}
+                selected={filterActivity}
+                onChange={setFilterActivity}
+                allLabel={p.todasAtividades}
+              />
+              <MultiSelectFilter
+                label={p.path}
+                options={distinctPaths.map((pp) => ({ value: pp, label: pp }))}
+                selected={filterPath}
+                onChange={setFilterPath}
+                allLabel={p.todosPaths}
+              />
+              <MultiSelectFilter
+                label={p.status}
+                options={distinctStatuses.map((s) => ({ value: s, label: s }))}
+                selected={filterStatus}
+                onChange={setFilterStatus}
+                allLabel={p.todosStatus}
+              />
             </div>
 
             {loadingTasks && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{p.carregandoTarefas}</p>}

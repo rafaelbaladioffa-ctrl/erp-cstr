@@ -133,6 +133,9 @@ class DashboardTests(TestCase):
             actual_end=timezone.make_aware(datetime(2026, 2, 1, 10, 0)),
         )
         completed_task.collaborators.add(collaborator)
+        ProjectTaskAssignment.objects.filter(project_task=completed_task, collaborator=collaborator).update(
+            status=ProjectTask.STATUS_COMPLETED, assignment_start=completed_task.actual_start, assignment_end=completed_task.actual_end
+        )
         completed_task.rack_positions.set([rack_a, rack_b])
 
         other_task = Task.objects.create(name="Outra Tarefa")
@@ -167,6 +170,9 @@ class DashboardTests(TestCase):
             actual_end=timezone.make_aware(datetime(2026, 3, 10, 9, 0)),
         )
         pt_in_range.collaborators.add(collaborator)
+        ProjectTaskAssignment.objects.filter(project_task=pt_in_range).update(
+            status=ProjectTask.STATUS_COMPLETED, assignment_start=pt_in_range.actual_start, assignment_end=pt_in_range.actual_end
+        )
 
         pt_out_of_range = ProjectTask.objects.create(
             project=project,
@@ -176,6 +182,9 @@ class DashboardTests(TestCase):
             actual_end=timezone.make_aware(datetime(2026, 5, 10, 9, 0)),
         )
         pt_out_of_range.collaborators.add(collaborator)
+        ProjectTaskAssignment.objects.filter(project_task=pt_out_of_range).update(
+            status=ProjectTask.STATUS_COMPLETED, assignment_start=pt_out_of_range.actual_start, assignment_end=pt_out_of_range.actual_end
+        )
 
         response = self.client_api.get(
             reverse("dashboard-technical"),
@@ -709,6 +718,13 @@ class AuditLogApiTests(TestCase):
         searched = self.client_api.get("/api/audit-logs/", {"search": "Projeto X"})
         self.assertEqual(searched.data["count"], 1)
 
+        several = self.client_api.get("/api/audit-logs/", {"action": "create,update"})
+        self.assertEqual(several.data["count"], 2)
+        only_create = self.client_api.get("/api/audit-logs/", {"action": "create"})
+        self.assertEqual(only_create.data["count"], 1)
+        two_apps = self.client_api.get("/api/audit-logs/", {"app_label": "core,projects"})
+        self.assertEqual(two_apps.data["count"], 2)
+
     def test_readonly_no_write_actions(self):
         superuser = User.objects.create_superuser(username="auditor2", email="auditor2@example.com", password="test-password")
         self.client_api.force_authenticate(user=superuser)
@@ -935,6 +951,253 @@ class ProjectTaskDispatchApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
+
+    def test_dispatch_bulk_assigns_all_tasks_in_given_order(self):
+        task2 = ProjectTask.objects.create(project=self.project, custom_name="Tarefa 2", order=2)
+        task3 = ProjectTask.objects.create(project=self.project, custom_name="Tarefa 3", order=3)
+
+        response = self.client_api.post(
+            "/api/project-tasks/dispatch-bulk/",
+            {"task_ids": [task3.pk, self.task.pk, task2.pk], "collaborator_ids": [self.collaborator_a.pk]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["dispatched"], 3)
+        orders = {
+            a.project_task_id: a.queue_order
+            for a in ProjectTaskAssignment.objects.filter(collaborator=self.collaborator_a)
+        }
+        self.assertEqual(orders[task3.pk], 1)
+        self.assertEqual(orders[self.task.pk], 2)
+        self.assertEqual(orders[task2.pk], 3)
+
+    def test_dispatch_bulk_includes_paired_partner(self):
+        CollaboratorPair.objects.create(collaborator_a=self.collaborator_a, collaborator_b=self.collaborator_b, is_active=True)
+        task2 = ProjectTask.objects.create(project=self.project, custom_name="Tarefa 2", order=2)
+
+        response = self.client_api.post(
+            "/api/project-tasks/dispatch-bulk/",
+            {"task_ids": [self.task.pk, task2.pk], "collaborator_ids": [self.collaborator_a.pk]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(collaborator=self.collaborator_b).count(), 2)
+
+    def test_dispatch_bulk_is_all_or_nothing_for_unknown_task(self):
+        response = self.client_api.post(
+            "/api/project-tasks/dispatch-bulk/",
+            {"task_ids": [self.task.pk, 999999], "collaborator_ids": [self.collaborator_a.pk]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(ProjectTaskAssignment.objects.count(), 0)
+
+    def test_dispatch_bulk_requires_tasks_and_technicians(self):
+        self.assertEqual(
+            self.client_api.post("/api/project-tasks/dispatch-bulk/", {"task_ids": [], "collaborator_ids": [self.collaborator_a.pk]}, format="json").status_code,
+            400,
+        )
+        self.assertEqual(
+            self.client_api.post("/api/project-tasks/dispatch-bulk/", {"task_ids": [self.task.pk], "collaborator_ids": []}, format="json").status_code,
+            400,
+        )
+
+    def test_return_to_pool_resets_started_task_and_removes_dispatch(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json")
+        started = timezone.now() - timedelta(hours=2)
+        ProjectTask.objects.filter(pk=self.task.pk).update(
+            status=ProjectTask.STATUS_PAUSED, actual_start=started, paused_seconds=600, paused_at=timezone.now()
+        )
+
+        response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/return-to-pool/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, ProjectTask.STATUS_NOT_STARTED)
+        self.assertIsNone(self.task.actual_start)
+        self.assertIsNone(self.task.actual_end)
+        self.assertIsNone(self.task.actual_hours)
+        self.assertEqual(self.task.paused_seconds, 0)
+        self.assertIsNone(self.task.paused_at)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
+
+    def test_return_to_pool_works_for_completed_task_too(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json")
+        now = timezone.now()
+        ProjectTask.objects.filter(pk=self.task.pk).update(
+            status=ProjectTask.STATUS_COMPLETED, actual_start=now - timedelta(hours=3), actual_end=now, actual_hours=3
+        )
+
+        response = self.client_api.post(f"/api/project-tasks/{self.task.pk}/return-to-pool/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, ProjectTask.STATUS_NOT_STARTED)
+        self.assertIsNone(self.task.actual_end)
+        self.assertIsNone(self.task.actual_hours)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
+
+
+    def test_return_to_pool_for_one_technician_keeps_the_other(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk, self.collaborator_b.pk]}, format="json")
+        now = timezone.now()
+        ProjectTaskAssignment.objects.filter(project_task=self.task, collaborator=self.collaborator_a).update(
+            status=ProjectTask.STATUS_IN_PROGRESS, assignment_start=now - timedelta(hours=2)
+        )
+        ProjectTaskAssignment.objects.filter(project_task=self.task, collaborator=self.collaborator_b).update(
+            status=ProjectTask.STATUS_IN_PROGRESS, assignment_start=now - timedelta(hours=1)
+        )
+        self.task.sync_from_assignments()
+
+        response = self.client_api.post(
+            f"/api/project-tasks/{self.task.pk}/return-to-pool/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        remaining = ProjectTaskAssignment.objects.filter(project_task=self.task)
+        self.assertEqual([a.collaborator_id for a in remaining], [self.collaborator_b.pk])
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, ProjectTask.STATUS_IN_PROGRESS)
+        self.assertEqual(self.task.actual_start, remaining.first().assignment_start)
+
+    def test_return_to_pool_for_last_technician_resets_task(self):
+        self.client_api.post(f"/api/project-tasks/{self.task.pk}/dispatch/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json")
+        ProjectTaskAssignment.objects.filter(project_task=self.task).update(
+            status=ProjectTask.STATUS_IN_PROGRESS, assignment_start=timezone.now() - timedelta(hours=1)
+        )
+        self.task.sync_from_assignments()
+
+        response = self.client_api.post(
+            f"/api/project-tasks/{self.task.pk}/return-to-pool/", {"collaborator_ids": [self.collaborator_a.pk]}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, ProjectTask.STATUS_NOT_STARTED)
+        self.assertIsNone(self.task.actual_start)
+        self.assertEqual(ProjectTaskAssignment.objects.filter(project_task=self.task).count(), 0)
+
+
+class OperationsWorkingSiteTests(TestCase):
+    """O site mostrado ao lado do técnico na Operação do Dia / Timeline é o das tarefas
+    dele no dia — não os sites do cadastro."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        self.client_obj = Client.objects.create(company=self.company, legal_name="Cliente Sites")
+        self.site_65 = Site.objects.create(client=self.client_obj, name="GRU65")
+        self.site_60 = Site.objects.create(client=self.client_obj, name="GRU60")
+        self.site_1 = Site.objects.create(client=self.client_obj, name="VCP1")
+        self.project_65 = Project.objects.create(company=self.company, name="Projeto 65", site=self.site_65, status=Project.STATUS_IN_PROGRESS)
+        self.project_60 = Project.objects.create(company=self.company, name="Projeto 60", site=self.site_60, status=Project.STATUS_IN_PROGRESS)
+        self.tech = make_collaborator(self.company, "Técnico Multi-site")
+        self.tech.sites.set([self.site_65, self.site_1])  # cadastro: GRU65 e VCP1
+        self.admin = User.objects.create_superuser(username="site_admin", email="site_admin@example.com", password="test-password")
+        self.client_api.force_authenticate(user=self.admin)
+        self.today = timezone.localdate()
+
+    def assign(self, project, status, **task_fields):
+        task = ProjectTask.objects.create(project=project, custom_name=f"Tarefa {project.name} {status}", status=status, **task_fields)
+        return ProjectTaskAssignment.objects.create(project_task=task, collaborator=self.tech, status=status)
+
+    def board_site(self):
+        response = self.client_api.get("/api/operations/board/", {"site": "all"})
+        self.assertEqual(response.status_code, 200, response.data)
+        return next(t for t in response.data["technicians"] if t["id"] == self.tech.pk)["site_name"]
+
+    def timeline_site(self):
+        response = self.client_api.get("/api/operations/timeline/", {"site": "all", "date": str(self.today)})
+        self.assertEqual(response.status_code, 200, response.data)
+        return next(t for t in response.data["technicians"] if t["id"] == self.tech.pk)["site_name"]
+
+    def test_no_tasks_shows_no_site(self):
+        self.assertEqual(self.board_site(), "")
+        self.assertEqual(self.timeline_site(), "")
+
+    def test_shows_site_of_task_in_execution_not_registered_sites(self):
+        now = timezone.now()
+        assignment = self.assign(self.project_60, ProjectTask.STATUS_IN_PROGRESS, actual_start=now)
+        ProjectTaskAssignment.objects.filter(pk=assignment.pk).update(assignment_start=now)
+
+        self.assertEqual(self.board_site(), "GRU60")
+        self.assertEqual(self.timeline_site(), "GRU60")
+
+    def test_finished_day_keeps_site_of_completed_tasks(self):
+        now = timezone.now()
+        assignment = self.assign(self.project_65, ProjectTask.STATUS_COMPLETED, actual_start=now - timedelta(hours=2), actual_end=now)
+        ProjectTaskAssignment.objects.filter(pk=assignment.pk).update(assignment_start=now - timedelta(hours=2), assignment_end=now)
+
+        self.assertEqual(self.board_site(), "GRU65")
+
+    def test_two_sites_in_the_same_day_current_first(self):
+        now = timezone.now()
+        done = self.assign(self.project_65, ProjectTask.STATUS_COMPLETED, actual_start=now - timedelta(hours=5), actual_end=now - timedelta(hours=3))
+        ProjectTaskAssignment.objects.filter(pk=done.pk).update(assignment_start=now - timedelta(hours=5), assignment_end=now - timedelta(hours=3))
+        running = self.assign(self.project_60, ProjectTask.STATUS_IN_PROGRESS, actual_start=now - timedelta(hours=1))
+        ProjectTaskAssignment.objects.filter(pk=running.pk).update(assignment_start=now - timedelta(hours=1))
+
+        self.assertEqual(self.board_site(), "GRU60, GRU65")
+
+
+class OperationsMultiSiteFilterTests(TestCase):
+    """O filtro de site da Central de Operações aceita um site, vários (CSV) ou todos."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        client = Client.objects.create(company=self.company, legal_name="Cliente Multi")
+        self.sites = {n: Site.objects.create(client=client, name=n) for n in ("GRU65", "GRU60", "VCP1")}
+        self.techs = {}
+        self.projects = {}
+        for name, site in self.sites.items():
+            tech = make_collaborator(self.company, f"Técnico {name}")
+            tech.sites.set([site])
+            self.techs[name] = tech
+            project = Project.objects.create(company=self.company, name=f"Projeto {name}", site=site, status=Project.STATUS_IN_PROGRESS)
+            self.projects[name] = project
+            ProjectTask.objects.create(
+                project=project, custom_name=f"Tarefa {name}", status=ProjectTask.STATUS_NOT_STARTED, planned_start=timezone.now()
+            )
+        # técnico lotado em dois dos sites filtrados não pode aparecer duas vezes
+        self.techs["GRU65"].sites.add(self.sites["GRU60"])
+        admin = User.objects.create_superuser(username="multi_admin", email="multi_admin@example.com", password="test-password")
+        self.client_api.force_authenticate(user=admin)
+
+    def ids(self, endpoint, site):
+        response = self.client_api.get(f"/api/operations/{endpoint}/", {"site": site})
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data
+
+    def site_param(self, *names):
+        return ",".join(str(self.sites[n].pk) for n in names)
+
+    def test_board_filters_by_several_sites_without_duplicates(self):
+        data = self.ids("board", self.site_param("GRU65", "GRU60"))
+        names = sorted(t["name"] for t in data["technicians"])
+        self.assertEqual(names, ["Técnico GRU60", "Técnico GRU65"])
+        self.assertEqual(sorted(t["project_name"] for t in data["pool"]), ["Projeto GRU60", "Projeto GRU65"])
+
+    def test_board_single_and_all_still_work(self):
+        self.assertEqual([t["name"] for t in self.ids("board", self.sites["VCP1"].pk)["technicians"]], ["Técnico VCP1"])
+        self.assertEqual(len(self.ids("board", "all")["technicians"]), 3)
+
+    def test_timeline_filters_by_several_sites(self):
+        data = self.ids("timeline", self.site_param("VCP1", "GRU60"))
+        # o técnico lotado em GRU65 e GRU60 entra uma única vez
+        self.assertEqual(sorted(t["name"] for t in data["technicians"]), ["Técnico GRU60", "Técnico GRU65", "Técnico VCP1"])
+        only_vcp = self.ids("timeline", self.site_param("VCP1"))
+        self.assertEqual([t["name"] for t in only_vcp["technicians"]], ["Técnico VCP1"])
+
+    def test_reports_accept_several_sites(self):
+        response = self.client_api.get("/api/operations/reports/", {"site": self.site_param("GRU65", "VCP1")})
+        self.assertEqual(response.status_code, 200, getattr(response, "data", None))
+
+    def test_invalid_site_value_means_all(self):
+        self.assertEqual(len(self.ids("board", "abc")["technicians"]), 3)
 
 
 class TechnicianAbsenceApiTests(TestCase):
@@ -6132,7 +6395,9 @@ class QueryScalingTests(TestCase):
             planned_start=now, actual_start=now,
         )
         queued = ProjectTask.objects.create(project=project, task=self.catalog, order=2, planned_start=now)
-        ProjectTaskAssignment.objects.create(project_task=running, collaborator=collaborator, assignment_start=now)
+        ProjectTaskAssignment.objects.create(
+            project_task=running, collaborator=collaborator, assignment_start=now, status=ProjectTask.STATUS_IN_PROGRESS
+        )
         ProjectTaskAssignment.objects.create(project_task=queued, collaborator=collaborator)
         return collaborator
 
@@ -6367,9 +6632,12 @@ class OperationsReportsV2Tests(TestCase):
             quantity_planned=quantity,
         )
         for collaborator, a_start, a_end, a_hours in assignments:
+            # Técnico que concluiu a própria parte (status por técnico).
             ProjectTaskAssignment.objects.create(
                 project_task=task,
                 collaborator=collaborator,
+                status=ProjectTask.STATUS_COMPLETED,
+                completion_outcome=outcome,
                 assignment_start=a_start,
                 assignment_end=a_end,
                 actual_hours=Decimal(str(a_hours)) if a_hours is not None else None,
@@ -6432,18 +6700,117 @@ class OperationsReportsV2Tests(TestCase):
         P = self.Presence
         self.assertIn(P.STATUS_MEAL, P.SELECTABLE_STATUSES)
         self.assertIn(P.STATUS_MEETING, P.SELECTABLE_STATUSES)
+        self.assertIn(P.STATUS_TRAVELING, P.SELECTABLE_STATUSES)
         self.check_in(self.tech_a, [
             (P.STATUS_AVAILABLE, self.at(8)),
             (P.STATUS_IN_PROGRESS, self.at(9)),
             (P.STATUS_MEAL, self.at(12)),
             (P.STATUS_MEETING, self.at(13)),
+            (P.STATUS_TRAVELING, self.at(14)),
+            (P.STATUS_IN_PROGRESS, self.at(15)),
+            (P.STATUS_OFF_DUTY, self.at(17)),
+        ])
+        row = self.tech_row(self.get(), self.tech_a)
+        self.assertEqual(row["productive_hours"], 5.0)
+        self.assertEqual(row["external_block_hours"], 0.0)
+        self.assertEqual(row["internal_idle_hours"], 1.0)
+
+    def test_support_status_counts_as_productive(self):
+        P = self.Presence
+        self.assertIn(P.STATUS_SUPPORT, P.SELECTABLE_STATUSES)
+        self.assertEqual(P.PRESENCE_PRODUCTIVITY[P.STATUS_SUPPORT], P.PRODUCTIVITY_PRODUCTIVE)
+        self.check_in(self.tech_a, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(9)),
+            (P.STATUS_SUPPORT, self.at(12)),
             (P.STATUS_IN_PROGRESS, self.at(14)),
             (P.STATUS_OFF_DUTY, self.at(17)),
         ])
         row = self.tech_row(self.get(), self.tech_a)
-        self.assertEqual(row["productive_hours"], 6.0)
+        self.assertEqual(row["productive_hours"], 8.0)  # 9–12 + 12–14 (apoio) + 14–17
+        self.assertEqual(row["internal_idle_hours"], 1.0)  # só 8–9h
         self.assertEqual(row["external_block_hours"], 0.0)
-        self.assertEqual(row["internal_idle_hours"], 1.0)
+
+    def test_status_hours_per_technician_with_category(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(9)),
+            (P.STATUS_LUNCH, self.at(12)),
+            (P.STATUS_SUPPORT, self.at(13)),
+            (P.STATUS_SITE_BLOCKED, self.at(14)),
+            (P.STATUS_OFF_DUTY, self.at(15)),
+        ])
+        data = self.get()
+        row = self.tech_row(data, self.tech_a)
+        self.assertEqual(row["status_hours"][P.STATUS_IN_PROGRESS], 3.0)
+        self.assertEqual(row["status_hours"][P.STATUS_LUNCH], 1.0)
+        self.assertEqual(row["status_hours"][P.STATUS_SUPPORT], 1.0)
+        self.assertEqual(row["status_hours"][P.STATUS_SITE_BLOCKED], 1.0)
+        self.assertEqual(row["status_hours"][P.STATUS_AVAILABLE], 1.0)
+        self.assertEqual(row["status_hours"][P.STATUS_MEAL], 0.0)
+        categories = {c["status"]: c["category"] for c in data["status_categories"]}
+        self.assertEqual(categories[P.STATUS_IN_PROGRESS], "productive")
+        self.assertEqual(categories[P.STATUS_SUPPORT], "productive")
+        self.assertEqual(categories[P.STATUS_AVAILABLE], "unproductive")
+        self.assertEqual(categories[P.STATUS_SITE_BLOCKED], "unproductive")
+        self.assertEqual(categories[P.STATUS_LUNCH], "neutral")
+        self.assertNotIn(P.STATUS_OFF_DUTY, categories)
+
+    def test_production_is_split_by_hours_and_counts_only_fully_completed_tasks(self):
+        self.setup_catalog()
+        generated = self.make_generated(10, length_m=Decimal(50))  # 10 cabos × 50 m = 500 m
+        self.make_task(
+            self.at(8), self.at(11), 3,
+            [(self.tech_a, self.at(8), self.at(11), 3), (self.tech_b, self.at(10), self.at(11), 1)],
+            generated=generated,
+        )
+        partial = self.make_generated(10, length_m=Decimal(50))
+        self.make_task(
+            self.at(8), self.at(10), 2,
+            [(self.tech_a, self.at(8), self.at(10), 2)],
+            generated=partial,
+            outcome=ProjectTask.COMPLETION_OUTCOME_PARTIAL,
+        )
+        data = self.get()
+        run_a = self.tech_row(data, self.tech_a)["production"]["TST-RPT-RUN"]
+        run_b = self.tech_row(data, self.tech_b)["production"]["TST-RPT-RUN"]
+        self.assertEqual(run_a["quantity"], 7.5)  # 3h de 4h → 75%
+        self.assertEqual(run_a["meters"], 375.0)
+        self.assertEqual(run_a["hours"], 3.0)
+        self.assertEqual(run_b["quantity"], 2.5)
+        self.assertEqual(run_b["meters"], 125.0)
+        self.assertEqual(run_a["meters_utp"], 0.0)  # família do teste não é UTP
+        self.assertEqual([a["code"] for a in data["production_activities"]], ["TST-RPT-RUN"])
+
+    def test_labels_per_cable_follows_the_connector_layout_of_each_family(self):
+        from api.reports import labels_per_cable
+
+        def family(connector_a, connector_b, fibers):
+            return CableFamily(code="X", name="X", medium="FIBER", connector_a=connector_a, connector_b=connector_b, fiber_count=fibers)
+
+        self.assertEqual(labels_per_cable(family("LC", "LC", 8)), 8)       # 4 + 4
+        self.assertEqual(labels_per_cable(family("LC", "LC", 36)), 36)     # 18 + 18
+        self.assertEqual(labels_per_cable(family("LC", "LC", 2)), 2)       # Robust: 1 + 1
+        self.assertEqual(labels_per_cable(family("", "", 2)), 2)           # RAF (sem conector cadastrado)
+        self.assertEqual(labels_per_cable(family("MPO", "LC", 8)), 5)      # breakout: 1 + 4
+        self.assertEqual(labels_per_cable(family("MPO", "MPO", 288)), 2)   # tronco MPO-MPO
+        self.assertEqual(labels_per_cable(family("RJ45", "RJ45", None)), 2)  # UTP
+        self.assertEqual(labels_per_cable(None), 0)
+
+    def test_label_production_counts_labels_not_cables(self):
+        self.setup_catalog()
+        self.activity = Activity.objects.get(code="CAB-LABEL")  # já existe no catálogo (migração)
+        CableFamily.objects.filter(pk=self.family.pk).update(connector_a="LC", connector_b="LC", fiber_count=8)
+        generated = self.make_generated(10)  # 10 cabos 8F LC-LC = 80 labels
+        self.make_task(
+            self.at(8), self.at(10), 2,
+            [(self.tech_a, self.at(8), self.at(10), 2)],
+            generated=generated,
+        )
+        row = self.tech_row(self.get(), self.tech_a)["production"]["CAB-LABEL"]
+        self.assertEqual(row["quantity"], 10.0)
+        self.assertEqual(row["labels"], 80.0)
 
     def test_internal_idle_limit_is_30_minutes_per_day(self):
         P = self.Presence
@@ -6568,6 +6935,21 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(row["hh_per_meter"]["median"], 0.0057)  # 4 HH / 700 m (mediana)
         self.assertEqual(data["activity_excluded_no_catalog"], 0)
 
+    def test_activity_reference_includes_mean_standard_deviation_and_cv(self):
+        self.setup_catalog()
+        for hours in (2, 3, 4, 5, 6):  # 10 cabos cada → HH/unidade 0,2 · 0,3 · 0,4 · 0,5 · 0,6
+            generated = self.make_generated(10)
+            self.make_task(
+                self.at(8), self.at(8 + hours), hours,
+                [(self.tech_a, self.at(8), self.at(8 + hours), hours)],
+                generated=generated,
+            )
+        dist = self.get()["activity_productivity"][0]["hh_per_unit"]
+        self.assertEqual(dist["median"], 0.4)
+        self.assertEqual(dist["mean"], 0.4)
+        self.assertEqual(dist["std_dev"], 0.1581)  # amostral: √(0,10 ÷ 4)
+        self.assertEqual(dist["cv_pct"], 39.5)
+
     def test_activity_with_small_sample_has_no_reference(self):
         self.setup_catalog()
         for _ in range(3):
@@ -6595,7 +6977,8 @@ class OperationsReportsV2Tests(TestCase):
 
     def test_tracking_rate(self):
         self.make_task(self.at(8), self.at(9), 1, [(self.tech_a, self.at(8), self.at(9), 1)])
-        self.make_task(None, self.at(10), None, [(self.tech_a, None, None, None)])
+        # Técnico concluiu (há fim registrado) mas sem horas apontadas.
+        self.make_task(None, self.at(10), None, [(self.tech_a, None, self.at(10), None)])
         data = self.get()
         self.assertEqual(data["stats"]["tracking_rate_pct"], 50)
         self.assertEqual(self.tech_row(data, self.tech_a)["tracking_rate_pct"], 50)

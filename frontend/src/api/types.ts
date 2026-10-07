@@ -846,8 +846,9 @@ export interface TechnicianPresence {
   id: number;
   collaborator: number;
   date: string;
-  status: "not_started" | "available" | "in_progress" | "lunch" | "personal" | "meal" | "meeting" | "site_blocked" | "awaiting_release" | "off_duty";
+  status: "not_started" | "available" | "in_progress" | "lunch" | "personal" | "meal" | "meeting" | "traveling" | "support" | "site_blocked" | "awaiting_release" | "off_duty";
   status_display: string;
+  status_since: string | null;
   checked_in_at: string | null;
   checked_out_at: string | null;
 }
@@ -856,6 +857,8 @@ export interface StatusEvent {
   status: string;
   status_display: string;
   changed_at: string;
+  /** Trecho corrigido pelo administrador. */
+  adjusted?: boolean;
 }
 
 export interface PairPartner {
@@ -947,6 +950,10 @@ export interface TimelineBlock {
   actual_start: string | null;
   actual_end: string | null;
   estimated_hours: string | null;
+  /** Trechos em que o técnico executou de fato (sem as pausas); null = dado antigo sem rastreamento próprio. */
+  working_intervals?: { start: string; end: string | null }[] | null;
+  /** Apontamento corrigido pelo administrador. */
+  adjusted?: boolean;
 }
 
 export interface TimelineTechnician {
@@ -1006,6 +1013,10 @@ export interface ReportsTechnician {
   id: number;
   name: string;
   site_name: string;
+  /** Horas por status de presença no período (chaves = status de OperationsReports.status_categories). */
+  status_hours: Record<string, number>;
+  /** Produção física por código de atividade (crédito proporcional às horas, só tarefas fechadas). */
+  production: Record<string, { quantity: number; labels: number; meters: number; meters_utp: number; hours: number }>;
   productive_hours: number;
   /** @deprecated v1 — usar productive_hours. */
   worked_hours?: number;
@@ -1036,6 +1047,9 @@ export interface ReportsDistribution {
   median: number;
   p25: number;
   p75: number;
+  mean: number;
+  std_dev: number;
+  cv_pct: number | null;
 }
 
 export interface ReportsActivityProductivity {
@@ -1101,6 +1115,9 @@ export interface OperationsReports {
   activities?: ReportsActivity[];
   today_technicians: ReportsTechnicianToday[];
   unproductive_by_reason: ReportsUnproductiveReason[];
+  /** Status contabilizados no card "Horas por status", na ordem de exibição, com a classificação. */
+  production_activities: { code: string; name: string; unit: string }[];
+  status_categories: { status: string; category: "productive" | "unproductive" | "neutral" }[];
   log_entries: ReportsLogEntry[];
 }
 
@@ -1412,7 +1429,7 @@ export interface SitesPanelException {
 
 export interface SitesPanelData {
   date: string;
-  group_by: SitesPanelGroupBy;
+  group_by: string; // uma ou mais dimensões separadas por vírgula (ex.: "region,client")
   status_filters: string[];
   include_technicians: boolean;
   summary: {

@@ -247,6 +247,37 @@ class SitesPanelApiTests(TestCase):
         self.assertIn(f"region:{self.region.id}", keys)
         self.assertEqual(keys["region:none"]["label"], "Sem regional")
 
+    def test_group_by_accepts_several_dimensions_combined(self):
+        self._login_superuser()
+        data = self.api.get(reverse("dashboard-sites"), {"group_by": "site,client"}).json()
+        self.assertEqual(data["group_by"], "client,site")  # hierarquia fixa: Cliente antes de Site
+        groups = {g["key"]: g for g in data["groups"]}
+        key = f"client:{self.client_a.id}|site:{self.site_1.id}"
+        self.assertIn(key, groups)
+        self.assertTrue(groups[key]["label"].startswith("Cliente A · "))
+        self.assertIn("Campinas", groups[key]["label"])
+        self.assertIn(self.project_1.id, groups[key]["project_ids"])
+
+    def test_group_by_region_and_site_keeps_technicians_without_dispatch(self):
+        self._login_superuser()
+        data = self.api.get(reverse("dashboard-sites"), {"group_by": "region,site"}).json()
+        groups = {g["key"]: g for g in data["groups"]}
+        site_2_group = groups[f"region:none|site:{self.site_2.id}"]
+        self.assertEqual(site_2_group["technicians"]["unproductive"], 1)
+
+    def test_group_by_invalid_values_fall_back_to_site(self):
+        self._login_superuser()
+        data = self.api.get(reverse("dashboard-sites"), {"group_by": "foo,bar"}).json()
+        self.assertEqual(data["group_by"], "site")
+
+    def test_country_filter_accepts_several_countries(self):
+        self._login_superuser()
+        country = self.region.country
+        both = self.api.get(reverse("dashboard-sites"), {"country": f"{country},ZZ"}).json()
+        self.assertEqual([p["id"] for p in both["projects"]], [self.project_1.id])
+        none = self.api.get(reverse("dashboard-sites"), {"country": "ZZ"}).json()
+        self.assertEqual(none["projects"], [])
+
     def test_client_view_counts_only_dispatched_technicians(self):
         self._login_superuser()
         data = self.api.get(reverse("dashboard-sites"), {"group_by": "client"}).json()

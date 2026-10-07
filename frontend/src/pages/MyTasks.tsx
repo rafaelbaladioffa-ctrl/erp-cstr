@@ -12,7 +12,6 @@ const TEXT = {
     noProfile: "Seu usuário ainda não está vinculado a um Técnico. Peça para o administrador vincular seu usuário no cadastro de Técnicos.",
     loading: "Carregando...",
     myStatus: "Meu status",
-    autoInProgress: "Em Execução — definido automaticamente enquanto uma tarefa está em andamento",
     selectStatus: "Selecione seu status",
     reopenHint: 'Expediente encerrado — escolha "Disponível" acima pra reabrir, se precisar.',
     queueBadge: (n: number) => `Fila #${n}`,
@@ -24,13 +23,18 @@ const TEXT = {
     notes: "Observações", notesPlaceholder: "Anote algo sobre esta tarefa...",
     noTasks: "Nenhuma tarefa nesta aba.",
     since: "desde", at: "às",
+    pauseWarning: (names: string) => `Suas tarefas em andamento serão pausadas: ${names}. Para retomar, toque em Iniciar na tarefa.`,
+    changeStatusQ: (label: string) => `Alterar seu status para "${label}"?`,
+    endShiftQ: "Encerrar seu expediente?",
     statusLabels: { not_started: "Não Iniciada", in_progress: "Em Andamento", paused: "Pausada", completed: "Concluída", canceled: "Cancelada" } as Record<string, string>,
     presenceOptions: [
       { key: "available", label: "Disponível" },
       { key: "lunch", label: "Horário de Almoço" },
       { key: "personal", label: "Particular" },
-      { key: "meal", label: "Refeição" },
+      { key: "meal", label: "Café" },
       { key: "meeting", label: "Reunião" },
+      { key: "traveling", label: "Em Deslocamento" },
+      { key: "support", label: "Apoio a outro técnico" },
       { key: "site_blocked", label: "Sem Acesso ao Site" },
       { key: "awaiting_release", label: "Aguardando Liberações" },
       { key: "off_duty", label: "Fim de Expediente" },
@@ -51,7 +55,6 @@ const TEXT = {
     noProfile: "Your user is not yet linked to a Technician. Ask an administrator to link your user in the Technicians register.",
     loading: "Loading...",
     myStatus: "My status",
-    autoInProgress: "In Progress — set automatically while a task is running",
     selectStatus: "Select your status",
     reopenHint: 'Shift ended — choose "Available" above to reopen if needed.',
     queueBadge: (n: number) => `Queue #${n}`,
@@ -63,13 +66,18 @@ const TEXT = {
     notes: "Notes", notesPlaceholder: "Add a note about this task...",
     noTasks: "No tasks in this tab.",
     since: "since", at: "at",
+    pauseWarning: (names: string) => `Your running tasks will be paused: ${names}. To resume, tap Start on the task.`,
+    changeStatusQ: (label: string) => `Change your status to "${label}"?`,
+    endShiftQ: "End your shift?",
     statusLabels: { not_started: "Not Started", in_progress: "In Progress", paused: "Paused", completed: "Completed", canceled: "Canceled" } as Record<string, string>,
     presenceOptions: [
       { key: "available", label: "Available" },
       { key: "lunch", label: "Lunch break" },
       { key: "personal", label: "Personal" },
-      { key: "meal", label: "Meal" },
+      { key: "meal", label: "Coffee Break" },
       { key: "meeting", label: "Meeting" },
+      { key: "traveling", label: "Traveling" },
+      { key: "support", label: "Supporting another technician" },
       { key: "site_blocked", label: "No Site Access" },
       { key: "awaiting_release", label: "Awaiting Clearance" },
       { key: "off_duty", label: "End of Shift" },
@@ -90,7 +98,6 @@ const TEXT = {
     noProfile: "Tu usuario aún no está vinculado a un Técnico. Pide al administrador que vincule tu usuario en el registro de Técnicos.",
     loading: "Cargando...",
     myStatus: "Mi estado",
-    autoInProgress: "En Ejecución — definido automáticamente mientras una tarea está en curso",
     selectStatus: "Selecciona tu estado",
     reopenHint: 'Jornada cerrada — elige "Disponible" arriba para reabrir si es necesario.',
     queueBadge: (n: number) => `Cola #${n}`,
@@ -102,13 +109,18 @@ const TEXT = {
     notes: "Observaciones", notesPlaceholder: "Añade una nota sobre esta tarea...",
     noTasks: "Sin tareas en esta pestaña.",
     since: "desde", at: "a las",
+    pauseWarning: (names: string) => `Sus tareas en curso se pausarán: ${names}. Para retomar, toque Iniciar en la tarea.`,
+    changeStatusQ: (label: string) => `¿Cambiar su estado a "${label}"?`,
+    endShiftQ: "¿Finalizar su jornada?",
     statusLabels: { not_started: "No Iniciada", in_progress: "En Curso", paused: "Pausada", completed: "Completada", canceled: "Cancelada" } as Record<string, string>,
     presenceOptions: [
       { key: "available", label: "Disponible" },
       { key: "lunch", label: "Hora de almuerzo" },
       { key: "personal", label: "Personal" },
-      { key: "meal", label: "Comida" },
+      { key: "meal", label: "Café" },
       { key: "meeting", label: "Reunión" },
+      { key: "traveling", label: "En desplazamiento" },
+      { key: "support", label: "Apoyo a otro técnico" },
       { key: "site_blocked", label: "Sin acceso al sitio" },
       { key: "awaiting_release", label: "Esperando autorizaciones" },
       { key: "off_duty", label: "Fin de jornada" },
@@ -142,6 +154,8 @@ const PRESENCE_DOT_COLOR: Record<string, string> = {
   personal: "var(--blue)",
   meal: "var(--teal)",
   meeting: "var(--pink)",
+  traveling: "var(--cyan)",
+  support: "var(--lime)",
   site_blocked: "var(--red)",
   awaiting_release: "var(--orange)",
   off_duty: "var(--text-faint)",
@@ -210,10 +224,16 @@ export default function MyTasks() {
 
   async function setPresenceStatus(status: string) {
     const label = p.presenceOptions.find((opt) => opt.key === status)?.label || status;
-    const question = status === "off_duty" ? "Encerrar seu expediente?" : `Alterar seu status para "${label}"?`;
-    if (!confirm(question)) return;
+    const running = tasks.filter((t) => t.status === "in_progress");
+    const question = status === "off_duty" ? p.endShiftQ : p.changeStatusQ(label);
+    // Qualquer status escolhido tira o técnico da execução: avisa que as tarefas em andamento serão pausadas.
+    const warning = running.length > 0 ? `
+
+${p.pauseWarning(running.map((t) => t.task_name).join(", "))}` : "";
+    if (!confirm(question + warning)) return;
     const updated = await presenceApi.setStatus(status);
     setPresence(updated);
+    if (running.length > 0) loadTasks();
   }
 
   async function save(id: number, patch: Partial<ProjectTask>) {
@@ -263,7 +283,6 @@ export default function MyTasks() {
 
   const visibleTasks = tasks.filter((t) => tabOf(t.status) === activeTab);
   const isOffDuty = presence?.status === "off_duty";
-  const isAutoInProgress = presence?.status === "in_progress";
 
   return (
     <div className="mt-screen">
@@ -275,8 +294,8 @@ export default function MyTasks() {
             <div className="mt-presence-dot" style={{ background: PRESENCE_DOT_COLOR[presence.status] }} />
             <div>
               <div className="mt-presence-label">{presence.status_display}</div>
-              {presence.checked_in_at && !isOffDuty && (
-                <div className="mt-presence-since">{p.since} {formatTime(presence.checked_in_at)}</div>
+              {(presence.status_since || presence.checked_in_at) && !isOffDuty && (
+                <div className="mt-presence-since">{p.since} {formatTime(presence.status_since || presence.checked_in_at)}</div>
               )}
               {isOffDuty && presence.checked_out_at && (
                 <div className="mt-presence-since">{p.at} {formatTime(presence.checked_out_at)}</div>
@@ -289,28 +308,29 @@ export default function MyTasks() {
       {presence && (
         <div className="mt-status-select-row">
           <label className="mt-status-select-label">{p.myStatus}</label>
-          {isAutoInProgress ? (
-            <div className="input" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
-              {p.autoInProgress}
-            </div>
-          ) : (
-            <select
-              className="select"
-              value={presence.status === "not_started" ? "" : presence.status}
-              onChange={(e) => setPresenceStatus(e.target.value)}
-            >
-              {presence.status === "not_started" && (
-                <option value="" disabled>
-                  {p.selectStatus}
-                </option>
-              )}
-              {p.presenceOptions.map((opt) => (
-                <option key={opt.key} value={opt.key}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          )}
+          <select
+            className="select"
+            value={presence.status === "not_started" ? "" : presence.status}
+            onChange={(e) => setPresenceStatus(e.target.value)}
+          >
+            {presence.status === "not_started" && (
+              <option value="" disabled>
+                {p.selectStatus}
+              </option>
+            )}
+            {/* "Em Execução" é definido pelo sistema (não dá pra escolher), mas o técnico
+                precisa poder sair dele: escolher outro status pausa as tarefas em andamento. */}
+            {presence.status === "in_progress" && (
+              <option value="in_progress" disabled>
+                {presence.status_display}
+              </option>
+            )}
+            {p.presenceOptions.map((opt) => (
+              <option key={opt.key} value={opt.key}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           {isOffDuty && (
             <div className="mt-status-reopen-hint">
               {p.reopenHint}

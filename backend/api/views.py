@@ -1,6 +1,6 @@
 import csv
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models.functions import Coalesce
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
@@ -38,6 +38,7 @@ from core.models import (
     get_collaborator_role,
 )
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
+from dispatch.services import release_stuck_execution
 from master_data.models import (
     Activity,
     CableAlias,
@@ -109,6 +110,7 @@ from updates.project_client_mail import send_project_daily_update_email, send_we
 from updates.project_pdf import build_project_daily_update_pdf
 
 from .permissions import (
+    AllowManageProjectTasks,
     DenyClientScopedUsers,
     IsSuperUser,
     require_perms,
@@ -116,7 +118,7 @@ from .permissions import (
     RequireViewPermissionForActions,
     ViewAwareModelPermissions,
 )
-from core.collaborator_scope import scope_collaborators, scope_supervisor_projects
+from core.collaborator_scope import managed_collaborator_ids, scope_collaborators, scope_supervisor_projects
 from .serializers import (
     AuditLogSerializer,
     ClientCrudSerializer,
@@ -147,6 +149,7 @@ from .serializers import (
     CategoryCrudSerializer,
     DailyUpdateSerializer,
     JobTitleCrudSerializer,
+    MyTaskSerializer,
     MyTaskUpdateSerializer,
     NotificationSerializer,
     ProjectAttachmentSerializer,
@@ -448,7 +451,24 @@ class CollaboratorViewSet(viewsets.ReadOnlyModelViewSet):
         return scope_collaborators(queryset, self.request.user)
 
 
-class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
+def _collaborators_outside_team(user, collaborator_ids):
+    """Supervisor só aloca/despacha técnicos sob a sua gestão: devolve a resposta 403 se algum
+    técnico informado estiver fora da equipe (None quando está tudo certo ou não há restrição)."""
+    allowed = managed_collaborator_ids(user)
+    if allowed is None:
+        return None
+    requested = set()
+    for value in collaborator_ids:
+        try:
+            requested.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    if requested - allowed:
+        return Response({"detail": "Só é possível alocar técnicos que estão sob a sua gestão."}, status=403)
+    return None
+
+
+class ProjectViewSet(AllowManageProjectTasks, RequireChangePermissionForActions, viewsets.ModelViewSet):
     queryset = (
         Project.objects.select_related(
             "client", "site", "category", "consultimer_type", "responsible_cstr__person", "responsible_client__person"
@@ -459,6 +479,8 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
     permission_classes = [ViewAwareModelPermissions]
     change_permission_actions = ("tasks_bulk", "import_tasks", "rack_positions_bulk", "tasks_create", "tasks_create_custom")
+    # Ajuste em massa de tarefas (status, datas, colaboradores) também liberado a quem gerencia tarefas.
+    manage_task_actions = ("tasks_bulk",)
 
     def get_queryset(self):
         queryset = super().get_queryset().annotate(
@@ -597,6 +619,13 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
         data = payload.validated_data
         bulk_action = data["action"]
 
+        # Quem só gerencia tarefas (sem poder de alterar/criar projetos) não adiciona nem exclui tarefas em massa.
+        user = request.user
+        if bulk_action in (ProjectTaskBulkActionSerializer.ACTION_ADD, ProjectTaskBulkActionSerializer.ACTION_DELETE) and not (
+            user.has_perm("projects.change_project") and user.has_perm("projects.add_project")
+        ):
+            return Response({"detail": "Sem permissão para adicionar ou excluir tarefas."}, status=403)
+
         if bulk_action == ProjectTaskBulkActionSerializer.ACTION_ADD:
             add_tasks = data["add_task_ids"]
             if not add_tasks:
@@ -620,6 +649,9 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
             return Response({"deleted": deleted})
 
         collaborators = data["collaborator_ids"]
+        outside_team = _collaborators_outside_team(request.user, [c.pk for c in collaborators])
+        if outside_team:
+            return outside_team
         rack_positions = data["rack_position_ids"]
         if rack_positions:
             invalid = [rp for rp in rack_positions if rp.project_id != project.pk]
@@ -650,13 +682,15 @@ class ProjectViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
         return Response({"updated": updated})
 
 
-class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSet):
+class ProjectTaskViewSet(AllowManageProjectTasks, RequireChangePermissionForActions, viewsets.ModelViewSet):
     queryset = ProjectTask.objects.select_related(
         "task", "project", "generated_task__activity", "generated_task__path", "generated_task__scope_item", "generated_task__task_template"
     ).prefetch_related("collaborators__person", "rack_positions", "assignments")
     serializer_class = ProjectTaskSerializer
     permission_classes = [ViewAwareModelPermissions]
-    change_permission_actions = ("dispatch_task", "undispatch_task")
+    change_permission_actions = ("dispatch_task", "undispatch_task", "return_to_pool", "dispatch_bulk", "assignment_status")
+    # Gestor (permissão dedicada) despacha, altera status/datas/colaboradores; criar e excluir seguem restritos.
+    manage_task_actions = ("dispatch_task", "undispatch_task", "return_to_pool", "dispatch_bulk", "assignment_status", "update", "partial_update")
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -680,6 +714,8 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
         if origin:
             queryset = queryset.filter(origin=origin)
         queryset = scope_project_queryset(queryset, self.request.user, field_prefix="project__")
+        # Supervisor só enxerga/altera tarefas dos projetos em que é Responsável CSTR.
+        queryset = scope_supervisor_projects(queryset, self.request.user, field_prefix="project__")
         return queryset.order_by("order", "id")
 
     def perform_create(self, serializer):
@@ -691,6 +727,34 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
             next_order = (project.project_tasks.aggregate(highest=models.Max("order"))["highest"] or 0) + 1
             serializer.save(order=serializer.validated_data.get("order") or next_order)
 
+    def perform_update(self, serializer):
+        # Status enviado no PATCH da tarefa inteira é aplicado a todos os técnicos
+        # despachados, sem apontamento de horas (ver ProjectTask.set_status_by_admin).
+        status = serializer.validated_data.pop("status", None)
+        instance = serializer.save()
+        if status:
+            instance.set_status_by_admin(status)
+
+    @action(detail=True, methods=["post"], url_path="assignment-status")
+    def assignment_status(self, request, pk=None):
+        """Ajusta o status de UM técnico despachado (ex.: admin finaliza a parte
+        de quem esqueceu de finalizar). Sem apontamento de horas — ver
+        ProjectTask.set_assignment_status_by_admin. Body: collaborator_id, status,
+        e opcionalmente completion_outcome."""
+        task = self.get_object()
+        collaborator_id = request.data.get("collaborator_id")
+        status_value = request.data.get("status")
+        if not collaborator_id or status_value not in dict(ProjectTask.STATUS_CHOICES):
+            return Response({"detail": "Informe collaborator_id e um status válido."}, status=400)
+        try:
+            task.set_assignment_status_by_admin(
+                int(collaborator_id), status_value, completion_outcome=request.data.get("completion_outcome")
+            )
+        except ProjectTaskAssignment.DoesNotExist:
+            return Response({"detail": "Este técnico não está despachado para a tarefa."}, status=404)
+        task.refresh_from_db()
+        return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
+
     @action(detail=True, methods=["post"], url_path="dispatch")
     def dispatch_task(self, request, pk=None):
         """Despacha a tarefa pra um ou mais técnicos: cria (ou atualiza) a
@@ -700,31 +764,12 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
         collaborator_ids = list(request.data.get("collaborator_ids") or [])
         if not collaborator_ids:
             return Response({"detail": "Informe ao menos um técnico."}, status=400)
+        outside_team = _collaborators_outside_team(request.user, collaborator_ids)
+        if outside_team:
+            return outside_team
 
-        # Duplas fixas são sempre despachadas juntas — mesmo que o front só
-        # tenha mandado um dos dois (ex: ação vinda de outro lugar que não
-        # sabe de duplas), o parceiro entra automaticamente.
-        paired = CollaboratorPair.objects.filter(
-            is_active=True
-        ).filter(models.Q(collaborator_a_id__in=collaborator_ids) | models.Q(collaborator_b_id__in=collaborator_ids))
-        for pair in paired:
-            collaborator_ids.append(pair.collaborator_a_id)
-            collaborator_ids.append(pair.collaborator_b_id)
-        collaborator_ids = list(dict.fromkeys(collaborator_ids))
-
-        collaborators = Collaborator.objects.filter(id__in=collaborator_ids, is_active=True)
-        for collaborator in collaborators:
-            next_order = (
-                ProjectTaskAssignment.objects.filter(
-                    collaborator=collaborator, project_task__status=ProjectTask.STATUS_NOT_STARTED
-                ).aggregate(highest=models.Max("queue_order"))["highest"]
-                or 0
-            ) + 1
-            ProjectTaskAssignment.objects.update_or_create(
-                project_task=task,
-                collaborator=collaborator,
-                defaults={"dispatched_by": request.user, "queue_order": next_order},
-            )
+        collaborators = self._dispatch_collaborators(collaborator_ids)
+        self._assign_collaborators(task, collaborators, request.user)
 
         # `task` veio de self.get_object(), que já tinha prefetch_related("collaborators")
         # rodado (vazio, antes do despacho acima) — refresh_from_db() limpa esse cache
@@ -732,11 +777,78 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
         task.refresh_from_db()
         return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
 
+    @staticmethod
+    def _dispatch_collaborators(collaborator_ids):
+        """Expande as duplas fixas (sempre despachadas juntas — mesmo que o front só
+        tenha mandado um dos dois, o parceiro entra automaticamente) e devolve os
+        técnicos ativos."""
+        collaborator_ids = list(collaborator_ids)
+        paired = CollaboratorPair.objects.filter(
+            is_active=True
+        ).filter(models.Q(collaborator_a_id__in=collaborator_ids) | models.Q(collaborator_b_id__in=collaborator_ids))
+        for pair in paired:
+            collaborator_ids.append(pair.collaborator_a_id)
+            collaborator_ids.append(pair.collaborator_b_id)
+        collaborator_ids = list(dict.fromkeys(collaborator_ids))
+        return list(Collaborator.objects.filter(id__in=collaborator_ids, is_active=True))
+
+    @staticmethod
+    def _assign_collaborators(task, collaborators, user):
+        """Cria (ou atualiza) a ProjectTaskAssignment de cada técnico, colocando a tarefa
+        no fim da fila dele (posições anteriores dele em tarefas ainda não iniciadas)."""
+        for collaborator in collaborators:
+            # Fila do técnico = as tarefas que ELE ainda não iniciou.
+            next_order = (
+                ProjectTaskAssignment.objects.filter(
+                    collaborator=collaborator, status=ProjectTask.STATUS_NOT_STARTED
+                ).aggregate(highest=models.Max("queue_order"))["highest"]
+                or 0
+            ) + 1
+            ProjectTaskAssignment.objects.update_or_create(
+                project_task=task,
+                collaborator=collaborator,
+                defaults={"dispatched_by": user, "queue_order": next_order},
+            )
+
+
+        task.sync_from_assignments()
+
+    @action(detail=False, methods=["post"], url_path="dispatch-bulk")
+    def dispatch_bulk(self, request):
+        """Despacha várias tarefas de uma vez para os mesmos técnicos. A ordem de `task_ids`
+        é a ordem de entrada na fila de cada técnico. Tudo ou nada (transação única)."""
+        from django.db import transaction
+
+        try:
+            task_ids = list(dict.fromkeys(int(i) for i in (request.data.get("task_ids") or [])))
+        except (TypeError, ValueError):
+            return Response({"detail": "task_ids inválido."}, status=400)
+        collaborator_ids = list(request.data.get("collaborator_ids") or [])
+        if not task_ids:
+            return Response({"detail": "Informe ao menos uma tarefa."}, status=400)
+        if not collaborator_ids:
+            return Response({"detail": "Informe ao menos um técnico."}, status=400)
+        outside_team = _collaborators_outside_team(request.user, collaborator_ids)
+        if outside_team:
+            return outside_team
+
+        tasks_by_id = {t.id: t for t in self.get_queryset().filter(id__in=task_ids)}
+        missing = [i for i in task_ids if i not in tasks_by_id]
+        if missing:
+            return Response({"detail": "Tarefa não encontrada ou sem acesso.", "missing": missing}, status=404)
+
+        collaborators = self._dispatch_collaborators(collaborator_ids)
+        with transaction.atomic():
+            for task_id in task_ids:
+                self._assign_collaborators(tasks_by_id[task_id], collaborators, request.user)
+        return Response({"dispatched": len(task_ids), "task_ids": task_ids})
+
     @action(detail=True, methods=["post"], url_path="undispatch")
     def undispatch_task(self, request, pk=None):
         """Desfaz o despacho: remove a ProjectTaskAssignment de um ou mais
         técnicos (ou de todos, se collaborator_ids não for informado).
-        Não mexe no status da tarefa — só tira quem estava designado."""
+        O status da tarefa é recalculado com quem sobrou; sem nenhum técnico,
+        mantém o status atual."""
         task = self.get_object()
         collaborator_ids = list(request.data.get("collaborator_ids") or [])
 
@@ -754,7 +866,47 @@ class ProjectTaskViewSet(RequireChangePermissionForActions, viewsets.ModelViewSe
         else:
             task.assignments.all().delete()
 
+        task.sync_from_assignments()
         task.refresh_from_db()
+        return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"], url_path="return-to-pool")
+    def return_to_pool(self, request, pk=None):
+        """Devolve ao pool uma tarefa em QUALQUER status (inclusive concluída ou
+        cancelada). Com `collaborator_ids`, retira SÓ esses técnicos (sem
+        expandir duplas — a escolha é explícita): o apontamento deles some e a
+        tarefa é recalculada a partir de quem sobrou. Sem `collaborator_ids`,
+        ou quando ninguém sobra, a tarefa volta inteira pra Não Iniciada,
+        zerando o apontamento real (início, fim, horas e pausas) — senão
+        voltaria ao pool com horas fantasma nos relatórios. Datas planejadas
+        são mantidas."""
+        task = self.get_object()
+        collaborator_ids = list(request.data.get("collaborator_ids") or [])
+        with transaction.atomic():
+            if collaborator_ids:
+                task.assignments.filter(collaborator_id__in=collaborator_ids).delete()
+            else:
+                task.assignments.all().delete()
+
+            # Consulta direta: task.assignments vem do prefetch do get_object() e estaria desatualizado.
+            if ProjectTaskAssignment.objects.filter(project_task=task).exists():
+                task.sync_from_assignments()
+            else:
+                # .update() de propósito: ProjectTask.save() recalcula paused_seconds
+                # ao sair de "pausada" e desfaria o zeramento abaixo.
+                ProjectTask.objects.filter(pk=task.pk).update(
+                    status=ProjectTask.STATUS_NOT_STARTED,
+                    actual_start=None,
+                    actual_end=None,
+                    actual_hours=None,
+                    paused_seconds=0,
+                    paused_at=None,
+                    completion_outcome="",
+                    quantity_done="",
+                    updated_at=timezone.now(),
+                )
+
+        task = self.get_queryset().get(pk=task.pk)
         return Response(ProjectTaskSerializer(task, context=self.get_serializer_context()).data)
 
 
@@ -2420,7 +2572,7 @@ class MyTaskViewSet(
     def get_serializer_class(self):
         if self.action in ("update", "partial_update"):
             return MyTaskUpdateSerializer
-        return ProjectTaskSerializer
+        return MyTaskSerializer
 
     def get_queryset(self):
         collaborator = get_collaborator_role(self.request.user)
@@ -2429,55 +2581,80 @@ class MyTaskViewSet(
         return self.queryset.filter(collaborators=collaborator).order_by("planned_start", "order", "id")
 
     def update(self, request, *args, **kwargs):
-        prev_status = self.get_object().status
-        response = super().update(request, *args, **kwargs)
-        instance = self.get_object()
-        self._update_assignment_timing(request, instance, prev_status)
-        self._sync_presence_with_task(request, instance)
-        response.data = ProjectTaskSerializer(instance, context=self.get_serializer_context()).data
-        return response
-
-    def _update_assignment_timing(self, request, task, prev_status):
-        """Espelha a transição de status no assignment do técnico atual, para
-        que cada técnico tenha seu próprio intervalo de horas — independente
-        de quando os colegas iniciaram/pausaram a mesma tarefa."""
-        from projects.models import ProjectTaskAssignment
-
-        collaborator = get_collaborator_role(request.user)
-        if not collaborator:
-            return
-        try:
-            assignment = task.assignments.get(collaborator=collaborator)
-        except ProjectTaskAssignment.DoesNotExist:
-            return
-
-        now = timezone.now()
-        new_status = task.status
-
-        if new_status == ProjectTask.STATUS_IN_PROGRESS and prev_status != ProjectTask.STATUS_IN_PROGRESS:
-            assignment.record_start(now)
-        elif new_status == ProjectTask.STATUS_PAUSED and prev_status == ProjectTask.STATUS_IN_PROGRESS:
-            assignment.record_pause(now)
-        elif new_status == ProjectTask.STATUS_COMPLETED and prev_status != ProjectTask.STATUS_COMPLETED:
-            assignment.record_complete(task.actual_end or now)
-
-    def _sync_presence_with_task(self, request, task):
-        """Iniciar uma atividade põe o técnico automaticamente 'Em Execução';
-        pausar ou finalizar sem ter outra em_progress volta pra 'Disponível'
-        — o técnico não precisa mexer no dropdown de status pra isso."""
+        """Andamento do PRÓPRIO técnico: iniciar, pausar, concluir e registrar
+        resultado/quantidade gravam no despacho dele (ProjectTaskAssignment). A
+        tarefa só muda de status agregado quando os técnicos mudam (ver
+        ProjectTask.sync_from_assignments). Horas são sempre do relógio do
+        servidor — datas enviadas pelo dispositivo são ignoradas."""
         collaborator = get_collaborator_role(request.user)
         if collaborator is None:
-            return
+            return Response({"detail": "Usuário sem Técnico vinculado."}, status=403)
+        task = self.get_object()
+        assignment = task.assignments.filter(collaborator=collaborator).first()
+        if assignment is None:
+            return Response({"detail": "Esta tarefa não está despachada para você."}, status=404)
 
-        if task.status == ProjectTask.STATUS_IN_PROGRESS:
+        serializer = MyTaskUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        now = timezone.now()
+
+        new_status = data.get("status")
+        if new_status and new_status != assignment.status:
+            error = self._apply_transition(assignment, new_status, now)
+            if error:
+                return Response({"detail": error}, status=400)
+        if "completion_outcome" in data:
+            assignment.completion_outcome = data["completion_outcome"]
+        if "quantity_done" in data:
+            assignment.quantity_done = data["quantity_done"]
+        assignment.save()
+
+        if "notes" in data:
+            task.notes = data["notes"]
+            task.save(update_fields=["notes", "updated_at"])
+        task.sync_from_assignments()
+
+        if new_status:
+            self._sync_presence_with_assignment(collaborator, assignment.status)
+
+        instance = self.get_object()
+        return Response(MyTaskSerializer(instance, context=self.get_serializer_context()).data)
+
+    @staticmethod
+    def _apply_transition(assignment, new_status, now):
+        """Aplica a transição de status ao assignment do técnico. Devolve a
+        mensagem de erro quando a transição não é permitida."""
+        previous = assignment.status
+        if new_status == ProjectTask.STATUS_IN_PROGRESS:
+            if previous not in (ProjectTask.STATUS_NOT_STARTED, ProjectTask.STATUS_PAUSED):
+                return "Não é possível iniciar uma tarefa neste status."
+            assignment.record_start(now)
+        elif new_status == ProjectTask.STATUS_PAUSED:
+            if previous != ProjectTask.STATUS_IN_PROGRESS:
+                return "Só é possível pausar uma tarefa em andamento."
+            assignment.record_pause(now)
+        elif new_status == ProjectTask.STATUS_COMPLETED:
+            if previous not in (ProjectTask.STATUS_IN_PROGRESS, ProjectTask.STATUS_PAUSED):
+                return "Só é possível concluir uma tarefa em andamento."
+            assignment.record_complete(now)
+        else:
+            return "Status inválido para o técnico."
+        assignment.status = new_status
+        return None
+
+    def _sync_presence_with_assignment(self, collaborator, assignment_status):
+        """Iniciar uma atividade põe o técnico automaticamente 'Em Execução';
+        pausar ou finalizar sem ter outra em execução volta pra 'Disponível'
+        — o técnico não precisa mexer no dropdown de status pra isso. Olha só
+        os despachos DELE: a tarefa de um colega não muda a presença."""
+        if assignment_status == ProjectTask.STATUS_IN_PROGRESS:
             new_status = TechnicianDailyPresence.STATUS_IN_PROGRESS
-        elif task.status in (ProjectTask.STATUS_PAUSED, ProjectTask.STATUS_COMPLETED):
-            still_active = collaborator.task_assignments.filter(
-                project_task__status=ProjectTask.STATUS_IN_PROGRESS
-            ).exists()
-            if still_active:
-                return
-            new_status = TechnicianDailyPresence.STATUS_AVAILABLE
+        elif assignment_status in (ProjectTask.STATUS_PAUSED, ProjectTask.STATUS_COMPLETED):
+            # Só sai de "Em Execução" (e só sem outra tarefa rodando): um status que
+            # o técnico escolheu (Café, Almoço, Fim de Expediente...) não é atropelado.
+            release_stuck_execution(collaborator.pk)
+            return
         else:
             return
 
@@ -2525,6 +2702,9 @@ class TechnicianPresenceViewSet(viewsets.GenericViewSet):
         presence = self._get_or_create_today(request)
         if presence is None:
             return Response({"detail": "Usuário sem Técnico vinculado."}, status=404)
+        # Cura registros que já ficaram presos em "Em Execução" sem tarefa rodando.
+        if release_stuck_execution(presence.collaborator_id):
+            presence.refresh_from_db()
         return Response(TechnicianDailyPresenceSerializer(presence).data)
 
     @action(detail=False, methods=["post"], url_path="check-in")
@@ -2549,13 +2729,6 @@ class TechnicianPresenceViewSet(viewsets.GenericViewSet):
             return Response({"detail": "Status inválido."}, status=400)
         return self._apply_status(request, status_value)
 
-    # Statuses que indicam que o técnico perdeu acesso ao site — qualquer
-    # tarefa em execução deve ser pausada automaticamente.
-    _BLOCKING_STATUSES = (
-        TechnicianDailyPresence.STATUS_SITE_BLOCKED,
-        TechnicianDailyPresence.STATUS_AWAITING_RELEASE,
-    )
-
     def _apply_status(self, request, status_value):
         presence = self._get_or_create_today(request)
         if presence is None:
@@ -2571,28 +2744,25 @@ class TechnicianPresenceViewSet(viewsets.GenericViewSet):
         TechnicianStatusEvent.objects.create(
             collaborator=presence.collaborator, date=presence.date, status=status_value, changed_at=now
         )
-        if status_value in self._BLOCKING_STATUSES:
-            self._pause_active_tasks(presence.collaborator, now)
+        # O status é livre, mas qualquer escolha do técnico tira ele da execução:
+        # as tarefas dele em andamento são pausadas (o tempo fora não conta como
+        # trabalhado). Retomar é manual, pelo botão Iniciar da tarefa.
+        self._pause_active_tasks(presence.collaborator, now)
         return Response(TechnicianDailyPresenceSerializer(presence).data)
 
     def _pause_active_tasks(self, collaborator, now):
-        """Pausa todas as tarefas IN_PROGRESS do técnico e registra a pausa
-        no assignment individual — chamado quando o técnico perde acesso ao
-        site para que o período bloqueado não conte como horas trabalhadas."""
-        active = (
-            collaborator.task_assignments
-            .select_related("project_task")
-            .filter(project_task__status=ProjectTask.STATUS_IN_PROGRESS)
+        """Pausa as tarefas EM ANDAMENTO deste técnico (só o despacho dele — os
+        colegas da mesma tarefa continuam trabalhando). Chamado quando o técnico
+        escolhe um status no dropdown, para que o período fora não conte como
+        horas trabalhadas."""
+        active = collaborator.task_assignments.select_related("project_task").filter(
+            status=ProjectTask.STATUS_IN_PROGRESS
         )
         for assignment in active:
-            task = assignment.project_task
-            # Pausa a tarefa no nível global (para exibição no board).
-            if not task.paused_at:
-                task.paused_at = now
-                task.status = ProjectTask.STATUS_PAUSED
-                task.save(update_fields=("status", "paused_at", "updated_at"))
-            # Pausa o assignment individual (contabiliza o período correto).
             assignment.record_pause(now)
+            assignment.status = ProjectTask.STATUS_PAUSED
+            assignment.save(update_fields=["status", "paused_at", "updated_at"])
+            assignment.project_task.sync_from_assignments()
 
 
 class TechnicianAbsenceViewSet(viewsets.ModelViewSet):
@@ -2632,7 +2802,8 @@ class AuditLogViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets
         for field, param in (("action", "action"), ("app_label", "app_label"), ("model_name", "model_name")):
             value = params.get(param)
             if value:
-                queryset = queryset.filter(**{field: value})
+                # aceita um valor ou vários separados por vírgula
+                queryset = queryset.filter(**{f"{field}__in": [v.strip() for v in value.split(",") if v.strip()]})
         date_from = params.get("date_from")
         if date_from:
             queryset = queryset.filter(created_at__date__gte=date_from)

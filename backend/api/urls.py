@@ -4,6 +4,14 @@ from rest_framework.routers import DefaultRouter
 from . import views
 from .auth_views import LogoutView, ThrottledTokenObtainPairView, ThrottledTokenRefreshView
 from .dashboard import ProjectsPerformanceView, TechnicalPerformanceView
+from .adjustments import (
+    AdjustmentHistoryView,
+    AdjustmentTasksView,
+    ExecutionAdjustmentView,
+    ExecutionRemovalView,
+    StatusEventsAdjustmentView,
+    StatusWindowAdjustmentView,
+)
 from .operations import (
     OperationsBoardView,
     OperationsManagementReportView,
@@ -93,6 +101,12 @@ urlpatterns = [
         OperationsManagementReportView.as_view(),
         name="operations-management-report",
     ),
+    path("operations/adjustments/", AdjustmentHistoryView.as_view(), name="operations-adjustments"),
+    path("operations/adjustments/tasks/", AdjustmentTasksView.as_view(), name="operations-adjustments-tasks"),
+    path("operations/adjustments/execution/", ExecutionAdjustmentView.as_view(), name="operations-adjustments-execution"),
+    path("operations/adjustments/execution/remove/", ExecutionRemovalView.as_view(), name="operations-adjustments-execution-remove"),
+    path("operations/adjustments/status-events/", StatusEventsAdjustmentView.as_view(), name="operations-adjustments-status-events"),
+    path("operations/adjustments/status-window/", StatusWindowAdjustmentView.as_view(), name="operations-adjustments-status-window"),
     path("push/vapid-public-key/", views.VapidPublicKeyView.as_view(), name="vapid-public-key"),
     path("bot/", include("bot.urls")),
     path("", include(router.urls)),

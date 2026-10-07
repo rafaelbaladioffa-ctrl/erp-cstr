@@ -26,10 +26,12 @@ Objetivo da v2: **números confiáveis e com definição única**, qualidade do 
 ### 3.1 Horas e homem-hora (aprovadas)
 
 - **RN-01 — HH.** HH de uma tarefa = soma das horas reais de cada técnico alocado, descontando pausas (`ProjectTaskAssignment.actual_hours`; agregado em `ProjectTask.real_man_hours`). Nunca usar `duração da tarefa × nº de técnicos`. Ex.: A e B 3h, C 1h → **7 HH**.
-- **RN-02 — Duração.** Duração = `actual_hours` da tarefa (relógio do início ao fim, descontando pausas da tarefa). Serve para cronograma, nunca para faturamento.
+- **RN-02 — Duração.** Duração = `actual_hours` da tarefa: do primeiro início ao último fim entre os técnicos, descontando os trechos em que **ninguém** estava em execução (união dos intervalos de execução de cada técnico, já sem as pausas de cada um). Serve para cronograma, nunca para faturamento.
 - **RN-03 — Equipe.** Tamanho da equipe de uma execução = nº de assignments com horas reais > 0.
 - **RN-04 — Horas do técnico (utilização).** Horas produtivas do técnico = tempo em status `Em Execução` (`TechnicianStatusEvent`, status `in_progress`) no período. É contado uma única vez mesmo com tarefas paralelas e já exclui pausas. Fallback para períodos sem eventos de status: soma de `assignment.actual_hours` das tarefas concluídas, limitada à jornada do dia.
-- **RN-05 — Tarefas sem apontamento real** (`has_real_time_tracking = False`) contam como concluídas, mas **não** entram em HH, duração, utilização nem base de estimativa (já decidido em `docs/ajuste-calculo-horas-reais.md`).
+- **RN-05 — Tarefas sem apontamento real** entram em HH, duração, utilização e base de estimativa somente quando têm apontamento. **Ajuste feito pelo administrador não conta em indicadores de técnico** (decisão do time): a conclusão aplicada pelo admin fica sem horas e não entra em "concluídas por técnico", taxa de rastreamento nem performance técnica. O status agregado da tarefa (avanço do projeto, e-mail ao cliente) continua considerando essa conclusão.
+- **RN-05b — Conclusão é por técnico.** Cada técnico inicia, pausa e conclui a própria parte (`ProjectTaskAssignment.status`). "Concluídas" de técnico, HH, utilização e performance contam a parte de cada um, na data em que ele concluiu. A tarefa só fica **concluída** quando todos os técnicos despachados concluírem (ver `ProjectTask.sync_from_assignments`); avanço do projeto e e-mail ao cliente usam o status da tarefa.
+- **RN-05c — Resultado e quantidade por técnico.** Resultado (concluída/parcial/bloqueada) e quantidade executada são registrados por técnico. O resultado da tarefa é o pior resultado entre os técnicos (bloqueada > parcial > concluída).
 
 ### 3.2 Jornada, utilização e dias incompletos
 
@@ -70,7 +72,7 @@ Objetivo da v2: **números confiáveis e com definição única**, qualidade do 
 - **RN-16 — Agrupamento.** Tempo por atividade agrupa por **Atividade do catálogo mestre** (`generated_task.activity`) × **família de cabo** (`generated_task.scope_item.cable_family`), não pelo nome da tarefa. Tarefas sem `generated_task` (manuais) ficam fora e são contadas como "excluídas: sem vínculo ao catálogo".
 - **RN-17 — Unidade.** Unidade = `Activity.default_unit`; se vazia, `scope_item.unit`. Quantidade da execução = `quantity_planned` da tarefa; se vazia, `scope_item.quantity`.
 - **RN-18 — Lançamento de cabo.** Quando o item tem `length_m`, registrar **duas** medidas: HH por metro (metros = quantidade × `length_m`) e HH por cabo.
-- **RN-19 — Execuções válidas para estimativa.** Entram apenas tarefas concluídas com `completion_outcome` = Concluída (ou vazio), com apontamento real (RN-05) e quantidade > 0. **Parciais e bloqueadas ficam fora** até existir quantidade executada numérica (Fase 3). Cada exclusão é contada por motivo.
+- **RN-19 — Execuções válidas para estimativa.** Uma execução = uma tarefa fechada no período (todos os técnicos concluíram). Entram apenas tarefas com resultado agregado Concluída (ou vazio), com apontamento real (RN-05) e quantidade > 0. A quantidade usada é a planejada da tarefa. **Parciais e bloqueadas ficam fora** até existir quantidade executada numérica (Fase 3). Cada exclusão é contada por motivo.
 - **RN-20 — Estatística.** HH por unidade usa **mediana**, com P25 e P75. Também exibir HH mediano, duração mediana e equipe média.
 - **RN-21 — Amostra mínima.** Com menos de **5** execuções válidas, a linha mostra "Dados insuficientes (n=X)" no lugar da referência. "Sem dados" ≠ zero.
 

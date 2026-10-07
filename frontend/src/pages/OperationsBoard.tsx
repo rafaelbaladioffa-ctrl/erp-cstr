@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsBoard as OperationsBoardData, OperationsBoardTechnician, StatusEvent, TimelineBlock } from "../api/types";
 import TechnicianAbsenceFormModal from "../components/projects/TechnicianAbsenceFormModal";
 import DateInput from "../components/ui/DateInput";
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatCard from "../components/ui/StatCard";
@@ -17,6 +18,7 @@ import {
   WINDOW_START_HOUR,
   assignLanes,
   buildTechSegments,
+  collapseLanes,
   formatTime,
   groupByPair,
   initials,
@@ -51,6 +53,9 @@ const TEXT = {
     poolHint: (n: number) => `${n} pendentes`,
     dispatchSelectTech: "Selecione um técnico disponível na coluna ao lado",
     dispatchTechsSelected: (n: number) => `${n} técnico(s) selecionado(s)`,
+    tasksSelected: (n: number) => `${n} ${n === 1 ? "atividade selecionada" : "atividades selecionadas"}`,
+    clearSelection: "Limpar seleção",
+    multiSelectHint: "Ctrl+clique seleciona várias; Shift+clique seleciona um intervalo.",
     dispatching: "Despachando...",
     dispatch: "Despachar",
     colActivity: "Atividade",
@@ -65,6 +70,10 @@ const TEXT = {
     removing: "Removendo...",
     removeDispatch: "Remover Despacho",
     noPoolActivity: "Nenhuma atividade pendente neste site.",
+    expandAll: "Expandir todos", collapseAll: "Recolher todos",
+    projectActivities: (n: number) => `${n} ${n === 1 ? "atividade" : "atividades"}`,
+    projectWaiting: (n: number) => `${n} aguardando`, projectDispatched: (n: number) => `${n} despachada${n === 1 ? "" : "s"}`,
+    expandProject: "Expandir projeto", collapseProject: "Recolher projeto",
     techniciansLabel: (n: number) => `TÉCNICOS (${n})`,
     rowStats: (done: number, doneLabel: string, pending: number, pendingLabel: string) =>
       `${done} ${doneLabel} · ${pending} ${pendingLabel}`,
@@ -80,8 +89,12 @@ const TEXT = {
     legendPaused: "Pausa",
     legendLunch: "Horário de Almoço",
     legendPersonal: "Particular",
-    legendMeal: "Refeição",
+    legendMeal: "Café",
     legendMeeting: "Reunião",
+    legendTraveling: "Em Deslocamento",
+    legendSupport: "Apoio a outro técnico",
+    expandLanes: (n: number) => `▾ +${n} simultâneas`,
+    collapseLanes: "▴ Recolher",
     legendSiteBlocked: "Sem Acesso ao Site",
     legendAwaiting: "Aguardando Liberações",
     legendNotStarted: "Não iniciado / Fim de Expediente",
@@ -91,6 +104,8 @@ const TEXT = {
     viewAll: "Ver todas as atividades do dia",
     footerHint: "Clique em uma atividade para ver detalhes completos.",
     confirmUndispatch: "Remover o despacho dessa tarefa? Os técnicos voltam a ficar disponíveis pro pool.",
+    returnToPool: "Devolver ao pool",
+    confirmReturnToPool: "Devolver essa tarefa ao pool para este técnico? O despacho dele é removido e o tempo que ele já apontou (início, pausas e horas) é zerado. Os demais técnicos da tarefa não são afetados.",
     absenceTitle: "Ausências planejadas (férias, atestado, folga)",
     noTechLinked: "Nenhum técnico vinculado a este site.",
     noTechLoggedIn: "Nenhum técnico fez login nesta data.",
@@ -120,6 +135,9 @@ const TEXT = {
     poolHint: (n: number) => `${n} pending`,
     dispatchSelectTech: "Select an available technician in the column to the right",
     dispatchTechsSelected: (n: number) => `${n} technician(s) selected`,
+    tasksSelected: (n: number) => `${n} ${n === 1 ? "activity selected" : "activities selected"}`,
+    clearSelection: "Clear selection",
+    multiSelectHint: "Ctrl+click selects several; Shift+click selects a range.",
     dispatching: "Dispatching...",
     dispatch: "Dispatch",
     colActivity: "Activity",
@@ -134,6 +152,10 @@ const TEXT = {
     removing: "Removing...",
     removeDispatch: "Remove Dispatch",
     noPoolActivity: "No pending activities at this site.",
+    expandAll: "Expand all", collapseAll: "Collapse all",
+    projectActivities: (n: number) => `${n} ${n === 1 ? "activity" : "activities"}`,
+    projectWaiting: (n: number) => `${n} waiting`, projectDispatched: (n: number) => `${n} dispatched`,
+    expandProject: "Expand project", collapseProject: "Collapse project",
     techniciansLabel: (n: number) => `TECHNICIANS (${n})`,
     rowStats: (done: number, doneLabel: string, pending: number, pendingLabel: string) =>
       `${done} ${doneLabel} · ${pending} ${pendingLabel}`,
@@ -149,8 +171,12 @@ const TEXT = {
     legendPaused: "Paused",
     legendLunch: "Lunch Break",
     legendPersonal: "Personal",
-    legendMeal: "Meal",
+    legendMeal: "Coffee Break",
     legendMeeting: "Meeting",
+    legendTraveling: "Traveling",
+    legendSupport: "Supporting another technician",
+    expandLanes: (n: number) => `▾ +${n} concurrent`,
+    collapseLanes: "▴ Collapse",
     legendSiteBlocked: "No Site Access",
     legendAwaiting: "Awaiting Releases",
     legendNotStarted: "Not started / End of Shift",
@@ -160,6 +186,8 @@ const TEXT = {
     viewAll: "View all activities for the day",
     footerHint: "Click an activity to see full details.",
     confirmUndispatch: "Remove the dispatch for this task? Technicians will return to the pool.",
+    returnToPool: "Return to pool",
+    confirmReturnToPool: "Return this task to the pool for this technician? Their dispatch is removed and the time they already logged (start, pauses and hours) is reset. Other technicians on the task are not affected.",
     absenceTitle: "Planned absences (vacation, sick leave, day off)",
     noTechLinked: "No technician linked to this site.",
     noTechLoggedIn: "No technician has logged in on this date.",
@@ -189,6 +217,9 @@ const TEXT = {
     poolHint: (n: number) => `${n} pendientes`,
     dispatchSelectTech: "Seleccione un técnico disponible en la columna de al lado",
     dispatchTechsSelected: (n: number) => `${n} técnico(s) seleccionado(s)`,
+    tasksSelected: (n: number) => `${n} ${n === 1 ? "actividad seleccionada" : "actividades seleccionadas"}`,
+    clearSelection: "Limpiar selección",
+    multiSelectHint: "Ctrl+clic selecciona varias; Shift+clic selecciona un rango.",
     dispatching: "Despachando...",
     dispatch: "Despachar",
     colActivity: "Actividad",
@@ -203,6 +234,10 @@ const TEXT = {
     removing: "Eliminando...",
     removeDispatch: "Eliminar Despacho",
     noPoolActivity: "No hay actividades pendientes en este sitio.",
+    expandAll: "Expandir todos", collapseAll: "Contraer todos",
+    projectActivities: (n: number) => `${n} ${n === 1 ? "actividad" : "actividades"}`,
+    projectWaiting: (n: number) => `${n} en espera`, projectDispatched: (n: number) => `${n} despachada${n === 1 ? "" : "s"}`,
+    expandProject: "Expandir proyecto", collapseProject: "Contraer proyecto",
     techniciansLabel: (n: number) => `TÉCNICOS (${n})`,
     rowStats: (done: number, doneLabel: string, pending: number, pendingLabel: string) =>
       `${done} ${doneLabel} · ${pending} ${pendingLabel}`,
@@ -218,8 +253,12 @@ const TEXT = {
     legendPaused: "Pausa",
     legendLunch: "Hora del Almuerzo",
     legendPersonal: "Personal",
-    legendMeal: "Comida",
+    legendMeal: "Café",
     legendMeeting: "Reunión",
+    legendTraveling: "En desplazamiento",
+    legendSupport: "Apoyo a otro técnico",
+    expandLanes: (n: number) => `▾ +${n} simultáneas`,
+    collapseLanes: "▴ Contraer",
     legendSiteBlocked: "Sin Acceso al Sitio",
     legendAwaiting: "Esperando Liberaciones",
     legendNotStarted: "No iniciado / Fin de Jornada",
@@ -229,6 +268,8 @@ const TEXT = {
     viewAll: "Ver todas las actividades del día",
     footerHint: "Haga clic en una actividad para ver los detalles completos.",
     confirmUndispatch: "¿Eliminar el despacho de esta tarea? Los técnicos volverán a estar disponibles en el grupo.",
+    returnToPool: "Devolver al grupo",
+    confirmReturnToPool: "¿Devolver esta tarea al grupo para este técnico? Se elimina su despacho y se reinicia el tiempo que ya registró (inicio, pausas y horas). Los demás técnicos de la tarea no se ven afectados.",
     absenceTitle: "Ausencias planificadas (vacaciones, baja médica, día libre)",
     noTechLinked: "Ningún técnico vinculado a este sitio.",
     noTechLoggedIn: "Ningún técnico inició sesión en esta fecha.",
@@ -245,11 +286,15 @@ function formatElapsed(startIso: string | null, now: number) {
   return h > 0 ? `${h}h ${m}min` : `${m}min`;
 }
 
+const POOL_ACCENTS = ["--blue", "--teal", "--purple", "--pink", "--amber"];
+
 export default function OperationsBoard() {
   const p = usePageText(TEXT);
   const { locale } = useI18n();
   const [sites, setSites] = useState<Site[]>([]);
-  const [siteId, setSiteId] = useState<number | "all" | null>("all");
+  // "all" ou um ou mais ids separados por vírgula ("12,15")
+  const [siteId, setSiteId] = useState<string>("all");
+  const showSiteLabels = !/^\d+$/.test(siteId);
   const [board, setBoard] = useState<OperationsBoardData | null>(null);
   const [timelineByTech, setTimelineByTech] = useState<
     Record<number, { blocks: TimelineBlock[]; statusEvents: StatusEvent[] }>
@@ -257,16 +302,26 @@ export default function OperationsBoard() {
   const [loading, setLoading] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const [undispatchingId, setUndispatchingId] = useState<number | null>(null);
-  const [selectedTask, setSelectedTask] = useState<number | null>(null);
+  const [selectedTasks, setSelectedTasks] = useState<number[]>([]);
+  const anchorTaskRef = useRef<number | null>(null);
   const [selectedTechs, setSelectedTechs] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
-  const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number } | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  function toggleRow(techId: number) {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(techId)) next.delete(techId); else next.add(techId);
+      return next;
+    });
+  }
+  const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number; taskId?: number; collaboratorId?: number } | null>(null);
   const todPopupRef = useRef<HTMLDivElement>(null);
   const [poolOpen, setPoolOpen] = useState(false);
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [techOpen, setTechOpen] = useState(false);
   const [othersOpen, setOthersOpen] = useState(false);
   const [absenceTech, setAbsenceTech] = useState<{ id: number; name: string } | null>(null);
-  const [dragTaskId, setDragTaskId] = useState<number | null>(null);
+  const [dragTaskIds, setDragTaskIds] = useState<number[]>([]);
   const [dragOverTechId, setDragOverTechId] = useState<number | null>(null);
   const todayStr = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
@@ -278,7 +333,7 @@ export default function OperationsBoard() {
     });
   }, []);
 
-  function loadAll(site: number | "all", date?: string) {
+  function loadAll(site: string, date?: string) {
     setLoading(true);
     const dateParam = date && date !== todayStr ? date : undefined;
     Promise.all([
@@ -308,7 +363,7 @@ export default function OperationsBoard() {
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setTodPopup(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setTodPopup(null); setSelectedTasks([]); setSelectedTechs([]); } };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
@@ -324,18 +379,56 @@ export default function OperationsBoard() {
     });
   }
 
-  function selectTask(taskId: number) {
-    setSelectedTask((prev) => (prev === taskId ? null : taskId));
+  // Seleção de atividades do pool: clique simples seleciona uma (ou limpa, se já era a única),
+  // Ctrl/Cmd+clique alterna, Shift+clique seleciona o intervalo desde a última âncora.
+  function handleTaskClick(e: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }, taskId: number, visibleIds: number[]) {
+    const additive = e.ctrlKey || e.metaKey;
+    if (e.shiftKey && anchorTaskRef.current != null && visibleIds.includes(anchorTaskRef.current)) {
+      const from = visibleIds.indexOf(anchorTaskRef.current);
+      const to = visibleIds.indexOf(taskId);
+      const range = visibleIds.slice(Math.min(from, to), Math.max(from, to) + 1);
+      setSelectedTasks((prev) => (additive ? [...new Set([...prev, ...range])] : range));
+    } else if (additive) {
+      setSelectedTasks((prev) => (prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]));
+      anchorTaskRef.current = taskId;
+    } else {
+      setSelectedTasks((prev) => (prev.length === 1 && prev[0] === taskId ? [] : [taskId]));
+      anchorTaskRef.current = taskId;
+    }
     setSelectedTechs([]);
   }
 
+  // Botão "Despachar" da linha: garante que a atividade está na seleção (mantém as demais se já estava).
+  function prepareDispatchFor(taskId: number) {
+    setSelectedTasks((prev) => (prev.includes(taskId) ? prev : [taskId]));
+    anchorTaskRef.current = taskId;
+    setSelectedTechs([]);
+  }
+
+  function clearTaskSelection() {
+    setSelectedTasks([]);
+    setSelectedTechs([]);
+    anchorTaskRef.current = null;
+  }
+
+  // Ids na ordem em que aparecem na tela (a ordem da seleção é a ordem da fila do técnico).
+  function orderedSelection() {
+    const order = new Map<number, number>();
+    let i = 0;
+    for (const g of poolGroups) {
+      if (collapsedProjects.has(g.key)) continue;
+      for (const t of g.tasks) order.set(t.id, i++);
+    }
+    return [...selectedTasks].filter((id) => order.has(id)).sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+  }
+
   async function dispatch() {
-    if (selectedTask == null || selectedTechs.length === 0) return;
+    const ids = orderedSelection();
+    if (ids.length === 0 || selectedTechs.length === 0) return;
     setDispatching(true);
     try {
-      await operationsApi.dispatch(selectedTask, selectedTechs);
-      setSelectedTask(null);
-      setSelectedTechs([]);
+      await operationsApi.dispatchBulk(ids, selectedTechs);
+      clearTaskSelection();
       if (siteId != null) loadAll(siteId, selectedDate);
     } finally {
       setDispatching(false);
@@ -353,8 +446,49 @@ export default function OperationsBoard() {
     }
   }
 
+  async function handleReturnToPool(taskId: number, collaboratorId: number) {
+    if (!confirm(p.confirmReturnToPool)) return;
+    setUndispatchingId(taskId);
+    try {
+      await operationsApi.returnToPool(taskId, [collaboratorId]);
+      if (siteId != null) loadAll(siteId, selectedDate);
+    } catch {
+      alert("Não foi possível devolver a tarefa ao pool.");
+    } finally {
+      setUndispatchingId(null);
+    }
+  }
+
   const technicians = board?.technicians || [];
   const pool = board?.pool || [];
+  // Pool agrupado por projeto: a barra do projeto identifica a sequência de atividades abaixo dela.
+  const poolGroups = useMemo(() => {
+    const byKey = new Map<string, { key: string; name: string; code: string; site: string; tasks: typeof pool }>();
+    for (const task of pool) {
+      const key = task.project_code || task.project_name;
+      let g = byKey.get(key);
+      if (!g) {
+        g = { key, name: task.project_name, code: task.project_code, site: task.site_name, tasks: [] };
+        byKey.set(key, g);
+      }
+      g.tasks.push(task);
+    }
+    return Array.from(byKey.values());
+  }, [pool]);
+  const visibleTaskIds = poolGroups.flatMap((g) => (collapsedProjects.has(g.key) ? [] : g.tasks.map((t) => t.id)));
+  const allCollapsed = poolGroups.length > 0 && poolGroups.every((g) => collapsedProjects.has(g.key));
+  function toggleProject(key: string) {
+    const group = poolGroups.find((g) => g.key === key);
+    if (group && !collapsedProjects.has(key)) {
+      const hidden = new Set(group.tasks.map((t) => t.id));
+      setSelectedTasks((prev) => prev.filter((id) => !hidden.has(id)));
+    }
+    setCollapsedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
   const stats = board?.stats;
   const nowDate = isToday ? new Date(now) : new Date(selectedDate + "T18:00:00");
   const base = isToday ? nowDate : new Date(selectedDate + "T07:00:00");
@@ -365,11 +499,16 @@ export default function OperationsBoard() {
       .map((tech) => {
       const { blocks = [], statusEvents = [] } = timelineByTech[tech.id] || {};
       const segments = buildTechSegments(blocks, statusEvents, nowDate, true, locale);
-      const lanedSegments = assignLanes(segments);
+      const allLaned = assignLanes(segments);
+      const lanes = collapseLanes(allLaned, expandedRows.has(tech.id));
       return {
         tech,
-        lanedSegments,
-        laneCount: lanedSegments[0]?.laneCount ?? 1,
+        allLaned,
+        lanedSegments: lanes.visible,
+        laneCount: lanes.laneCount,
+        hiddenCount: lanes.hiddenCount,
+        collapsible: lanes.collapsible,
+        expanded: lanes.expanded,
         doneCount: blocks.filter((b) => b.status === "completed").length,
         pendingCount: tech.queue.length,
       };
@@ -384,8 +523,8 @@ export default function OperationsBoard() {
     if (row.tech.queue.length === 0) return [];
     let lane = 0;
     let cursor = nowDate;
-    if (row.lanedSegments.length > 0) {
-      for (const { segment, lane: segLane } of row.lanedSegments) {
+    if (row.allLaned.length > 0) {
+      for (const { segment, lane: segLane } of row.allLaned) {
         const end = segment.end ?? nowDate;
         if (end >= cursor) {
           cursor = end;
@@ -397,7 +536,7 @@ export default function OperationsBoard() {
     for (const q of row.tech.queue) {
       if (cursor >= windowEnd) break;
       const end = new Date(Math.min(cursor.getTime() + NOT_STARTED_DURATION_MS, windowEnd.getTime()));
-      bars.push({ key: q.task_id, label: q.task_name, start: cursor, end, lane });
+      bars.push({ key: q.task_id, label: q.task_name, start: cursor, end, lane: row.collapsible && !row.expanded ? 0 : lane });
       cursor = end;
     }
     return bars;
@@ -481,18 +620,13 @@ export default function OperationsBoard() {
                 </button>
               )}
             </div>
-            <select
-              className="select"
-              value={siteId ?? ""}
-              onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}
-            >
-              <option value="all">{p.allSites}</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <MultiSelectFilter
+              label={p.colSite}
+              options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+              selected={siteId === "all" ? [] : String(siteId).split(",")}
+              onChange={(next) => setSiteId(next.length ? next.join(",") : "all")}
+              allLabel={p.allSites}
+            />
           </div>
         }
       />
@@ -540,9 +674,9 @@ export default function OperationsBoard() {
                       ? BUSY_COLOR[busyStatus]
                       : PRESENCE_COLOR[tech.presence_status];
                   const dispatchable = !tech.on_leave && tech.presence_status !== "not_started" && tech.presence_status !== "off_duty";
-                  const selectable = selectedTask != null && dispatchable;
+                  const selectable = selectedTasks.length > 0 && dispatchable;
                   const isSelected = selectedTechs.includes(tech.id);
-                  const droppable = !tech.on_leave && dragTaskId != null;
+                  const droppable = !tech.on_leave && dragTaskIds.length > 0;
                   return (
                     <div
                       key={tech.id}
@@ -562,12 +696,13 @@ export default function OperationsBoard() {
                       onDrop={async (e) => {
                         e.preventDefault();
                         setDragOverTechId(null);
-                        if (dragTaskId == null || tech.on_leave) return;
+                        if (dragTaskIds.length === 0 || tech.on_leave) return;
                         const techIds = tech.pair_partner ? [tech.id, tech.pair_partner.id] : [tech.id];
                         setDispatching(true);
                         try {
-                          await operationsApi.dispatch(dragTaskId, techIds);
-                          setDragTaskId(null);
+                          await operationsApi.dispatchBulk(dragTaskIds, techIds);
+                          setDragTaskIds([]);
+                          clearTaskSelection();
                           if (siteId != null) loadAll(siteId);
                         } finally {
                           setDispatching(false);
@@ -581,7 +716,7 @@ export default function OperationsBoard() {
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div className="ops-tech-name">
                           {tech.name}
-                          {siteId === "all" && <span className="ops-tech-site"> · {tech.site_name}</span>}
+                          {showSiteLabels && tech.site_name && <span className="ops-tech-site"> · {tech.site_name}</span>}
                         </div>
                         <div className="ops-tech-status" style={{ color: dotColor }}>
                           {busyStatus === "in_progress"
@@ -598,6 +733,18 @@ export default function OperationsBoard() {
                             {t.status === "in_progress" && t.actual_start && (
                               <span className="ops-tech-timer"> · {formatElapsed(t.actual_start, now)}</span>
                             )}
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              style={{ color: "var(--red)", marginLeft: 8, padding: "0 6px" }}
+                              disabled={undispatchingId === t.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReturnToPool(t.id, tech.id);
+                              }}
+                            >
+                              {undispatchingId === t.id ? p.removing : p.returnToPool}
+                            </button>
                           </div>
                         ))}
                         {tech.queue.length > 0 && (
@@ -606,6 +753,19 @@ export default function OperationsBoard() {
                               <span key={q.task_id} className="ops-queue-chip" title={q.task_name}>
                                 <span className="ops-queue-num">{idx + 1}</span>
                                 {q.task_name}
+                                <button
+                                  type="button"
+                                  title={p.returnToPool}
+                                  aria-label={p.returnToPool}
+                                  disabled={undispatchingId === q.task_id}
+                                  style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", padding: "0 0 0 6px", fontWeight: 700 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReturnToPool(q.task_id, tech.id);
+                                  }}
+                                >
+                                  ×
+                                </button>
                               </span>
                             ))}
                           </div>
@@ -658,15 +818,31 @@ export default function OperationsBoard() {
               </button>
               {poolOpen && (
                 <>
-                  {selectedTask != null && (
+                  {selectedTasks.length > 0 && (
                     <div className="ops-dispatch-bar">
                       <span className="ops-dispatch-bar-text">
+                        <b>{p.tasksSelected(selectedTasks.length)}</b>
+                        {" · "}
                         {selectedTechs.length === 0
                           ? p.dispatchSelectTech
                           : p.dispatchTechsSelected(selectedTechs.length)}
                       </span>
+                      <button className="btn btn-outline btn-sm" onClick={clearTaskSelection}>{p.clearSelection}</button>
                       <button className="btn btn-primary btn-sm" disabled={selectedTechs.length === 0 || dispatching} onClick={dispatch}>
                         {dispatching ? p.dispatching : p.dispatch}
+                      </button>
+                    </div>
+                  )}
+                  {poolGroups.length > 0 && (
+                    <div className="ops-pool-toolbar">
+                      <span className="ops-pool-hint">{p.multiSelectHint}</span>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => { if (!allCollapsed) clearTaskSelection(); setCollapsedProjects(allCollapsed ? new Set() : new Set(poolGroups.map((g) => g.key))); }}
+                      >
+                        <Icon name={allCollapsed ? "unfold_more" : "unfold_less"} style={{ fontSize: 15 }} />
+                        {allCollapsed ? p.expandAll : p.collapseAll}
                       </button>
                     </div>
                   )}
@@ -675,77 +851,112 @@ export default function OperationsBoard() {
                       <thead>
                         <tr>
                           <th>{p.colActivity}</th>
-                          <th>{p.colProject}</th>
-                          {siteId === "all" && <th>{p.colSite}</th>}
                           <th>{p.colDuration}</th>
                           <th>{p.colStatus}</th>
                           <th>{p.colActions}</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {pool.map((task) => (
-                          <tr
-                            key={task.id}
-                            draggable={true}
-                            onDragStart={(e) => {
-                              setDragTaskId(task.id);
-                              e.dataTransfer.effectAllowed = "move";
-                              e.dataTransfer.setData("taskId", String(task.id));
-                            }}
-                            onDragEnd={() => { setDragTaskId(null); setDragOverTechId(null); }}
-                            onClick={() => selectTask(task.id)}
-                            style={{
-                              cursor: "grab",
-                              background: selectedTask === task.id ? "var(--orange-soft)" : dragTaskId === task.id ? "var(--bg)" : undefined,
-                              opacity: dragTaskId === task.id ? 0.5 : 1,
-                            }}
-                          >
-                            <td style={{ fontWeight: 700 }}>{task.name}</td>
-                            <td>
-                              {task.project_name} {task.project_code ? `· ${task.project_code}` : ""}
-                            </td>
-                            {siteId === "all" && <td>{task.site_name}</td>}
-                            <td>{task.estimated_hours ? `${task.estimated_hours}h` : "—"}</td>
-                            <td>
-                              {task.assignees.length > 0 ? (
-                                <span className="badge" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>
-                                  {p.badgeDispatched(task.assignees.map((a) => a.name).join(", "))}
-                                </span>
-                              ) : (
-                                <span className="badge" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>
-                                  {p.badgeWaiting}
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <button
-                                  className="btn btn-outline btn-sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    selectTask(task.id);
-                                  }}
-                                >
-                                  {p.dispatchBtn}
-                                </button>
-                                {task.assignees.length > 0 && (
-                                  <button
-                                    className="btn btn-outline btn-sm"
-                                    style={{ color: "var(--red)" }}
-                                    disabled={undispatchingId === task.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleUndispatch(task.id);
-                                    }}
-                                  >
-                                    {undispatchingId === task.id ? p.removing : p.removeDispatch}
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
+                      {poolGroups.map((group, gi) => {
+                        const collapsed = collapsedProjects.has(group.key);
+                        const accent = POOL_ACCENTS[gi % POOL_ACCENTS.length];
+                        const dispatched = group.tasks.filter((t) => t.assignees.length > 0).length;
+                        const waiting = group.tasks.length - dispatched;
+                        return (
+                          <tbody key={group.key}>
+                            <tr
+                              className="ops-pool-group"
+                              onClick={() => toggleProject(group.key)}
+                              style={{ ["--pool-accent" as string]: `var(${accent})`, ["--pool-accent-soft" as string]: `var(${accent}-soft)` }}
+                            >
+                              <td colSpan={4}>
+                                <div className="ops-pool-group-bar">
+                                  <Icon name={collapsed ? "chevron_right" : "expand_more"} style={{ fontSize: 20 }} />
+                                  <span className="ops-pool-group-name">{group.name}</span>
+                                  {group.code && <span className="ops-pool-group-code">{group.code}</span>}
+                                  {showSiteLabels && <span className="ops-pool-group-site">{group.site}</span>}
+                                  <span className="ops-pool-group-spacer" />
+                                  <span className="ops-pool-group-count">{p.projectActivities(group.tasks.length)}</span>
+                                  {waiting > 0 && <span className="ops-pool-group-sub">{p.projectWaiting(waiting)}</span>}
+                                  {dispatched > 0 && <span className="ops-pool-group-sub ops-pool-group-sub-ok">{p.projectDispatched(dispatched)}</span>}
+                                </div>
+                              </td>
+                            </tr>
+                            {!collapsed && group.tasks.map((task, ti) => (
+                              <tr
+                                key={task.id}
+                                className="ops-pool-task"
+                                draggable={true}
+                                onDragStart={(e) => {
+                                  // Arrastar uma atividade selecionada leva toda a seleção; senão, só ela.
+                                  const ids = selectedTasks.includes(task.id) ? orderedSelection() : [task.id];
+                                  setDragTaskIds(ids);
+                                  e.dataTransfer.effectAllowed = "move";
+                                  e.dataTransfer.setData("taskId", String(task.id));
+                                  if (ids.length > 1) {
+                                    const badge = document.createElement("div");
+                                    badge.textContent = p.tasksSelected(ids.length);
+                                    badge.style.cssText = "position:fixed;top:-100px;left:-100px;padding:8px 14px;border-radius:8px;background:#f16023;color:#fff;font:700 13px sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+                                    document.body.appendChild(badge);
+                                    e.dataTransfer.setDragImage(badge, 12, 12);
+                                    setTimeout(() => badge.remove(), 0);
+                                  }
+                                }}
+                                onDragEnd={() => { setDragTaskIds([]); setDragOverTechId(null); }}
+                                onClick={(e) => handleTaskClick(e, task.id, visibleTaskIds)}
+                                style={{
+                                  cursor: "grab",
+                                  background: selectedTasks.includes(task.id) ? "rgba(241, 96, 35, 0.16)" : dragTaskIds.includes(task.id) ? "var(--bg)" : undefined,
+                                  opacity: dragTaskIds.includes(task.id) ? 0.5 : 1,
+                                  ["--pool-accent" as string]: `var(${accent})`,
+                                }}
+                              >
+                                <td style={{ fontWeight: 700 }}>
+                                  <span className="ops-pool-seq">{ti + 1}</span>
+                                  {task.name}
+                                </td>
+                                <td>{task.estimated_hours ? `${task.estimated_hours}h` : "—"}</td>
+                                <td>
+                                  {task.assignees.length > 0 ? (
+                                    <span className="badge" style={{ background: "var(--blue-soft)", color: "var(--blue)" }}>
+                                      {p.badgeDispatched(task.assignees.map((a) => a.name).join(", "))}
+                                    </span>
+                                  ) : (
+                                    <span className="badge" style={{ background: "var(--bg)", color: "var(--text-muted)" }}>
+                                      {p.badgeWaiting}
+                                    </span>
+                                  )}
+                                </td>
+                                <td>
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button
+                                      className="btn btn-outline btn-sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        prepareDispatchFor(task.id);
+                                      }}
+                                    >
+                                      {p.dispatchBtn}
+                                    </button>
+                                    {task.assignees.length > 0 && (
+                                      <button
+                                        className="btn btn-outline btn-sm"
+                                        style={{ color: "var(--red)" }}
+                                        disabled={undispatchingId === task.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleUndispatch(task.id);
+                                        }}
+                                      >
+                                        {undispatchingId === task.id ? p.removing : p.removeDispatch}
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        );
+                      })}
                     </table>
                     {pool.length === 0 && <div className="table-empty">{p.noPoolActivity}</div>}
                   </div>
@@ -787,13 +998,14 @@ export default function OperationsBoard() {
                   </div>
                 </div>
 
-                {techRows.map(({ tech, lanedSegments, laneCount, doneCount, pendingCount }, rowIdx) => {
+                {techRows.map((row, rowIdx) => {
+                  const { tech, lanedSegments, laneCount, doneCount, pendingCount } = row;
                   const badgeColor = techStatusColor(tech);
                   const badgeLabel = techStatusLabel(tech);
                   const rowHeight = laneCount <= 1 ? 88 : 36 + laneCount * 52;
                   const barH = 22;
                   const barT = (lane: number) => 8 + lane * 52;
-                  const notStarted = notStartedBars({ tech, lanedSegments, laneCount, doneCount, pendingCount });
+                  const notStarted = notStartedBars(row);
                   const doneLabel = doneCount === 1 ? p.finishedSingular : p.finishedPlural;
                   const pendLabel = pendingCount === 1 ? p.pendingSingular : p.pendingPlural;
                   return (
@@ -819,10 +1031,22 @@ export default function OperationsBoard() {
                             </span>
                           </div>
                         </div>
-                        <div className="tod-row-sites">{tech.site_name}</div>
+                        {tech.site_name && <div className="tod-row-sites">{tech.site_name}</div>}
                         <div className="tod-row-stats">
                           {doneCount} {doneLabel} · {pendingCount} {pendLabel}
                         </div>
+                        {row.collapsible && (
+                          <button
+                            type="button"
+                            className="tod-expand-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRow(tech.id);
+                            }}
+                          >
+                            {row.expanded ? p.collapseLanes : p.expandLanes(row.hiddenCount)}
+                          </button>
+                        )}
                       </div>
                       {lanedSegments.length === 0 && notStarted.length === 0 ? (
                         <div className="tod-empty-row">{presenceLabel(tech.presence_status, locale, tech.presence_status_display)}</div>
@@ -844,7 +1068,7 @@ export default function OperationsBoard() {
                                   setTodPopup((prev) =>
                                     prev?.key === barKey
                                       ? null
-                                      : { key: barKey, label: segment.label, start: segment.start, end: segment.end ?? null, color: segment.color, top: rect.bottom + 6, left: rect.left }
+                                      : { key: barKey, label: segment.label, start: segment.start, end: segment.end ?? null, color: segment.color, top: rect.bottom + 6, left: rect.left, taskId: segment.taskId, collaboratorId: tech.id }
                                   );
                                 }}
                                 style={{ left: `${left}%`, width: `${width}%`, top: barT(lane), height: barH, background: segment.color }}
@@ -866,7 +1090,7 @@ export default function OperationsBoard() {
                                   setTodPopup((prev) =>
                                     prev?.key === barKey
                                       ? null
-                                      : { key: barKey, label: bar.label, start: bar.start, end: bar.end, color: "transparent", top: rect.bottom + 6, left: rect.left }
+                                      : { key: barKey, label: bar.label, start: bar.start, end: bar.end, color: "transparent", top: rect.bottom + 6, left: rect.left, taskId: bar.key, collaboratorId: tech.id }
                                   );
                                 }}
                                 style={{
@@ -923,6 +1147,14 @@ export default function OperationsBoard() {
                   {p.legendMeeting}
                 </div>
                 <div className="legend-item">
+                  <span className="legend-swatch" style={{ background: PRESENCE_COLOR.traveling }} />
+                  {p.legendTraveling}
+                </div>
+                <div className="legend-item">
+                  <span className="legend-swatch" style={{ background: PRESENCE_COLOR.support }} />
+                  {p.legendSupport}
+                </div>
+                <div className="legend-item">
                   <span className="legend-swatch" style={{ background: PRESENCE_COLOR.site_blocked }} />
                   {p.legendSiteBlocked}
                 </div>
@@ -955,6 +1187,18 @@ export default function OperationsBoard() {
                       <div key={q.task_id} className="tod-activity-card">
                         <div className="tod-activity-name">{q.task_name}</div>
                         <div className="tod-activity-project">{q.project_name}</div>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ color: "var(--red)", marginTop: 4, padding: "0 6px" }}
+                          disabled={undispatchingId === q.task_id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleReturnToPool(q.task_id, tech.id);
+                          }}
+                        >
+                          {undispatchingId === q.task_id ? p.removing : p.returnToPool}
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -979,6 +1223,18 @@ export default function OperationsBoard() {
                         <div key={q.task_id} className="tod-activity-card">
                           <div className="tod-activity-name">{q.task_name}</div>
                           <div className="tod-activity-project">{q.project_name}</div>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            style={{ color: "var(--red)", marginTop: 4, padding: "0 6px" }}
+                            disabled={undispatchingId === q.task_id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReturnToPool(q.task_id, tech.id);
+                            }}
+                          >
+                            {undispatchingId === q.task_id ? p.removing : p.returnToPool}
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -1010,6 +1266,20 @@ export default function OperationsBoard() {
                 {formatTime(todPopup.start.toISOString())}
                 {todPopup.end ? ` – ${formatTime(todPopup.end.toISOString())}` : p.inProgress}
               </div>
+              {todPopup.taskId != null && todPopup.collaboratorId != null && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ color: "var(--red)", marginTop: 6 }}
+                  onClick={() => {
+                    const { taskId, collaboratorId } = todPopup;
+                    setTodPopup(null);
+                    handleReturnToPool(taskId!, collaboratorId!);
+                  }}
+                >
+                  {p.returnToPool}
+                </button>
+              )}
             </div>
             <button className="tl-popup-close" onClick={() => setTodPopup(null)} aria-label={p.closeLabel}>×</button>
           </div>

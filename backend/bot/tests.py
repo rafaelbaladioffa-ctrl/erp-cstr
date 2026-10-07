@@ -395,3 +395,77 @@ class BotAllocationManagerFilterTests(TestCase):
         self.assertEqual(names(), {"TEC A"})
         rule.managers.set([boss_a, boss_b])
         self.assertEqual(names(), {"TEC A", "TEC B"})
+
+
+class OperationsPrintTimelineSegmentsTests(TestCase):
+    """Timeline da imagem do bot: tarefa concluída e status de presença não podem
+    deixar buraco nem esconder o almoço (caso real de 06/10: tarefa de 09:38 a
+    14:59 com pausa, almoço 11:44–12:45 e Aguardando Liberações 12:59–13:58)."""
+
+    def test_away_statuses_are_visible_and_leave_no_gap_inside_a_long_task(self):
+        from datetime import datetime, timedelta
+
+        from django.utils import timezone
+
+        from bot.operations_print import _build_tech_segments
+
+        day = timezone.make_aware(datetime(2026, 10, 6))
+
+        def at(hour, minute=0):
+            return day + timedelta(hours=hour, minutes=minute)
+
+        events = [
+            {"status": "in_progress", "status_display": "", "changed_at": at(9, 38)},
+            {"status": "lunch", "status_display": "", "changed_at": at(11, 44)},
+            {"status": "traveling", "status_display": "", "changed_at": at(12, 45)},
+            {"status": "awaiting_release", "status_display": "", "changed_at": at(12, 59)},
+            {"status": "in_progress", "status_display": "", "changed_at": at(13, 58)},
+            {"status": "off_duty", "status_display": "", "changed_at": at(14, 59)},
+        ]
+        blocks = [{"status": "completed", "name": "Trocar Etiquetas", "actual_start": at(9, 38), "actual_end": at(14, 59)}]
+
+        segments = _build_tech_segments(blocks, events, at(18))
+
+        labels = [s["label"] for s in segments]
+        self.assertIn("Horário de Almoço", labels)
+        self.assertIn("Aguardando Liberações", labels)
+        covered_until = at(9, 38)
+        for segment in segments:
+            if segment["start"] < at(14, 59) and segment["end"] and segment["end"] > covered_until:
+                self.assertLessEqual(segment["start"], covered_until + timedelta(seconds=60), f"buraco antes de {segment['label']}")
+                covered_until = segment["end"]
+        self.assertGreaterEqual(covered_until, at(14, 59))
+
+    def test_task_bar_has_a_gap_during_lunch_and_restarts_after(self):
+        from datetime import datetime, timedelta
+
+        from django.utils import timezone
+
+        from bot.operations_print import _build_tech_segments
+
+        day = timezone.make_aware(datetime(2026, 10, 6))
+
+        def at(hour, minute=0):
+            return day + timedelta(hours=hour, minutes=minute)
+
+        events = [
+            {"status": "in_progress", "status_display": "", "changed_at": at(7)},
+            {"status": "lunch", "status_display": "", "changed_at": at(11)},
+            {"status": "in_progress", "status_display": "", "changed_at": at(12)},
+            {"status": "off_duty", "status_display": "", "changed_at": at(14)},
+        ]
+        blocks = [{
+            "status": "completed", "name": "Embalar", "actual_start": at(7), "actual_end": at(14),
+            "working_intervals": [{"start": at(7), "end": at(11)}, {"start": at(12), "end": at(14)}],
+        }]
+
+        segments = _build_tech_segments(blocks, events, at(18))
+
+        task_bars = [(s["start"], s["end"]) for s in segments if s["label"] == "Embalar"]
+        self.assertEqual(task_bars, [(at(7), at(11)), (at(12), at(14))])
+        lunch = [(s["start"], s["end"]) for s in segments if s["label"] == "Horário de Almoço"]
+        self.assertEqual(lunch, [(at(11), at(12))])
+        # nenhuma barra sobreposta à do almoço
+        for s in segments:
+            if s["label"] != "Horário de Almoço" and s["end"]:
+                self.assertFalse(s["start"] < at(12) and s["end"] > at(11), s["label"])

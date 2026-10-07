@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from api.operations import build_board_data
 from core.models import Collaborator, Site
 from core.phone_utils import phones_match
-from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectProgressSnapshot, ProjectTask
+from projects.models import Project, ProjectAttachment, ProjectOccurrence, ProjectProgressSnapshot, ProjectTask, ProjectTaskAssignment
 from updates.models import DailyUpdateAllocation, ProjectDailyUpdate
 from updates.project_client_mail import WORKDAY_END, WORKDAY_START, compute_progress_defaults
 
@@ -145,12 +145,20 @@ def build_daily_tasks_projects(target_date, rule=None):
         # Só tarefas pendentes explicitamente atribuídas a um dos técnicos
         # alocados hoje nesse projeto — não entra tarefa sem responsável
         # nem tarefa de outra pessoa que não está no time de hoje.
-        pending_tasks = (
-            ProjectTask.objects.filter(project=project, collaborators__in=allocated_collaborators)
+        # Status do próprio técnico: a tarefa some da lista dele quando ele
+        # finalizar a parte dele, mesmo que um colega ainda esteja trabalhando.
+        pending_assignments = (
+            ProjectTaskAssignment.objects.filter(project_task__project=project, collaborator__in=allocated_collaborators)
             .exclude(status__in=(ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_CANCELED))
-            .distinct()
-            .order_by("order", "id")
+            .select_related("project_task__task")
+            .order_by("project_task__order", "project_task_id")
         )
+        pending_lines = {}
+        for assignment in pending_assignments:
+            pending_lines.setdefault(
+                assignment.project_task_id,
+                f"{assignment.project_task.display_name} ({status_labels.get(assignment.status, assignment.status)})",
+            )
         projects.append(
             {
                 "project": project.name,
@@ -159,9 +167,7 @@ def build_daily_tasks_projects(target_date, rule=None):
                 "collaborators": [
                     c.person.name for c in allocation.collaborators.order_by("person__name")
                 ],
-                "tasks": [
-                    f"{t.display_name} ({status_labels.get(t.status, t.status)})" for t in pending_tasks
-                ],
+                "tasks": list(pending_lines.values()),
             }
         )
 
@@ -267,11 +273,11 @@ class BotMyTasksView(APIView):
         if not collaborator:
             return Response({"found": False})
 
-        tasks = (
-            ProjectTask.objects.filter(collaborators=collaborator, project__is_active=True)
+        assignments = (
+            ProjectTaskAssignment.objects.filter(collaborator=collaborator, project_task__project__is_active=True)
             .exclude(status__in=(ProjectTask.STATUS_COMPLETED, ProjectTask.STATUS_CANCELED))
-            .select_related("project", "task")
-            .order_by("project__name", "order", "id")
+            .select_related("project_task__project", "project_task__task")
+            .order_by("project_task__project__name", "project_task__order", "project_task_id")
         )
         status_labels = dict(ProjectTask.STATUS_CHOICES)
 
@@ -281,12 +287,12 @@ class BotMyTasksView(APIView):
                 "collaborator_name": collaborator.person.name,
                 "tasks": [
                     {
-                        "project": t.project.name,
-                        "code": t.project.code,
-                        "task": t.display_name,
-                        "status": status_labels.get(t.status, t.status),
+                        "project": a.project_task.project.name,
+                        "code": a.project_task.project.code,
+                        "task": a.project_task.display_name,
+                        "status": status_labels.get(a.status, a.status),
                     }
-                    for t in tasks
+                    for a in assignments
                 ],
             }
         )

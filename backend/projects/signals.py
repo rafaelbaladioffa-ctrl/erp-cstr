@@ -1,9 +1,9 @@
-from django.db.models.signals import m2m_changed, post_save, pre_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from core.models import Collaborator, notify_user
 
-from .models import Project, ProjectTask
+from .models import Project, ProjectTask, ProjectTaskAssignment
 
 TRACKED_PROJECT_FIELDS = (
     "name",
@@ -121,3 +121,24 @@ def notify_task_completed(sender, instance, created, **kwargs):
         project_id=instance.project_id,
         project_code=instance.project.code,
     )
+
+
+@receiver(post_save, sender=ProjectTaskAssignment)
+def release_presence_when_assignment_changes(sender, instance, **kwargs):
+    """Despacho alterado (pausar, concluir, ajuste do admin): se era o último em andamento
+    do técnico, o status dele sai de "Em Execução" (ver dispatch.services)."""
+    from dispatch.services import release_stuck_execution
+
+    release_stuck_execution(instance.collaborator_id)
+
+
+@receiver(post_delete, sender=ProjectTaskAssignment)
+def erase_presence_when_assignment_removed(sender, instance, **kwargs):
+    """Despacho removido (desalocar, devolver ao pool, excluir a tarefa, trocar responsáveis):
+    o "Em Execução" que só existia por causa dele sai da timeline e das horas — senão ficava
+    uma barra laranja sem tarefa. Depois, se não sobrou nada em andamento, libera o status."""
+    from dispatch.adjustments import erase_assignment_presence
+    from dispatch.services import release_stuck_execution
+
+    erase_assignment_presence(instance)
+    release_stuck_execution(instance.collaborator_id)

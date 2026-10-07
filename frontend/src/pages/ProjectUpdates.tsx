@@ -1,3 +1,4 @@
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import { useEffect, useState } from "react";
 import { collaboratorsApi, projectsApi, projectUpdatesApi, usersApi } from "../api/resources";
 import type { Collaborator, Project, ProjectDailyUpdate, UserOption } from "../api/types";
@@ -181,7 +182,7 @@ export default function ProjectUpdates() {
   const [generateError, setGenerateError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "sent" | "pending">("all");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [range, setRange] = useState<DateRange | null>(null);
 
   function openUpdate(update: ProjectDailyUpdate) {
@@ -245,8 +246,9 @@ export default function ProjectUpdates() {
 
   const filteredUpdates = hasFilter
     ? updates.filter((update) => {
-        if (statusFilter === "sent" && !update.is_sent) return false;
-        if (statusFilter === "pending" && update.is_sent) return false;
+        // enviado + pendente marcados juntos = sem filtro
+        if (statusFilter.length === 1 && statusFilter[0] === "sent" && !update.is_sent) return false;
+        if (statusFilter.length === 1 && statusFilter[0] === "pending" && update.is_sent) return false;
         if (range && (update.date < range.start || update.date > range.end)) return false;
         if (term) {
           const po = (poByProject[update.project] || "").toLowerCase();
@@ -308,14 +310,17 @@ export default function ProjectUpdates() {
         </div>
 
         <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginLeft: "auto" }}>
-          <div className="field-group">
-            <span className="field-label">{p.statusLabel}</span>
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
-              <option value="all">{p.statusAll}</option>
-              <option value="sent">{p.statusSent}</option>
-              <option value="pending">{p.statusPending}</option>
-            </select>
-          </div>
+          <MultiSelectFilter
+            label={p.statusLabel}
+            options={[
+              { value: "sent", label: p.statusSent },
+              { value: "pending", label: p.statusPending },
+            ]}
+            selected={statusFilter}
+            onChange={setStatusFilter}
+            allLabel={p.statusAll}
+            allWhenFull
+          />
         </div>
       </div>
 

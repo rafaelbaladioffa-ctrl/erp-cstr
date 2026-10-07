@@ -11,6 +11,7 @@ import type {
 } from "../api/types";
 import DateRangeCalendar, { type DateRange } from "../components/ui/DateRangeCalendar";
 import Icon from "../components/ui/Icon";
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import PageHeader from "../components/ui/PageHeader";
 import { useI18n, usePageText } from "../i18n";
 import { brazilDaysAgoIso, brazilTodayIso, daysInclusive, formatIsoDate } from "../utils/date";
@@ -1122,7 +1123,7 @@ export default function ManagementReportPage() {
   const { locale } = useI18n();
 
   const [sites, setSites] = useState<Site[]>([]);
-  const [siteId, setSiteId] = useState<number | "all">("all");
+  const [siteId, setSiteId] = useState<string>("all");
   const [range, setRange] = useState<DateRange>(() => ({ start: brazilDaysAgoIso(29), end: brazilTodayIso() }));
   const [group, setGroup] = useState<ManagementGroup | "auto">("auto");
   const [report, setReport] = useState<ManagementReport | null>(null);
@@ -1193,7 +1194,13 @@ export default function ManagementReportPage() {
     };
   }, [locale, p.horasSuf]);
 
-  const siteLabel = siteId === "all" ? p.todosSites : sites.find((s) => s.id === siteId)?.name ?? p.todosSites;
+  const siteLabel =
+    siteId === "all"
+      ? p.todosSites
+      : sites
+          .filter((s) => siteId.split(",").includes(String(s.id)))
+          .map((s) => s.name)
+          .join(", ") || p.todosSites;
   const slides = useMemo(() => (report ? buildSlides(report, p, fmt, siteLabel) : []), [report, p, fmt, siteLabel]);
   const generatedAt = report
     ? new Date(report.generated_at).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" })
@@ -1221,19 +1228,13 @@ export default function ManagementReportPage() {
               <Icon name="arrow_back" style={{ fontSize: 16 }} />
               {p.voltar}
             </Link>
-            <select
-              className="select"
-              aria-label={p.filtroSite}
-              value={siteId}
-              onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}
-            >
-              <option value="all">{p.todosSites}</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <MultiSelectFilter
+              label={locale === "es-ES" ? "Sitio" : "Site"}
+              options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+              selected={siteId === "all" ? [] : siteId.split(",")}
+              onChange={(next) => setSiteId(next.length ? next.join(",") : "all")}
+              allLabel={p.todosSites}
+            />
             <button
               type="button"
               className="btn btn-primary btn-sm"

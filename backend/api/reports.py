@@ -25,7 +25,7 @@ from core.models import Collaborator
 
 from core.collaborator_scope import managed_collaborator_ids, scope_collaborators, supervisor_project_ids
 from dispatch.models import TechnicianDailyPresence, TechnicianStatusEvent
-from projects.models import ProjectTask
+from projects.models import ProjectTask, ProjectTaskAssignment
 
 MAX_PERIOD_DAYS = 180
 # Jornada + almoço: corte do último status de um dia sem "Fim de Expediente" (RN-09).
@@ -39,6 +39,30 @@ EXTERNAL_BLOCK_STATUSES = (
     TechnicianDailyPresence.STATUS_AWAITING_RELEASE,
 )
 INTERNAL_IDLE_STATUSES = (TechnicianDailyPresence.STATUS_AVAILABLE,)
+# Tempo produtivo: execução de tarefa + apoio a outro técnico.
+PRODUCTIVE_STATUSES = (
+    TechnicianDailyPresence.STATUS_IN_PROGRESS,
+    TechnicianDailyPresence.STATUS_SUPPORT,
+)
+
+# Tempo por status de presença, na ordem de exibição do card "Horas por status".
+# Produtivo = execução e apoio a outro técnico; improdutivo = disponível sem tarefa e
+# bloqueio externo; neutro = intervalos do próprio técnico (almoço, café...).
+# "Fim de Expediente" e "Indisponível" ficam de fora: não são tempo de jornada.
+_P = TechnicianDailyPresence
+LABEL_ACTIVITY_CODE = "CAB-LABEL"  # a produção dessa atividade é medida em labels (ver labels_per_cable)
+STATUS_CATEGORIES = (
+    (_P.STATUS_IN_PROGRESS, "productive"),
+    (_P.STATUS_SUPPORT, "productive"),
+    (_P.STATUS_AVAILABLE, "unproductive"),
+    (_P.STATUS_SITE_BLOCKED, "unproductive"),
+    (_P.STATUS_AWAITING_RELEASE, "unproductive"),
+    (_P.STATUS_LUNCH, "neutral"),
+    (_P.STATUS_MEAL, "neutral"),
+    (_P.STATUS_PERSONAL, "neutral"),
+    (_P.STATUS_MEETING, "neutral"),
+    (_P.STATUS_TRAVELING, "neutral"),
+)
 METER_UNITS = {"m", "M", "METER", "METERS", "METRO", "METROS", "MT", "MTS"}
 
 
@@ -128,6 +152,24 @@ def _activity_quantity(task, generated):
     return None
 
 
+def _end_labels(connector, fiber_count):
+    """Labels de UMA ponta do cabo: conector LC/LCU é duplex (2 fibras por conector,
+    1 label por duplex), MPO/MTP, RJ45 e transceptores (QSFP/SFP) levam 1 label."""
+    connector = (connector or "").strip().upper()
+    if connector.startswith(("MPO", "MTP", "RJ", "QSFP", "SFP")):
+        return 1
+    # LC, LCU e cabos sem conector cadastrado (ex.: RAF): 1 label por par de fibras.
+    return max(1, -(-(fiber_count or 2) // 2))
+
+
+def labels_per_cable(family):
+    """Labels coladas por cabo, somando as duas pontas. Ex.: 8F LC-LC = 4+4 = 8;
+    2F Robust/RAF = 1+1 = 2; breakout MPO↔4×LC (8F) = 1+4 = 5; UTP = 1+1 = 2."""
+    if family is None:
+        return 0
+    return _end_labels(family.connector_a, family.fiber_count) + _end_labels(family.connector_b, family.fiber_count)
+
+
 def _activity_unit(generated):
     return generated.activity.default_unit or generated.unit or generated.scope_item.unit or ""
 
@@ -139,11 +181,36 @@ def _distribution(values):
         q1 = q3 = values[0]
     else:
         q1, _, q3 = statistics.quantiles(values, n=4, method="inclusive")
+    mean = statistics.fmean(values)
+    # Desvio padrão AMOSTRAL (n−1): as execuções são uma amostra do que a atividade
+    # costuma gastar. Com uma só execução não há dispersão (0).
+    std_dev = statistics.stdev(values) if len(values) > 1 else 0.0
     return {
         "median": round(statistics.median(values), 4),
         "p25": round(q1, 4),
         "p75": round(q3, 4),
+        "mean": round(mean, 4),
+        "std_dev": round(std_dev, 4),
+        # Coeficiente de variação = desvio ÷ média: compara variabilidade entre atividades de escalas diferentes.
+        "cv_pct": round(std_dev / mean * 100, 1) if mean else None,
     }
+
+
+def parse_site_ids(value):
+    """Filtro de site da Central de Operações: None/""/"all" = todos; um id ("12"), vários
+    separados por vírgula ("12,15") ou uma lista. Devolve lista de ids ou None (sem filtro)."""
+    if value in (None, "", "all"):
+        return None
+    items = value if isinstance(value, (list, tuple, set)) else str(value).split(",")
+    ids = [int(str(i).strip()) for i in items if str(i).strip().isdigit()]
+    return ids or None
+
+
+def collaborators_in_sites(site_ids):
+    """Subconsulta de ids de técnicos lotados em algum dos sites (sem duplicar por M2M)."""
+    from core.models import Collaborator
+
+    return Collaborator.objects.filter(sites__in=site_ids).values("id")
 
 
 def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, user=None):
@@ -152,6 +219,21 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     # Supervisor: só tarefas dos projetos em que é Responsável CSTR (técnicos já são limitados à sua equipe).
     project_ids = supervisor_project_ids(user)
 
+    # Conclusões do período são POR TÉCNICO (cada um conclui a própria parte,
+    # mesmo que a tarefa só feche depois). Ajuste do admin, sem fim registrado
+    # pelo técnico, não entra nos indicadores de técnico.
+    completed_qs = ProjectTaskAssignment.objects.filter(
+        status=ProjectTask.STATUS_COMPLETED, assignment_end__date__gte=date_from, assignment_end__date__lte=date_to
+    ).select_related("collaborator__person", "project_task__project")
+    if project_ids is not None:
+        completed_qs = completed_qs.filter(project_task__project_id__in=project_ids)
+    site_ids = parse_site_ids(site_id)
+    if site_ids:
+        completed_qs = completed_qs.filter(project_task__project__site_id__in=site_ids)
+    completed_assignments = list(completed_qs)
+
+    # Tarefas fechadas no período (todos os técnicos concluíram): base da
+    # estimativa por atividade (RN-16..21), uma execução completa por tarefa.
     tasks_qs = (
         ProjectTask.objects.filter(
             status=ProjectTask.STATUS_COMPLETED, actual_end__date__gte=date_from, actual_end__date__lte=date_to
@@ -166,11 +248,11 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     )
     if project_ids is not None:
         tasks_qs = tasks_qs.filter(project_id__in=project_ids)
-    if site_id:
-        tasks_qs = tasks_qs.filter(project__site_id=site_id)
+    if site_ids:
+        tasks_qs = tasks_qs.filter(project__site_id__in=site_ids)
     tasks = list(tasks_qs)
 
-    # --- HH por técnico e por tarefa (RN-01, RN-03, RN-05) ----------------
+    # --- HH por técnico (RN-01, RN-03, RN-05) -----------------------------
     tech = {}
     # Horas por assignment indexadas por (técnico, dia do término) — usadas
     # como fallback de horas produtivas em dias sem status "Em Execução".
@@ -185,34 +267,39 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
             {"collaborator": collaborator, "man_hours": 0.0, "completed_count": 0, "untracked_count": 0},
         )
 
+    for assignment in completed_assignments:
+        entry = tech_entry(assignment.collaborator)
+        entry["completed_count"] += 1
+        task = assignment.project_task
+        if assignment.actual_hours is not None:
+            hours = float(assignment.actual_hours)
+        elif assignment.assignment_start is None and task.has_real_time_tracking:
+            # Dado histórico (anterior ao rastreamento por técnico): duração da tarefa.
+            hours = task.worked_hours
+        else:
+            hours = None
+        if hours is None:
+            entry["untracked_count"] += 1
+            continue
+        tracked_completed += 1
+        entry["man_hours"] += hours
+        if hours > 0:
+            key = (assignment.collaborator_id, _local_date(assignment.assignment_end))
+            assignment_hours_by_day[key] = assignment_hours_by_day.get(key, 0.0) + hours
+
     for task in tasks:
         assignments = list(task.assignments.all())
         has_assignment_hours = any(a.actual_hours is not None for a in assignments)
-        task_tracked = task.has_real_time_tracking or has_assignment_hours
-        if task_tracked:
-            tracked_completed += 1
-
-        task_man_hours = 0.0
-        crew = 0
-        for a in assignments:
-            entry = tech_entry(a.collaborator)
-            entry["completed_count"] += 1
-            if a.actual_hours is not None:
-                hours = float(a.actual_hours)
-            elif not has_assignment_hours and task.has_real_time_tracking:
-                # Dado histórico sem rastreamento por assignment.
-                hours = task.worked_hours
-            else:
-                hours = 0.0
-            if not task_tracked:
-                entry["untracked_count"] += 1
-            if hours > 0:
-                crew += 1
-                task_man_hours += hours
-                entry["man_hours"] += hours
-                end = a.assignment_end or task.actual_end
-                key = (a.collaborator_id, _local_date(end))
-                assignment_hours_by_day[key] = assignment_hours_by_day.get(key, 0.0) + hours
+        if has_assignment_hours:
+            task_man_hours = sum(float(a.actual_hours) for a in assignments if a.actual_hours is not None)
+            crew = sum(1 for a in assignments if a.actual_hours is not None and float(a.actual_hours) > 0)
+        elif task.has_real_time_tracking:
+            # Dado histórico sem rastreamento por assignment: duração × equipe.
+            crew = len(assignments)
+            task_man_hours = task.worked_hours * crew
+        else:
+            crew = 0
+            task_man_hours = 0.0
 
         # --- Base de estimativa por atividade × família de cabo (RN-16..21)
         generated = task.generated_task
@@ -260,6 +347,50 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
             group["hh_per_meter"].append(task_man_hours / meters)
             group["total_meters"] += meters
 
+    # --- Produção física por técnico (simulação de remuneração variável) ---
+    # Só tarefas FECHADAS no período (todos concluíram) e concluídas por completo.
+    # A quantidade (planejada da tarefa) é dividida entre quem concluiu, proporcional
+    # às horas de cada um (RN-04); sem horas apontadas, divide igualmente.
+    production_by_tech = {}
+    production_activities = {}
+    for task in tasks:
+        generated = task.generated_task
+        if generated is None or task.completion_outcome not in ("", ProjectTask.COMPLETION_OUTCOME_COMPLETED):
+            continue
+        quantity = _activity_quantity(task, generated)
+        if not quantity:
+            continue
+        credited = [a for a in task.assignments.all() if a.status == ProjectTask.STATUS_COMPLETED]
+        if not credited:
+            continue
+        hours_of = [float(a.actual_hours) if a.actual_hours is not None else 0.0 for a in credited]
+        total_hours = sum(hours_of)
+        unit = _activity_unit(generated)
+        length_m = generated.scope_item.length_m
+        family = generated.scope_item.cable_family
+        is_utp = bool(family and "UTP" in f"{family.name} {family.code}".upper())
+        if unit.strip() in METER_UNITS:
+            total_meters = quantity
+        elif length_m and float(length_m) > 0:
+            total_meters = quantity * float(length_m)
+        else:
+            total_meters = 0.0
+        production_activities.setdefault(
+            generated.activity.code, {"code": generated.activity.code, "name": generated.activity.name, "unit": unit}
+        )
+        for assignment, hours in zip(credited, hours_of):
+            share = hours / total_hours if total_hours > 0 else 1 / len(credited)
+            row = production_by_tech.setdefault(assignment.collaborator_id, {}).setdefault(
+                generated.activity.code, {"quantity": 0.0, "labels": 0.0, "meters": 0.0, "meters_utp": 0.0, "hours": 0.0}
+            )
+            row["quantity"] += quantity * share
+            if generated.activity.code == LABEL_ACTIVITY_CODE:
+                row["labels"] += quantity * labels_per_cable(family) * share
+            row["meters"] += total_meters * share
+            if is_utp:
+                row["meters_utp"] += total_meters * share
+            row["hours"] += hours
+
     # Supervisor só enxerga os colaboradores sob a sua gestão.
     allowed_ids = managed_collaborator_ids(user)
     if allowed_ids is not None:
@@ -269,8 +400,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     presence_qs = TechnicianDailyPresence.objects.filter(
         date__gte=date_from, date__lte=date_to, checked_in_at__isnull=False
     )
-    if site_id:
-        presence_qs = presence_qs.filter(collaborator__sites=site_id)
+    if site_ids:
+        presence_qs = presence_qs.filter(collaborator_id__in=collaborators_in_sites(site_ids))
     if allowed_ids is not None:
         presence_qs = presence_qs.filter(collaborator_id__in=allowed_ids)
     days_worked = {}
@@ -289,8 +420,12 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     external_block = {}
     internal_idle = {}
     days_with_execution = set()
+    status_hours_by_tech = {}
     for (collaborator_id, day), durations in per_day.items():
-        in_progress = durations.get(TechnicianDailyPresence.STATUS_IN_PROGRESS, 0.0)
+        by_status_tech = status_hours_by_tech.setdefault(collaborator_id, {})
+        for status, _category in STATUS_CATEGORIES:
+            by_status_tech[status] = by_status_tech.get(status, 0.0) + durations.get(status, 0.0)
+        in_progress = _sum_statuses(durations, PRODUCTIVE_STATUSES)
         if in_progress > 0:
             days_with_execution.add((collaborator_id, day))
         productive[collaborator_id] = productive.get(collaborator_id, 0.0) + in_progress
@@ -338,6 +473,14 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                 "internal_idle_avg_per_day": idle_per_day,
                 "idle_limit_exceeded": idle_per_day is not None and idle_per_day > INTERNAL_IDLE_LIMIT_HOURS,
                 "incomplete_days": incomplete_days.get(collaborator_id, 0),
+                "status_hours": {
+                    status: round(status_hours_by_tech.get(collaborator_id, {}).get(status, 0.0), 2)
+                    for status, _category in STATUS_CATEGORIES
+                },
+                "production": {
+                    code: {key: round(value, 2) for key, value in values.items()}
+                    for code, values in production_by_tech.get(collaborator_id, {}).items()
+                },
             }
         )
     technicians.sort(key=lambda t: (t["utilization_pct"] is None, t["utilization_pct"] or 0, t["name"]))
@@ -413,8 +556,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     # --- Bloco "Hoje" (independe do filtro de período, RN-14) ------------
     today_collaborators = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
     today_collaborators = scope_collaborators(today_collaborators, user)
-    if site_id:
-        today_collaborators = today_collaborators.filter(sites=site_id)
+    if site_ids:
+        today_collaborators = today_collaborators.filter(id__in=collaborators_in_sites(site_ids))
     today_by_id = {c.id: c for c in today_collaborators}
     today_ids = list(today_by_id)
     today_per_day, _ = presence_durations(today_ids, today, today, now)
@@ -429,7 +572,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         if collaborator is None:
             continue
         journey = TechnicianDailyPresence.STANDARD_WORKDAY_HOURS if collaborator_id in checked_in_today else 0.0
-        active = durations.get(TechnicianDailyPresence.STATUS_IN_PROGRESS, 0.0)
+        active = _sum_statuses(durations, PRODUCTIVE_STATUSES)
         available = durations.get(TechnicianDailyPresence.STATUS_AVAILABLE, 0.0)
         breaks = _sum_statuses(
             durations,
@@ -438,6 +581,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                 TechnicianDailyPresence.STATUS_PERSONAL,
                 TechnicianDailyPresence.STATUS_MEAL,
                 TechnicianDailyPresence.STATUS_MEETING,
+                TechnicianDailyPresence.STATUS_TRAVELING,
             ),
         )
         blocked = _sum_statuses(durations, EXTERNAL_BLOCK_STATUSES)
@@ -466,18 +610,18 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     n_checked_in = len(checked_in_today)
 
     month_start = today.replace(day=1)
-    completed_month_qs = ProjectTask.objects.filter(
-        status=ProjectTask.STATUS_COMPLETED, actual_end__date__gte=month_start, actual_end__date__lte=today
+    completed_month_qs = ProjectTaskAssignment.objects.filter(
+        status=ProjectTask.STATUS_COMPLETED, assignment_end__date__gte=month_start, assignment_end__date__lte=today
     )
     if project_ids is not None:
-        completed_month_qs = completed_month_qs.filter(project_id__in=project_ids)
-    if site_id:
-        completed_month_qs = completed_month_qs.filter(project__site_id=site_id)
+        completed_month_qs = completed_month_qs.filter(project_task__project_id__in=project_ids)
+    if site_ids:
+        completed_month_qs = completed_month_qs.filter(project_task__project__site_id__in=site_ids)
 
     stats = {
-        "period_completed_count": len(tasks),
+        "period_completed_count": len(completed_assignments),
         "tracked_completed_count": tracked_completed,
-        "tracking_rate_pct": _pct(tracked_completed, len(tasks)),
+        "tracking_rate_pct": _pct(tracked_completed, len(completed_assignments)),
         "man_hours_total": round(sum(t["man_hours"] for t in technicians), 2),
         "productive_hours_total": round(total_productive, 2),
         "journey_hours_total": round(total_journey, 2),
@@ -491,7 +635,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         # Campos v1 mantidos durante a transição do frontend.
         "avg_utilization_pct": utilization_total or 0,
         "productive_hours": round(total_productive, 1),
-        "completed_count": len(tasks),
+        "completed_count": len(completed_assignments),
         "today_productive_hours": round(today_productive, 1),
         "today_unproductive_hours": round(today_block + today_idle, 1),
         "completed_this_month": completed_month_qs.count(),
@@ -524,5 +668,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         "activities": legacy_activities,
         "today_technicians": today_technicians,
         "unproductive_by_reason": unproductive_by_reason,
+        "status_categories": [{"status": s, "category": c} for s, c in STATUS_CATEGORIES],
+        "production_activities": sorted(production_activities.values(), key=lambda a: a["code"]),
         "log_entries": log_entries,
     }

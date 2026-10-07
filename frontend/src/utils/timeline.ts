@@ -8,6 +8,8 @@ export const PRESENCE_COLOR: Record<string, string> = {
   personal: "var(--blue)",
   meal: "var(--teal)",
   meeting: "var(--pink)",
+  traveling: "var(--cyan)",
+  support: "var(--lime)",
   site_blocked: "var(--red)",
   awaiting_release: "var(--orange)",
   off_duty: "var(--text-faint)",
@@ -27,8 +29,10 @@ export const PRESENCE_LABEL: Record<string, string> = {
   in_progress: "Em Execução",
   lunch: "Horário de Almoço",
   personal: "Particular",
-  meal: "Refeição",
+  meal: "Café",
   meeting: "Reunião",
+  traveling: "Em Deslocamento",
+  support: "Apoio a outro técnico",
   site_blocked: "Sem Acesso ao Site",
   awaiting_release: "Aguardando Liberações",
   off_duty: "Fim de Expediente",
@@ -42,8 +46,10 @@ const PRESENCE_LABELS_I18N: Record<string, Record<string, string>> = {
     in_progress: "In Progress",
     lunch: "Lunch Break",
     personal: "Personal",
-    meal: "Meal",
+    meal: "Coffee Break",
     meeting: "Meeting",
+    traveling: "Traveling",
+    support: "Supporting another technician",
     site_blocked: "No Site Access",
     awaiting_release: "Awaiting Release",
     off_duty: "Off Duty",
@@ -54,8 +60,10 @@ const PRESENCE_LABELS_I18N: Record<string, Record<string, string>> = {
     in_progress: "En ejecución",
     lunch: "Descanso / Almuerzo",
     personal: "Personal",
-    meal: "Comida",
+    meal: "Café",
     meeting: "Reunión",
+    traveling: "En desplazamiento",
+    support: "Apoyo a otro técnico",
     site_blocked: "Sin acceso al site",
     awaiting_release: "Esperando liberaciones",
     off_duty: "Fuera de turno",
@@ -78,7 +86,7 @@ export function emPausaLabel(locale: string): string {
 
 // Status que "explicam" uma pausa — se o técnico pausou uma tarefa e trocou
 // pra um desses, a barra da pausa reflete o motivo em vez do genérico "Em pausa".
-export const AWAY_STATUSES = ["lunch", "personal", "meal", "meeting", "site_blocked", "awaiting_release"];
+export const AWAY_STATUSES = ["lunch", "personal", "meal", "meeting", "traveling", "support", "site_blocked", "awaiting_release"];
 
 export const WINDOW_START_HOUR = 7;
 export const WINDOW_END_HOUR = 19;
@@ -107,12 +115,14 @@ export interface Segment {
   start: Date;
   end: Date | null; // null = ainda aberto (vai até "agora")
   live: boolean;
+  taskId?: number; // presente nas barras de tarefa (permite ações sobre a tarefa)
 }
 
 export interface StatusEventLike {
   status: string;
   status_display: string;
   changed_at: string;
+  adjusted?: boolean;
 }
 
 interface Interval {
@@ -142,15 +152,17 @@ function subtractIntervals(base: Interval, cuts: Interval[]): Interval[] {
   return pieces.filter((p) => p.end - p.start >= 60000);
 }
 
-const BLOCKING_STATUSES = new Set(["site_blocked", "awaiting_release"]);
+const AWAY_STATUS_SET = new Set(AWAY_STATUSES);
 
-/** Extrai os intervalos de tempo em que o técnico estava bloqueado (sem
- * acesso ao site ou aguardando liberações) a partir do histórico de eventos
- * de presença já ordenado. */
-function getBlockedIntervals(sortedEvents: StatusEventLike[], nowMs: number): Interval[] {
+/** Extrai os intervalos de tempo em que o técnico estava FORA da execução
+ * (almoço, café, reunião, deslocamento, apoio, sem acesso ao site, aguardando
+ * liberações...) a partir do histórico de eventos de presença já ordenado.
+ * Escolher qualquer um desses status pausa as tarefas dele, então nesses
+ * trechos a barra da tarefa não pode cobrir a barra do status. */
+function getAwayIntervals(sortedEvents: StatusEventLike[], nowMs: number): Interval[] {
   const result: Interval[] = [];
   for (let i = 0; i < sortedEvents.length; i++) {
-    if (!BLOCKING_STATUSES.has(sortedEvents[i].status)) continue;
+    if (!AWAY_STATUS_SET.has(sortedEvents[i].status)) continue;
     const startMs = new Date(sortedEvents[i].changed_at).getTime();
     const endMs =
       i + 1 < sortedEvents.length ? new Date(sortedEvents[i + 1].changed_at).getTime() : nowMs;
@@ -168,10 +180,10 @@ function getBlockedIntervals(sortedEvents: StatusEventLike[], nowMs: number): In
  * antiga (só a barra do status ATUAL) por uma timeline fiel a cada mudança
  * que realmente aconteceu no dia.
  *
- * Tarefas concluídas são recortadas pelos intervalos de bloqueio do técnico
- * (SITE_BLOCKED / AWAITING_RELEASE): se o técnico ficou sem acesso durante
- * parte de uma tarefa, esse trecho não aparece como barra azul — aparece
- * como a barra de presença vermelha correspondente.
+ * Tarefas concluídas são recortadas pelos intervalos em que o técnico esteve
+ * fora da execução (almoço, café, deslocamento, bloqueio de site, aguardando
+ * liberações... — ver AWAY_STATUSES): esse trecho não aparece como barra azul,
+ * aparece como a barra de presença do status correspondente.
  *
  * `isLive`: true = timeline ao vivo (barras abertas vão até "agora" de
  * verdade e pulsam); false = dia fechado no histórico (barras abertas —
@@ -191,20 +203,45 @@ export function buildTechSegments(
     (a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime()
   );
   const lastStatus = sortedEvents.length > 0 ? sortedEvents[sortedEvents.length - 1].status : null;
-  const blockedIntervals = getBlockedIntervals(sortedEvents, nowMs);
+  const awayIntervals = getAwayIntervals(sortedEvents, nowMs);
 
   for (const b of blocks) {
+    // Rastreamento próprio do técnico: uma barra por trecho trabalhado. A pausa
+    // (almoço, café...) vira um vão na barra da tarefa — ocupado pela barra do
+    // status, nunca sobreposto — e ao voltar a tarefa recomeça com barra nova.
+    if (b.working_intervals) {
+      for (const iv of b.working_intervals) {
+        const startMs = new Date(iv.start).getTime();
+        const endMs = iv.end ? new Date(iv.end).getTime() : nowMs;
+        if (endMs <= startMs) continue;
+        const open = iv.end == null;
+        const pieces = awayIntervals.length > 0 ? subtractIntervals({ start: startMs, end: endMs }, awayIntervals) : [{ start: startMs, end: endMs }];
+        for (const piece of pieces) {
+          const isOpenTail = open && piece.end === endMs;
+          segments.push({
+            color: b.status === "completed" ? DONE_COLOR : BUSY_COLOR.in_progress,
+            label: b.adjusted ? `${b.name} ✎` : b.name,
+            start: new Date(piece.start),
+            end: isOpenTail && isLive ? null : new Date(piece.end),
+            live: isOpenTail && isLive && b.status === "in_progress",
+            taskId: b.id,
+          });
+          taskIntervals.push(piece);
+        }
+      }
+      continue;
+    }
     if (b.status === "completed" && b.actual_start && b.actual_end) {
       const startMs = new Date(b.actual_start).getTime();
       const endMs = new Date(b.actual_end).getTime();
       const taskInterval = { start: startMs, end: endMs };
 
-      // Recorta a barra nos períodos em que o técnico estava bloqueado —
-      // esses trechos ficam visíveis como barra de presença (vermelha).
+      // Recorta a barra nos períodos em que o técnico estava fora da execução
+      // (almoço, deslocamento, bloqueio...): esses trechos aparecem como a barra
+      // do próprio status, e NÃO entram em taskIntervals — senão o laço de
+      // presença os descartaria e sobraria um buraco na linha do técnico.
       const effectivePieces =
-        blockedIntervals.length > 0
-          ? subtractIntervals(taskInterval, blockedIntervals)
-          : [taskInterval];
+        awayIntervals.length > 0 ? subtractIntervals(taskInterval, awayIntervals) : [taskInterval];
 
       for (const piece of effectivePieces) {
         segments.push({
@@ -213,18 +250,9 @@ export function buildTechSegments(
           start: new Date(piece.start),
           end: new Date(piece.end),
           live: false,
+          taskId: b.id,
         });
         taskIntervals.push(piece);
-      }
-      // Registra o intervalo bloqueado que sobrepõe essa tarefa como
-      // "ocupado" pra evitar que a barra de presença duplique ali.
-      for (const blocked of blockedIntervals) {
-        if (blocked.end > startMs && blocked.start < endMs) {
-          taskIntervals.push({
-            start: Math.max(blocked.start, startMs),
-            end: Math.min(blocked.end, endMs),
-          });
-        }
       }
     } else if ((b.status === "in_progress" || b.status === "paused") && b.actual_start) {
       const start = new Date(b.actual_start);
@@ -237,12 +265,13 @@ export function buildTechSegments(
             start,
             end: isLive ? null : now,
             live: false,
+            taskId: b.id,
           });
         } else {
-          segments.push({ color: BUSY_COLOR.paused, label: `${emPausaLabel(locale)} · ${b.name}`, start, end: isLive ? null : now, live: false });
+          segments.push({ color: BUSY_COLOR.paused, label: `${emPausaLabel(locale)} · ${b.name}`, start, end: isLive ? null : now, live: false, taskId: b.id });
         }
       } else {
-        segments.push({ color: BUSY_COLOR.in_progress, label: b.name, start, end: isLive ? null : now, live: isLive });
+        segments.push({ color: BUSY_COLOR.in_progress, label: b.name, start, end: isLive ? null : now, live: isLive, taskId: b.id });
       }
     }
   }
@@ -259,7 +288,7 @@ export function buildTechSegments(
       const isOpenTail = isLastEvent && piece.end === endMs;
       segments.push({
         color: PRESENCE_COLOR[ev.status] || "var(--text-faint)",
-        label: presenceLabel(ev.status, locale, ev.status_display),
+        label: presenceLabel(ev.status, locale, ev.status_display) + (ev.adjusted ? " ✎" : ""),
         start: new Date(piece.start),
         end: isOpenTail && isLive ? null : new Date(piece.end),
         live: false,
@@ -301,6 +330,44 @@ export function assignLanes(segments: Segment[]): LanedSegment[] {
   }
   const laneCount = Math.max(1, laneEnds.length);
   return raw.map((r) => ({ ...r, laneCount }));
+}
+
+/** Recolher a timeline de um técnico com várias tarefas simultâneas: fica UMA linha
+ * só, sem buracos. As barras mais longas têm prioridade; as menores entram só nos
+ * trechos que as longas não cobrem (recortadas, sem sobrepor), e o que sobra de
+ * cada uma fica visível ao expandir. Evita a poluição de dezenas de barras
+ * empilhadas quando ele inicia muitas tarefas ao mesmo tempo. */
+export function collapseLanes(laned: LanedSegment[], expanded: boolean) {
+  const fullLaneCount = laned[0]?.laneCount ?? 1;
+  const collapsible = fullLaneCount > 1;
+  if (expanded || !collapsible) {
+    return { visible: laned, laneCount: fullLaneCount, hiddenCount: 0, collapsible, expanded: expanded && collapsible };
+  }
+  const nowMs = Date.now();
+  const endOf = (seg: Segment) => (seg.end ? seg.end.getTime() : nowMs);
+  const byLength = [...laned].sort(
+    (a, b) => endOf(b.segment) - b.segment.start.getTime() - (endOf(a.segment) - a.segment.start.getTime())
+  );
+  const chosen: Interval[] = [];
+  const visible: LanedSegment[] = [];
+  let shown = 0;
+  for (const { segment } of byLength) {
+    const startMs = segment.start.getTime();
+    const endMs = endOf(segment);
+    const pieces = subtractIntervals({ start: startMs, end: endMs }, chosen);
+    if (pieces.length > 0) shown += 1;
+    for (const piece of pieces) {
+      chosen.push(piece);
+      const reachesOpenEnd = segment.end == null && piece.end === endMs;
+      visible.push({
+        segment: { ...segment, start: new Date(piece.start), end: reachesOpenEnd ? null : new Date(piece.end) },
+        lane: 0,
+        laneCount: 1,
+      });
+    }
+  }
+  visible.sort((a, b) => a.segment.start.getTime() - b.segment.start.getTime());
+  return { visible, laneCount: 1, hiddenCount: laned.length - shown, collapsible, expanded: false };
 }
 
 interface Paired {

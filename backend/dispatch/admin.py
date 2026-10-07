@@ -3,7 +3,7 @@ from unfold.admin import ModelAdmin
 
 from core.admin_mixins import SelectablePageSizeAdminMixin
 
-from .models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
+from .models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent, TimelineAdjustment
 
 
 @admin.register(TechnicianDailyPresence)
@@ -37,3 +37,22 @@ class TechnicianAbsenceAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
     search_fields = ("collaborator__person__name", "reason")
     autocomplete_fields = ("collaborator",)
     readonly_fields = ("created_by", "created_at", "updated_at")
+
+
+@admin.register(TimelineAdjustment)
+class TimelineAdjustmentAdmin(SelectablePageSizeAdminMixin, ModelAdmin):
+    """Histórico somente leitura dos ajustes feitos na timeline."""
+
+    list_display = ("created_at", "user", "collaborator", "date", "kind", "reason")
+    list_filter = ("kind", "date")
+    search_fields = ("collaborator__person__name", "reason")
+    readonly_fields = ("user", "collaborator", "date", "kind", "reason", "before", "after", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

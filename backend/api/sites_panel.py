@@ -13,9 +13,9 @@ FILTER_PARAMS = ("country", "region", "client", "site", "responsible", "status")
 
 
 class SitesPanelView(APIView):
-    """GET /api/dashboard/sites/?group_by=site|region|client|responsible
+    """GET /api/dashboard/sites/?group_by=site|region|client|responsible (várias separadas por vírgula combinam os grupos)
 
-    Filtros opcionais: country, region, client, site, responsible,
+    Filtros opcionais: country (um ou vários, separados por vírgula), region, client, site, responsible,
     status=execution|planning, date=YYYY-MM-DD. O bloco de técnicos só vem
     para quem pode ver a Central de Operações
     (projects.view_projecttaskassignment)."""

@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from core.models import Category, Client, Collaborator, Company, ConsultimerProjectType, ProjectType, Responsible, Site, Task, TimestampedModel
 
@@ -312,6 +313,7 @@ class ProjectTask(TimestampedModel):
         verbose_name = "Tarefa do Projeto"
         verbose_name_plural = "Tarefas do Projeto"
         ordering = ("order", "id")
+        permissions = [("manage_project_tasks", "Pode gerenciar tarefas do projeto (status, datas, colaboradores e despacho)")]
         constraints = [
             # Idempotência da criação a partir do Plano do Projeto — nunca
             # duas ProjectTask para a mesma (projeto, GeneratedTask). Índice
@@ -442,6 +444,127 @@ class ProjectTask(TimestampedModel):
         assignee_count = len(assignments) or 1
         return round(self.worked_hours * assignee_count, 2)
 
+    # --- Status por técnico: a tarefa é o agregado dos despachos -----------
+
+    def _fresh_assignments(self):
+        """Consulta direta (não usa o prefetch de 'assignments'), pra refletir
+        o que acabou de ser salvo nos assignments."""
+        if not self.pk:
+            return []
+        return list(ProjectTaskAssignment.objects.filter(project_task_id=self.pk).order_by("id"))
+
+    @staticmethod
+    def _execution_hours(assignments):
+        """Duração da tarefa: tempo em que pelo menos um técnico esteve em
+        execução (união dos intervalos de cada técnico, sem pausas). Não conta
+        duas vezes a mesma janela quando a equipe trabalha em paralelo."""
+        intervals = sorted(interval for a in assignments for interval in a.working_intervals())
+        if not intervals:
+            return None
+        total_seconds = 0.0
+        current_start, current_end = intervals[0]
+        for start, end in intervals[1:]:
+            if start <= current_end:
+                current_end = max(current_end, end)
+            else:
+                total_seconds += (current_end - current_start).total_seconds()
+                current_start, current_end = start, end
+        total_seconds += (current_end - current_start).total_seconds()
+        return round(total_seconds / 3600, 2)
+
+    def sync_from_assignments(self):
+        """Recalcula o status e os dados agregados da TAREFA a partir dos
+        técnicos despachados. Chamado sempre que um assignment muda.
+
+        - status: o mesmo de todos os técnicos (cancelados ignorados); senão
+          em andamento se alguém executa; pausada se alguém pausou; em
+          andamento se alguém já concluiu e o resto não; senão não iniciada.
+          A tarefa só fica concluída quando TODOS concluírem.
+        - actual_start / actual_end: primeiro início e último fim dos técnicos
+          (actual_end só existe quando a tarefa conclui).
+        - actual_hours: duração da tarefa (ver _execution_hours).
+        - completion_outcome / quantity_done: agregados dos técnicos.
+
+        Sem técnicos despachados, o status manual da tarefa é mantido."""
+        assignments = self._fresh_assignments()
+        if not assignments:
+            return
+
+        statuses = [a.status for a in assignments if a.status != self.STATUS_CANCELED]
+        if not statuses:
+            new_status = self.STATUS_CANCELED
+        elif len(set(statuses)) == 1:
+            new_status = statuses[0]
+        elif self.STATUS_IN_PROGRESS in statuses:
+            new_status = self.STATUS_IN_PROGRESS
+        elif self.STATUS_PAUSED in statuses:
+            new_status = self.STATUS_PAUSED
+        elif self.STATUS_COMPLETED in statuses:
+            new_status = self.STATUS_IN_PROGRESS
+        else:
+            new_status = self.STATUS_NOT_STARTED
+
+        starts = [a.assignment_start for a in assignments if a.assignment_start]
+        ends = [a.assignment_end for a in assignments if a.assignment_end]
+        self.status = new_status
+        self.actual_start = min(starts) if starts else None
+        if new_status == self.STATUS_COMPLETED:
+            self.actual_end = max(ends) if ends else (self.actual_end or timezone.now())
+            self.actual_hours = self._execution_hours(assignments)
+        else:
+            self.actual_end = None
+            self.actual_hours = None
+        self.completion_outcome = max(
+            (a.completion_outcome for a in assignments if a.completion_outcome),
+            key=COMPLETION_OUTCOME_SEVERITY.get,
+            default="",
+        )
+        self.quantity_done = ", ".join(a.quantity_done for a in assignments if a.quantity_done)
+        # update_fields: quem chama pode ter uma instância desatualizada (ex.: bulk
+        # update), e um save() cheio sobrescreveria campos alterados no meio do caminho.
+        self.save(
+            update_fields=[
+                "status", "actual_start", "actual_end", "actual_hours",
+                "completion_outcome", "quantity_done", "updated_at",
+            ]
+        )
+
+    def set_status_by_admin(self, status):
+        """Ajuste do administrador para a tarefa inteira: aplica o status a
+        todos os técnicos despachados SEM registrar horas (decisão do time:
+        ajustes do admin não entram nos indicadores de técnico e ficam sem
+        apontamento). Tarefa sem técnico recebe só o status."""
+        assignments = self._fresh_assignments()
+        if not assignments:
+            self.status = status
+            if status == self.STATUS_COMPLETED and not self.actual_end:
+                self.actual_end = timezone.now()
+            self.save(update_fields=["status", "actual_end", "updated_at"])
+            return
+        for assignment in assignments:
+            if assignment.status != status:
+                assignment.status = status
+                assignment.paused_at = assignment.paused_at if status == self.STATUS_PAUSED else None
+                assignment.save(update_fields=["status", "paused_at", "updated_at"])
+        self.sync_from_assignments()
+
+    def set_assignment_status_by_admin(self, collaborator_id, status, completion_outcome=None):
+        """Ajuste do administrador para UM técnico (sem apontamento de horas).
+        Levanta ProjectTaskAssignment.DoesNotExist se o técnico não estiver
+        despachado para esta tarefa."""
+        assignment = ProjectTaskAssignment.objects.get(project_task_id=self.pk, collaborator_id=collaborator_id)
+        assignment.status = status
+        assignment.paused_at = assignment.paused_at if status == self.STATUS_PAUSED else None
+        update_fields = ["status", "paused_at", "updated_at"]
+        if completion_outcome is not None:
+            assignment.completion_outcome = completion_outcome
+            update_fields.append("completion_outcome")
+        assignment.save(update_fields=update_fields)
+        self.sync_from_assignments()
+
+
+COMPLETION_OUTCOME_SEVERITY = {"": 0, "completed": 1, "partial": 2, "blocked": 3}
+
 
 class ProjectTaskAssignment(TimestampedModel):
     """Through model de ProjectTask.collaborators — guarda quem despachou a
@@ -472,6 +595,23 @@ class ProjectTaskAssignment(TimestampedModel):
     actual_hours = models.DecimalField(
         "horas reais do técnico", max_digits=8, decimal_places=2, null=True, blank=True
     )
+    # Status do PRÓPRIO técnico nesta tarefa. A ProjectTask.status é o agregado
+    # de todos os assignments (ver ProjectTask.sync_from_assignments): a tarefa
+    # só fica concluída quando todos concluírem, mas cada técnico inicia,
+    # pausa e finaliza a sua.
+    status = models.CharField(
+        "status do técnico", max_length=20, choices=ProjectTask.STATUS_CHOICES, default=ProjectTask.STATUS_NOT_STARTED
+    )
+    completion_outcome = models.CharField(
+        "resultado da finalização (técnico)", max_length=20, choices=ProjectTask.COMPLETION_OUTCOME_CHOICES, blank=True
+    )
+    quantity_done = models.CharField("quantidade executada (técnico)", max_length=100, blank=True)
+    # Intervalos [início, fim] (ISO 8601) em que este técnico esteve pausado.
+    # Necessário para somar o tempo de execução de vários técnicos sem contar
+    # duas vezes a mesma janela (ver ProjectTask.sync_from_assignments).
+    pause_log = models.JSONField("pausas do técnico", default=list, blank=True)
+    # Apontamento corrigido pelo administrador (ver dispatch.adjustments) — vale como real.
+    is_adjusted = models.BooleanField("ajustado pelo administrador", default=False)
 
     class Meta:
         verbose_name = "Despacho de Tarefa"
@@ -481,42 +621,56 @@ class ProjectTaskAssignment(TimestampedModel):
             models.UniqueConstraint(fields=("project_task", "collaborator"), name="unique_assignment_per_task_collaborator")
         ]
 
+    # Os métodos abaixo só alteram o objeto em memória; quem chama salva.
+
+    def _close_pause(self, now):
+        """Fecha a pausa em aberto (se houver), somando-a em paused_seconds e
+        registrando o intervalo em pause_log."""
+        if not self.paused_at:
+            return
+        self.paused_seconds = (self.paused_seconds or 0) + (now - self.paused_at).total_seconds()
+        self.pause_log = [*(self.pause_log or []), [self.paused_at.isoformat(), now.isoformat()]]
+        self.paused_at = None
+
     def record_start(self, now):
-        """Registra o início deste técnico na tarefa."""
-        fields = []
+        """Início (ou retomada) deste técnico."""
         if not self.assignment_start:
             self.assignment_start = now
-            fields.append("assignment_start")
-        if self.paused_at:
-            self.paused_seconds = (self.paused_seconds or 0) + (now - self.paused_at).total_seconds()
-            self.paused_at = None
-            fields.extend(["paused_seconds", "paused_at"])
-        if fields:
-            self.save(update_fields=fields)
+        self._close_pause(now)
 
     def record_pause(self, now):
-        """Registra a pausa deste técnico."""
+        """Pausa deste técnico (ex.: pausa manual ou bloqueio de site)."""
         if not self.paused_at and self.assignment_start:
             self.paused_at = now
-            self.save(update_fields=["paused_at"])
 
     def record_complete(self, end_time):
-        """Registra a conclusão deste técnico e calcula actual_hours."""
-        fields = []
-        if self.paused_at:
-            self.paused_seconds = (self.paused_seconds or 0) + (end_time - self.paused_at).total_seconds()
-            self.paused_at = None
-            fields.extend(["paused_seconds", "paused_at"])
+        """Conclusão deste técnico: fecha pausa em aberto e calcula actual_hours
+        a partir dos intervalos de execução."""
+        self._close_pause(end_time)
         if not self.assignment_end:
             self.assignment_end = end_time
-            fields.append("assignment_end")
-        if self.assignment_start and self.assignment_end:
-            total_s = (self.assignment_end - self.assignment_start).total_seconds()
-            total_s -= self.paused_seconds or 0
-            self.actual_hours = round(max(total_s, 0) / 3600, 2)
-            fields.append("actual_hours")
-        if fields:
-            self.save(update_fields=list(set(fields)))
+        intervals = self.working_intervals()
+        if intervals:
+            self.actual_hours = round(sum((end - start).total_seconds() for start, end in intervals) / 3600, 2)
+
+    def working_intervals(self):
+        """[(início, fim)] em que ESTE técnico esteve em execução: do início
+        até o fim, descontando cada pausa registrada em pause_log."""
+        if not self.assignment_start or not self.assignment_end:
+            return []
+        cursor = self.assignment_start
+        intervals = []
+        for pause_start, pause_end in sorted(
+            (parse_datetime(start), parse_datetime(end)) for start, end in (self.pause_log or [])
+        ):
+            if pause_start > cursor:
+                intervals.append((cursor, min(pause_start, self.assignment_end)))
+            cursor = max(cursor, pause_end)
+            if cursor >= self.assignment_end:
+                break
+        if cursor < self.assignment_end:
+            intervals.append((cursor, self.assignment_end))
+        return [(start, end) for start, end in intervals if end > start]
 
     def __str__(self):
         return f"{self.project_task} → {self.collaborator}"

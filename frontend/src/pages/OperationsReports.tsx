@@ -1,3 +1,4 @@
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
@@ -16,6 +17,7 @@ import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
 import { useI18n, usePageText } from "../i18n";
 import { downloadCsv, type CsvCell } from "../utils/csv";
+import { presenceLabel } from "../utils/timeline";
 import {
   addDaysIso,
   brazilDaysAgoIso,
@@ -93,11 +95,26 @@ function formatDuration(value: number) {
 }
 
 /** Casas decimais da referência de estimativa (layout §3.2). */
-function refDigits(v: number) {
-  const a = Math.abs(v);
-  if (a < 0.1) return 3;
-  if (a < 10) return 2;
-  return 1;
+// Faixas do coeficiente de variação do HH por unidade: até 15% regular, até 30% moderado, acima irregular.
+function cvColor(cv: number | null): string | undefined {
+  if (cv == null) return undefined;
+  if (cv <= 15) return "var(--green)";
+  if (cv <= 30) return "var(--amber)";
+  return "var(--red)";
+}
+
+// Horas decimais → "1h23min" (≥ 1h), "52min" / "5min20s" (< 1h) ou "45s" (< 1min).
+// Ex.: 1,38 h → 1h23min; 0,0321 h → 1min56s. Segundos só aparecem abaixo de 10 min.
+function fmtDur(hours: number): string {
+  const totalSec = Math.round(Math.abs(hours) * 3600);
+  if (totalSec === 0) return "0min";
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const sec = totalSec % 60;
+  if (h > 0) return `${h}h${String(m).padStart(2, "0")}min`;
+  if (m >= 10) return `${m}min`;
+  if (m > 0) return sec ? `${m}min${String(sec).padStart(2, "0")}s` : `${m}min`;
+  return `${sec}s`;
 }
 
 const UNIT_KEYS: Record<string, "cabo" | "porta" | "link" | "metro" | "unidade"> = {
@@ -210,7 +227,7 @@ const TEXT = {
     catInterno: "Ocioso interno",
     descExterno: "Evidência para o cliente",
     descInterno: "Falha de despacho/planejamento",
-    intervalosNeutros: "Almoço, refeição, reunião e pausas pessoais não entram.",
+    intervalosNeutros: "Almoço, café, reunião, deslocamento e pausas pessoais não entram.",
     segExecucao: "Execução",
     segIntervalos: "Intervalos",
     ordemOcioso: "Mais ocioso primeiro",
@@ -221,6 +238,23 @@ const TEXT = {
     cardTecnicos: "Técnicos no período",
     nTecnicos: (n: number) => `${n} técnicos`,
     cardImprodutivo: "Improdutivo por motivo",
+    cardProducao: "Produção por técnico",
+    hintProducao: "Simulação para remuneração variável (não gera pagamento). Quantidade planejada das tarefas fechadas e concluídas por completo, dividida entre os técnicos proporcional às horas de cada um. A taxa divide pela soma das horas apontadas nessa atividade: tarefas simultâneas somam horas em duplicidade e reduzem a taxa.",
+    prodMetrosLancados: "Metros lançados",
+    prodLabels: "Labels coladas",
+    prodMetrosUtp: "Metros de UTP cortados",
+    prodConectoresRj: "Conectores RJ crimpados",
+    prodPatching: "Patching (conexões)",
+    prodLinks: "Links certificados",
+    csvProducao: "producao-por-tecnico",
+    semProducao: "Sem produção física no período.",
+    cardStatusHoras: "Horas por status",
+    totalLabel: "Total",
+    hintStatusHoras: "Tempo em cada status de presença, por técnico, no período. Produtivo = execução e apoio; improdutivo = disponível sem tarefa e bloqueio externo; neutro = intervalos do técnico, que não entram na conta.",
+    catProdutivo: "Produtivo",
+    catImprodutivoStatus: "Improdutivo",
+    catNeutro: "Neutro",
+    csvStatusHoras: "horas-por-status",
     cardAtividades: "Produtividade por atividade",
     cardDiaTecnico: "Dia por técnico",
     cardLog: "Log do dia",
@@ -269,6 +303,13 @@ const TEXT = {
     thGrupoExecucao: "Por execução (mediana)",
     thHHUnidade: "HH por unidade",
     thHHMetro: "HH por metro",
+    thVariacao: "Variação (σ)",
+    tipVariacao:
+      "Desvio padrão do HH por unidade entre as execuções (amostral, n−1). CV = desvio ÷ média: até 15% é regular, de 15% a 30% é moderado, acima de 30% é irregular — a mediana sozinha esconde isso.",
+    mediaCV: (mean: string, cv: string) => `média ${mean} · CV ${cv}`,
+    csvMedia: "média",
+    csvDesvio: "desvio padrão",
+    csvCV: "CV (%)",
     thHHMediano: "HH",
     thDuracao: "Duração",
     thEquipe: "Equipe média",
@@ -427,7 +468,7 @@ const TEXT = {
     catInterno: "Internal idle",
     descExterno: "Evidence for the client",
     descInterno: "Dispatch/planning gap",
-    intervalosNeutros: "Lunch, meals, meetings and personal breaks are not counted.",
+    intervalosNeutros: "Lunch, meals, meetings, travel and personal breaks are not counted.",
     segExecucao: "In progress",
     segIntervalos: "Breaks",
     ordemOcioso: "Most idle first",
@@ -437,6 +478,23 @@ const TEXT = {
     cardTecnicos: "Technicians in the period",
     nTecnicos: (n: number) => `${n} technicians`,
     cardImprodutivo: "Non-productive time by reason",
+    cardProducao: "Production by technician",
+    hintProducao: "Simulation for variable pay (no payout). Planned quantity of closed, fully completed tasks, split among technicians in proportion to each one's hours. The rate divides by the hours logged on that activity: simultaneous tasks add hours twice and lower the rate.",
+    prodMetrosLancados: "Meters pulled",
+    prodLabels: "Labels applied",
+    prodMetrosUtp: "UTP meters cut",
+    prodConectoresRj: "RJ connectors crimped",
+    prodPatching: "Patching (connections)",
+    prodLinks: "Links certified",
+    csvProducao: "production-by-technician",
+    semProducao: "No physical output in the period.",
+    cardStatusHoras: "Hours by status",
+    totalLabel: "Total",
+    hintStatusHoras: "Time in each presence status, per technician, in the period. Productive = execution and support; non-productive = available without a task and external blocks; neutral = the technician's breaks, which are not counted.",
+    catProdutivo: "Productive",
+    catImprodutivoStatus: "Non-productive",
+    catNeutro: "Neutral",
+    csvStatusHoras: "hours-by-status",
     cardAtividades: "Productivity by activity",
     cardDiaTecnico: "Day by technician",
     cardLog: "Today's log",
@@ -482,6 +540,13 @@ const TEXT = {
     thGrupoExecucao: "Per run (median)",
     thHHUnidade: "MH per unit",
     thHHMetro: "MH per meter",
+    thVariacao: "Variation (σ)",
+    tipVariacao:
+      "Standard deviation of MH per unit across executions (sample, n−1). CV = deviation ÷ mean: up to 15% is steady, 15–30% moderate, above 30% erratic — the median alone hides this.",
+    mediaCV: (mean: string, cv: string) => `mean ${mean} · CV ${cv}`,
+    csvMedia: "mean",
+    csvDesvio: "standard deviation",
+    csvCV: "CV (%)",
     thHHMediano: "MH",
     thDuracao: "Duration",
     thEquipe: "Avg crew",
@@ -636,7 +701,7 @@ const TEXT = {
     catInterno: "Inactividad interna",
     descExterno: "Evidencia para el cliente",
     descInterno: "Falla de despacho/planificación",
-    intervalosNeutros: "El almuerzo, las comidas, las reuniones y las pausas personales no se cuentan.",
+    intervalosNeutros: "El almuerzo, las comidas, las reuniones, los desplazamientos y las pausas personales no se cuentan.",
     segExecucao: "En ejecución",
     segIntervalos: "Pausas",
     ordemOcioso: "Más inactivo primero",
@@ -646,6 +711,23 @@ const TEXT = {
     cardTecnicos: "Técnicos en el período",
     nTecnicos: (n: number) => `${n} técnicos`,
     cardImprodutivo: "Tiempo improductivo por motivo",
+    cardProducao: "Producción por técnico",
+    hintProducao: "Simulación para remuneración variable (no genera pago). Cantidad planificada de las tareas cerradas y completadas por completo, dividida entre los técnicos en proporción a las horas de cada uno. La tasa divide por las horas registradas en esa actividad: las tareas simultáneas suman horas por duplicado y reducen la tasa.",
+    prodMetrosLancados: "Metros tendidos",
+    prodLabels: "Etiquetas aplicadas",
+    prodMetrosUtp: "Metros de UTP cortados",
+    prodConectoresRj: "Conectores RJ crimpados",
+    prodPatching: "Patching (conexiones)",
+    prodLinks: "Enlaces certificados",
+    csvProducao: "produccion-por-tecnico",
+    semProducao: "Sin producción física en el período.",
+    cardStatusHoras: "Horas por estado",
+    totalLabel: "Total",
+    hintStatusHoras: "Tiempo en cada estado de presencia, por técnico, en el período. Productivo = ejecución y apoyo; improductivo = disponible sin tarea y bloqueo externo; neutro = pausas del técnico, que no se cuentan.",
+    catProdutivo: "Productivo",
+    catImprodutivoStatus: "Improductivo",
+    catNeutro: "Neutro",
+    csvStatusHoras: "horas-por-estado",
     cardAtividades: "Productividad por actividad",
     cardDiaTecnico: "Día por técnico",
     cardLog: "Registro del día",
@@ -691,6 +773,13 @@ const TEXT = {
     thGrupoExecucao: "Por ejecución (mediana)",
     thHHUnidade: "HH por unidad",
     thHHMetro: "HH por metro",
+    thVariacao: "Variación (σ)",
+    tipVariacao:
+      "Desviación estándar del HH por unidad entre las ejecuciones (muestral, n−1). CV = desviación ÷ media: hasta 15% es regular, de 15% a 30% moderado, más de 30% irregular — la mediana sola lo oculta.",
+    mediaCV: (mean: string, cv: string) => `media ${mean} · CV ${cv}`,
+    csvMedia: "media",
+    csvDesvio: "desviación estándar",
+    csvCV: "CV (%)",
     thHHMediano: "HH",
     thDuracao: "Duración",
     thEquipe: "Equipo medio",
@@ -925,6 +1014,7 @@ type ActSortKey =
   | "executions_used"
   | "hh_per_unit"
   | "hh_per_meter"
+  | "hh_cv"
   | "median_man_hours"
   | "median_duration_hours"
   | "avg_crew_size";
@@ -969,7 +1059,8 @@ export default function OperationsReportsPage() {
   const { locale } = useI18n();
 
   const [sites, setSites] = useState<Site[]>([]);
-  const [siteId, setSiteId] = useState<number | "all">("all");
+  // "all" ou um ou mais ids separados por vírgula ("12,15")
+  const [siteId, setSiteId] = useState<string>("all");
   const [range, setRange] = useState<DateRange>(() => ({ start: brazilDaysAgoIso(29), end: brazilTodayIso() }));
   const [data, setData] = useState<OperationsReports | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1057,7 +1148,6 @@ export default function OperationsReportsPage() {
   const fmtH = (v: number) => `${nf(v, 1)} h`;
   const fmtHH = (v: number) => `${nf(v, 1)} ${p.hhUnit}`;
   const fmtPct = (v: number) => `${nf(v, 1)}%`;
-  const fmtRef = (v: number, digits: number) => nf(v, digits);
 
   const todayIso = brazilTodayIso();
   const todayLabel = formatIsoDate(todayIso, locale, { weekday: "short", day: "2-digit", month: "2-digit" });
@@ -1074,7 +1164,7 @@ export default function OperationsReportsPage() {
   }
 
   // --- Ações -------------------------------------------------------------
-  function changeSite(value: number | "all") {
+  function changeSite(value: string) {
     setRefreshScope("all");
     setSiteId(value);
   }
@@ -1206,6 +1296,8 @@ export default function OperationsReportsPage() {
         }
         case "hh_per_meter":
           return cmpNullable(a.hh_per_meter?.median, b.hh_per_meter?.median, dir);
+        case "hh_cv":
+          return cmpNullable(a.hh_per_unit?.cv_pct, b.hh_per_unit?.cv_pct, dir);
         default:
           return cmpNullable(a[key], b[key], dir);
       }
@@ -1268,12 +1360,12 @@ export default function OperationsReportsPage() {
       t.site_name,
       t.utilization_pct,
       bandText(bandFor(t.utilization_pct, t.utilization_band)),
-      t.productive_hours,
-      t.journey_hours,
-      t.man_hours,
-      t.journey_hours > 0 ? t.external_block_hours : null,
-      t.journey_hours > 0 ? t.internal_idle_hours : null,
-      t.internal_idle_avg_per_day,
+      fmtDur(t.productive_hours),
+      fmtDur(t.journey_hours),
+      fmtDur(t.man_hours),
+      t.journey_hours > 0 ? fmtDur(t.external_block_hours) : null,
+      t.journey_hours > 0 ? fmtDur(t.internal_idle_hours) : null,
+      t.internal_idle_avg_per_day == null ? null : fmtDur(t.internal_idle_avg_per_day),
       t.idle_limit_exceeded ? p.sim : p.nao,
       t.completed_count,
       t.untracked_count,
@@ -1308,6 +1400,9 @@ export default function OperationsReportsPage() {
       `${hu} (${p.csvMediana})`,
       `${hu} (P25)`,
       `${hu} (P75)`,
+      `${hu} (${p.csvMedia})`,
+      `${hu} (${p.csvDesvio})`,
+      `${hu} (${p.csvCV})`,
       `${hm} (${p.csvMediana})`,
       `${hm} (P25)`,
       `${hm} (P75)`,
@@ -1335,16 +1430,19 @@ export default function OperationsReportsPage() {
         a.excluded.partial_or_blocked,
         a.excluded.no_quantity,
         ok ? p.sim : p.nao,
-        ok ? a.hh_per_unit?.median : null,
-        ok ? a.hh_per_unit?.p25 : null,
-        ok ? a.hh_per_unit?.p75 : null,
-        ok ? a.hh_per_meter?.median : null,
-        ok ? a.hh_per_meter?.p25 : null,
-        ok ? a.hh_per_meter?.p75 : null,
+        ok && a.hh_per_unit?.median != null ? fmtDur(a.hh_per_unit?.median) : null,
+        ok && a.hh_per_unit?.p25 != null ? fmtDur(a.hh_per_unit?.p25) : null,
+        ok && a.hh_per_unit?.p75 != null ? fmtDur(a.hh_per_unit?.p75) : null,
+        ok && a.hh_per_unit?.mean != null ? fmtDur(a.hh_per_unit?.mean) : null,
+        ok && a.hh_per_unit?.std_dev != null ? fmtDur(a.hh_per_unit?.std_dev) : null,
+        ok ? a.hh_per_unit?.cv_pct : null,
+        ok && a.hh_per_meter?.median != null ? fmtDur(a.hh_per_meter?.median) : null,
+        ok && a.hh_per_meter?.p25 != null ? fmtDur(a.hh_per_meter?.p25) : null,
+        ok && a.hh_per_meter?.p75 != null ? fmtDur(a.hh_per_meter?.p75) : null,
         ok ? a.hh_per_meter?.total_meters : null,
         a.total_quantity,
-        a.median_man_hours,
-        a.median_duration_hours,
+        a.median_man_hours == null ? null : fmtDur(a.median_man_hours),
+        a.median_duration_hours == null ? null : fmtDur(a.median_duration_hours),
         a.avg_crew_size,
       ];
     });
@@ -1919,14 +2017,14 @@ export default function OperationsReportsPage() {
                       </div>
                     </td>
                     <td>{renderUtilization(t.utilization_pct, t.utilization_band)}</td>
-                    <td className="rpt-num">{fmtH(t.productive_hours)}</td>
-                    <td className="rpt-num">{hasJourney ? fmtH(t.journey_hours) : empty(p.semCheckinPeriodo)}</td>
-                    <td className="rpt-num">{fmtHH(t.man_hours)}</td>
+                    <td className="rpt-num">{fmtDur(t.productive_hours)}</td>
+                    <td className="rpt-num">{hasJourney ? fmtDur(t.journey_hours) : empty(p.semCheckinPeriodo)}</td>
+                    <td className="rpt-num">{fmtDur(t.man_hours)}</td>
                     <td className="rpt-num">
                       {hasJourney ? (
                         <span className="rpt-val-marker">
                           <span className="rpt-cat rpt-cat--external" aria-hidden="true" />
-                          {fmtH(t.external_block_hours)}
+                          {fmtDur(t.external_block_hours)}
                         </span>
                       ) : (
                         empty(p.semCheckinPeriodo)
@@ -1942,13 +2040,13 @@ export default function OperationsReportsPage() {
                         >
                           <span className="rpt-band rpt-band--low">
                             <Icon name="warning" style={{ fontSize: 12 }} />
-                            {fmtH(t.internal_idle_hours)}
+                            {fmtDur(t.internal_idle_hours)}
                           </span>
                         </Tip>
                       ) : (
                         <span className="rpt-val-marker">
                           <span className="rpt-cat rpt-cat--internal" aria-hidden="true" />
-                          {fmtH(t.internal_idle_hours)}
+                          {fmtDur(t.internal_idle_hours)}
                         </span>
                       )}
                     </td>
@@ -1992,11 +2090,11 @@ export default function OperationsReportsPage() {
                 <tr className="rpt-total-row">
                   <td className="rpt-sticky-col">{p.total(technicians.length)}</td>
                   <td>{renderUtilization(stats.utilization_pct, stats.utilization_band, true)}</td>
-                  <td className="rpt-num">{fmtH(stats.productive_hours_total)}</td>
-                  <td className="rpt-num">{journeyTotal > 0 ? fmtH(journeyTotal) : empty()}</td>
-                  <td className="rpt-num">{fmtHH(stats.man_hours_total)}</td>
-                  <td className="rpt-num">{journeyTotal > 0 ? fmtH(stats.external_block_hours) : empty()}</td>
-                  <td className="rpt-num">{journeyTotal > 0 ? fmtH(stats.internal_idle_hours) : empty()}</td>
+                  <td className="rpt-num">{fmtDur(stats.productive_hours_total)}</td>
+                  <td className="rpt-num">{journeyTotal > 0 ? fmtDur(journeyTotal) : empty()}</td>
+                  <td className="rpt-num">{fmtDur(stats.man_hours_total)}</td>
+                  <td className="rpt-num">{journeyTotal > 0 ? fmtDur(stats.external_block_hours) : empty()}</td>
+                  <td className="rpt-num">{journeyTotal > 0 ? fmtDur(stats.internal_idle_hours) : empty()}</td>
                   <td className="rpt-num" title={p.tipConcluidasTotal}>
                     {stats.period_completed_count}
                     {untrackedTotal > 0 && <span className="rpt-muted"> · {p.semApontAbrev(untrackedTotal)}</span>}
@@ -2025,6 +2123,227 @@ export default function OperationsReportsPage() {
         </div>
         {techPaged && (
           <Pagination page={techPage} pageSize={TECH_PAGE_SIZE} total={sortedTechs.length} onPageChange={setTechPage} onPageSizeChange={() => undefined} />
+        )}
+      </div>
+    );
+  }
+
+  function exportStatusHours() {
+    const cats = data?.status_categories ?? [];
+    const catText = (c: string) => (c === "productive" ? p.catProdutivo : c === "unproductive" ? p.catImprodutivoStatus : p.catNeutro);
+    const header: CsvCell[] = [
+      p.thTecnico,
+      ...cats.map((c) => `${presenceLabel(c.status, locale)} (${catText(c.category)})`),
+    ];
+    const rows: CsvCell[][] = sortedTechsAll().map((t) => [t.name, ...cats.map((c) => fmtDur(t.status_hours?.[c.status] ?? 0))]);
+    rows.push([
+      p.totalLabel,
+      ...cats.map((c) => fmtDur(technicians.reduce((sum, t) => sum + (t.status_hours?.[c.status] ?? 0), 0))),
+    ]);
+    downloadCsv(`${p.csvStatusHoras}_${csvSuffix}.csv`, [header, ...rows], locale);
+  }
+
+  function renderStatusHours() {
+    if (!stats) return null;
+    const cats = data?.status_categories ?? [];
+    const catText = (c: string) => (c === "productive" ? p.catProdutivo : c === "unproductive" ? p.catImprodutivoStatus : p.catNeutro);
+    const catColor = (c: string) => (c === "productive" ? "var(--green)" : c === "unproductive" ? "var(--red)" : "var(--text-muted)");
+    const groups = (["productive", "unproductive", "neutral"] as const)
+      .map((cat) => ({ cat, items: cats.filter((c) => c.category === cat) }))
+      .filter((g) => g.items.length > 0);
+    const rowsTechs = sortedTechsAll();
+    const hoursOf = (t: ReportsTechnician, status: string) => t.status_hours?.[status] ?? 0;
+    const cell = (hours: number) => (hours > 0 ? fmtDur(hours) : <span className="rpt-cell-muted">—</span>);
+    return (
+      <div className="ops-pool-card rpt-card">
+        <div className="ops-card-head rpt-card-head-wrap">
+          <div>
+            <div className="ops-card-title">{p.cardStatusHoras}</div>
+            <div className="ops-card-hint">{p.hintStatusHoras}</div>
+          </div>
+          <button type="button" className="btn btn-outline btn-sm" onClick={exportStatusHours} disabled={rowsTechs.length === 0}>
+            <Icon name="download" style={{ fontSize: 16 }} />
+            {p.exportarCsv}
+          </button>
+        </div>
+        {rowsTechs.length === 0 ? (
+          <div className="table-empty rpt-empty-block">{p.semImprodutivo}</div>
+        ) : (
+          <div className="table-wrap rpt-scroll">
+            <table className="table rpt-table-dense">
+              <thead>
+                <tr className="rpt-th-group">
+                  <th className="rpt-sticky-col" />
+                  {groups.map((g) => (
+                    <th key={g.cat} colSpan={g.items.length} style={{ color: catColor(g.cat), textAlign: "center" }}>
+                      <span className={`rpt-cat rpt-cat--${g.cat === "productive" ? "internal" : g.cat === "unproductive" ? "external" : "neutral"}`} aria-hidden="true" style={{ background: catColor(g.cat) }} />
+                      {" "}
+                      {catText(g.cat)}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  <th className="rpt-sticky-col">{p.thTecnico}</th>
+                  {groups.flatMap((g) =>
+                    g.items.map((c) => (
+                      <th key={c.status} className="rpt-num" style={{ borderTop: `2px solid ${catColor(g.cat)}` }}>
+                        {presenceLabel(c.status, locale)}
+                      </th>
+                    ))
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {rowsTechs.map((t) => (
+                  <tr key={t.id}>
+                    <td className="rpt-sticky-col">
+                      <div className="rpt-strong">{t.name}</div>
+                    </td>
+                    {groups.flatMap((g) =>
+                      g.items.map((c) => (
+                        <td key={c.status} className="rpt-num">
+                          {cell(hoursOf(t, c.status))}
+                        </td>
+                      ))
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="rpt-sticky-col rpt-strong">{p.totalLabel}</td>
+                  {groups.flatMap((g) =>
+                    g.items.map((c) => (
+                      <td key={c.status} className="rpt-num rpt-strong" style={{ color: catColor(g.cat) }}>
+                        {fmtDur(rowsTechs.reduce((sum, t) => sum + hoursOf(t, c.status), 0))}
+                      </td>
+                    ))
+                  )}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function exportProduction() {
+    const cols = productionColumns();
+    const header: CsvCell[] = [p.thTecnico, ...cols.flatMap((c) => [c.label, `${c.label} (${c.rate})`])];
+    const rows: CsvCell[][] = sortedTechsAll().map((t) => [
+      t.name,
+      ...cols.flatMap((c) => {
+        const v = c.value(t);
+        const h = t.production?.[c.code]?.hours ?? 0;
+        return [v > 0 ? Math.round(v * 100) / 100 : 0, v > 0 && h > 0 ? Math.round((v / h) * 100) / 100 : null];
+      }),
+    ]);
+    downloadCsv(`${p.csvProducao}_${csvSuffix}.csv`, [header, ...rows], locale);
+  }
+
+  function productionColumns() {
+    const sumHours = (code: string) => technicians.reduce((s, t) => s + (t.production?.[code]?.hours ?? 0), 0);
+    const defs = [
+      { code: "CAB-RUN", label: p.prodMetrosLancados, unit: "m", pick: (x: { meters: number }) => x.meters },
+      { code: "CAB-LABEL", label: p.prodLabels, unit: "un", pick: (x: { labels: number }) => x.labels },
+      { code: "CAB-CUT", label: p.prodMetrosUtp, unit: "m", pick: (x: { meters_utp: number }) => x.meters_utp },
+      { code: "CAB-CRIMP", label: p.prodConectoresRj, unit: "un", pick: (x: { quantity: number }) => x.quantity },
+      { code: "CAB-PATCH", label: p.prodPatching, unit: "un", pick: (x: { quantity: number }) => x.quantity },
+      { code: "CERTIFY", label: p.prodLinks, unit: "un", pick: (x: { quantity: number }) => x.quantity },
+    ];
+    return defs.map((d) => ({
+      code: d.code,
+      label: d.label,
+      unit: d.unit,
+      rate: `${d.unit}/h`,
+      value: (t: ReportsTechnician) => {
+        const row = t.production?.[d.code];
+        return row ? d.pick(row as never) : 0;
+      },
+      total: () => technicians.reduce((s, t) => s + (t.production?.[d.code] ? d.pick(t.production[d.code] as never) : 0), 0),
+      totalHours: () => sumHours(d.code),
+    }));
+  }
+
+  function renderProduction() {
+    if (!stats) return null;
+    const cols = productionColumns();
+    const rowsTechs = sortedTechsAll();
+    const anyProduction = cols.some((c) => c.total() > 0);
+    return (
+      <div className="ops-pool-card rpt-card">
+        <div className="ops-card-head rpt-card-head-wrap">
+          <div>
+            <div className="ops-card-title">{p.cardProducao}</div>
+            <div className="ops-card-hint">{p.hintProducao}</div>
+          </div>
+          <button type="button" className="btn btn-outline btn-sm" onClick={exportProduction} disabled={!anyProduction}>
+            <Icon name="download" style={{ fontSize: 16 }} />
+            {p.exportarCsv}
+          </button>
+        </div>
+        {rowsTechs.length === 0 || !anyProduction ? (
+          <div className="table-empty rpt-empty-block">{p.semProducao}</div>
+        ) : (
+          <div className="table-wrap rpt-scroll">
+            <table className="table rpt-table-dense">
+              <thead>
+                <tr>
+                  <th className="rpt-sticky-col">{p.thTecnico}</th>
+                  {cols.map((c) => (
+                    <th key={c.code} className="rpt-num">{c.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rowsTechs.map((t) => (
+                  <tr key={t.id}>
+                    <td className="rpt-sticky-col">
+                      <div className="rpt-strong">{t.name}</div>
+                    </td>
+                    {cols.map((c) => {
+                      const v = c.value(t);
+                      const h = t.production?.[c.code]?.hours ?? 0;
+                      return (
+                        <td key={c.code} className="rpt-num">
+                          {v > 0 ? (
+                            <>
+                              <div className="rpt-strong">{nf(v, v % 1 === 0 ? 0 : 1)} {c.unit}</div>
+                              {h > 0 && <div className="rpt-num-sub">{nf(v / h, 1)} {c.rate}</div>}
+                            </>
+                          ) : (
+                            <span className="rpt-cell-muted">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="rpt-sticky-col rpt-strong">{p.totalLabel}</td>
+                  {cols.map((c) => {
+                    const v = c.total();
+                    const h = c.totalHours();
+                    return (
+                      <td key={c.code} className="rpt-num">
+                        {v > 0 ? (
+                          <>
+                            <div className="rpt-strong">{nf(v, v % 1 === 0 ? 0 : 1)} {c.unit}</div>
+                            {h > 0 && <div className="rpt-num-sub">{nf(v / h, 1)} {c.rate}</div>}
+                          </>
+                        ) : (
+                          <span className="rpt-cell-muted">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         )}
       </div>
     );
@@ -2091,7 +2410,7 @@ export default function OperationsReportsPage() {
   function renderActivityRow(a: ReportsActivityProductivity, idx: number) {
     const excludedTotal = a.excluded.untracked + a.excluded.partial_or_blocked + a.excluded.no_quantity;
     const u = a.unit ? unitLabel(a.unit) : "";
-    const perUnit = u ? `${p.hhUnit}/${u}` : p.hhUnit;
+    const perUnit = u ? `/${u}` : "";
     const exclusionTip = (
       <div className="rpt-tip-table">
         <div className="rpt-tip-title">{p.exTitulo}</div>
@@ -2147,10 +2466,10 @@ export default function OperationsReportsPage() {
               {unitDist ? (
                 <>
                   <div className="rpt-strong">
-                    {fmtRef(unitDist.median, refDigits(unitDist.median))} {perUnit}
+                    {fmtDur(unitDist.median)}{perUnit}
                   </div>
                   <div className="rpt-num-sub">
-                    {p.faixaP25P75(fmtRef(unitDist.p25, refDigits(unitDist.median)), fmtRef(unitDist.p75, refDigits(unitDist.median)))}
+                    {p.faixaP25P75(fmtDur(unitDist.p25), fmtDur(unitDist.p75))}
                   </div>
                 </>
               ) : (
@@ -2161,10 +2480,10 @@ export default function OperationsReportsPage() {
               {meterDist ? (
                 <>
                   <div className="rpt-strong">
-                    {fmtRef(meterDist.median, refDigits(meterDist.median))} {p.hhUnit}/m
+                    {fmtDur(meterDist.median)}/m
                   </div>
                   <div className="rpt-num-sub">
-                    {p.faixaP25P75(fmtRef(meterDist.p25, refDigits(meterDist.median)), fmtRef(meterDist.p75, refDigits(meterDist.median)))}
+                    {p.faixaP25P75(fmtDur(meterDist.p25), fmtDur(meterDist.p75))}
                     {" · "}
                     {nf(meterDist.total_meters, 0)} m
                   </div>
@@ -2173,17 +2492,31 @@ export default function OperationsReportsPage() {
                 empty(p.semComprimento)
               )}
             </td>
+            <td className="rpt-num">
+              {unitDist ? (
+                <>
+                  <div className="rpt-strong" style={{ color: cvColor(unitDist.cv_pct) }}>
+                    ± {fmtDur(unitDist.std_dev)}{perUnit}
+                  </div>
+                  <div className="rpt-num-sub">
+                    {p.mediaCV(fmtDur(unitDist.mean), unitDist.cv_pct == null ? "—" : `${nf(unitDist.cv_pct, 0)}%`)}
+                  </div>
+                </>
+              ) : (
+                empty()
+              )}
+            </td>
           </>
         ) : (
-          <td colSpan={2} className="rpt-num">
+          <td colSpan={3} className="rpt-num">
             <span className="rpt-insufficient">
               <Icon name="info" style={{ fontSize: 14 }} />
               {p.dadosInsuficientes(a.executions_used)}
             </span>
           </td>
         )}
-        <td className="rpt-num">{info(a.median_man_hours == null ? null : fmtHH(a.median_man_hours))}</td>
-        <td className="rpt-num">{info(a.median_duration_hours == null ? null : fmtH(a.median_duration_hours))}</td>
+        <td className="rpt-num">{info(a.median_man_hours == null ? null : fmtDur(a.median_man_hours))}</td>
+        <td className="rpt-num">{info(a.median_duration_hours == null ? null : fmtDur(a.median_duration_hours))}</td>
         <td className="rpt-num">{info(a.avg_crew_size == null ? null : nf(a.avg_crew_size, 1))}</td>
       </tr>
     );
@@ -2235,7 +2568,7 @@ export default function OperationsReportsPage() {
               <tr className="rpt-th-group">
                 <th className="rpt-sticky-col" />
                 <th colSpan={3} />
-                <th colSpan={2}>{p.thGrupoReferencia}</th>
+                <th colSpan={3}>{p.thGrupoReferencia}</th>
                 <th colSpan={3}>{p.thGrupoExecucao}</th>
               </tr>
               <tr>
@@ -2245,6 +2578,7 @@ export default function OperationsReportsPage() {
                 {sh(p.thExecucoesUsadas, "executions_used")}
                 {sh(p.thHHUnidade, "hh_per_unit", p.tipHHUnidade, "asc")}
                 {sh(p.thHHMetro, "hh_per_meter", undefined, "asc")}
+                {sh(p.thVariacao, "hh_cv", p.tipVariacao, "asc")}
                 {sh(p.thHHMediano, "median_man_hours", p.tipHHMediano)}
                 {sh(p.thDuracao, "median_duration_hours", p.tipDuracao)}
                 {sh(p.thEquipe, "avg_crew_size")}
@@ -2365,6 +2699,8 @@ export default function OperationsReportsPage() {
             {renderExceptions()}
             {renderPeriodKpis()}
             {renderTechTable()}
+            {renderStatusHours()}
+            {renderProduction()}
             {renderUnproductive()}
             {renderActivities()}
           </>
@@ -2381,19 +2717,13 @@ export default function OperationsReportsPage() {
         subtitle={p.subtitle}
         actions={
           <div className="ops-toolbar rpt-header-tools">
-            <select
-              className="select"
-              aria-label={p.filtroSite}
-              value={siteId}
-              onChange={(e) => changeSite(e.target.value === "all" ? "all" : Number(e.target.value))}
-            >
-              <option value="all">{p.todosSites}</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <MultiSelectFilter
+              label={locale === "es-ES" ? "Sitio" : "Site"}
+              options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+              selected={siteId === "all" ? [] : String(siteId).split(",")}
+              onChange={(next) => changeSite(next.length ? next.join(",") : "all")}
+              allLabel={p.todosSites}
+            />
             <button
               type="button"
               className="btn btn-outline btn-sm"

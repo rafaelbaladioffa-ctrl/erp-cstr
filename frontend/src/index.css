@@ -92,6 +92,9 @@
   --purple-soft: #f3effe;
   --pink: #db2777;
   --pink-soft: #fdf0f6;
+  --cyan: #0891b2;
+  --cyan-soft: #e6f6fa;
+  --lime: #65a30d;
   --red: #dc2626;
   --red-soft: #fef0f0;
   --radius: 8px;
@@ -124,6 +127,9 @@
   --purple-soft: #1f1535;
   --pink: #f472b6;
   --pink-soft: #2a1020;
+  --cyan: #22d3ee;
+  --cyan-soft: #0b2530;
+  --lime: #a3e635;
   --red: #fc8080;
   --red-soft: #2a1111;
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.35);
@@ -6021,8 +6027,7 @@ button.sp-card:hover {
   color: var(--text-faint);
 }
 
-/* ===========================================================================
-   Relatório gerencial (pages/ManagementReport.tsx)
+/* ====================================================================   Relatório gerencial (pages/ManagementReport.tsx)
    Slides de 1280×720 px = 13,333×7,5 in: o tamanho exato da página impressa
    (@page abaixo), então a cópia usada na impressão não precisa de escala.
    =========================================================================== */
@@ -6490,3 +6495,41 @@ button.sp-card:hover {
     page-break-after: auto;
   }
 }
+=======
+/* Operação do Dia — pool agrupado por projeto */
+.ops-pool-toolbar { display: flex; justify-content: flex-end; padding: 8px 12px 0; }
+.ops-pool-group { cursor: pointer; }
+.ops-pool-group > td { padding: 0 !important; background: var(--pool-accent-soft); border-top: 10px solid var(--white); }
+.ops-pool-group-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-left: 5px solid var(--pool-accent); color: var(--text); }
+.ops-pool-group-name { font-weight: 800; font-size: 14px; }
+.ops-pool-group-code { font-size: 12px; color: var(--text-muted); }
+.ops-pool-group-site { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 10px; background: var(--white); color: var(--pool-accent); border: 1px solid var(--pool-accent); }
+.ops-pool-group-spacer { flex: 1; }
+.ops-pool-group-count { font-size: 12px; font-weight: 800; color: var(--pool-accent); }
+.ops-pool-group-sub { font-size: 11px; color: var(--text-muted); }
+.ops-pool-group-sub-ok { color: var(--blue); }
+.ops-pool-task > td:first-child { border-left: 5px solid var(--pool-accent); }
+.ops-pool-seq { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 10px; border-radius: 50%; font-size: 11px; font-weight: 800; color: var(--pool-accent); border: 1.5px solid var(--pool-accent); }
+.ops-pool-task { user-select: none; }
+.ops-pool-toolbar { align-items: center; gap: 12px; }
+.ops-pool-hint { flex: 1; font-size: 12px; color: var(--text-faint); }
+
+.tod-expand-btn,
+.tl-expand-btn {
+  margin-top: 4px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tod-expand-btn:hover,
+.tl-expand-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.sp-dropdown-list { max-height: 320px; overflow-y: auto; }
+.sp-dropdown-hint { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 12px 6px; font-size: 11.5px; color: var(--text-faint); border-top: 1px solid var(--border); margin-top: 4px; }
+.sp-dropdown-clear { border: none; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--orange); cursor: pointer; white-space: nowrap; }

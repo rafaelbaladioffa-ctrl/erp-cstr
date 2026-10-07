@@ -17,16 +17,19 @@ from django.utils import timezone
 from core.collaborator_scope import managed_collaborator_ids, supervisor_project_ids
 from core.models import Collaborator
 from dispatch.models import TechnicianDailyPresence
-from projects.models import ProjectTask
+from projects.models import ProjectTask, ProjectTaskAssignment
 
 from .reports import (
     EXTERNAL_BLOCK_STATUSES,
     INTERNAL_IDLE_STATUSES,
     MAX_PERIOD_DAYS,
+    PRODUCTIVE_STATUSES,
     _local_date,
     _pct,
     _sum_statuses,
     build_operations_reports,
+    collaborators_in_sites,
+    parse_site_ids,
     presence_durations,
     utilization_band,
 )
@@ -103,17 +106,15 @@ def _summary(total, incomplete_days=0):
 def _collect(site_id, date_from, date_to, user, now):
     """Linhas (técnico, dia) com as horas de cada categoria + metadados dos técnicos."""
     project_ids = supervisor_project_ids(user)
-    tasks_qs = (
-        ProjectTask.objects.filter(
-            status=ProjectTask.STATUS_COMPLETED, actual_end__date__gte=date_from, actual_end__date__lte=date_to
-        )
-        .select_related("project", "task")
-        .prefetch_related("assignments__collaborator__person", "assignments__collaborator__sites")
-    )
+    site_ids = parse_site_ids(site_id)
+    # Conclusões por técnico (cada um conclui a própria parte), como em build_operations_reports.
+    completed_qs = ProjectTaskAssignment.objects.filter(
+        status=ProjectTask.STATUS_COMPLETED, assignment_end__date__gte=date_from, assignment_end__date__lte=date_to
+    ).select_related("collaborator__person", "project_task")
     if project_ids is not None:
-        tasks_qs = tasks_qs.filter(project_id__in=project_ids)
-    if site_id:
-        tasks_qs = tasks_qs.filter(project__site_id=site_id)
+        completed_qs = completed_qs.filter(project_task__project_id__in=project_ids)
+    if site_ids:
+        completed_qs = completed_qs.filter(project_task__project__site_id__in=site_ids)
 
     collaborators = {}
     rows = {}
@@ -122,24 +123,22 @@ def _collect(site_id, date_from, date_to, user, now):
     def row(collaborator_id, day):
         return rows.setdefault((collaborator_id, day), _empty())
 
-    for task in tasks_qs:
-        assignments = list(task.assignments.all())
-        has_assignment_hours = any(a.actual_hours is not None for a in assignments)
-        for a in assignments:
-            collaborators[a.collaborator_id] = a.collaborator
-            if a.actual_hours is not None:
-                hours = float(a.actual_hours)
-            elif not has_assignment_hours and task.has_real_time_tracking:
-                hours = task.worked_hours
-            else:
-                hours = 0.0
-            day = _local_date(a.assignment_end or task.actual_end)
-            entry = row(a.collaborator_id, day)
-            entry["completed"] += 1
-            if hours > 0:
-                entry["man_hours"] += hours
-                key = (a.collaborator_id, day)
-                assignment_hours[key] = assignment_hours.get(key, 0.0) + hours
+    for assignment in completed_qs:
+        collaborators[assignment.collaborator_id] = assignment.collaborator
+        task = assignment.project_task
+        day = _local_date(assignment.assignment_end)
+        entry = row(assignment.collaborator_id, day)
+        entry["completed"] += 1
+        if assignment.actual_hours is not None:
+            hours = float(assignment.actual_hours)
+        elif assignment.assignment_start is None and task.has_real_time_tracking:
+            hours = task.worked_hours
+        else:
+            continue  # sem apontamento: não gera HH
+        entry["man_hours"] += hours
+        if hours > 0:
+            key = (assignment.collaborator_id, day)
+            assignment_hours[key] = assignment_hours.get(key, 0.0) + hours
 
     allowed_ids = managed_collaborator_ids(user)
     if allowed_ids is not None:
@@ -150,8 +149,8 @@ def _collect(site_id, date_from, date_to, user, now):
     presence_qs = TechnicianDailyPresence.objects.filter(
         date__gte=date_from, date__lte=date_to, checked_in_at__isnull=False
     )
-    if site_id:
-        presence_qs = presence_qs.filter(collaborator__sites=site_id)
+    if site_ids:
+        presence_qs = presence_qs.filter(collaborator_id__in=collaborators_in_sites(site_ids))
     if allowed_ids is not None:
         presence_qs = presence_qs.filter(collaborator_id__in=allowed_ids)
     checked_in = set(presence_qs.values_list("collaborator_id", "date"))
@@ -169,7 +168,7 @@ def _collect(site_id, date_from, date_to, user, now):
     per_day, incomplete = presence_durations(list(collaborators), date_from, date_to, now)
     days_with_execution = set()
     for (cid, day), durations in per_day.items():
-        in_progress = durations.get(TechnicianDailyPresence.STATUS_IN_PROGRESS, 0.0)
+        in_progress = _sum_statuses(durations, PRODUCTIVE_STATUSES)
         if in_progress > 0:
             days_with_execution.add((cid, day))
         entry = row(cid, day)
