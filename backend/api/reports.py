@@ -44,6 +44,24 @@ PRODUCTIVE_STATUSES = (
     TechnicianDailyPresence.STATUS_IN_PROGRESS,
     TechnicianDailyPresence.STATUS_SUPPORT,
 )
+
+# Tempo por status de presença, na ordem de exibição do card "Horas por status".
+# Produtivo = execução e apoio a outro técnico; improdutivo = disponível sem tarefa e
+# bloqueio externo; neutro = intervalos do próprio técnico (almoço, café...).
+# "Fim de Expediente" e "Indisponível" ficam de fora: não são tempo de jornada.
+_P = TechnicianDailyPresence
+STATUS_CATEGORIES = (
+    (_P.STATUS_IN_PROGRESS, "productive"),
+    (_P.STATUS_SUPPORT, "productive"),
+    (_P.STATUS_AVAILABLE, "unproductive"),
+    (_P.STATUS_SITE_BLOCKED, "unproductive"),
+    (_P.STATUS_AWAITING_RELEASE, "unproductive"),
+    (_P.STATUS_LUNCH, "neutral"),
+    (_P.STATUS_MEAL, "neutral"),
+    (_P.STATUS_PERSONAL, "neutral"),
+    (_P.STATUS_MEETING, "neutral"),
+    (_P.STATUS_TRAVELING, "neutral"),
+)
 METER_UNITS = {"m", "M", "METER", "METERS", "METRO", "METROS", "MT", "MTS"}
 
 
@@ -321,7 +339,11 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     external_block = {}
     internal_idle = {}
     days_with_execution = set()
+    status_hours_by_tech = {}
     for (collaborator_id, day), durations in per_day.items():
+        by_status_tech = status_hours_by_tech.setdefault(collaborator_id, {})
+        for status, _category in STATUS_CATEGORIES:
+            by_status_tech[status] = by_status_tech.get(status, 0.0) + durations.get(status, 0.0)
         in_progress = _sum_statuses(durations, PRODUCTIVE_STATUSES)
         if in_progress > 0:
             days_with_execution.add((collaborator_id, day))
@@ -370,6 +392,10 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                 "internal_idle_avg_per_day": idle_per_day,
                 "idle_limit_exceeded": idle_per_day is not None and idle_per_day > INTERNAL_IDLE_LIMIT_HOURS,
                 "incomplete_days": incomplete_days.get(collaborator_id, 0),
+                "status_hours": {
+                    status: round(status_hours_by_tech.get(collaborator_id, {}).get(status, 0.0), 2)
+                    for status, _category in STATUS_CATEGORIES
+                },
             }
         )
     technicians.sort(key=lambda t: (t["utilization_pct"] is None, t["utilization_pct"] or 0, t["name"]))
@@ -557,5 +583,6 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         "activities": legacy_activities,
         "today_technicians": today_technicians,
         "unproductive_by_reason": unproductive_by_reason,
+        "status_categories": [{"status": s, "category": c} for s, c in STATUS_CATEGORIES],
         "log_entries": log_entries,
     }

@@ -6667,6 +6667,32 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(row["internal_idle_hours"], 1.0)  # só 8–9h
         self.assertEqual(row["external_block_hours"], 0.0)
 
+    def test_status_hours_per_technician_with_category(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(9)),
+            (P.STATUS_LUNCH, self.at(12)),
+            (P.STATUS_SUPPORT, self.at(13)),
+            (P.STATUS_SITE_BLOCKED, self.at(14)),
+            (P.STATUS_OFF_DUTY, self.at(15)),
+        ])
+        data = self.get()
+        row = self.tech_row(data, self.tech_a)
+        self.assertEqual(row["status_hours"][P.STATUS_IN_PROGRESS], 3.0)
+        self.assertEqual(row["status_hours"][P.STATUS_LUNCH], 1.0)
+        self.assertEqual(row["status_hours"][P.STATUS_SUPPORT], 1.0)
+        self.assertEqual(row["status_hours"][P.STATUS_SITE_BLOCKED], 1.0)
+        self.assertEqual(row["status_hours"][P.STATUS_AVAILABLE], 1.0)
+        self.assertEqual(row["status_hours"][P.STATUS_MEAL], 0.0)
+        categories = {c["status"]: c["category"] for c in data["status_categories"]}
+        self.assertEqual(categories[P.STATUS_IN_PROGRESS], "productive")
+        self.assertEqual(categories[P.STATUS_SUPPORT], "productive")
+        self.assertEqual(categories[P.STATUS_AVAILABLE], "unproductive")
+        self.assertEqual(categories[P.STATUS_SITE_BLOCKED], "unproductive")
+        self.assertEqual(categories[P.STATUS_LUNCH], "neutral")
+        self.assertNotIn(P.STATUS_OFF_DUTY, categories)
+
     def test_internal_idle_limit_is_30_minutes_per_day(self):
         P = self.Presence
         self.check_in(self.tech_a, [

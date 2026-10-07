@@ -15,6 +15,7 @@ import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
 import { useI18n, usePageText } from "../i18n";
 import { downloadCsv, type CsvCell } from "../utils/csv";
+import { presenceLabel } from "../utils/timeline";
 import {
   addDaysIso,
   brazilDaysAgoIso,
@@ -234,6 +235,13 @@ const TEXT = {
     cardTecnicos: "Técnicos no período",
     nTecnicos: (n: number) => `${n} técnicos`,
     cardImprodutivo: "Improdutivo por motivo",
+    cardStatusHoras: "Horas por status",
+    totalLabel: "Total",
+    hintStatusHoras: "Tempo em cada status de presença, por técnico, no período. Produtivo = execução e apoio; improdutivo = disponível sem tarefa e bloqueio externo; neutro = intervalos do técnico, que não entram na conta.",
+    catProdutivo: "Produtivo",
+    catImprodutivoStatus: "Improdutivo",
+    catNeutro: "Neutro",
+    csvStatusHoras: "horas-por-status",
     cardAtividades: "Produtividade por atividade",
     cardDiaTecnico: "Dia por técnico",
     cardLog: "Log do dia",
@@ -456,6 +464,13 @@ const TEXT = {
     cardTecnicos: "Technicians in the period",
     nTecnicos: (n: number) => `${n} technicians`,
     cardImprodutivo: "Non-productive time by reason",
+    cardStatusHoras: "Hours by status",
+    totalLabel: "Total",
+    hintStatusHoras: "Time in each presence status, per technician, in the period. Productive = execution and support; non-productive = available without a task and external blocks; neutral = the technician's breaks, which are not counted.",
+    catProdutivo: "Productive",
+    catImprodutivoStatus: "Non-productive",
+    catNeutro: "Neutral",
+    csvStatusHoras: "hours-by-status",
     cardAtividades: "Productivity by activity",
     cardDiaTecnico: "Day by technician",
     cardLog: "Today's log",
@@ -671,6 +686,13 @@ const TEXT = {
     cardTecnicos: "Técnicos en el período",
     nTecnicos: (n: number) => `${n} técnicos`,
     cardImprodutivo: "Tiempo improductivo por motivo",
+    cardStatusHoras: "Horas por estado",
+    totalLabel: "Total",
+    hintStatusHoras: "Tiempo en cada estado de presencia, por técnico, en el período. Productivo = ejecución y apoyo; improductivo = disponible sin tarea y bloqueo externo; neutro = pausas del técnico, que no se cuentan.",
+    catProdutivo: "Productivo",
+    catImprodutivoStatus: "Improductivo",
+    catNeutro: "Neutro",
+    csvStatusHoras: "horas-por-estado",
     cardAtividades: "Productividad por actividad",
     cardDiaTecnico: "Día por técnico",
     cardLog: "Registro del día",
@@ -2070,6 +2092,106 @@ export default function OperationsReportsPage() {
     );
   }
 
+  function exportStatusHours() {
+    const cats = data?.status_categories ?? [];
+    const catText = (c: string) => (c === "productive" ? p.catProdutivo : c === "unproductive" ? p.catImprodutivoStatus : p.catNeutro);
+    const header: CsvCell[] = [
+      p.thTecnico,
+      ...cats.map((c) => `${presenceLabel(c.status, locale)} (${catText(c.category)})`),
+    ];
+    const rows: CsvCell[][] = sortedTechsAll().map((t) => [t.name, ...cats.map((c) => fmtDur(t.status_hours?.[c.status] ?? 0))]);
+    rows.push([
+      p.totalLabel,
+      ...cats.map((c) => fmtDur(technicians.reduce((sum, t) => sum + (t.status_hours?.[c.status] ?? 0), 0))),
+    ]);
+    downloadCsv(`${p.csvStatusHoras}_${csvSuffix}.csv`, [header, ...rows], locale);
+  }
+
+  function renderStatusHours() {
+    if (!stats) return null;
+    const cats = data?.status_categories ?? [];
+    const catText = (c: string) => (c === "productive" ? p.catProdutivo : c === "unproductive" ? p.catImprodutivoStatus : p.catNeutro);
+    const catColor = (c: string) => (c === "productive" ? "var(--green)" : c === "unproductive" ? "var(--red)" : "var(--text-muted)");
+    const groups = (["productive", "unproductive", "neutral"] as const)
+      .map((cat) => ({ cat, items: cats.filter((c) => c.category === cat) }))
+      .filter((g) => g.items.length > 0);
+    const rowsTechs = sortedTechsAll();
+    const hoursOf = (t: ReportsTechnician, status: string) => t.status_hours?.[status] ?? 0;
+    const cell = (hours: number) => (hours > 0 ? fmtDur(hours) : <span className="rpt-cell-muted">—</span>);
+    return (
+      <div className="ops-pool-card rpt-card">
+        <div className="ops-card-head rpt-card-head-wrap">
+          <div>
+            <div className="ops-card-title">{p.cardStatusHoras}</div>
+            <div className="ops-card-hint">{p.hintStatusHoras}</div>
+          </div>
+          <button type="button" className="btn btn-outline btn-sm" onClick={exportStatusHours} disabled={rowsTechs.length === 0}>
+            <Icon name="download" style={{ fontSize: 16 }} />
+            {p.exportarCsv}
+          </button>
+        </div>
+        {rowsTechs.length === 0 ? (
+          <div className="table-empty rpt-empty-block">{p.semImprodutivo}</div>
+        ) : (
+          <div className="table-wrap rpt-scroll">
+            <table className="table rpt-table-dense">
+              <thead>
+                <tr className="rpt-th-group">
+                  <th className="rpt-sticky-col" />
+                  {groups.map((g) => (
+                    <th key={g.cat} colSpan={g.items.length} style={{ color: catColor(g.cat), textAlign: "center" }}>
+                      <span className={`rpt-cat rpt-cat--${g.cat === "productive" ? "internal" : g.cat === "unproductive" ? "external" : "neutral"}`} aria-hidden="true" style={{ background: catColor(g.cat) }} />
+                      {" "}
+                      {catText(g.cat)}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  <th className="rpt-sticky-col">{p.thTecnico}</th>
+                  {groups.flatMap((g) =>
+                    g.items.map((c) => (
+                      <th key={c.status} className="rpt-num" style={{ borderTop: `2px solid ${catColor(g.cat)}` }}>
+                        {presenceLabel(c.status, locale)}
+                      </th>
+                    ))
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {rowsTechs.map((t) => (
+                  <tr key={t.id}>
+                    <td className="rpt-sticky-col">
+                      <div className="rpt-strong">{t.name}</div>
+                    </td>
+                    {groups.flatMap((g) =>
+                      g.items.map((c) => (
+                        <td key={c.status} className="rpt-num">
+                          {cell(hoursOf(t, c.status))}
+                        </td>
+                      ))
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="rpt-sticky-col rpt-strong">{p.totalLabel}</td>
+                  {groups.flatMap((g) =>
+                    g.items.map((c) => (
+                      <td key={c.status} className="rpt-num rpt-strong" style={{ color: catColor(g.cat) }}>
+                        {fmtDur(rowsTechs.reduce((sum, t) => sum + hoursOf(t, c.status), 0))}
+                      </td>
+                    ))
+                  )}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function renderUnproductive() {
     if (!stats) return null;
     const external = reasons.filter((r) => r.category === "external");
@@ -2420,6 +2542,7 @@ export default function OperationsReportsPage() {
             {renderExceptions()}
             {renderPeriodKpis()}
             {renderTechTable()}
+            {renderStatusHours()}
             {renderUnproductive()}
             {renderActivities()}
           </>
