@@ -92,6 +92,95 @@ class TimelineAdjustmentTests(TestCase):
             [(P.STATUS_AVAILABLE, "08:00"), (P.STATUS_IN_PROGRESS, "09:00"), (P.STATUS_LUNCH, "10:30"), (P.STATUS_OFF_DUTY, "15:00")],
         )
 
+    # --- editor da lista de status do dia ----------------------------------
+
+    def post_events(self, events, reason="Corrigindo o dia", client=None):
+        payload = {
+            "collaborator_id": self.tech.pk,
+            "date": str(self.day),
+            "events": [{"status": s, "changed_at": self.iso(h, m)} for s, h, m in events],
+            "reason": reason,
+        }
+        return (client or self.client_admin).post("/api/operations/adjustments/status-events/", payload, format="json")
+
+    def test_editor_changes_an_existing_status_instead_of_only_adding(self):
+        self.add_event(P.STATUS_AVAILABLE, 8)
+        lunch = self.add_event(P.STATUS_LUNCH, 11, 44)
+        self.add_event(P.STATUS_OFF_DUTY, 16, 21)
+
+        # o almoço na verdade terminou 12:44 → vira "Disponível" até o fim; o almoço (11:44) segue igual
+        response = self.post_events(
+            [(P.STATUS_AVAILABLE, 8, 0), (P.STATUS_LUNCH, 11, 44), (P.STATUS_AVAILABLE, 12, 44), (P.STATUS_OFF_DUTY, 16, 21)]
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        events = list(TechnicianStatusEvent.objects.filter(collaborator=self.tech).order_by("changed_at"))
+        self.assertEqual(len(events), 4)
+        self.assertEqual(events[1].pk, lunch.pk)         # registro original mantido
+        self.assertFalse(events[1].is_adjusted)
+        self.assertTrue(events[2].is_adjusted)            # o novo entra marcado
+        self.assertEqual(self.hours_by_status()[P.STATUS_LUNCH], 1.0)
+
+    def test_editor_edits_time_and_type_of_a_registered_status_and_can_delete(self):
+        self.add_event(P.STATUS_AVAILABLE, 8)
+        lunch = self.add_event(P.STATUS_LUNCH, 11, 44)
+        wrong = self.add_event(P.STATUS_MEETING, 13)
+        self.add_event(P.STATUS_OFF_DUTY, 16)
+
+        # troca o tipo e o horário do almoço e exclui o status errado (reunião 13:00)
+        response = self.post_events([(P.STATUS_AVAILABLE, 8, 0), (P.STATUS_MEAL, 12, 0), (P.STATUS_OFF_DUTY, 16, 0)])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(TechnicianStatusEvent.objects.filter(pk__in=[lunch.pk, wrong.pk]).exists())
+        durations = self.hours_by_status()
+        self.assertEqual(durations[P.STATUS_MEAL], 4.0)
+        self.assertNotIn(P.STATUS_MEETING, durations)
+        log = TimelineAdjustment.objects.get()
+        self.assertEqual(len(log.before["events"]), 4)
+        self.assertEqual(len(log.after["events"]), 3)
+        presence = P.objects.get(collaborator=self.tech, date=self.day)
+        self.assertEqual(presence.status, P.STATUS_OFF_DUTY)
+
+    def test_editor_can_register_a_status_for_a_day_without_records(self):
+        response = self.post_events([(P.STATUS_AVAILABLE, 8, 0), (P.STATUS_LUNCH, 12, 0), (P.STATUS_OFF_DUTY, 17, 0)])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.hours_by_status()[P.STATUS_LUNCH], 5.0)
+        self.assertEqual(TechnicianStatusEvent.objects.filter(collaborator=self.tech, is_adjusted=True).count(), 3)
+
+    def test_editor_validations(self):
+        self.add_event(P.STATUS_AVAILABLE, 8)
+        self.assertEqual(self.post_events([]).status_code, 400)
+        self.assertEqual(self.post_events([(P.STATUS_AVAILABLE, 8, 0)], reason=" ").status_code, 400)
+        self.assertEqual(self.post_events([(P.STATUS_AVAILABLE, 8, 0), (P.STATUS_LUNCH, 8, 0)]).status_code, 400)
+        self.assertEqual(self.post_events([("inexistente", 8, 0)]).status_code, 400)
+        other_day = self.client_admin.post(
+            "/api/operations/adjustments/status-events/",
+            {"collaborator_id": self.tech.pk, "date": str(self.day), "reason": "motivo ok",
+             "events": [{"status": P.STATUS_AVAILABLE, "changed_at": (self.at(8) + timedelta(days=1)).isoformat()}]},
+            format="json",
+        )
+        self.assertEqual(other_day.status_code, 400)
+        future = self.client_admin.post(
+            "/api/operations/adjustments/status-events/",
+            {"collaborator_id": self.tech.pk, "date": str(timezone.localdate()), "reason": "motivo ok",
+             "events": [{"status": P.STATUS_AVAILABLE, "changed_at": (timezone.now() + timedelta(hours=2)).isoformat()}]},
+            format="json",
+        )
+        self.assertEqual(future.status_code, 400)
+        self.assertEqual(TimelineAdjustment.objects.count(), 0)
+        self.assertEqual(TechnicianStatusEvent.objects.filter(collaborator=self.tech).count(), 1)  # nada foi alterado
+
+    def test_editor_get_lists_the_days_events_and_is_admin_only(self):
+        self.add_event(P.STATUS_AVAILABLE, 8)
+        self.add_event(P.STATUS_LUNCH, 12)
+
+        url = f"/api/operations/adjustments/status-events/?collaborator={self.tech.pk}&date={self.day}"
+        rows = self.client_admin.get(url)
+        self.assertEqual([r["status"] for r in rows.data], [P.STATUS_AVAILABLE, P.STATUS_LUNCH])
+        self.assertEqual(self.client_user.get(url).status_code, 403)
+        self.assertEqual(self.post_events([(P.STATUS_AVAILABLE, 8, 0)], client=self.client_user).status_code, 403)
+
     # --- atividade executada sem iniciar --------------------------------
 
     def test_execution_registered_by_admin_counts_as_real_hours(self):

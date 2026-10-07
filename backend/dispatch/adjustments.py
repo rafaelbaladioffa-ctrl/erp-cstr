@@ -96,6 +96,58 @@ def _refresh_presence(collaborator, day):
 
 
 @transaction.atomic
+def replace_status_events(*, user, collaborator, day, events, reason):
+    """Edita a lista de status do dia: `events` é a lista COMPLETA desejada, [(status, instante)].
+    Registros que continuam iguais (mesmo status e instante) são mantidos como estão; os
+    alterados ou novos entram marcados como ajustados; os que sumiram da lista são excluídos.
+    Serve para corrigir um status (trocar tipo ou horário), excluir um registro errado ou
+    cadastrar um novo."""
+    reason = _validate_reason(reason)
+    if not events:
+        raise AdjustmentError("Mantenha ao menos um status no dia.")
+    ordered = sorted(events, key=lambda item: item[1])
+    now = timezone.now()
+    previous_at = None
+    for status, changed_at in ordered:
+        if status not in ADJUSTABLE_STATUSES:
+            raise AdjustmentError("Status inválido.")
+        if timezone.localtime(changed_at).date() != day:
+            raise AdjustmentError("Todos os horários precisam ser do dia selecionado.")
+        if changed_at > now:
+            raise AdjustmentError("Não é possível registrar status no futuro.")
+        if previous_at is not None and changed_at == previous_at:
+            raise AdjustmentError("Dois status não podem ter o mesmo horário.")
+        previous_at = changed_at
+
+    current = _day_events(collaborator, day)
+    before = _serialize_events(current)
+    unused = {}
+    for e in current:
+        unused.setdefault((e.status, e.changed_at), []).append(e)
+    for status, changed_at in ordered:
+        bucket = unused.get((status, changed_at))
+        if bucket:
+            bucket.pop()  # registro idêntico já existe: mantém como está
+            continue
+        TechnicianStatusEvent.objects.create(
+            collaborator=collaborator, date=day, status=status, changed_at=changed_at, is_adjusted=True
+        )
+    stale_ids = [e.id for bucket in unused.values() for e in bucket]
+    if stale_ids:
+        TechnicianStatusEvent.objects.filter(id__in=stale_ids).delete()
+    after = _refresh_presence(collaborator, day)
+    return TimelineAdjustment.objects.create(
+        user=user,
+        collaborator=collaborator,
+        date=day,
+        kind=TimelineAdjustment.KIND_STATUS_WINDOW,
+        reason=reason,
+        before={"events": before},
+        after={"events": after},
+    )
+
+
+@transaction.atomic
 def adjust_status_window(*, user, collaborator, start, end, status, reason):
     """Corrige um trecho de status (ex.: técnico esqueceu de sair do almoço)."""
     reason = _validate_reason(reason)

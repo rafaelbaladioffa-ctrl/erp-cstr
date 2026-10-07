@@ -604,6 +604,18 @@ export const adjustmentsApi = {
     pauses: { start: string; end: string }[];
     reason: string;
   }) => apiClient.post("/operations/adjustments/execution/", payload).then((r) => r.data),
+  statusEvents: (collaboratorId: number, date: string) =>
+    apiClient
+      .get<{ status: string; changed_at: string; adjusted: boolean }[]>("/operations/adjustments/status-events/", {
+        params: { collaborator: collaboratorId, date },
+      })
+      .then((r) => r.data),
+  saveStatusEvents: (payload: {
+    collaborator_id: number;
+    date: string;
+    events: { status: string; changed_at: string }[];
+    reason: string;
+  }) => apiClient.post("/operations/adjustments/status-events/", payload).then((r) => r.data),
   statusWindow: (payload: { collaborator_id: number; start: string; end: string; status: string; reason: string }) =>
     apiClient.post("/operations/adjustments/status-window/", payload).then((r) => r.data),
 };

@@ -9,8 +9,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.models import Collaborator
-from dispatch.adjustments import AdjustmentError, adjust_status_window, register_execution
-from dispatch.models import TimelineAdjustment
+from dispatch.adjustments import AdjustmentError, adjust_status_window, register_execution, replace_status_events
+from dispatch.models import TechnicianStatusEvent, TimelineAdjustment
 from projects.models import ProjectTask, ProjectTaskAssignment
 
 from .permissions import IsSuperUser
@@ -87,6 +87,37 @@ class StatusWindowAdjustmentView(APIView):
         except AdjustmentError as exc:
             return Response({"detail": str(exc)}, status=400)
         return Response({"id": adjustment.pk, "detail": "Status ajustado."})
+
+
+class StatusEventsAdjustmentView(APIView):
+    """GET ?collaborator=<id>&date=<YYYY-MM-DD>: os status registrados no dia (para editar).
+    POST: grava a lista completa de status do dia — altera, exclui e cadastra de uma vez.
+    Body: collaborator_id, date, events [{status, changed_at}], reason."""
+
+    permission_classes = [IsSuperUser]
+
+    def get(self, request):
+        collaborator = get_object_or_404(Collaborator, pk=request.query_params.get("collaborator"))
+        day = parse_date(request.query_params.get("date") or "") or timezone.localdate()
+        events = TechnicianStatusEvent.objects.filter(collaborator=collaborator, date=day).order_by("changed_at", "id")
+        return Response(
+            [{"status": e.status, "changed_at": e.changed_at, "adjusted": e.is_adjusted} for e in events]
+        )
+
+    def post(self, request):
+        data = request.data
+        collaborator = get_object_or_404(Collaborator, pk=data.get("collaborator_id"))
+        day = parse_date(str(data.get("date") or ""))
+        if day is None:
+            return Response({"detail": "Data inválida."}, status=400)
+        try:
+            events = [(item.get("status"), _parse_dt(item.get("changed_at"), "Horário")) for item in (data.get("events") or [])]
+            adjustment = replace_status_events(
+                user=request.user, collaborator=collaborator, day=day, events=events, reason=data.get("reason")
+            )
+        except AdjustmentError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({"id": adjustment.pk, "detail": "Status do dia atualizados."})
 
 
 class AdjustmentTasksView(APIView):
