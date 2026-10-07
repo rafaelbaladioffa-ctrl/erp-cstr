@@ -6629,6 +6629,76 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(types, {"checkin", "status"})
 
 
+    # --- Relatório gerencial (/operations/reports/management/) -------------
+
+    def get_management(self, **params):
+        query = {"site": "all", "date_from": str(self.day - timedelta(days=7)), "date_to": str(timezone.localdate())}
+        query.update(params)
+        response = self.client_api.get("/api/operations/reports/management/", query)
+        self.assertEqual(response.status_code, 200, getattr(response, "data", None))
+        return response.json()
+
+    def test_management_report_matches_main_report_totals(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_IN_PROGRESS, self.at(9)),
+            (P.STATUS_OFF_DUTY, self.at(15)),
+        ])
+        self.check_in(self.tech_b, [
+            (P.STATUS_AVAILABLE, self.at(8)),
+            (P.STATUS_SITE_BLOCKED, self.at(9)),
+            (P.STATUS_IN_PROGRESS, self.at(11)),
+            (P.STATUS_OFF_DUTY, self.at(14)),
+        ])
+        self.make_task(
+            self.at(9), self.at(15), 6,
+            [(self.tech_a, self.at(9), self.at(15), 6)],
+        )
+        main = self.get()["stats"]
+        management = self.get_management()
+        current = management["kpis"]["current"]
+        self.assertEqual(current["utilization_pct"], main["utilization_pct"])
+        self.assertEqual(current["productive_hours"], main["productive_hours_total"])
+        self.assertEqual(current["journey_hours"], main["journey_hours_total"])
+        self.assertEqual(current["man_hours"], main["man_hours_total"])
+        self.assertEqual(current["external_block_hours"], main["external_block_hours"])
+        self.assertEqual(current["internal_idle_hours"], main["internal_idle_hours"])
+        self.assertEqual(current["technicians"], 2)
+
+    def test_management_series_buckets_and_previous_period(self):
+        P = self.Presence
+        self.check_in(self.tech_a, [(P.STATUS_IN_PROGRESS, self.at(8)), (P.STATUS_OFF_DUTY, self.at(14))])
+        previous_day = self.day - timedelta(days=10)
+        self.check_in(
+            self.tech_a,
+            [(P.STATUS_IN_PROGRESS, self.at(8, day=previous_day)), (P.STATUS_OFF_DUTY, self.at(12, day=previous_day))],
+            day=previous_day,
+        )
+        data = self.get_management(
+            date_from=str(self.day - timedelta(days=6)), date_to=str(self.day), group="day"
+        )
+        self.assertEqual(len(data["series"]), 7)
+        self.assertEqual(data["series"][-1]["utilization_pct"], 75)
+        self.assertEqual(data["kpis"]["previous"]["utilization_pct"], 50)
+        row = next(t for t in data["technicians"] if t["id"] == self.tech_a.pk)
+        self.assertEqual(row["previous_utilization_pct"], 50)
+        self.assertEqual(row["utilization_delta"], 25)
+        self.assertEqual(len(row["series"]), 7)
+        weekly = self.get_management(group="week")
+        self.assertEqual(weekly["period"]["group"], "week")
+
+    def test_management_report_validates_params(self):
+        today = timezone.localdate()
+        bad_group = self.client_api.get("/api/operations/reports/management/", {"group": "year"})
+        self.assertEqual(bad_group.status_code, 400)
+        too_long = self.client_api.get(
+            "/api/operations/reports/management/",
+            {"date_from": str(today - timedelta(days=200)), "date_to": str(today)},
+        )
+        self.assertEqual(too_long.status_code, 400)
+
+
 class ProjectHourEntryTests(TestCase):
     """Horas históricas: só total do projeto, nunca métricas de técnico."""
 

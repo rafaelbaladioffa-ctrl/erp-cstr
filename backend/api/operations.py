@@ -18,6 +18,7 @@ from core.models import Collaborator
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import ProjectTask, ProjectTaskAssignment
 
+from .management_report import GROUPS, build_management_report
 from .reports import MAX_PERIOD_DAYS, build_operations_reports
 from core.collaborator_scope import scope_collaborators, supervisor_project_ids
 
@@ -466,5 +467,36 @@ class OperationsReportsView(APIView):
         return Response(
             build_operations_reports(
                 site_id=site_id, date_from=date_from, date_to=date_to, log_entries_fn=_log_entries, user=request.user
+            )
+        )
+
+
+class OperationsManagementReportView(APIView):
+    """GET /api/operations/reports/management/?site=<id|all>&date_from=&date_to=&group=day|week|month
+
+    Relatório gerencial: tendência, ranking de técnicos, comparação entre
+    sites e período atual × anterior. Agregação em api/management_report.py."""
+
+    permission_classes = [HasOperationsBoardPermission]
+
+    def get(self, request):
+        site_id = request.query_params.get("site")
+        if site_id == "all":
+            site_id = None
+
+        today = timezone.localdate()
+        date_from = parse_date(request.query_params.get("date_from") or "") or (today - timedelta(days=29))
+        date_to = parse_date(request.query_params.get("date_to") or "") or today
+        if date_from > date_to:
+            return Response({"detail": "A data inicial não pode ser posterior à data final."}, status=400)
+        if (date_to - date_from).days + 1 > MAX_PERIOD_DAYS:
+            return Response({"detail": f"O período máximo é de {MAX_PERIOD_DAYS} dias."}, status=400)
+        group = request.query_params.get("group")
+        if group and group not in GROUPS:
+            return Response({"detail": "Agrupamento inválido (use day, week ou month)."}, status=400)
+
+        return Response(
+            build_management_report(
+                site_id=site_id, date_from=date_from, date_to=date_to, group=group, user=request.user
             )
         )

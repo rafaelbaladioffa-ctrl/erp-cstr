@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type {
   OperationsReports,
@@ -134,6 +135,7 @@ const TEXT = {
     subtitle: "Utilização, homem-hora e base de estimativa por atividade",
     todosSites: "Todos os sites",
     filtroSite: "Filtrar por site",
+    relatorioGerencial: "Relatório gerencial",
     irParaPeriodo: "Ir para Período",
     // Banner
     bannerCorrecao: (d: string) =>
@@ -357,6 +359,7 @@ const TEXT = {
     subtitle: "Utilization, man-hours and activity estimating baseline",
     todosSites: "All sites",
     filtroSite: "Filter by site",
+    relatorioGerencial: "Management report",
     irParaPeriodo: "Go to Period",
     bannerCorrecao: (d: string) =>
       `Calculation corrected on ${d}. Utilization now excludes pauses, MH sums each technician's hours and activity time uses the master catalog.`,
@@ -565,6 +568,7 @@ const TEXT = {
     subtitle: "Utilización, horas-hombre y base de estimación por actividad",
     todosSites: "Todos los sitios",
     filtroSite: "Filtrar por sitio",
+    relatorioGerencial: "Informe gerencial",
     irParaPeriodo: "Ir a Período",
     bannerCorrecao: (d: string) =>
       `Cálculo corregido el ${d}. La utilización ahora descuenta pausas, las HH suman las horas de cada técnico y el tiempo por actividad usa el catálogo maestro.`,
@@ -2398,6 +2402,10 @@ export default function OperationsReportsPage() {
               <Icon name="arrow_downward" style={{ fontSize: 16 }} />
               {p.irParaPeriodo}
             </button>
+            <Link to="/relatorios-indicadores/gerencial" className="btn btn-primary btn-sm">
+              <Icon name="insights" style={{ fontSize: 16 }} />
+              {p.relatorioGerencial}
+            </Link>
           </div>
         }
       />

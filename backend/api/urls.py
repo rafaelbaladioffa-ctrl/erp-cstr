@@ -4,7 +4,12 @@ from rest_framework.routers import DefaultRouter
 from . import views
 from .auth_views import LogoutView, ThrottledTokenObtainPairView, ThrottledTokenRefreshView
 from .dashboard import ProjectsPerformanceView, TechnicalPerformanceView
-from .operations import OperationsBoardView, OperationsReportsView, OperationsTimelineView
+from .operations import (
+    OperationsBoardView,
+    OperationsManagementReportView,
+    OperationsReportsView,
+    OperationsTimelineView,
+)
 from .sites_panel import SitesPanelView
 
 router = DefaultRouter()
@@ -83,6 +88,11 @@ urlpatterns = [
     path("operations/board/", OperationsBoardView.as_view(), name="operations-board"),
     path("operations/timeline/", OperationsTimelineView.as_view(), name="operations-timeline"),
     path("operations/reports/", OperationsReportsView.as_view(), name="operations-reports"),
+    path(
+        "operations/reports/management/",
+        OperationsManagementReportView.as_view(),
+        name="operations-management-report",
+    ),
     path("push/vapid-public-key/", views.VapidPublicKeyView.as_view(), name="vapid-public-key"),
     path("bot/", include("bot.urls")),
     path("", include(router.urls)),

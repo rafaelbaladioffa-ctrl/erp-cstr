@@ -21,6 +21,8 @@ import type {
   Network,
   Notification,
   OperationsBoard,
+  ManagementGroup,
+  ManagementReport,
   OperationsReports,
   OperationsTimeline,
   Paginated,
@@ -539,6 +541,12 @@ export const operationsApi = {
     apiClient
       .get<OperationsReports>("/operations/reports/", {
         params: { site: String(siteId), ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) },
+      })
+      .then((r) => r.data),
+  managementReport: (siteId: number | "all", dateFrom: string, dateTo: string, group?: ManagementGroup) =>
+    apiClient
+      .get<ManagementReport>("/operations/reports/management/", {
+        params: { site: String(siteId), date_from: dateFrom, date_to: dateTo, ...(group ? { group } : {}) },
       })
       .then((r) => r.data),
 };

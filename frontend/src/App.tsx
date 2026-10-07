@@ -17,6 +17,7 @@ import MasterDataPage from "./pages/master-data/MasterDataPage";
 import MyTasks from "./pages/MyTasks";
 import OperationsBoard from "./pages/OperationsBoard";
 import OperationsReportsPage from "./pages/OperationsReports";
+import ManagementReportPage from "./pages/ManagementReport";
 import TimelineOperacional from "./pages/TimelineOperacional";
 import ProjectDetail from "./pages/ProjectDetail";
 import ProjectsList from "./pages/ProjectsList";
@@ -90,6 +91,14 @@ export default function App() {
             element={
               <RequirePermission permission={PERMS.viewOperationsBoard}>
                 <OperationsReportsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/relatorios-indicadores/gerencial"
+            element={
+              <RequirePermission permission={PERMS.viewOperationsBoard}>
+                <ManagementReportPage />
               </RequirePermission>
             }
           />

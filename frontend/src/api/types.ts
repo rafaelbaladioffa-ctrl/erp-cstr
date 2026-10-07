@@ -1516,3 +1516,59 @@ export interface BotGroup {
   jid: string;
   nome: string;
 }
+
+export type ManagementGroup = "day" | "week" | "month";
+
+export interface ManagementSummary {
+  utilization_pct: number | null;
+  utilization_band: UtilizationBand | null;
+  productive_hours: number;
+  journey_hours: number;
+  man_hours: number;
+  external_block_hours: number;
+  internal_idle_hours: number;
+  completed_count: number;
+  incomplete_days: number;
+}
+
+export interface ManagementBucket extends ManagementSummary {
+  /** Início do bucket (YYYY-MM-DD): dia, segunda-feira da semana ou dia 1 do mês. */
+  start: string;
+}
+
+export interface ManagementComparable extends ManagementSummary {
+  previous_utilization_pct: number | null;
+  utilization_delta: number | null;
+  /** Utilização (%) por bucket, alinhada a `series` do relatório. */
+  series: (number | null)[];
+}
+
+export interface ManagementTechnician extends ManagementComparable {
+  id: number;
+  name: string;
+  site_name: string;
+}
+
+export interface ManagementSite extends ManagementComparable {
+  name: string;
+  technicians: number;
+}
+
+export interface ManagementReport {
+  period: { date_from: string; date_to: string; days: number; group: ManagementGroup };
+  previous_period: { date_from: string; date_to: string };
+  generated_at: string;
+  kpis: {
+    current: ManagementSummary & { technicians: number };
+    previous: ManagementSummary & { technicians: number };
+  };
+  series: ManagementBucket[];
+  previous_series: ManagementBucket[];
+  technicians: ManagementTechnician[];
+  sites: ManagementSite[];
+  weekdays: (ManagementSummary & { label: string })[];
+  unproductive_by_reason: ReportsUnproductiveReason[];
+  activities: ReportsActivityProductivity[];
+  tracking_rate_pct: number | null;
+  max_period_days: number;
+}
