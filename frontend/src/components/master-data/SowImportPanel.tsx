@@ -1,3 +1,4 @@
+import SearchSelect, { SearchMultiSelect } from "../ui/SearchSelect";
 import { Fragment, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { masterDataApi, planningApi } from "../../api/resources";
@@ -749,9 +750,12 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
 
           <div className="field-group" style={{ marginBottom: 14 }}>
             <span className="field-label">{p.tipoOrigem}</span>
-            <select className="select" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
-              {sourceTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <SearchSelect
+              options={sourceTypeOptions.map((o) => ({ value: o.value, label: o.label }))}
+              value={sourceType}
+              onChange={(v) => { const val = String(v); setSourceType(val); }}
+              clearable={false}
+            />
           </div>
 
           <div className="field-group" style={{ marginBottom: 14 }}>
@@ -917,37 +921,47 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, padding: 12, background: "var(--surface-2, #f7f7f8)", borderRadius: 8 }}>
                             <div className="field-group">
                               <span className="field-label">{p.familia}</span>
-                              <select className="select" value={editForm.suggested_cable_family} onChange={(e) => setEditForm({ ...editForm, suggested_cable_family: e.target.value ? Number(e.target.value) : "" })}>
-                                <option value="">—</option>
-                                {refs.cableFamilies.map((f) => <option key={f.id} value={f.id}>{f.code} — {f.name}</option>)}
-                              </select>
+                              <SearchSelect
+                                options={(refs.cableFamilies.map((f) => ({ value: f.id, label: f.code, sublabel: f.name })))}
+                                value={editForm.suggested_cable_family}
+                                onChange={(v) => { const val = v === "" ? "" : Number(v); setEditForm({ ...editForm, suggested_cable_family: val }); }}
+                                placeholder="—"
+                              />
                             </div>
                             <div className="field-group">
                               <span className="field-label">{p.spec}</span>
-                              <select className="select" value={editForm.suggested_cable_spec} onChange={(e) => setEditForm({ ...editForm, suggested_cable_spec: e.target.value ? Number(e.target.value) : "" })}>
-                                <option value="">—</option>
-                                {refs.cableSpecs.map((s) => <option key={s.id} value={s.id}>{s.code}</option>)}
-                              </select>
+                              <SearchSelect
+                                options={(refs.cableSpecs.map((s) => ({ value: s.id, label: s.code })))}
+                                value={editForm.suggested_cable_spec}
+                                onChange={(v) => { const val = v === "" ? "" : Number(v); setEditForm({ ...editForm, suggested_cable_spec: val }); }}
+                                placeholder="—"
+                              />
                             </div>
                             <div className="field-group">
                               <span className="field-label">{p.rede}</span>
-                              <select className="select" value={editForm.suggested_network} onChange={(e) => setEditForm({ ...editForm, suggested_network: e.target.value ? Number(e.target.value) : "" })}>
-                                <option value="">—</option>
-                                {refs.networks.map((n) => <option key={n.id} value={n.id}>{n.code}</option>)}
-                              </select>
+                              <SearchSelect
+                                options={(refs.networks.map((n) => ({ value: n.id, label: n.code, sublabel: n.name })))}
+                                value={editForm.suggested_network}
+                                onChange={(v) => { const val = v === "" ? "" : Number(v); setEditForm({ ...editForm, suggested_network: val }); }}
+                                placeholder="—"
+                              />
                             </div>
                             <div className="field-group">
                               <span className="field-label">{p.workstream}</span>
-                              <select className="select" value={editForm.suggested_workstream} onChange={(e) => setEditForm({ ...editForm, suggested_workstream: e.target.value ? Number(e.target.value) : "" })}>
-                                <option value="">—</option>
-                                {refs.workstreams.map((w) => <option key={w.id} value={w.id}>{w.code}</option>)}
-                              </select>
+                              <SearchSelect
+                                options={(refs.workstreams.map((w) => ({ value: w.id, label: w.code, sublabel: w.name })))}
+                                value={editForm.suggested_workstream}
+                                onChange={(v) => { const val = v === "" ? "" : Number(v); setEditForm({ ...editForm, suggested_workstream: val }); }}
+                                placeholder="—"
+                              />
                             </div>
                             <div className="field-group" style={{ gridColumn: "span 2" }}>
                               <span className="field-label">{p.paths}</span>
-                              <select className="select" multiple value={editForm.suggested_paths.map(String)} onChange={(e) => setEditForm({ ...editForm, suggested_paths: Array.from(e.target.selectedOptions).map((o) => Number(o.value)) })}>
-                                {refs.paths.map((pp) => <option key={pp.id} value={pp.id}>{pp.code} — {pp.name}</option>)}
-                              </select>
+                              <SearchMultiSelect
+                                options={(refs.paths.map((pp) => ({ value: pp.id, label: pp.code, sublabel: pp.name })))}
+                                value={editForm.suggested_paths}
+                                onChange={(next) => { const val = next.map(Number); setEditForm({ ...editForm, suggested_paths: val }); }}
+                              />
                             </div>
                             <div className="field-group">
                               <span className="field-label">{p.quantidade}</span>
@@ -959,14 +973,12 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
                             </div>
                             <div className="field-group">
                               <span className="field-label">{p.tipoMetragem}</span>
-                              <select className="select" value={editForm.length_type} onChange={(e) => setEditForm({ ...editForm, length_type: e.target.value })}>
-                                <option value="">—</option>
-                                <option value="EXACT">EXACT</option>
-                                <option value="MAXIMUM">MAXIMUM</option>
-                                <option value="MINIMUM">MINIMUM</option>
-                                <option value="RANGE">RANGE</option>
-                                <option value="UNKNOWN">UNKNOWN</option>
-                              </select>
+                              <SearchSelect
+                                options={(["EXACT", "MAXIMUM", "MINIMUM", "RANGE", "UNKNOWN"].map((v) => ({ value: v, label: v })))}
+                                value={editForm.length_type}
+                                onChange={(v) => { const val = String(v); setEditForm({ ...editForm, length_type: val }); }}
+                                placeholder="—"
+                              />
                             </div>
                             <div className="field-group">
                               <span className="field-label">{p.metragemmLabel}</span>
@@ -974,19 +986,21 @@ export default function SowImportPanel({ refs }: { refs: ReferenceData }) {
                             </div>
                             <div className="field-group">
                               <span className="field-label">{p.meio}</span>
-                              <select className="select" value={editForm.medium} onChange={(e) => setEditForm({ ...editForm, medium: e.target.value })}>
-                                <option value="">—</option>
-                                <option value="FIBER">FIBER</option>
-                                <option value="COPPER">COPPER</option>
-                              </select>
+                              <SearchSelect
+                                options={(["FIBER", "COPPER"].map((v) => ({ value: v, label: v })))}
+                                value={editForm.medium}
+                                onChange={(v) => { const val = String(v); setEditForm({ ...editForm, medium: val }); }}
+                                placeholder="—"
+                              />
                             </div>
                             <div className="field-group">
                               <span className="field-label">{p.preTerminado}</span>
-                              <select className="select" value={editForm.preterminated} onChange={(e) => setEditForm({ ...editForm, preterminated: e.target.value })}>
-                                <option value="">{p.naoInformado}</option>
-                                <option value="true">{p.sim}</option>
-                                <option value="false">{p.nao}</option>
-                              </select>
+                              <SearchSelect
+                                options={([{ value: "true", label: p.sim }, { value: "false", label: p.nao }])}
+                                value={editForm.preterminated}
+                                onChange={(v) => { const val = String(v); setEditForm({ ...editForm, preterminated: val }); }}
+                                placeholder={p.naoInformado}
+                              />
                             </div>
                             <div className="field-group">
                               <span className="field-label">{p.cor}</span>

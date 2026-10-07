@@ -239,13 +239,16 @@ const TEXT = {
     nTecnicos: (n: number) => `${n} técnicos`,
     cardImprodutivo: "Improdutivo por motivo",
     cardProducao: "Produção por técnico",
-    hintProducao: "Simulação para remuneração variável (não gera pagamento). Quantidade planejada das tarefas fechadas e concluídas por completo, dividida entre os técnicos proporcional às horas de cada um. A taxa divide pela soma das horas apontadas nessa atividade: tarefas simultâneas somam horas em duplicidade e reduzem a taxa.",
+    hintProducao: "Simulação para remuneração variável (não gera pagamento). Quantidade planejada das tarefas fechadas e concluídas por completo, dividida entre os técnicos proporcional às horas de cada um. Taxa = produção com horário confiável ÷ tempo de relógio com ao menos uma tarefa da atividade aberta (tarefas simultâneas contam uma vez). Tarefas concluídas em lote (menos de 1 min) ou com fim antes do início ficam fora da taxa e aparecem com ⚠.",
     prodMetrosLancados: "Metros lançados",
     prodLabels: "Labels coladas",
     prodMetrosUtp: "Metros de UTP cortados",
     prodConectoresRj: "Conectores RJ crimpados",
     prodPatching: "Patching (conexões)",
     prodLinks: "Links certificados",
+    prodSemTaxa: "sem taxa",
+    prodSemTaxaTip: "Sem horário confiável para calcular a taxa (tarefas concluídas em lote ou com início/fim inconsistente).",
+    prodAviso: (n: number) => `${n} tarefa(s) fora da taxa: horário inconsistente (concluída em lote ou fim antes do início).`,
     csvProducao: "producao-por-tecnico",
     semProducao: "Sem produção física no período.",
     cardStatusHoras: "Horas por status",
@@ -479,13 +482,16 @@ const TEXT = {
     nTecnicos: (n: number) => `${n} technicians`,
     cardImprodutivo: "Non-productive time by reason",
     cardProducao: "Production by technician",
-    hintProducao: "Simulation for variable pay (no payout). Planned quantity of closed, fully completed tasks, split among technicians in proportion to each one's hours. The rate divides by the hours logged on that activity: simultaneous tasks add hours twice and lower the rate.",
+    hintProducao: "Simulation for variable pay (no payout). Planned quantity of closed, fully completed tasks, split among technicians in proportion to each one's hours. Rate = output with reliable timestamps ÷ clock time with at least one task of the activity open (simultaneous tasks count once). Tasks closed in a batch (under 1 min) or ending before they start are left out of the rate and flagged ⚠.",
     prodMetrosLancados: "Meters pulled",
     prodLabels: "Labels applied",
     prodMetrosUtp: "UTP meters cut",
     prodConectoresRj: "RJ connectors crimped",
     prodPatching: "Patching (connections)",
     prodLinks: "Links certified",
+    prodSemTaxa: "no rate",
+    prodSemTaxaTip: "No reliable timestamps to compute the rate (tasks closed in a batch or with inconsistent start/end).",
+    prodAviso: (n: number) => `${n} task(s) left out of the rate: inconsistent timestamps (closed in a batch or ending before the start).`,
     csvProducao: "production-by-technician",
     semProducao: "No physical output in the period.",
     cardStatusHoras: "Hours by status",
@@ -712,13 +718,16 @@ const TEXT = {
     nTecnicos: (n: number) => `${n} técnicos`,
     cardImprodutivo: "Tiempo improductivo por motivo",
     cardProducao: "Producción por técnico",
-    hintProducao: "Simulación para remuneración variable (no genera pago). Cantidad planificada de las tareas cerradas y completadas por completo, dividida entre los técnicos en proporción a las horas de cada uno. La tasa divide por las horas registradas en esa actividad: las tareas simultáneas suman horas por duplicado y reducen la tasa.",
+    hintProducao: "Simulación para remuneración variable (no genera pago). Cantidad planificada de las tareas cerradas y completadas por completo, dividida entre los técnicos en proporción a las horas de cada uno. Tasa = producción con horario confiable ÷ tiempo de reloj con al menos una tarea de la actividad abierta (las simultáneas cuentan una vez). Las tareas cerradas en lote (menos de 1 min) o con fin antes del inicio quedan fuera de la tasa y se marcan con ⚠.",
     prodMetrosLancados: "Metros tendidos",
     prodLabels: "Etiquetas aplicadas",
     prodMetrosUtp: "Metros de UTP cortados",
     prodConectoresRj: "Conectores RJ crimpados",
     prodPatching: "Patching (conexiones)",
     prodLinks: "Enlaces certificados",
+    prodSemTaxa: "sin tasa",
+    prodSemTaxaTip: "Sin horario confiable para calcular la tasa (tareas cerradas en lote o con inicio/fin inconsistente).",
+    prodAviso: (n: number) => `${n} tarea(s) fuera de la tasa: horario inconsistente (cerrada en lote o fin antes del inicio).`,
     csvProducao: "produccion-por-tecnico",
     semProducao: "Sin producción física en el período.",
     cardStatusHoras: "Horas por estado",
@@ -2235,8 +2244,9 @@ export default function OperationsReportsPage() {
       t.name,
       ...cols.flatMap((c) => {
         const v = c.value(t);
+        const b = c.base(t);
         const h = t.production?.[c.code]?.hours ?? 0;
-        return [v > 0 ? Math.round(v * 100) / 100 : 0, v > 0 && h > 0 ? Math.round((v / h) * 100) / 100 : null];
+        return [v > 0 ? Math.round(v * 100) / 100 : 0, b > 0 && h > 0 ? Math.round((b / h) * 100) / 100 : null];
       }),
     ]);
     downloadCsv(`${p.csvProducao}_${csvSuffix}.csv`, [header, ...rows], locale);
@@ -2261,7 +2271,13 @@ export default function OperationsReportsPage() {
         const row = t.production?.[d.code];
         return row ? d.pick(row as never) : 0;
       },
+      base: (t: ReportsTechnician) => {
+        const row = t.production?.[d.code];
+        return row?.rate_base ? d.pick(row.rate_base as never) : 0;
+      },
+      unreliable: (t: ReportsTechnician) => t.production?.[d.code]?.unreliable_count ?? 0,
       total: () => technicians.reduce((s, t) => s + (t.production?.[d.code] ? d.pick(t.production[d.code] as never) : 0), 0),
+      totalBase: () => technicians.reduce((s, t) => s + (t.production?.[d.code]?.rate_base ? d.pick(t.production[d.code].rate_base as never) : 0), 0),
       totalHours: () => sumHours(d.code),
     }));
   }
@@ -2304,13 +2320,22 @@ export default function OperationsReportsPage() {
                     </td>
                     {cols.map((c) => {
                       const v = c.value(t);
+                      const b = c.base(t);
                       const h = t.production?.[c.code]?.hours ?? 0;
+                      const bad = c.unreliable(t);
                       return (
                         <td key={c.code} className="rpt-num">
                           {v > 0 ? (
                             <>
                               <div className="rpt-strong">{nf(v, v % 1 === 0 ? 0 : 1)} {c.unit}</div>
-                              {h > 0 && <div className="rpt-num-sub">{nf(v / h, 1)} {c.rate}</div>}
+                              {b > 0 && h > 0 ? (
+                                <div className="rpt-num-sub">
+                                  {nf(b / h, 1)} {c.rate}
+                                  {bad > 0 && <span title={p.prodAviso(bad)}> ⚠</span>}
+                                </div>
+                              ) : (
+                                <div className="rpt-num-sub rpt-cell-muted" title={p.prodSemTaxaTip}>{p.prodSemTaxa}{bad > 0 ? " ⚠" : ""}</div>
+                              )}
                             </>
                           ) : (
                             <span className="rpt-cell-muted">—</span>
@@ -2326,13 +2351,18 @@ export default function OperationsReportsPage() {
                   <td className="rpt-sticky-col rpt-strong">{p.totalLabel}</td>
                   {cols.map((c) => {
                     const v = c.total();
+                    const b = c.totalBase();
                     const h = c.totalHours();
                     return (
                       <td key={c.code} className="rpt-num">
                         {v > 0 ? (
                           <>
                             <div className="rpt-strong">{nf(v, v % 1 === 0 ? 0 : 1)} {c.unit}</div>
-                            {h > 0 && <div className="rpt-num-sub">{nf(v / h, 1)} {c.rate}</div>}
+                            {b > 0 && h > 0 ? (
+                              <div className="rpt-num-sub">{nf(b / h, 1)} {c.rate}</div>
+                            ) : (
+                              <div className="rpt-num-sub rpt-cell-muted" title={p.prodSemTaxaTip}>{p.prodSemTaxa}</div>
+                            )}
                           </>
                         ) : (
                           <span className="rpt-cell-muted">—</span>

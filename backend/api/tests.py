@@ -718,12 +718,15 @@ class AuditLogApiTests(TestCase):
         searched = self.client_api.get("/api/audit-logs/", {"search": "Projeto X"})
         self.assertEqual(searched.data["count"], 1)
 
-        several = self.client_api.get("/api/audit-logs/", {"action": "create,update"})
-        self.assertEqual(several.data["count"], 2)
-        only_create = self.client_api.get("/api/audit-logs/", {"action": "create"})
-        self.assertEqual(only_create.data["count"], 1)
-        two_apps = self.client_api.get("/api/audit-logs/", {"app_label": "core,projects"})
-        self.assertEqual(two_apps.data["count"], 2)
+        # vários valores no mesmo filtro (CSV); a busca isola as linhas deste teste dos logs automáticos
+        both_actions = {"action": "create,update"}
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {**both_actions, "search": "Empresa A"}).data["count"], 1)
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {**both_actions, "search": "Projeto X"}).data["count"], 1)
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {"action": "create", "search": "Projeto X"}).data["count"], 0)
+        both_apps = {"app_label": "core,projects"}
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {**both_apps, "search": "Empresa A"}).data["count"], 1)
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {**both_apps, "search": "Projeto X"}).data["count"], 1)
+        self.assertEqual(self.client_api.get("/api/audit-logs/", {"app_label": "core", "search": "Projeto X"}).data["count"], 0)
 
     def test_readonly_no_write_actions(self):
         superuser = User.objects.create_superuser(username="auditor2", email="auditor2@example.com", password="test-password")
@@ -6811,6 +6814,38 @@ class OperationsReportsV2Tests(TestCase):
         row = self.tech_row(self.get(), self.tech_a)["production"]["CAB-LABEL"]
         self.assertEqual(row["quantity"], 10.0)
         self.assertEqual(row["labels"], 80.0)
+
+    def test_production_rate_counts_parallel_time_once_and_ignores_batch_or_corrupt_records(self):
+        self.setup_catalog()
+        # duas tarefas simultâneas (mesma janela de 3h): o tempo conta uma vez só
+        for _ in range(2):
+            generated = self.make_generated(10, length_m=Decimal(50))
+            self.make_task(self.at(8), self.at(11), 3, [(self.tech_a, self.at(8), self.at(11), 3)], generated=generated)
+        # concluída em lote (30 s) e uma com fim antes do início: contam na produção, mas não na taxa
+        batch = self.make_generated(10, length_m=Decimal(50))
+        self.make_task(self.at(12), self.at(12, 1), 0, [(self.tech_a, self.at(12), self.at(12) + timedelta(seconds=30), 0)], generated=batch)
+        corrupt = self.make_generated(10, length_m=Decimal(50))
+        self.make_task(self.at(13), self.at(14), 1, [(self.tech_a, self.at(14), self.at(13), 0)], generated=corrupt)
+
+        row = self.tech_row(self.get(), self.tech_a)["production"]["TST-RPT-RUN"]
+
+        self.assertEqual(row["quantity"], 40.0)             # as 4 tarefas contam na produção
+        self.assertEqual(row["rate_base"]["quantity"], 20.0)  # só as 2 com horário confiável entram na taxa
+        self.assertEqual(row["hours"], 3.0)                 # 3h de relógio, não 6h
+        self.assertEqual(row["unreliable_count"], 2)
+
+    def test_production_split_falls_back_to_equal_when_a_colleague_has_unreliable_hours(self):
+        self.setup_catalog()
+        generated = self.make_generated(10, length_m=Decimal(50))
+        self.make_task(
+            self.at(8), self.at(11), 3,
+            [(self.tech_a, self.at(8), self.at(11), 3), (self.tech_b, self.at(10), self.at(10) + timedelta(seconds=5), 0)],
+            generated=generated,
+        )
+        data = self.get()
+        self.assertEqual(self.tech_row(data, self.tech_a)["production"]["TST-RPT-RUN"]["quantity"], 5.0)
+        self.assertEqual(self.tech_row(data, self.tech_b)["production"]["TST-RPT-RUN"]["quantity"], 5.0)
+        self.assertEqual(self.tech_row(data, self.tech_b)["production"]["TST-RPT-RUN"]["rate_base"]["quantity"], 0.0)
 
     def test_internal_idle_limit_is_30_minutes_per_day(self):
         P = self.Presence

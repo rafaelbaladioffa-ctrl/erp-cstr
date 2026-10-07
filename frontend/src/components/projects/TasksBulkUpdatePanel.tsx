@@ -1,3 +1,4 @@
+import SearchSelect, { SearchMultiSelect } from "../ui/SearchSelect";
 import { useMemo, useState } from "react";
 import { projectsApi } from "../../api/resources";
 import type { CollaboratorFull, Project, RackPosition } from "../../api/types";
@@ -170,13 +171,12 @@ export default function TasksBulkUpdatePanel({
       <div className="dynamic-form-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
         <div className="field-group">
           <span className="field-label">{p.statusLabel}</span>
-          <select className="select" value={status} onChange={(e) => setStatus(e.target.value)}>
-            {statusOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <SearchSelect
+            options={statusOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+            value={status}
+            onChange={(v) => setStatus(String(v))}
+            clearable={false}
+          />
         </div>
         <div className="field-group">
           <span className="field-label">{p.inicio}</span>
@@ -192,36 +192,20 @@ export default function TasksBulkUpdatePanel({
         </div>
         <div className="field-group" style={{ gridColumn: "1 / 3" }}>
           <span className="field-label">{p.responsaveis}</span>
-          <select
-            multiple
-            className="input"
-            style={{ height: 84 }}
-            value={collaboratorIds.map(String)}
-            onChange={(e) => setCollaboratorIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
-          >
-            {companyCollaborators.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <SearchMultiSelect
+            options={companyCollaborators.map((c) => ({ value: c.id, label: c.name }))}
+            value={collaboratorIds}
+            onChange={(next) => setCollaboratorIds(next.map(Number))}
+          />
         </div>
         {project.has_rack_positions && (
           <div className="field-group" style={{ gridColumn: "3 / 5" }}>
             <span className="field-label">{p.rackPositions}</span>
-            <select
-              multiple
-              className="input"
-              style={{ height: 84 }}
-              value={rackPositionIds.map(String)}
-              onChange={(e) => setRackPositionIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
-            >
-              {rackPositions.map((rp) => (
-                <option key={rp.id} value={rp.id}>
-                  {rp.position}
-                </option>
-              ))}
-            </select>
+            <SearchMultiSelect
+              options={rackPositions.map((rp) => ({ value: rp.id, label: rp.position }))}
+              value={rackPositionIds}
+              onChange={(next) => setRackPositionIds(next.map(Number))}
+            />
           </div>
         )}
       </div>

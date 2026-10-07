@@ -1,3 +1,4 @@
+import SearchSelect from "../ui/SearchSelect";
 import { useState } from "react";
 import { taskRuleSimulatorApi } from "../../api/resources";
 import type {
@@ -205,54 +206,57 @@ export default function TaskRuleSimulatorPanel({ refs }: { refs: ReferenceData }
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px", marginTop: 16 }}>
           <div className="field-group" style={{ marginBottom: 14 }}>
             <span className="field-label">Cable Family</span>
-            <select className="select" value={cableFamily} onChange={(e) => setCableFamily(e.target.value ? Number(e.target.value) : "")}>
-              <option value="">{p.naoConsiderar}</option>
-              {refs.cableFamilies.map((f) => (
-                <option key={f.id} value={f.id}>{f.code} — {f.name}</option>
-              ))}
-            </select>
+            <SearchSelect
+              options={refs.cableFamilies.map((f) => ({ value: f.id, label: f.code, sublabel: f.name }))}
+              value={cableFamily}
+              onChange={(v) => { const val = v === "" ? "" : Number(v); setCableFamily(val); }}
+              placeholder={p.naoConsiderar}
+            />
           </div>
           <div className="field-group" style={{ marginBottom: 14 }}>
             <span className="field-label">Cable Spec</span>
-            <select className="select" value={cableSpec} onChange={(e) => setCableSpec(e.target.value ? Number(e.target.value) : "")}>
-              <option value="">{p.naoConsiderar}</option>
-              {refs.cableSpecs.map((s) => (
-                <option key={s.id} value={s.id}>{s.code} — {s.part_number || s.name}</option>
-              ))}
-            </select>
+            <SearchSelect
+              options={refs.cableSpecs.map((s) => ({ value: s.id, label: s.code, sublabel: s.part_number || s.name }))}
+              value={cableSpec}
+              onChange={(v) => { const val = v === "" ? "" : Number(v); setCableSpec(val); }}
+              placeholder={p.naoConsiderar}
+            />
           </div>
           <div className="field-group" style={{ marginBottom: 14 }}>
             <span className="field-label">Network</span>
-            <select className="select" value={network} onChange={(e) => setNetwork(e.target.value ? Number(e.target.value) : "")}>
-              <option value="">{p.naoConsiderar}</option>
-              {refs.networks.map((n) => (
-                <option key={n.id} value={n.id}>{n.code} — {n.name}</option>
-              ))}
-            </select>
+            <SearchSelect
+              options={refs.networks.map((n) => ({ value: n.id, label: n.code, sublabel: n.name }))}
+              value={network}
+              onChange={(v) => { const val = v === "" ? "" : Number(v); setNetwork(val); }}
+              placeholder={p.naoConsiderar}
+            />
           </div>
           <div className="field-group" style={{ marginBottom: 14 }}>
             <span className="field-label">Workstream</span>
-            <select className="select" value={workstream} onChange={(e) => setWorkstream(e.target.value ? Number(e.target.value) : "")}>
-              <option value="">{p.naoConsiderar}</option>
-              {refs.workstreams.map((w) => (
-                <option key={w.id} value={w.id}>{w.code} — {w.name}</option>
-              ))}
-            </select>
+            <SearchSelect
+              options={refs.workstreams.map((w) => ({ value: w.id, label: w.code, sublabel: w.name }))}
+              value={workstream}
+              onChange={(v) => { const val = v === "" ? "" : Number(v); setWorkstream(val); }}
+              placeholder={p.naoConsiderar}
+            />
           </div>
           <div className="field-group" style={{ marginBottom: 14 }}>
             <span className="field-label">Medium</span>
-            <select className="select" value={medium} onChange={(e) => setMedium(e.target.value)}>
-              <option value="">{p.naoConsiderar}</option>
-              {MEDIUM_SUGGESTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <SearchSelect
+              options={MEDIUM_SUGGESTIONS.map((m) => ({ value: m, label: m }))}
+              value={medium}
+              onChange={(v) => { const val = String(v); setMedium(val); }}
+              placeholder={p.naoConsiderar}
+            />
           </div>
           <div className="field-group" style={{ marginBottom: 14 }}>
             <span className="field-label">Preterminated</span>
-            <select className="select" value={preterminated} onChange={(e) => setPreterminated(e.target.value as "" | "true" | "false")}>
-              <option value="">{p.naoConsiderar}</option>
-              <option value="true">{p.sim}</option>
-              <option value="false">{p.nao}</option>
-            </select>
+            <SearchSelect
+              options={[{ value: "true", label: p.sim }, { value: "false", label: p.nao }]}
+              value={preterminated}
+              onChange={(v) => { const val = String(v); setPreterminated(val as "" | "true" | "false"); }}
+              placeholder={p.naoConsiderar}
+            />
           </div>
         </div>
 

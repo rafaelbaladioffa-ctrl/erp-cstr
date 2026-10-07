@@ -1,3 +1,4 @@
+import SearchSelect from "../ui/SearchSelect";
 import { useEffect, useState } from "react";
 import { botSubscribersApi } from "../../api/resources";
 import type { BotGroup, BotSubscriber } from "../../api/types";
@@ -78,22 +79,25 @@ function SubscriberCard({
         </div>
         <div>
           <div style={LABEL}>Tipo de destino</div>
-          <select className="input" value={isGroup ? "group" : "person"} onChange={(e) => patch(e.target.value === "group" ? { phone: "", group_jid: sub.group_jid || "@g.us" } : { group_jid: "" })} style={{ width: "100%", marginTop: 6 }}>
-            <option value="person">Pessoa (telefone)</option>
-            <option value="group">Grupo do WhatsApp</option>
-          </select>
+          <SearchSelect
+            options={[{ value: "person", label: "Pessoa (telefone)" }, { value: "group", label: "Grupo do WhatsApp" }]}
+            value={isGroup ? "group" : "person"}
+            onChange={(v) => patch(v === "group" ? { phone: "", group_jid: sub.group_jid || "@g.us" } : { group_jid: "" })}
+            clearable={false}
+            style={{ marginTop: 6 }}
+          />
         </div>
         {isGroup ? (
           <div>
             <div style={LABEL}>Grupo</div>
-            <select className="input" value={groups.some((g) => g.jid === sub.group_jid) ? sub.group_jid : ""} onChange={(e) => e.target.value && patch({ group_jid: e.target.value })} style={{ width: "100%", marginTop: 6 }}>
-              <option value="">{groups.length ? "Escolher um grupo do bot…" : "Nenhum grupo carregado"}</option>
-              {groups.map((g) => (
-                <option key={g.jid} value={g.jid}>
-                  {g.nome}
-                </option>
-              ))}
-            </select>
+            <SearchSelect
+              options={groups.map((g) => ({ value: g.jid, label: g.nome }))}
+              value={groups.some((g) => g.jid === sub.group_jid) ? sub.group_jid : ""}
+              onChange={(v) => v && patch({ group_jid: String(v) })}
+              placeholder={groups.length ? "Escolher um grupo do bot…" : "Nenhum grupo carregado"}
+              clearable={false}
+              style={{ marginTop: 6 }}
+            />
             <input className="input" value={sub.group_jid} onChange={(e) => patch({ group_jid: e.target.value })} placeholder="ou cole o ID (termina em @g.us)" style={{ width: "100%", marginTop: 6 }} />
           </div>
         ) : (

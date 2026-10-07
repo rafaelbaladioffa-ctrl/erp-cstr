@@ -1,3 +1,5 @@
+import SearchSelect, { SearchMultiSelect } from "../ui/SearchSelect";
+import ProjectCombobox from "../ui/ProjectCombobox";
 import MultiSelectFilter from "../ui/MultiSelectFilter";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -344,21 +346,16 @@ export default function ProjectPlanPanel() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 10, marginBottom: 14, alignItems: "flex-end" }}>
         <div className="field-group">
           <span className="field-label">{p.projeto}</span>
-          <select className="select" value={projectId} onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : "")}>
-            <option value="">{p.selecione}</option>
-            {projects.map((proj) => (
-              <option key={proj.id} value={proj.id}>{proj.code} — {proj.name}</option>
-            ))}
-          </select>
+          <ProjectCombobox projects={projects} value={projectId} onChange={setProjectId} showAllToggle={false} placeholder={p.selecione} />
         </div>
         <div className="field-group">
           <span className="field-label">{p.importacaoSow}</span>
-          <select className="select" value={sowImportCode} onChange={(e) => setSowImportCode(e.target.value)}>
-            <option value="">{p.semSow}</option>
-            {sowImports.map((s) => (
-              <option key={s.id} value={s.code}>{s.code} — {s.title || p.semTitulo}</option>
-            ))}
-          </select>
+          <SearchSelect
+            options={sowImports.map((s) => ({ value: s.code, label: s.code, sublabel: s.title || p.semTitulo }))}
+            value={sowImportCode}
+            onChange={(v) => setSowImportCode(String(v))}
+            placeholder={p.semSow}
+          />
         </div>
         <button className="btn btn-primary" onClick={loadPlan} disabled={!projectId || loadingPlan}>
           {loadingPlan ? p.carregando : p.carregar}
@@ -509,14 +506,11 @@ export default function ProjectPlanPanel() {
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 10, alignItems: "flex-end" }}>
               <div className="field-group">
                 <span className="field-label">{p.tecnicos}</span>
-                <select
-                  className="select"
-                  multiple
-                  value={assignCollaboratorIds.map(String)}
-                  onChange={(e) => setAssignCollaboratorIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
-                >
-                  {collaborators.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <SearchMultiSelect
+                  options={collaborators.map((c) => ({ value: c.id, label: c.name }))}
+                  value={assignCollaboratorIds}
+                  onChange={(next) => setAssignCollaboratorIds(next.map(Number))}
+                />
               </div>
               <div className="field-group">
                 <span className="field-label">{p.prazo}</span>
@@ -524,10 +518,12 @@ export default function ProjectPlanPanel() {
               </div>
               <div className="field-group">
                 <span className="field-label">{p.prioridade}</span>
-                <select className="select" value={assignPriority} onChange={(e) => setAssignPriority(e.target.value)}>
-                  <option value="">{p.naoAlterar}</option>
-                  {priorityOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
+                <SearchSelect
+                  options={priorityOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+                  value={assignPriority}
+                  onChange={(v) => setAssignPriority(String(v))}
+                  placeholder={p.naoAlterar}
+                />
               </div>
               <button className="btn btn-primary btn-sm" onClick={handleAssign} disabled={assigning}>
                 <Icon name="person_add" style={{ fontSize: 14 }} />

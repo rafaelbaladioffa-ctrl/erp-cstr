@@ -1,3 +1,4 @@
+import SearchSelect from "../ui/SearchSelect";
 import { useEffect, useState } from "react";
 import { botRulesApi } from "../../api/resources";
 import type { BotBroadcastRule, BotBroadcastRuleOptions } from "../../api/types";
@@ -248,19 +249,25 @@ function RuleCard({
         {meta.formats.length > 1 && (
           <div>
             <div style={LABEL_STYLE}>Formato</div>
-            <select className="input" value={rule.content_type} onChange={(e) => patch({ content_type: e.target.value as BotBroadcastRule["content_type"] })} style={{ width: "100%", marginTop: 6 }}>
-              <option value="text">Texto (uma mensagem por projeto)</option>
-              <option value="image">Imagem (print)</option>
-            </select>
+            <SearchSelect
+              options={[{ value: "text", label: "Texto (uma mensagem por projeto)" }, { value: "image", label: "Imagem (print)" }]}
+              value={rule.content_type}
+              onChange={(v) => patch({ content_type: v as BotBroadcastRule["content_type"] })}
+              clearable={false}
+              style={{ marginTop: 6 }}
+            />
           </div>
         )}
         {meta.dateOffset && (
           <div>
             <div style={LABEL_STYLE}>Dados de</div>
-            <select className="input" value={rule.date_offset_days} onChange={(e) => patch({ date_offset_days: Number(e.target.value) })} style={{ width: "100%", marginTop: 6 }}>
-              <option value={0}>Hoje</option>
-              <option value={1}>Amanhã</option>
-            </select>
+            <SearchSelect
+              options={[{ value: 0, label: "Hoje" }, { value: 1, label: "Amanhã" }]}
+              value={rule.date_offset_days}
+              onChange={(v) => patch({ date_offset_days: Number(v) })}
+              clearable={false}
+              style={{ marginTop: 6 }}
+            />
           </div>
         )}
         <div>

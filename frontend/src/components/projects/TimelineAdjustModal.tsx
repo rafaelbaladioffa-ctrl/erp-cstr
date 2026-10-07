@@ -1,3 +1,4 @@
+import SearchSelect from "../ui/SearchSelect";
 import { useEffect, useState } from "react";
 import { adjustmentsApi, type AdjustmentTask } from "../../api/resources";
 import { presenceLabel } from "../../utils/timeline";
@@ -179,14 +180,16 @@ export default function TimelineAdjustModal({
           <div style={{ ...row, flexDirection: "column", alignItems: "stretch" }}>
             <label style={field}>
               <span style={label}>Tarefa</span>
-              <select className="select" value={taskId} onChange={(e) => setTaskId(e.target.value ? Number(e.target.value) : "")}>
-                <option value="">Selecione a tarefa…</option>
-                {tasks.map((t) => (
-                  <option key={t.task_id} value={t.task_id}>
-                    {t.name} — {t.project_name} ({TASK_STATUS_LABEL[t.status] ?? t.status})
-                  </option>
-                ))}
-              </select>
+              <SearchSelect
+                options={tasks.map((t) => ({
+                  value: t.task_id,
+                  label: t.name,
+                  sublabel: `${t.project_name} · ${TASK_STATUS_LABEL[t.status] ?? t.status}`,
+                }))}
+                value={taskId}
+                onChange={(v) => setTaskId(v === "" ? "" : Number(v))}
+                placeholder="Selecione a tarefa…"
+              />
             </label>
           </div>
           <div style={row}>
@@ -238,13 +241,12 @@ export default function TimelineAdjustModal({
                 <span style={label}>
                   Status{r.adjusted ? " ✎" : ""}
                 </span>
-                <select className="select" value={r.status} onChange={(e) => updateRow(r.key, { status: e.target.value })}>
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {statusLabel(s)}
-                    </option>
-                  ))}
-                </select>
+                <SearchSelect
+                  options={STATUS_OPTIONS.map((s) => ({ value: s, label: statusLabel(s) }))}
+                  value={r.status}
+                  onChange={(v) => updateRow(r.key, { status: String(v) })}
+                  clearable={false}
+                />
               </label>
               <button type="button" className="btn btn-outline btn-sm" style={{ color: "var(--red)" }} onClick={() => removeRow(r)}>
                 Excluir
