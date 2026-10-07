@@ -196,6 +196,23 @@ def _distribution(values):
     }
 
 
+def parse_site_ids(value):
+    """Filtro de site da Central de Operações: None/""/"all" = todos; um id ("12"), vários
+    separados por vírgula ("12,15") ou uma lista. Devolve lista de ids ou None (sem filtro)."""
+    if value in (None, "", "all"):
+        return None
+    items = value if isinstance(value, (list, tuple, set)) else str(value).split(",")
+    ids = [int(str(i).strip()) for i in items if str(i).strip().isdigit()]
+    return ids or None
+
+
+def collaborators_in_sites(site_ids):
+    """Subconsulta de ids de técnicos lotados em algum dos sites (sem duplicar por M2M)."""
+    from core.models import Collaborator
+
+    return Collaborator.objects.filter(sites__in=site_ids).values("id")
+
+
 def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, user=None):
     now = timezone.now()
     today = timezone.localdate()
@@ -210,8 +227,9 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     ).select_related("collaborator__person", "project_task__project")
     if project_ids is not None:
         completed_qs = completed_qs.filter(project_task__project_id__in=project_ids)
-    if site_id:
-        completed_qs = completed_qs.filter(project_task__project__site_id=site_id)
+    site_ids = parse_site_ids(site_id)
+    if site_ids:
+        completed_qs = completed_qs.filter(project_task__project__site_id__in=site_ids)
     completed_assignments = list(completed_qs)
 
     # Tarefas fechadas no período (todos os técnicos concluíram): base da
@@ -230,8 +248,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     )
     if project_ids is not None:
         tasks_qs = tasks_qs.filter(project_id__in=project_ids)
-    if site_id:
-        tasks_qs = tasks_qs.filter(project__site_id=site_id)
+    if site_ids:
+        tasks_qs = tasks_qs.filter(project__site_id__in=site_ids)
     tasks = list(tasks_qs)
 
     # --- HH por técnico (RN-01, RN-03, RN-05) -----------------------------
@@ -382,8 +400,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     presence_qs = TechnicianDailyPresence.objects.filter(
         date__gte=date_from, date__lte=date_to, checked_in_at__isnull=False
     )
-    if site_id:
-        presence_qs = presence_qs.filter(collaborator__sites=site_id)
+    if site_ids:
+        presence_qs = presence_qs.filter(collaborator_id__in=collaborators_in_sites(site_ids))
     if allowed_ids is not None:
         presence_qs = presence_qs.filter(collaborator_id__in=allowed_ids)
     days_worked = {}
@@ -538,8 +556,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     # --- Bloco "Hoje" (independe do filtro de período, RN-14) ------------
     today_collaborators = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
     today_collaborators = scope_collaborators(today_collaborators, user)
-    if site_id:
-        today_collaborators = today_collaborators.filter(sites=site_id)
+    if site_ids:
+        today_collaborators = today_collaborators.filter(id__in=collaborators_in_sites(site_ids))
     today_by_id = {c.id: c for c in today_collaborators}
     today_ids = list(today_by_id)
     today_per_day, _ = presence_durations(today_ids, today, today, now)
@@ -597,8 +615,8 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     )
     if project_ids is not None:
         completed_month_qs = completed_month_qs.filter(project_task__project_id__in=project_ids)
-    if site_id:
-        completed_month_qs = completed_month_qs.filter(project_task__project__site_id=site_id)
+    if site_ids:
+        completed_month_qs = completed_month_qs.filter(project_task__project__site_id__in=site_ids)
 
     stats = {
         "period_completed_count": len(completed_assignments),

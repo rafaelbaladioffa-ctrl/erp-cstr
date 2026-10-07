@@ -1,3 +1,4 @@
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { operationsApi, sitesApi, type Site } from "../api/resources";
@@ -1054,7 +1055,8 @@ export default function OperationsReportsPage() {
   const { locale } = useI18n();
 
   const [sites, setSites] = useState<Site[]>([]);
-  const [siteId, setSiteId] = useState<number | "all">("all");
+  // "all" ou um ou mais ids separados por vírgula ("12,15")
+  const [siteId, setSiteId] = useState<string>("all");
   const [range, setRange] = useState<DateRange>(() => ({ start: brazilDaysAgoIso(29), end: brazilTodayIso() }));
   const [data, setData] = useState<OperationsReports | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1158,7 +1160,7 @@ export default function OperationsReportsPage() {
   }
 
   // --- Ações -------------------------------------------------------------
-  function changeSite(value: number | "all") {
+  function changeSite(value: string) {
     setRefreshScope("all");
     setSiteId(value);
   }
@@ -2711,19 +2713,13 @@ export default function OperationsReportsPage() {
         subtitle={p.subtitle}
         actions={
           <div className="ops-toolbar rpt-header-tools">
-            <select
-              className="select"
-              aria-label={p.filtroSite}
-              value={siteId}
-              onChange={(e) => changeSite(e.target.value === "all" ? "all" : Number(e.target.value))}
-            >
-              <option value="all">{p.todosSites}</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <MultiSelectFilter
+              label={locale === "es-ES" ? "Sitio" : "Site"}
+              options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+              selected={siteId === "all" ? [] : String(siteId).split(",")}
+              onChange={(next) => changeSite(next.length ? next.join(",") : "all")}
+              allLabel={p.todosSites}
+            />
             <button
               type="button"
               className="btn btn-outline btn-sm"

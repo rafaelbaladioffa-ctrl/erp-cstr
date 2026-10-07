@@ -1,3 +1,4 @@
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import TimelineAdjustModal from "../components/projects/TimelineAdjustModal";
@@ -41,6 +42,7 @@ const TEXT = {
     allSites: "Todos os sites",
     techniciansLabel: (n: number) => `Técnicos${n > 0 ? ` (${n} selecionado(s))` : ""}`,
     clearSelection: "Limpar seleção",
+    allTechnicians: "Todos",
     loading: "Carregando...",
     legendDone: "Concluída",
     legendInProgress: "Em execução",
@@ -81,6 +83,7 @@ const TEXT = {
     allSites: "All sites",
     techniciansLabel: (n: number) => `Technicians${n > 0 ? ` (${n} selected)` : ""}`,
     clearSelection: "Clear selection",
+    allTechnicians: "All",
     loading: "Loading...",
     legendDone: "Completed",
     legendInProgress: "In progress",
@@ -121,6 +124,7 @@ const TEXT = {
     allSites: "Todos los sitios",
     techniciansLabel: (n: number) => `Técnicos${n > 0 ? ` (${n} seleccionado(s))` : ""}`,
     clearSelection: "Limpiar selección",
+    allTechnicians: "Todos",
     loading: "Cargando...",
     legendDone: "Completada",
     legendInProgress: "En ejecución",
@@ -178,7 +182,9 @@ export default function TimelineOperacional() {
   const p = usePageText(TEXT);
   const { locale } = useI18n();
   const [sites, setSites] = useState<Site[]>([]);
-  const [siteId, setSiteId] = useState<number | "all">("all");
+  // "all" ou um ou mais ids separados por vírgula ("12,15")
+  const [siteId, setSiteId] = useState<string>("all");
+  const showSiteLabels = !/^\d+$/.test(siteId);
   const [selectedTechIds, setSelectedTechIds] = useState<number[]>([]);
   const [date, setDate] = useState(() => todayISO());
   const [viewMode, setViewMode] = useState<ViewMode>("day");
@@ -287,40 +293,21 @@ export default function TimelineOperacional() {
 
       {filtersOpen && (
         <div className="tl-filters-panel">
-          <div className="field-group">
-            <label className="field-label">{p.siteLabel}</label>
-            <select className="select" value={siteId} onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}>
-              <option value="all">{p.allSites}</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field-group">
-            <label className="field-label">
-              {p.techniciansLabel(selectedTechIds.length)}
-            </label>
-            <select
-              multiple
-              className="input"
-              style={{ height: 96, minWidth: 220 }}
-              value={selectedTechIds.map(String)}
-              onChange={(e) => setSelectedTechIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
-            >
-              {technicians.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            {selectedTechIds.length > 0 && (
-              <button className="btn btn-outline btn-sm" style={{ marginTop: 6 }} onClick={() => setSelectedTechIds([])}>
-                {p.clearSelection}
-              </button>
-            )}
-          </div>
+          <MultiSelectFilter
+            label={p.siteLabel}
+            options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+            selected={siteId === "all" ? [] : String(siteId).split(",")}
+            onChange={(next) => setSiteId(next.length ? next.join(",") : "all")}
+            allLabel={p.allSites}
+          />
+          <MultiSelectFilter
+            label={p.techniciansLabel(0)}
+            options={technicians.map((t) => ({ value: String(t.id), label: t.name }))}
+            selected={selectedTechIds.map(String)}
+            onChange={(next) => setSelectedTechIds(next.map(Number))}
+            allLabel={p.allTechnicians}
+            clearLabel={p.clearSelection}
+          />
         </div>
       )}
 
@@ -393,7 +380,7 @@ export default function TimelineOperacional() {
                     <div style={{ minWidth: 0 }}>
                       <div className="tl-row-name">
                         {tech.name}
-                        {siteId === "all" && tech.site_name && <span className="tl-row-site"> · {tech.site_name}</span>}
+                        {showSiteLabels && tech.site_name && <span className="tl-row-site"> · {tech.site_name}</span>}
                       </div>
                       <div className="tl-row-overview">
                         {p.doneCount(doneCount)}

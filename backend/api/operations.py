@@ -18,7 +18,7 @@ from core.models import Collaborator
 from dispatch.models import CollaboratorPair, TechnicianAbsence, TechnicianDailyPresence, TechnicianStatusEvent
 from projects.models import ProjectTask, ProjectTaskAssignment
 
-from .reports import MAX_PERIOD_DAYS, build_operations_reports
+from .reports import MAX_PERIOD_DAYS, build_operations_reports, collaborators_in_sites, parse_site_ids
 from core.collaborator_scope import scope_collaborators, supervisor_project_ids
 
 
@@ -168,14 +168,15 @@ def build_board_data(site_id, date=None, user=None):
     today = date or timezone.localdate()
     collaborators_qs = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
     collaborators_qs = scope_collaborators(collaborators_qs, user)
-    if site_id:
-        collaborators_qs = collaborators_qs.filter(sites=site_id)
+    site_ids = parse_site_ids(site_id)
+    if site_ids:
+        collaborators_qs = collaborators_qs.filter(id__in=collaborators_in_sites(site_ids))
     # Supervisor: só técnicos sob a sua gestão (acima) e só tarefas dos projetos em que é Responsável CSTR.
     project_ids = supervisor_project_ids(user)
 
     presence_filter = {"date": today}
-    if site_id:
-        presence_filter["collaborator__sites"] = site_id
+    if site_ids:
+        presence_filter["collaborator_id__in"] = collaborators_in_sites(site_ids)
     presences = {p.collaborator_id: p for p in TechnicianDailyPresence.objects.filter(**presence_filter)}
     collaborator_ids = [c.id for c in collaborators_qs]
     status_events_by_collaborator = _status_events_data(collaborator_ids, today)
@@ -221,8 +222,8 @@ def build_board_data(site_id, date=None, user=None):
     pool_qs = ProjectTask.objects.filter(status=ProjectTask.STATUS_NOT_STARTED, planned_start__date=today)
     if project_ids is not None:
         pool_qs = pool_qs.filter(project_id__in=project_ids)
-    if site_id:
-        pool_qs = pool_qs.filter(project__site_id=site_id)
+    if site_ids:
+        pool_qs = pool_qs.filter(project__site_id__in=site_ids)
     pool = (
         pool_qs.select_related("project", "project__site", "task")
         .prefetch_related("assignments__collaborator__person")
@@ -249,9 +250,9 @@ def build_board_data(site_id, date=None, user=None):
     if project_ids is not None:
         active_qs = active_qs.filter(project_id__in=project_ids)
         completed_qs = completed_qs.filter(project_id__in=project_ids)
-    if site_id:
-        active_qs = active_qs.filter(project__site_id=site_id)
-        completed_qs = completed_qs.filter(project__site_id=site_id)
+    if site_ids:
+        active_qs = active_qs.filter(project__site_id__in=site_ids)
+        completed_qs = completed_qs.filter(project__site_id__in=site_ids)
     pending_count = len(pool_data)
     active_count = active_qs.count()
     completed_today_count = completed_qs.count()
@@ -339,8 +340,9 @@ def build_timeline_data(site_id, date, user=None):
 
     collaborators_qs = Collaborator.objects.filter(is_active=True).select_related("person").prefetch_related("sites")
     collaborators_qs = scope_collaborators(collaborators_qs, user)
-    if site_id:
-        collaborators_qs = collaborators_qs.filter(sites=site_id)
+    site_ids = parse_site_ids(site_id)
+    if site_ids:
+        collaborators_qs = collaborators_qs.filter(id__in=collaborators_in_sites(site_ids))
 
     collaborator_ids = [c.id for c in collaborators_qs]
     status_events_by_collaborator = _status_events_data(collaborator_ids, date)

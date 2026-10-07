@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { projectAttachmentsApi, projectOccurrencesApi, projectsApi, projectTasksApi, rackPositionsApi, registryApi } from "../api/resources";
 import type { CollaboratorFull, CollaboratorHours, Project, ProjectAttachment, ProjectOccurrence, ProjectTask, RackPosition } from "../api/types";
 import ProjectFormModal from "../components/projects/ProjectFormModal";
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import ProjectOccurrenceFormModal from "../components/projects/ProjectOccurrenceFormModal";
 import ProjectTaskFormModal from "../components/projects/ProjectTaskFormModal";
 import RackPositionBulkModal from "../components/projects/RackPositionBulkModal";
@@ -422,7 +423,7 @@ export default function ProjectDetail() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [importingTasks, setImportingTasks] = useState(false);
   const [taskSearch, setTaskSearch] = useState("");
-  const [taskStatusFilter, setTaskStatusFilter] = useState("");
+  const [taskStatusFilter, setTaskStatusFilter] = useState<string[]>([]);
   const [taskSortColumn, setTaskSortColumn] = useState<TaskSortColumn | null>(null);
   const [taskSortDirection, setTaskSortDirection] = useState<"asc" | "desc">("asc");
 
@@ -673,7 +674,7 @@ export default function ProjectDetail() {
   const filteredTasks = useMemo(() => {
     const query = taskSearch.trim().toLowerCase();
     let result = tasks.filter((t) => {
-      if (taskStatusFilter && t.status !== taskStatusFilter) return false;
+      if (taskStatusFilter.length && !taskStatusFilter.includes(t.status)) return false;
       if (query && !t.task_name.toLowerCase().includes(query)) return false;
       return true;
     });
@@ -952,15 +953,13 @@ export default function ProjectDetail() {
                     <input className="input" placeholder={p.searchPlaceholder} value={taskSearch} onChange={(e) => setTaskSearch(e.target.value)} />
                   </div>
                 </div>
-                <div className="field-group">
-                  <span className="field-label">{p.statusLabel}</span>
-                  <select className="select" value={taskStatusFilter} onChange={(e) => setTaskStatusFilter(e.target.value)}>
-                    <option value="">{p.statusAll}</option>
-                    {p.taskStatusOptions.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
+                <MultiSelectFilter
+                  label={p.statusLabel}
+                  options={p.taskStatusOptions.map((o) => ({ value: o.value, label: o.label }))}
+                  selected={taskStatusFilter}
+                  onChange={setTaskStatusFilter}
+                  allLabel={p.statusAll}
+                />
               </div>
 
               <div className="card">

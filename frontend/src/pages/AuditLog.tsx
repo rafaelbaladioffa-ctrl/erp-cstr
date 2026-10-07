@@ -3,6 +3,7 @@ import { auditLogApi } from "../api/resources";
 import type { AuditLogEntry } from "../api/types";
 import { useI18n, usePageText } from "../i18n";
 import DateInput from "../components/ui/DateInput";
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import Pagination from "../components/ui/Pagination";
@@ -88,8 +89,8 @@ export default function AuditLog() {
   }
   const [rows, setRows] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [action, setAction] = useState("");
-  const [appLabel, setAppLabel] = useState("");
+  const [action, setAction] = useState<string[]>([]);
+  const [appLabel, setAppLabel] = useState<string[]>([]);
   const [modelName, setModelName] = useState("");
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -101,8 +102,8 @@ export default function AuditLog() {
   function reload() {
     setLoading(true);
     const params: Record<string, string> = { page_size: "1000" };
-    if (action) params.action = action;
-    if (appLabel) params.app_label = appLabel;
+    if (action.length) params.action = action.join(",");
+    if (appLabel.length) params.app_label = appLabel.join(",");
     if (modelName) params.model_name = modelName;
     if (search) params.search = search;
     if (dateFrom) params.date_from = dateFrom;
@@ -132,21 +133,20 @@ export default function AuditLog() {
             <Icon name="search" />
             <input className="input" placeholder={p.search} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="field-group">
-            <span className="field-label">{p.actionLabel}</span>
-            <select className="select" value={action} onChange={(e) => setAction(e.target.value)}>
-              {p.actions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field-group">
-            <span className="field-label">{p.appLabel}</span>
-            <select className="select" value={appLabel} onChange={(e) => setAppLabel(e.target.value)}>
-              <option value="">{p.all}</option>
-              {appOptions.map((app) => <option key={app} value={app}>{app}</option>)}
-            </select>
-          </div>
+          <MultiSelectFilter
+            label={p.actionLabel}
+            options={p.actions.filter((opt) => opt.value !== "").map((opt) => ({ value: opt.value, label: opt.label }))}
+            selected={action}
+            onChange={setAction}
+            allLabel={p.actions[0]?.label ?? p.all}
+          />
+          <MultiSelectFilter
+            label={p.appLabel}
+            options={appOptions.map((app) => ({ value: app, label: app }))}
+            selected={appLabel}
+            onChange={setAppLabel}
+            allLabel={p.all}
+          />
           <div className="field-group">
             <span className="field-label">{p.modelLabel}</span>
             <input className="input" value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder={p.modelPlaceholder} />

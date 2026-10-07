@@ -718,6 +718,13 @@ class AuditLogApiTests(TestCase):
         searched = self.client_api.get("/api/audit-logs/", {"search": "Projeto X"})
         self.assertEqual(searched.data["count"], 1)
 
+        several = self.client_api.get("/api/audit-logs/", {"action": "create,update"})
+        self.assertEqual(several.data["count"], 2)
+        only_create = self.client_api.get("/api/audit-logs/", {"action": "create"})
+        self.assertEqual(only_create.data["count"], 1)
+        two_apps = self.client_api.get("/api/audit-logs/", {"app_label": "core,projects"})
+        self.assertEqual(two_apps.data["count"], 2)
+
     def test_readonly_no_write_actions(self):
         superuser = User.objects.create_superuser(username="auditor2", email="auditor2@example.com", password="test-password")
         self.client_api.force_authenticate(user=superuser)
@@ -1134,6 +1141,63 @@ class OperationsWorkingSiteTests(TestCase):
         ProjectTaskAssignment.objects.filter(pk=running.pk).update(assignment_start=now - timedelta(hours=1))
 
         self.assertEqual(self.board_site(), "GRU60, GRU65")
+
+
+class OperationsMultiSiteFilterTests(TestCase):
+    """O filtro de site da Central de Operações aceita um site, vários (CSV) ou todos."""
+
+    def setUp(self):
+        self.client_api = APIClient()
+        self.company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        client = Client.objects.create(company=self.company, legal_name="Cliente Multi")
+        self.sites = {n: Site.objects.create(client=client, name=n) for n in ("GRU65", "GRU60", "VCP1")}
+        self.techs = {}
+        self.projects = {}
+        for name, site in self.sites.items():
+            tech = make_collaborator(self.company, f"Técnico {name}")
+            tech.sites.set([site])
+            self.techs[name] = tech
+            project = Project.objects.create(company=self.company, name=f"Projeto {name}", site=site, status=Project.STATUS_IN_PROGRESS)
+            self.projects[name] = project
+            ProjectTask.objects.create(
+                project=project, custom_name=f"Tarefa {name}", status=ProjectTask.STATUS_NOT_STARTED, planned_start=timezone.now()
+            )
+        # técnico lotado em dois dos sites filtrados não pode aparecer duas vezes
+        self.techs["GRU65"].sites.add(self.sites["GRU60"])
+        admin = User.objects.create_superuser(username="multi_admin", email="multi_admin@example.com", password="test-password")
+        self.client_api.force_authenticate(user=admin)
+
+    def ids(self, endpoint, site):
+        response = self.client_api.get(f"/api/operations/{endpoint}/", {"site": site})
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data
+
+    def site_param(self, *names):
+        return ",".join(str(self.sites[n].pk) for n in names)
+
+    def test_board_filters_by_several_sites_without_duplicates(self):
+        data = self.ids("board", self.site_param("GRU65", "GRU60"))
+        names = sorted(t["name"] for t in data["technicians"])
+        self.assertEqual(names, ["Técnico GRU60", "Técnico GRU65"])
+        self.assertEqual(sorted(t["project_name"] for t in data["pool"]), ["Projeto GRU60", "Projeto GRU65"])
+
+    def test_board_single_and_all_still_work(self):
+        self.assertEqual([t["name"] for t in self.ids("board", self.sites["VCP1"].pk)["technicians"]], ["Técnico VCP1"])
+        self.assertEqual(len(self.ids("board", "all")["technicians"]), 3)
+
+    def test_timeline_filters_by_several_sites(self):
+        data = self.ids("timeline", self.site_param("VCP1", "GRU60"))
+        # o técnico lotado em GRU65 e GRU60 entra uma única vez
+        self.assertEqual(sorted(t["name"] for t in data["technicians"]), ["Técnico GRU60", "Técnico GRU65", "Técnico VCP1"])
+        only_vcp = self.ids("timeline", self.site_param("VCP1"))
+        self.assertEqual([t["name"] for t in only_vcp["technicians"]], ["Técnico VCP1"])
+
+    def test_reports_accept_several_sites(self):
+        response = self.client_api.get("/api/operations/reports/", {"site": self.site_param("GRU65", "VCP1")})
+        self.assertEqual(response.status_code, 200, getattr(response, "data", None))
+
+    def test_invalid_site_value_means_all(self):
+        self.assertEqual(len(self.ids("board", "abc")["technicians"]), 3)
 
 
 class TechnicianAbsenceApiTests(TestCase):

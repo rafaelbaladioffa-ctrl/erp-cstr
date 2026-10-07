@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { projectsApi } from "../api/resources";
 import type { Project } from "../api/types";
 import ProjectFormModal from "../components/projects/ProjectFormModal";
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import ProjectWizardModal from "../components/projects/ProjectWizardModal";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
@@ -442,9 +443,9 @@ export default function ProjectsList() {
     setSearchParams(next === "in_progress" ? {} : { tab: next }, { replace: true });
   }
   const [search, setSearch] = useState("");
-  const [clientFilter, setClientFilter] = useState("");
-  const [siteFilter, setSiteFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [clientFilter, setClientFilter] = useState<string[]>([]);
+  const [siteFilter, setSiteFilter] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -499,9 +500,9 @@ export default function ProjectsList() {
   // In kanban mode, search/filters apply to all projects
   const kanbanBase = useMemo(() => projects.filter((p) => {
     if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.po.toLowerCase().includes(search.toLowerCase())) return false;
-    if (clientFilter && p.client_name !== clientFilter) return false;
-    if (siteFilter && p.site_name !== siteFilter) return false;
-    if (categoryFilter && p.category_name !== categoryFilter) return false;
+    if (clientFilter.length && !clientFilter.includes(p.client_name ?? "")) return false;
+    if (siteFilter.length && !siteFilter.includes(p.site_name ?? "")) return false;
+    if (categoryFilter.length && !categoryFilter.includes(p.category_name ?? "")) return false;
     return true;
   }), [projects, search, clientFilter, siteFilter, categoryFilter]);
 
@@ -520,9 +521,9 @@ export default function ProjectsList() {
   const baseFiltered = useMemo(() => {
     return scoped.filter((p) => {
       if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.po.toLowerCase().includes(search.toLowerCase())) return false;
-      if (clientFilter && p.client_name !== clientFilter) return false;
-      if (siteFilter && p.site_name !== siteFilter) return false;
-      if (categoryFilter && p.category_name !== categoryFilter) return false;
+      if (clientFilter.length && !clientFilter.includes(p.client_name ?? "")) return false;
+      if (siteFilter.length && !siteFilter.includes(p.site_name ?? "")) return false;
+      if (categoryFilter.length && !categoryFilter.includes(p.category_name ?? "")) return false;
       return true;
     });
   }, [scoped, search, clientFilter, siteFilter, categoryFilter]);
@@ -645,27 +646,27 @@ export default function ProjectsList() {
               />
             </div>
           </div>
-          <div className="field-group">
-            <span className="field-label">{lp.client}</span>
-            <select className="select" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
-              <option value="">{lp.all}</option>
-              {clientOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="field-group">
-            <span className="field-label">{lp.site}</span>
-            <select className="select" value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
-              <option value="">{lp.all}</option>
-              {siteOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="field-group">
-            <span className="field-label">{lp.category}</span>
-            <select className="select" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="">{lp.allFem}</option>
-              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+          <MultiSelectFilter
+            label={lp.client}
+            options={clientOptions.map((c) => ({ value: c, label: c }))}
+            selected={clientFilter}
+            onChange={setClientFilter}
+            allLabel={lp.all}
+          />
+          <MultiSelectFilter
+            label={lp.site}
+            options={siteOptions.map((s) => ({ value: s, label: s }))}
+            selected={siteFilter}
+            onChange={setSiteFilter}
+            allLabel={lp.all}
+          />
+          <MultiSelectFilter
+            label={lp.category}
+            options={categoryOptions.map((c) => ({ value: c, label: c }))}
+            selected={categoryFilter}
+            onChange={setCategoryFilter}
+            allLabel={lp.allFem}
+          />
         </div>
 
         <div style={{ borderTop: "1px solid var(--border)" }} />

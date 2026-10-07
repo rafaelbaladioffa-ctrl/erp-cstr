@@ -3,6 +3,7 @@ import { operationsApi, sitesApi, type Site } from "../api/resources";
 import type { OperationsBoard as OperationsBoardData, OperationsBoardTechnician, StatusEvent, TimelineBlock } from "../api/types";
 import TechnicianAbsenceFormModal from "../components/projects/TechnicianAbsenceFormModal";
 import DateInput from "../components/ui/DateInput";
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import Icon from "../components/ui/Icon";
 import PageHeader from "../components/ui/PageHeader";
 import StatCard from "../components/ui/StatCard";
@@ -291,7 +292,9 @@ export default function OperationsBoard() {
   const p = usePageText(TEXT);
   const { locale } = useI18n();
   const [sites, setSites] = useState<Site[]>([]);
-  const [siteId, setSiteId] = useState<number | "all" | null>("all");
+  // "all" ou um ou mais ids separados por vírgula ("12,15")
+  const [siteId, setSiteId] = useState<string>("all");
+  const showSiteLabels = !/^\d+$/.test(siteId);
   const [board, setBoard] = useState<OperationsBoardData | null>(null);
   const [timelineByTech, setTimelineByTech] = useState<
     Record<number, { blocks: TimelineBlock[]; statusEvents: StatusEvent[] }>
@@ -330,7 +333,7 @@ export default function OperationsBoard() {
     });
   }, []);
 
-  function loadAll(site: number | "all", date?: string) {
+  function loadAll(site: string, date?: string) {
     setLoading(true);
     const dateParam = date && date !== todayStr ? date : undefined;
     Promise.all([
@@ -617,18 +620,13 @@ export default function OperationsBoard() {
                 </button>
               )}
             </div>
-            <select
-              className="select"
-              value={siteId ?? ""}
-              onChange={(e) => setSiteId(e.target.value === "all" ? "all" : Number(e.target.value))}
-            >
-              <option value="all">{p.allSites}</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <MultiSelectFilter
+              label={p.colSite}
+              options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+              selected={siteId === "all" ? [] : String(siteId).split(",")}
+              onChange={(next) => setSiteId(next.length ? next.join(",") : "all")}
+              allLabel={p.allSites}
+            />
           </div>
         }
       />
@@ -718,7 +716,7 @@ export default function OperationsBoard() {
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div className="ops-tech-name">
                           {tech.name}
-                          {siteId === "all" && tech.site_name && <span className="ops-tech-site"> · {tech.site_name}</span>}
+                          {showSiteLabels && tech.site_name && <span className="ops-tech-site"> · {tech.site_name}</span>}
                         </div>
                         <div className="ops-tech-status" style={{ color: dotColor }}>
                           {busyStatus === "in_progress"
@@ -875,7 +873,7 @@ export default function OperationsBoard() {
                                   <Icon name={collapsed ? "chevron_right" : "expand_more"} style={{ fontSize: 20 }} />
                                   <span className="ops-pool-group-name">{group.name}</span>
                                   {group.code && <span className="ops-pool-group-code">{group.code}</span>}
-                                  {siteId === "all" && <span className="ops-pool-group-site">{group.site}</span>}
+                                  {showSiteLabels && <span className="ops-pool-group-site">{group.site}</span>}
                                   <span className="ops-pool-group-spacer" />
                                   <span className="ops-pool-group-count">{p.projectActivities(group.tasks.length)}</span>
                                   {waiting > 0 && <span className="ops-pool-group-sub">{p.projectWaiting(waiting)}</span>}

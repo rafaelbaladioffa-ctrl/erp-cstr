@@ -2802,7 +2802,8 @@ class AuditLogViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets
         for field, param in (("action", "action"), ("app_label", "app_label"), ("model_name", "model_name")):
             value = params.get(param)
             if value:
-                queryset = queryset.filter(**{field: value})
+                # aceita um valor ou vários separados por vírgula
+                queryset = queryset.filter(**{f"{field}__in": [v.strip() for v in value.split(",") if v.strip()]})
         date_from = params.get("date_from")
         if date_from:
             queryset = queryset.filter(created_at__date__gte=date_from)

@@ -521,7 +521,7 @@ export const presenceApi = {
 };
 
 export const operationsApi = {
-  board: (siteId: number | "all", date?: string) =>
+  board: (siteId: number | string, date?: string) =>
     apiClient.get<OperationsBoard>("/operations/board/", { params: { site: String(siteId), ...(date ? { date } : {}) } }).then((r) => r.data),
   dispatch: (taskId: number, collaboratorIds: number[]) =>
     apiClient
@@ -539,11 +539,11 @@ export const operationsApi = {
     apiClient
       .post<ProjectTask>(`/project-tasks/${taskId}/return-to-pool/`, { collaborator_ids: collaboratorIds || [] })
       .then((r) => r.data),
-  timeline: (siteId: number | "all", date?: string) =>
+  timeline: (siteId: number | string, date?: string) =>
     apiClient
       .get<OperationsTimeline>("/operations/timeline/", { params: { site: String(siteId), ...(date ? { date } : {}) } })
       .then((r) => r.data),
-  reports: (siteId: number | "all", dateFrom?: string, dateTo?: string) =>
+  reports: (siteId: number | string, dateFrom?: string, dateTo?: string) =>
     apiClient
       .get<OperationsReports>("/operations/reports/", {
         params: { site: String(siteId), ...(dateFrom ? { date_from: dateFrom } : {}), ...(dateTo ? { date_to: dateTo } : {}) },

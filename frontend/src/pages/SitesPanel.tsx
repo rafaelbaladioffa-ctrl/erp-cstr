@@ -14,6 +14,7 @@ import type {
 } from "../api/types";
 import { FilterTh, useColumnFilters } from "../components/ui/ColumnFilter";
 import Icon from "../components/ui/Icon";
+import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import PageHeader from "../components/ui/PageHeader";
 import { useAuth } from "../context/AuthContext";
 import { usePageText } from "../i18n";
@@ -329,10 +330,6 @@ export default function SitesPanel() {
   });
   const statusParam = STATUS_KEYS.filter((k) => statusKeys.includes(k)).join(",");
   const [onlyAlerts, setOnlyAlerts] = useState(false);
-  const toggleGroupBy = (key: SitesPanelGroupBy) =>
-    setGroupBy((prev) => (prev.includes(key) ? (prev.length > 1 ? prev.filter((k) => k !== key) : prev) : [...prev, key]));
-  const toggleCountry = (code: string) =>
-    setCountries((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
   const [focusGroup, setFocusGroup] = useState<SitesPanelGroup | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [data, setData] = useState<SitesPanelData | null>(null);
@@ -383,12 +380,6 @@ export default function SitesPanel() {
     return rows;
   }, [data, focusGroup, onlyAlerts]);
 
-  function toggleStatus(key: StatusKey) {
-    // Combinação livre, mas sempre com pelo menos um status marcado.
-    setStatusKeys((current) =>
-      current.includes(key) ? (current.length > 1 ? current.filter((k) => k !== key) : current) : [...current, key],
-    );
-  }
 
   function openGroup(group: SitesPanelGroup) {
     setFocusGroup(group);
@@ -415,26 +406,34 @@ export default function SitesPanel() {
 
       {/* ---- Parte fixa: filtros ---- */}
       <div className="sp-filters">
-        <OptionsDropdown
+        <MultiSelectFilter
           label={p.groupBy}
           hint={p.groupByHint}
-          options={GROUP_BY_KEYS.map((k) => ({ key: k, label: p.groupByOptions[k] }))}
+          options={GROUP_BY_KEYS.map((k) => ({ value: k, label: p.groupByOptions[k] }))}
           selected={groupBy}
-          onToggle={(k) => toggleGroupBy(k as SitesPanelGroupBy)}
-          emptyLabel={p.groupByOptions.site}
-          summarySeparator=" · "
+          onChange={(next) => setGroupBy(next as SitesPanelGroupBy[])}
+          allLabel={p.groupByOptions.site}
+          separator=" · "
           requireOne
         />
-        <OptionsDropdown
+        <MultiSelectFilter
           label={p.country}
           hint={p.countryHint}
-          options={Object.entries(p.countries).map(([code, label]) => ({ key: code, label }))}
+          options={Object.entries(p.countries).map(([code, label]) => ({ value: code, label }))}
           selected={countries}
-          onToggle={toggleCountry}
-          emptyLabel={p.allCountries}
-          summarySeparator=", "
+          onChange={setCountries}
+          allLabel={p.allCountries}
+          clearLabel={p.clearFilter}
         />
-        <StatusDropdown p={p} selected={statusKeys} onToggle={toggleStatus} />
+        <MultiSelectFilter
+          label={p.status}
+          options={STATUS_KEYS.map((k) => ({ value: k, label: p.statusOptions[k], hint: p.statusHints[k] }))}
+          selected={statusKeys}
+          onChange={(next) => setStatusKeys(next as StatusKey[])}
+          allLabel={p.statusAll}
+          allWhenFull
+          requireOne
+        />
         <label className="sp-toggle">
           <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} />
           {p.onlyAlerts}
@@ -519,150 +518,6 @@ export default function SitesPanel() {
 // ---------------------------------------------------------------------------
 
 const GROUP_BY_KEYS: SitesPanelGroupBy[] = ["region", "client", "site", "responsible"];
-
-// Dropdown de múltipla escolha (checkboxes). `requireOne` impede desmarcar a última opção;
-// sem ele, nenhuma opção marcada significa "todas" (mostra `emptyLabel`).
-function OptionsDropdown({
-  label,
-  hint,
-  options,
-  selected,
-  onToggle,
-  emptyLabel,
-  summarySeparator,
-  requireOne,
-}: {
-  label: string;
-  hint: string;
-  options: { key: string; label: string }[];
-  selected: string[];
-  onToggle: (key: string) => void;
-  emptyLabel: string;
-  summarySeparator: string;
-  requireOne?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const chosen = options.filter((o) => selected.includes(o.key));
-  const summary =
-    chosen.length === 0
-      ? emptyLabel
-      : chosen.length <= 2
-        ? chosen.map((o) => o.label).join(summarySeparator)
-        : `${chosen[0].label} +${chosen.length - 1}`;
-
-  return (
-    <div className="sp-dropdown" ref={ref}>
-      <button
-        type="button"
-        className="sp-select sp-dropdown-trigger"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="sp-muted">{label}:</span> {summary}
-        <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 18 }} />
-      </button>
-      {open && (
-        <div className="sp-dropdown-menu" role="listbox" aria-multiselectable="true">
-          {options.map((o) => {
-            const checked = selected.includes(o.key);
-            const locked = !!requireOne && checked && selected.length === 1;
-            return (
-              <label key={o.key} className={`sp-dropdown-option${locked ? " locked" : ""}`}>
-                <input type="checkbox" checked={checked} disabled={locked} onChange={() => onToggle(o.key)} />
-                <span>{o.label}</span>
-              </label>
-            );
-          })}
-          <div className="sp-dropdown-hint">{hint}</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatusDropdown({
-  p,
-  selected,
-  onToggle,
-}: {
-  p: PanelText;
-  selected: StatusKey[];
-  onToggle: (key: StatusKey) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const ordered = STATUS_KEYS.filter((k) => selected.includes(k));
-  const summary =
-    ordered.length === STATUS_KEYS.length
-      ? p.statusAll
-      : ordered.length <= 2
-        ? ordered.map((k) => p.statusOptions[k]).join(", ")
-        : `${p.statusOptions[ordered[0]]} +${ordered.length - 1}`;
-
-  return (
-    <div className="sp-dropdown" ref={ref}>
-      <button
-        type="button"
-        className="sp-select sp-dropdown-trigger"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="sp-muted">{p.status}:</span> {summary}
-        <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 18 }} />
-      </button>
-      {open && (
-        <div className="sp-dropdown-menu" role="listbox" aria-multiselectable="true">
-          {STATUS_KEYS.map((key) => {
-            const checked = selected.includes(key);
-            const locked = checked && selected.length === 1;
-            return (
-              <label key={key} className={`sp-dropdown-option${locked ? " locked" : ""}`}>
-                <input type="checkbox" checked={checked} disabled={locked} onChange={() => onToggle(key)} />
-                <span>
-                  {p.statusOptions[key]}
-                  <small>{p.statusHints[key]}</small>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Indicadores (parte fixa)
