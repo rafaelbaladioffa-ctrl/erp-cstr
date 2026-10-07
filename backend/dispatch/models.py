@@ -121,6 +121,7 @@ class TechnicianStatusEvent(models.Model):
     date = models.DateField("data", default=timezone.localdate)
     status = models.CharField("status", max_length=20, choices=TechnicianDailyPresence.STATUS_CHOICES)
     changed_at = models.DateTimeField("alterado em", default=timezone.now)
+    is_adjusted = models.BooleanField("ajustado pelo administrador", default=False)
 
     class Meta:
         verbose_name = "Troca de Status do Técnico"
@@ -129,6 +130,39 @@ class TechnicianStatusEvent(models.Model):
 
     def __str__(self):
         return f"{self.collaborator} — {self.get_status_display()} em {self.changed_at:%d/%m %H:%M}"
+
+
+class TimelineAdjustment(models.Model):
+    """Histórico dos ajustes administrativos da timeline (ver dispatch.adjustments):
+    quem ajustou, quando, por quê, e o estado antes/depois."""
+
+    KIND_EXECUTION = "execution"
+    KIND_STATUS_WINDOW = "status_window"
+    KIND_CHOICES = (
+        (KIND_EXECUTION, "Execução de tarefa"),
+        (KIND_STATUS_WINDOW, "Trecho de status"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="ajustado por", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    collaborator = models.ForeignKey(
+        Collaborator, verbose_name="técnico", on_delete=models.CASCADE, related_name="timeline_adjustments"
+    )
+    date = models.DateField("data do ajuste")
+    kind = models.CharField("tipo", max_length=20, choices=KIND_CHOICES)
+    reason = models.TextField("motivo")
+    before = models.JSONField("antes", default=dict, blank=True)
+    after = models.JSONField("depois", default=dict, blank=True)
+    created_at = models.DateTimeField("ajustado em", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Ajuste da Timeline"
+        verbose_name_plural = "Ajustes da Timeline"
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.get_kind_display()} — {self.collaborator} em {self.date:%d/%m/%Y}"
 
 
 class CollaboratorPair(TimestampedModel):

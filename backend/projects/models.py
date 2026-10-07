@@ -610,6 +610,8 @@ class ProjectTaskAssignment(TimestampedModel):
     # Necessário para somar o tempo de execução de vários técnicos sem contar
     # duas vezes a mesma janela (ver ProjectTask.sync_from_assignments).
     pause_log = models.JSONField("pausas do técnico", default=list, blank=True)
+    # Apontamento corrigido pelo administrador (ver dispatch.adjustments) — vale como real.
+    is_adjusted = models.BooleanField("ajustado pelo administrador", default=False)
 
     class Meta:
         verbose_name = "Despacho de Tarefa"

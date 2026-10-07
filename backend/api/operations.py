@@ -70,7 +70,7 @@ def _status_events_data(collaborator_ids, date):
     by_collaborator = {}
     for e in events:
         by_collaborator.setdefault(e.collaborator_id, []).append(
-            {"status": e.status, "status_display": e.get_status_display(), "changed_at": e.changed_at}
+            {"status": e.status, "status_display": e.get_status_display(), "changed_at": e.changed_at, "adjusted": e.is_adjusted}
         )
     return by_collaborator
 
@@ -398,6 +398,7 @@ def build_timeline_data(site_id, date, user=None):
                 "actual_end": actual_end,
                 "estimated_hours": t.estimated_hours,
                 "working_intervals": _working_intervals(a, t),
+                "adjusted": a.is_adjusted,
             })
         technicians.append(
             {
