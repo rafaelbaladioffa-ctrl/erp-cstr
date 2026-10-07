@@ -516,6 +516,13 @@ export const myTasksApi = {
     apiClient.patch<ProjectTask>(`/my-tasks/${id}/`, payload).then((r) => r.data),
 };
 
+/** Apontamento por bloco do técnico (os intervalos são o único momento em que ele tem o celular). */
+export const workBlockApi = {
+  suggestion: () => apiClient.get<{ start: string; end: string }>("/my-tasks/block/suggestion/").then((r) => r.data),
+  register: (payload: { start: string; end: string; tasks: { task_id: number; complete: boolean }[] }) =>
+    apiClient.post("/my-tasks/block/", payload).then((r) => r.data),
+};
+
 export const presenceApi = {
   me: () => apiClient.get<TechnicianPresence>("/technician-presence/me/").then((r) => r.data),
   setStatus: (status: string) =>

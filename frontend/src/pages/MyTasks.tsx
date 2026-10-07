@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import WorkBlockModal from "../components/projects/WorkBlockModal";
 import { myTasksApi, presenceApi } from "../api/resources";
 import type { ProjectTask, TechnicianPresence } from "../api/types";
 import { useAuth } from "../context/AuthContext";
@@ -23,6 +24,7 @@ const TEXT = {
     notes: "Observações", notesPlaceholder: "Anote algo sobre esta tarefa...",
     noTasks: "Nenhuma tarefa nesta aba.",
     since: "desde", at: "às",
+    registerBlock: "Registrar bloco de trabalho",
     pauseWarning: (names: string) => `Suas tarefas em andamento serão pausadas: ${names}. Para retomar, toque em Iniciar na tarefa.`,
     changeStatusQ: (label: string) => `Alterar seu status para "${label}"?`,
     endShiftQ: "Encerrar seu expediente?",
@@ -66,6 +68,7 @@ const TEXT = {
     notes: "Notes", notesPlaceholder: "Add a note about this task...",
     noTasks: "No tasks in this tab.",
     since: "since", at: "at",
+    registerBlock: "Log a work block",
     pauseWarning: (names: string) => `Your running tasks will be paused: ${names}. To resume, tap Start on the task.`,
     changeStatusQ: (label: string) => `Change your status to "${label}"?`,
     endShiftQ: "End your shift?",
@@ -109,6 +112,7 @@ const TEXT = {
     notes: "Observaciones", notesPlaceholder: "Añade una nota sobre esta tarea...",
     noTasks: "Sin tareas en esta pestaña.",
     since: "desde", at: "a las",
+    registerBlock: "Registrar bloque de trabajo",
     pauseWarning: (names: string) => `Sus tareas en curso se pausarán: ${names}. Para retomar, toque Iniciar en la tarea.`,
     changeStatusQ: (label: string) => `¿Cambiar su estado a "${label}"?`,
     endShiftQ: "¿Finalizar su jornada?",
@@ -194,6 +198,7 @@ export default function MyTasks() {
   }
   const canEdit = hasPerm(user, PERMS.changeMyTasks);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const [blockOpen, setBlockOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("pending");
@@ -337,6 +342,24 @@ ${p.pauseWarning(running.map((t) => t.task_name).join(", "))}` : "";
             </div>
           )}
         </div>
+      )}
+
+      {canEdit && (
+        <div style={{ margin: "0 0 12px" }}>
+          <button type="button" className="btn btn-primary" onClick={() => setBlockOpen(true)}>
+            {p.registerBlock}
+          </button>
+        </div>
+      )}
+      {blockOpen && (
+        <WorkBlockModal
+          tasks={tasks.filter((task) => task.status === "not_started" || task.status === "paused")}
+          onClose={() => setBlockOpen(false)}
+          onSaved={() => {
+            loadTasks();
+            presenceApi.me().then(setPresence).catch(() => {});
+          }}
+        />
       )}
 
       <div className="mt-tabs">
