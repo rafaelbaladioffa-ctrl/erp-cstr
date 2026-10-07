@@ -331,17 +331,42 @@ export function assignLanes(segments: Segment[]): LanedSegment[] {
   return raw.map((r) => ({ ...r, laneCount }));
 }
 
-/** Recolher a timeline de um técnico com várias tarefas simultâneas: só a primeira
- * lane fica visível (as demais viram "+N" com botão de expandir). Evita a poluição
- * de dezenas de barras empilhadas quando ele inicia muitas tarefas ao mesmo tempo. */
+/** Recolher a timeline de um técnico com várias tarefas simultâneas: fica UMA linha
+ * só, sem buracos. As barras mais longas têm prioridade; as menores entram só nos
+ * trechos que as longas não cobrem (recortadas, sem sobrepor), e o que sobra de
+ * cada uma fica visível ao expandir. Evita a poluição de dezenas de barras
+ * empilhadas quando ele inicia muitas tarefas ao mesmo tempo. */
 export function collapseLanes(laned: LanedSegment[], expanded: boolean) {
   const fullLaneCount = laned[0]?.laneCount ?? 1;
   const collapsible = fullLaneCount > 1;
   if (expanded || !collapsible) {
     return { visible: laned, laneCount: fullLaneCount, hiddenCount: 0, collapsible, expanded: expanded && collapsible };
   }
-  const visible = laned.filter((l) => l.lane === 0).map((l) => ({ ...l, laneCount: 1 }));
-  return { visible, laneCount: 1, hiddenCount: laned.length - visible.length, collapsible, expanded: false };
+  const nowMs = Date.now();
+  const endOf = (seg: Segment) => (seg.end ? seg.end.getTime() : nowMs);
+  const byLength = [...laned].sort(
+    (a, b) => endOf(b.segment) - b.segment.start.getTime() - (endOf(a.segment) - a.segment.start.getTime())
+  );
+  const chosen: Interval[] = [];
+  const visible: LanedSegment[] = [];
+  let shown = 0;
+  for (const { segment } of byLength) {
+    const startMs = segment.start.getTime();
+    const endMs = endOf(segment);
+    const pieces = subtractIntervals({ start: startMs, end: endMs }, chosen);
+    if (pieces.length > 0) shown += 1;
+    for (const piece of pieces) {
+      chosen.push(piece);
+      const reachesOpenEnd = segment.end == null && piece.end === endMs;
+      visible.push({
+        segment: { ...segment, start: new Date(piece.start), end: reachesOpenEnd ? null : new Date(piece.end) },
+        lane: 0,
+        laneCount: 1,
+      });
+    }
+  }
+  visible.sort((a, b) => a.segment.start.getTime() - b.segment.start.getTime());
+  return { visible, laneCount: 1, hiddenCount: laned.length - shown, collapsible, expanded: false };
 }
 
 interface Paired {
