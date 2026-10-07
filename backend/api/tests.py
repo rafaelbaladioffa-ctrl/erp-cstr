@@ -6736,7 +6736,7 @@ class OperationsReportsV2Tests(TestCase):
 
     def test_label_production_counts_labels_not_cables(self):
         self.setup_catalog()
-        Activity.objects.filter(pk=self.activity.pk).update(code="CAB-LABEL")
+        self.activity = Activity.objects.get(code="CAB-LABEL")  # já existe no catálogo (migração)
         CableFamily.objects.filter(pk=self.family.pk).update(connector_a="LC", connector_b="LC", fiber_count=8)
         generated = self.make_generated(10)  # 10 cabos 8F LC-LC = 80 labels
         self.make_task(
