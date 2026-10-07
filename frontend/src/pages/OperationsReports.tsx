@@ -100,11 +100,17 @@ function cvColor(cv: number | null): string | undefined {
   return "var(--red)";
 }
 
-function refDigits(v: number) {
-  const a = Math.abs(v);
-  if (a < 0.1) return 3;
-  if (a < 10) return 2;
-  return 1;
+// Horas decimais → "1h23min" (≥ 1h), "52min" / "5min20s" (< 1h) ou "45s" (< 1min).
+// Ex.: 1,38 h → 1h23min; 0,0321 h → 1min56s. Segundos só aparecem abaixo de 10 min.
+function fmtDur(hours: number): string {
+  const totalSec = Math.round(Math.abs(hours) * 3600);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const sec = totalSec % 60;
+  if (h > 0) return `${h}h${String(m).padStart(2, "0")}min`;
+  if (m >= 10) return `${m}min`;
+  if (m > 0) return sec ? `${m}min${String(sec).padStart(2, "0")}s` : `${m}min`;
+  return `${sec}s`;
 }
 
 const UNIT_KEYS: Record<string, "cabo" | "porta" | "link" | "metro" | "unidade"> = {
@@ -1083,7 +1089,6 @@ export default function OperationsReportsPage() {
   const fmtH = (v: number) => `${nf(v, 1)} h`;
   const fmtHH = (v: number) => `${nf(v, 1)} ${p.hhUnit}`;
   const fmtPct = (v: number) => `${nf(v, 1)}%`;
-  const fmtRef = (v: number, digits: number) => nf(v, digits);
 
   const todayIso = brazilTodayIso();
   const todayLabel = formatIsoDate(todayIso, locale, { weekday: "short", day: "2-digit", month: "2-digit" });
@@ -2125,7 +2130,7 @@ export default function OperationsReportsPage() {
   function renderActivityRow(a: ReportsActivityProductivity, idx: number) {
     const excludedTotal = a.excluded.untracked + a.excluded.partial_or_blocked + a.excluded.no_quantity;
     const u = a.unit ? unitLabel(a.unit) : "";
-    const perUnit = u ? `${p.hhUnit}/${u}` : p.hhUnit;
+    const perUnit = u ? `/${u}` : "";
     const exclusionTip = (
       <div className="rpt-tip-table">
         <div className="rpt-tip-title">{p.exTitulo}</div>
@@ -2181,10 +2186,10 @@ export default function OperationsReportsPage() {
               {unitDist ? (
                 <>
                   <div className="rpt-strong">
-                    {fmtRef(unitDist.median, refDigits(unitDist.median))} {perUnit}
+                    {fmtDur(unitDist.median)}{perUnit}
                   </div>
                   <div className="rpt-num-sub">
-                    {p.faixaP25P75(fmtRef(unitDist.p25, refDigits(unitDist.median)), fmtRef(unitDist.p75, refDigits(unitDist.median)))}
+                    {p.faixaP25P75(fmtDur(unitDist.p25), fmtDur(unitDist.p75))}
                   </div>
                 </>
               ) : (
@@ -2195,10 +2200,10 @@ export default function OperationsReportsPage() {
               {meterDist ? (
                 <>
                   <div className="rpt-strong">
-                    {fmtRef(meterDist.median, refDigits(meterDist.median))} {p.hhUnit}/m
+                    {fmtDur(meterDist.median)}/m
                   </div>
                   <div className="rpt-num-sub">
-                    {p.faixaP25P75(fmtRef(meterDist.p25, refDigits(meterDist.median)), fmtRef(meterDist.p75, refDigits(meterDist.median)))}
+                    {p.faixaP25P75(fmtDur(meterDist.p25), fmtDur(meterDist.p75))}
                     {" · "}
                     {nf(meterDist.total_meters, 0)} m
                   </div>
@@ -2211,10 +2216,10 @@ export default function OperationsReportsPage() {
               {unitDist ? (
                 <>
                   <div className="rpt-strong" style={{ color: cvColor(unitDist.cv_pct) }}>
-                    ± {fmtRef(unitDist.std_dev, refDigits(unitDist.median))} {perUnit}
+                    ± {fmtDur(unitDist.std_dev)}{perUnit}
                   </div>
                   <div className="rpt-num-sub">
-                    {p.mediaCV(fmtRef(unitDist.mean, refDigits(unitDist.median)), unitDist.cv_pct == null ? "—" : `${nf(unitDist.cv_pct, 0)}%`)}
+                    {p.mediaCV(fmtDur(unitDist.mean), unitDist.cv_pct == null ? "—" : `${nf(unitDist.cv_pct, 0)}%`)}
                   </div>
                 </>
               ) : (
@@ -2230,8 +2235,8 @@ export default function OperationsReportsPage() {
             </span>
           </td>
         )}
-        <td className="rpt-num">{info(a.median_man_hours == null ? null : fmtHH(a.median_man_hours))}</td>
-        <td className="rpt-num">{info(a.median_duration_hours == null ? null : fmtH(a.median_duration_hours))}</td>
+        <td className="rpt-num">{info(a.median_man_hours == null ? null : fmtDur(a.median_man_hours))}</td>
+        <td className="rpt-num">{info(a.median_duration_hours == null ? null : fmtDur(a.median_duration_hours))}</td>
         <td className="rpt-num">{info(a.avg_crew_size == null ? null : nf(a.avg_crew_size, 1))}</td>
       </tr>
     );
