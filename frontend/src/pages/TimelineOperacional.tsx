@@ -14,6 +14,7 @@ import {
   WINDOW_START_HOUR,
   assignLanes,
   buildTechSegments,
+  collapseLanes,
   formatTime,
   initials,
   pairRowClass,
@@ -49,6 +50,8 @@ const TEXT = {
     legendMeeting: "Reunião",
     legendTraveling: "Em Deslocamento",
     legendSupport: "Apoio a outro técnico",
+    expandLanes: (n: number) => `▾ +${n} simultâneas`,
+    collapseLanes: "▴ Recolher",
     legendSiteBlocked: "Sem Acesso ao Site",
     legendAwaitingRelease: "Aguardando Liberações",
     legendIdle: "Não iniciado / Fim de Expediente",
@@ -87,6 +90,8 @@ const TEXT = {
     legendMeeting: "Meeting",
     legendTraveling: "Traveling",
     legendSupport: "Supporting another technician",
+    expandLanes: (n: number) => `▾ +${n} concurrent`,
+    collapseLanes: "▴ Collapse",
     legendSiteBlocked: "No Site Access",
     legendAwaitingRelease: "Awaiting Releases",
     legendIdle: "Not started / End of shift",
@@ -125,6 +130,8 @@ const TEXT = {
     legendMeeting: "Reunión",
     legendTraveling: "En desplazamiento",
     legendSupport: "Apoyo a otro técnico",
+    expandLanes: (n: number) => `▾ +${n} simultáneas`,
+    collapseLanes: "▴ Contraer",
     legendSiteBlocked: "Sin acceso al sitio",
     legendAwaitingRelease: "Esperando liberaciones",
     legendIdle: "No iniciado / Fin de jornada",
@@ -203,6 +210,15 @@ export default function TimelineOperacional() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  function toggleRow(techId: number) {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(techId)) next.delete(techId); else next.add(techId);
+      return next;
+    });
+  }
+
   const technicians = data?.technicians || [];
   const isToday = data?.is_today ?? date === todayISO();
   const base = data?.date ? new Date(`${data.date}T00:00:00`) : new Date();
@@ -213,11 +229,14 @@ export default function TimelineOperacional() {
       .filter((tech) => selectedTechIds.length === 0 || selectedTechIds.includes(tech.id))
       .map((tech) => {
         const segments = buildTechSegments(tech.blocks, tech.status_events, now, isToday, locale);
-        const lanedSegments = assignLanes(segments);
+        const lanes = collapseLanes(assignLanes(segments), expandedRows.has(tech.id));
         return {
           tech,
-          lanedSegments,
-          laneCount: lanedSegments[0]?.laneCount ?? 1,
+          lanedSegments: lanes.visible,
+          laneCount: lanes.laneCount,
+          hiddenCount: lanes.hiddenCount,
+          collapsible: lanes.collapsible,
+          expanded: lanes.expanded,
           doneCount: tech.blocks.filter((b) => b.status === "completed").length,
         };
       })
@@ -363,7 +382,7 @@ export default function TimelineOperacional() {
           <div className="tl-grid-wrap">
             <div className="tl-labels">
               <div className="tl-ruler" />
-              {techRows.map(({ tech, laneCount, doneCount }, rowIdx) => (
+              {techRows.map(({ tech, laneCount, doneCount, hiddenCount, collapsible, expanded }, rowIdx) => (
                 <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
                   <div className="tl-row-label">
                     <div className="tl-avatar">{initials(tech.name)}</div>
@@ -375,6 +394,11 @@ export default function TimelineOperacional() {
                       <div className="tl-row-overview">
                         {p.doneCount(doneCount)}
                       </div>
+                      {collapsible && (
+                        <button type="button" className="tl-expand-btn" onClick={() => toggleRow(tech.id)}>
+                          {expanded ? p.collapseLanes : p.expandLanes(hiddenCount)}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

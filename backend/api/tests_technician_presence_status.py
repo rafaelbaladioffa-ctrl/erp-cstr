@@ -457,7 +457,7 @@ class TimelineWorkingIntervalsTests(TestCase):
         intervals = self._blocks(self.tech_a)[self.task2.pk]["working_intervals"]
 
         self.assertEqual(
-            [(i["start"].hour, i["end"].hour) for i in intervals],
+            [(timezone.localtime(i["start"]).hour, timezone.localtime(i["end"]).hour) for i in intervals],
             [(7, 11), (12, 14)],
         )
 
@@ -474,4 +474,5 @@ class TimelineWorkingIntervalsTests(TestCase):
         self.assertIsNotNone(paused[0]["end"])  # fechado na hora em que pausou
 
     def test_assignment_without_own_tracking_has_no_intervals(self):
+        ProjectTask.objects.filter(pk=self.task1.pk).update(planned_start=self.clock)  # aparece na timeline do dia
         self.assertIsNone(self._blocks(self.tech_a)[self.task1.pk]["working_intervals"])

@@ -6044,3 +6044,20 @@ button.sp-card:hover {
 .ops-pool-task { user-select: none; }
 .ops-pool-toolbar { align-items: center; gap: 12px; }
 .ops-pool-hint { flex: 1; font-size: 12px; color: var(--text-faint); }
+
+.tod-expand-btn,
+.tl-expand-btn {
+  margin-top: 4px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tod-expand-btn:hover,
+.tl-expand-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}

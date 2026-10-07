@@ -331,6 +331,19 @@ export function assignLanes(segments: Segment[]): LanedSegment[] {
   return raw.map((r) => ({ ...r, laneCount }));
 }
 
+/** Recolher a timeline de um técnico com várias tarefas simultâneas: só a primeira
+ * lane fica visível (as demais viram "+N" com botão de expandir). Evita a poluição
+ * de dezenas de barras empilhadas quando ele inicia muitas tarefas ao mesmo tempo. */
+export function collapseLanes(laned: LanedSegment[], expanded: boolean) {
+  const fullLaneCount = laned[0]?.laneCount ?? 1;
+  const collapsible = fullLaneCount > 1;
+  if (expanded || !collapsible) {
+    return { visible: laned, laneCount: fullLaneCount, hiddenCount: 0, collapsible, expanded: expanded && collapsible };
+  }
+  const visible = laned.filter((l) => l.lane === 0).map((l) => ({ ...l, laneCount: 1 }));
+  return { visible, laneCount: 1, hiddenCount: laned.length - visible.length, collapsible, expanded: false };
+}
+
 interface Paired {
   id: number;
   pair_partner: PairPartner | null;

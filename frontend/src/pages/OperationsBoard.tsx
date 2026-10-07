@@ -17,6 +17,7 @@ import {
   WINDOW_START_HOUR,
   assignLanes,
   buildTechSegments,
+  collapseLanes,
   formatTime,
   groupByPair,
   initials,
@@ -91,6 +92,8 @@ const TEXT = {
     legendMeeting: "Reunião",
     legendTraveling: "Em Deslocamento",
     legendSupport: "Apoio a outro técnico",
+    expandLanes: (n: number) => `▾ +${n} simultâneas`,
+    collapseLanes: "▴ Recolher",
     legendSiteBlocked: "Sem Acesso ao Site",
     legendAwaiting: "Aguardando Liberações",
     legendNotStarted: "Não iniciado / Fim de Expediente",
@@ -171,6 +174,8 @@ const TEXT = {
     legendMeeting: "Meeting",
     legendTraveling: "Traveling",
     legendSupport: "Supporting another technician",
+    expandLanes: (n: number) => `▾ +${n} concurrent`,
+    collapseLanes: "▴ Collapse",
     legendSiteBlocked: "No Site Access",
     legendAwaiting: "Awaiting Releases",
     legendNotStarted: "Not started / End of Shift",
@@ -251,6 +256,8 @@ const TEXT = {
     legendMeeting: "Reunión",
     legendTraveling: "En desplazamiento",
     legendSupport: "Apoyo a otro técnico",
+    expandLanes: (n: number) => `▾ +${n} simultáneas`,
+    collapseLanes: "▴ Contraer",
     legendSiteBlocked: "Sin Acceso al Sitio",
     legendAwaiting: "Esperando Liberaciones",
     legendNotStarted: "No iniciado / Fin de Jornada",
@@ -296,6 +303,14 @@ export default function OperationsBoard() {
   const anchorTaskRef = useRef<number | null>(null);
   const [selectedTechs, setSelectedTechs] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  function toggleRow(techId: number) {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(techId)) next.delete(techId); else next.add(techId);
+      return next;
+    });
+  }
   const [todPopup, setTodPopup] = useState<{ key: string; label: string; start: Date; end: Date | null; color: string; top: number; left: number; taskId?: number; collaboratorId?: number } | null>(null);
   const todPopupRef = useRef<HTMLDivElement>(null);
   const [poolOpen, setPoolOpen] = useState(false);
@@ -481,11 +496,16 @@ export default function OperationsBoard() {
       .map((tech) => {
       const { blocks = [], statusEvents = [] } = timelineByTech[tech.id] || {};
       const segments = buildTechSegments(blocks, statusEvents, nowDate, true, locale);
-      const lanedSegments = assignLanes(segments);
+      const allLaned = assignLanes(segments);
+      const lanes = collapseLanes(allLaned, expandedRows.has(tech.id));
       return {
         tech,
-        lanedSegments,
-        laneCount: lanedSegments[0]?.laneCount ?? 1,
+        allLaned,
+        lanedSegments: lanes.visible,
+        laneCount: lanes.laneCount,
+        hiddenCount: lanes.hiddenCount,
+        collapsible: lanes.collapsible,
+        expanded: lanes.expanded,
         doneCount: blocks.filter((b) => b.status === "completed").length,
         pendingCount: tech.queue.length,
       };
@@ -500,8 +520,8 @@ export default function OperationsBoard() {
     if (row.tech.queue.length === 0) return [];
     let lane = 0;
     let cursor = nowDate;
-    if (row.lanedSegments.length > 0) {
-      for (const { segment, lane: segLane } of row.lanedSegments) {
+    if (row.allLaned.length > 0) {
+      for (const { segment, lane: segLane } of row.allLaned) {
         const end = segment.end ?? nowDate;
         if (end >= cursor) {
           cursor = end;
@@ -513,7 +533,7 @@ export default function OperationsBoard() {
     for (const q of row.tech.queue) {
       if (cursor >= windowEnd) break;
       const end = new Date(Math.min(cursor.getTime() + NOT_STARTED_DURATION_MS, windowEnd.getTime()));
-      bars.push({ key: q.task_id, label: q.task_name, start: cursor, end, lane });
+      bars.push({ key: q.task_id, label: q.task_name, start: cursor, end, lane: row.collapsible && !row.expanded ? 0 : lane });
       cursor = end;
     }
     return bars;
@@ -980,13 +1000,14 @@ export default function OperationsBoard() {
                   </div>
                 </div>
 
-                {techRows.map(({ tech, lanedSegments, laneCount, doneCount, pendingCount }, rowIdx) => {
+                {techRows.map((row, rowIdx) => {
+                  const { tech, lanedSegments, laneCount, doneCount, pendingCount } = row;
                   const badgeColor = techStatusColor(tech);
                   const badgeLabel = techStatusLabel(tech);
                   const rowHeight = laneCount <= 1 ? 88 : 36 + laneCount * 52;
                   const barH = 22;
                   const barT = (lane: number) => 8 + lane * 52;
-                  const notStarted = notStartedBars({ tech, lanedSegments, laneCount, doneCount, pendingCount });
+                  const notStarted = notStartedBars(row);
                   const doneLabel = doneCount === 1 ? p.finishedSingular : p.finishedPlural;
                   const pendLabel = pendingCount === 1 ? p.pendingSingular : p.pendingPlural;
                   return (
@@ -1016,6 +1037,18 @@ export default function OperationsBoard() {
                         <div className="tod-row-stats">
                           {doneCount} {doneLabel} · {pendingCount} {pendLabel}
                         </div>
+                        {row.collapsible && (
+                          <button
+                            type="button"
+                            className="tod-expand-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRow(tech.id);
+                            }}
+                          >
+                            {row.expanded ? p.collapseLanes : p.expandLanes(row.hiddenCount)}
+                          </button>
+                        )}
                       </div>
                       {lanedSegments.length === 0 && notStarted.length === 0 ? (
                         <div className="tod-empty-row">{presenceLabel(tech.presence_status, locale, tech.presence_status_display)}</div>
