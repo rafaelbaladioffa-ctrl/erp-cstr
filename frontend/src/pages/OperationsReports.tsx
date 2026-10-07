@@ -104,6 +104,7 @@ function cvColor(cv: number | null): string | undefined {
 // Ex.: 1,38 h → 1h23min; 0,0321 h → 1min56s. Segundos só aparecem abaixo de 10 min.
 function fmtDur(hours: number): string {
   const totalSec = Math.round(Math.abs(hours) * 3600);
+  if (totalSec === 0) return "0min";
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const sec = totalSec % 60;
@@ -1301,12 +1302,12 @@ export default function OperationsReportsPage() {
       t.site_name,
       t.utilization_pct,
       bandText(bandFor(t.utilization_pct, t.utilization_band)),
-      t.productive_hours,
-      t.journey_hours,
-      t.man_hours,
-      t.journey_hours > 0 ? t.external_block_hours : null,
-      t.journey_hours > 0 ? t.internal_idle_hours : null,
-      t.internal_idle_avg_per_day,
+      fmtDur(t.productive_hours),
+      fmtDur(t.journey_hours),
+      fmtDur(t.man_hours),
+      t.journey_hours > 0 ? fmtDur(t.external_block_hours) : null,
+      t.journey_hours > 0 ? fmtDur(t.internal_idle_hours) : null,
+      t.internal_idle_avg_per_day == null ? null : fmtDur(t.internal_idle_avg_per_day),
       t.idle_limit_exceeded ? p.sim : p.nao,
       t.completed_count,
       t.untracked_count,
@@ -1958,14 +1959,14 @@ export default function OperationsReportsPage() {
                       </div>
                     </td>
                     <td>{renderUtilization(t.utilization_pct, t.utilization_band)}</td>
-                    <td className="rpt-num">{fmtH(t.productive_hours)}</td>
-                    <td className="rpt-num">{hasJourney ? fmtH(t.journey_hours) : empty(p.semCheckinPeriodo)}</td>
-                    <td className="rpt-num">{fmtHH(t.man_hours)}</td>
+                    <td className="rpt-num">{fmtDur(t.productive_hours)}</td>
+                    <td className="rpt-num">{hasJourney ? fmtDur(t.journey_hours) : empty(p.semCheckinPeriodo)}</td>
+                    <td className="rpt-num">{fmtDur(t.man_hours)}</td>
                     <td className="rpt-num">
                       {hasJourney ? (
                         <span className="rpt-val-marker">
                           <span className="rpt-cat rpt-cat--external" aria-hidden="true" />
-                          {fmtH(t.external_block_hours)}
+                          {fmtDur(t.external_block_hours)}
                         </span>
                       ) : (
                         empty(p.semCheckinPeriodo)
@@ -1981,13 +1982,13 @@ export default function OperationsReportsPage() {
                         >
                           <span className="rpt-band rpt-band--low">
                             <Icon name="warning" style={{ fontSize: 12 }} />
-                            {fmtH(t.internal_idle_hours)}
+                            {fmtDur(t.internal_idle_hours)}
                           </span>
                         </Tip>
                       ) : (
                         <span className="rpt-val-marker">
                           <span className="rpt-cat rpt-cat--internal" aria-hidden="true" />
-                          {fmtH(t.internal_idle_hours)}
+                          {fmtDur(t.internal_idle_hours)}
                         </span>
                       )}
                     </td>
@@ -2031,11 +2032,11 @@ export default function OperationsReportsPage() {
                 <tr className="rpt-total-row">
                   <td className="rpt-sticky-col">{p.total(technicians.length)}</td>
                   <td>{renderUtilization(stats.utilization_pct, stats.utilization_band, true)}</td>
-                  <td className="rpt-num">{fmtH(stats.productive_hours_total)}</td>
-                  <td className="rpt-num">{journeyTotal > 0 ? fmtH(journeyTotal) : empty()}</td>
-                  <td className="rpt-num">{fmtHH(stats.man_hours_total)}</td>
-                  <td className="rpt-num">{journeyTotal > 0 ? fmtH(stats.external_block_hours) : empty()}</td>
-                  <td className="rpt-num">{journeyTotal > 0 ? fmtH(stats.internal_idle_hours) : empty()}</td>
+                  <td className="rpt-num">{fmtDur(stats.productive_hours_total)}</td>
+                  <td className="rpt-num">{journeyTotal > 0 ? fmtDur(journeyTotal) : empty()}</td>
+                  <td className="rpt-num">{fmtDur(stats.man_hours_total)}</td>
+                  <td className="rpt-num">{journeyTotal > 0 ? fmtDur(stats.external_block_hours) : empty()}</td>
+                  <td className="rpt-num">{journeyTotal > 0 ? fmtDur(stats.internal_idle_hours) : empty()}</td>
                   <td className="rpt-num" title={p.tipConcluidasTotal}>
                     {stats.period_completed_count}
                     {untrackedTotal > 0 && <span className="rpt-muted"> · {p.semApontAbrev(untrackedTotal)}</span>}
