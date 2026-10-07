@@ -1,3 +1,4 @@
+import SearchSelect, { SearchMultiSelect } from "./SearchSelect";
 import { useI18n } from "../../i18n";
 import { formatBrazilPhone } from "../../utils/formatPhone";
 import DateInput from "./DateInput";
@@ -86,35 +87,22 @@ function renderInput(field: FieldConfig, value: unknown, onChange: (name: string
       );
     case "select":
       return (
-        <select
-          className="select"
-          value={value === null || value === undefined ? "" : String(value)}
-          onChange={(e) => onChange(field.name, e.target.value === "" ? null : Number(e.target.value) || e.target.value)}
-        >
-          <option value="">{field.placeholder || t.form.selecione}</option>
-          {field.options?.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        <SearchSelect
+          options={(field.options ?? []).map((opt) => ({ value: opt.value, label: opt.label }))}
+          value={value === null || value === undefined ? "" : (value as string | number)}
+          onChange={(v) => onChange(field.name, v === "" ? null : v)}
+          placeholder={field.placeholder || t.form.selecione}
+          clearable={!field.required}
+        />
       );
     case "multiselect": {
-      const selected = Array.isArray(value) ? value.map(String) : [];
+      const selected = Array.isArray(value) ? (value as (string | number)[]) : [];
       return (
-        <select
-          multiple
-          className="input"
-          style={{ height: 96 }}
+        <SearchMultiSelect
+          options={(field.options ?? []).map((opt) => ({ value: opt.value, label: opt.label }))}
           value={selected}
-          onChange={(e) => onChange(field.name, Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
-        >
-          {field.options?.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          onChange={(next) => onChange(field.name, next.map((v) => (typeof v === "number" ? v : Number(v))))}
+        />
       );
     }
     case "number":

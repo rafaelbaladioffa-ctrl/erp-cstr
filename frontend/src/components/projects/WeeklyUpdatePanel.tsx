@@ -1,3 +1,5 @@
+import { SearchMultiSelect } from "../ui/SearchSelect";
+import MultiSelectFilter from "../ui/MultiSelectFilter";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { dashboardApi, projectUpdatesApi } from "../../api/resources";
 import type { Project, SitesPanelData, SitesPanelGroupBy, SitesPanelHealth, SitesPanelProject, UserOption } from "../../api/types";
@@ -134,68 +136,6 @@ interface RowGroup {
   rows: Row[];
 }
 
-function StatusDropdown({
-  label,
-  allLabel,
-  options,
-  selected,
-  onToggle,
-}: {
-  label: string;
-  allLabel: string;
-  options: Record<StatusKey, string>;
-  selected: StatusKey[];
-  onToggle: (key: StatusKey) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const ordered = STATUS_KEYS.filter((k) => selected.includes(k));
-  const summary =
-    ordered.length === STATUS_KEYS.length
-      ? allLabel
-      : ordered.length <= 2
-        ? ordered.map((k) => options[k]).join(", ")
-        : `${options[ordered[0]]} +${ordered.length - 1}`;
-
-  return (
-    <div className="sp-dropdown" ref={ref}>
-      <button type="button" className="sp-select sp-dropdown-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <span className="sp-muted">{label}:</span> {summary}
-        <Icon name={open ? "expand_less" : "expand_more"} style={{ fontSize: 18 }} />
-      </button>
-      {open && (
-        <div className="sp-dropdown-menu" role="listbox" aria-multiselectable="true">
-          {STATUS_KEYS.map((key) => {
-            const checked = selected.includes(key);
-            const locked = checked && selected.length === 1;
-            return (
-              <label key={key} className={`sp-dropdown-option${locked ? " locked" : ""}`}>
-                <input type="checkbox" checked={checked} disabled={locked} onChange={() => onToggle(key)} />
-                <span>{options[key]}</span>
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function WeeklyUpdatePanel({ projects, userOptions }: { projects: Project[]; userOptions: UserOption[] }) {
   const p = usePageText(TEXT);
   const { locale } = useI18n();
@@ -203,8 +143,10 @@ export default function WeeklyUpdatePanel({ projects, userOptions }: { projects:
   const [range, setRange] = useState<DateRange | null>({ start: addDaysIso(today, -6), end: today });
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [search, setSearch] = useState("");
-  const [groupBy, setGroupBy] = useState<SitesPanelGroupBy>("site");
-  const [country, setCountry] = useState("");
+  const [groupBy, setGroupBy] = useState<SitesPanelGroupBy[]>(["site"]);
+  const [countries, setCountries] = useState<string[]>([]);
+  const groupByParam = GROUP_KEYS.filter((k) => groupBy.includes(k)).join(",");
+  const countryParam = countries.join(",");
   const [statusKeys, setStatusKeys] = useState<StatusKey[]>(DEFAULT_STATUS);
   const [onlyAlerts, setOnlyAlerts] = useState(false);
   const [panel, setPanel] = useState<SitesPanelData | null>(null);
@@ -222,8 +164,8 @@ export default function WeeklyUpdatePanel({ projects, userOptions }: { projects:
   useEffect(() => {
     let cancelled = false;
     setLoadingPanel(true);
-    const params: Record<string, string> = { group_by: groupBy, status: statusParam };
-    if (country) params.country = country;
+    const params: Record<string, string> = { group_by: groupByParam, status: statusParam };
+    if (countryParam) params.country = countryParam;
     dashboardApi
       .sites(params)
       .then((data) => {
@@ -240,7 +182,7 @@ export default function WeeklyUpdatePanel({ projects, userOptions }: { projects:
     return () => {
       cancelled = true;
     };
-  }, [groupBy, country, statusParam]);
+  }, [groupByParam, countryParam, statusParam]);
 
   const poById = useMemo(() => {
     const map: Record<number, string> = {};
@@ -292,11 +234,6 @@ export default function WeeklyUpdatePanel({ projects, userOptions }: { projects:
     setSelectedIds((prev) => (ids.every((id) => prev.includes(id)) ? prev.filter((id) => !ids.includes(id)) : Array.from(new Set([...prev, ...ids]))));
   }
 
-  function toggleStatus(key: StatusKey) {
-    // Combinação livre, mas sempre com pelo menos um status marcado (igual à Gestão de Sites).
-    setStatusKeys((current) => (current.includes(key) ? (current.length > 1 ? current.filter((k) => k !== key) : current) : [...current, key]));
-  }
-
   async function handleSend() {
     if (!range || selectedIds.length === 0) return;
     const emails = emailsText
@@ -341,22 +278,31 @@ export default function WeeklyUpdatePanel({ projects, userOptions }: { projects:
 
       {showFilters && (
         <div className="sp-filters" style={{ margin: "0 0 10px" }}>
-          <select className="sp-select" value={groupBy} onChange={(e) => setGroupBy(e.target.value as SitesPanelGroupBy)} aria-label={p.groupBy}>
-            {GROUP_KEYS.map((key) => (
-              <option key={key} value={key}>
-                {p.groupBy}: {p.groupByOptions[key]}
-              </option>
-            ))}
-          </select>
-          <select className="sp-select" value={country} onChange={(e) => setCountry(e.target.value)} aria-label={p.country}>
-            <option value="">{p.allCountries}</option>
-            {Object.entries(p.countries).map(([code, label]) => (
-              <option key={code} value={code}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <StatusDropdown label={p.status} allLabel={p.statusAll} options={p.statusOptions} selected={statusKeys} onToggle={toggleStatus} />
+          <MultiSelectFilter
+            label={p.groupBy}
+            options={GROUP_KEYS.map((k) => ({ value: k, label: p.groupByOptions[k] }))}
+            selected={groupBy}
+            onChange={(next) => setGroupBy(next as SitesPanelGroupBy[])}
+            allLabel={p.groupByOptions.site}
+            separator=" · "
+            requireOne
+          />
+          <MultiSelectFilter
+            label={p.country}
+            options={Object.entries(p.countries).map(([code, label]) => ({ value: code, label }))}
+            selected={countries}
+            onChange={setCountries}
+            allLabel={p.allCountries}
+          />
+          <MultiSelectFilter
+            label={p.status}
+            options={STATUS_KEYS.map((k) => ({ value: k, label: p.statusOptions[k] }))}
+            selected={statusKeys}
+            onChange={(next) => setStatusKeys(next as StatusKey[])}
+            allLabel={p.statusAll}
+            allWhenFull
+            requireOne
+          />
           <label className="sp-toggle">
             <input type="checkbox" checked={onlyAlerts} onChange={(e) => setOnlyAlerts(e.target.checked)} />
             {p.onlyAlerts}
@@ -426,19 +372,11 @@ export default function WeeklyUpdatePanel({ projects, userOptions }: { projects:
       </div>
 
       <label className="form-label">{p.systemUsers}</label>
-      <select
-        multiple
-        className="input"
-        value={userIds.map(String)}
-        onChange={(e) => setUserIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
-        style={{ height: 90 }}
-      >
-        {userOptions.map((u) => (
-          <option key={u.id} value={u.id}>
-            {u.name} — {u.email}
-          </option>
-        ))}
-      </select>
+      <SearchMultiSelect
+        options={userOptions.map((u) => ({ value: u.id, label: u.name, sublabel: u.email }))}
+        value={userIds}
+        onChange={(next) => setUserIds(next.map(Number))}
+      />
 
       <label className="form-label">{p.extraEmails}</label>
       <textarea

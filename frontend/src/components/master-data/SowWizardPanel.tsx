@@ -1,3 +1,4 @@
+import SearchSelect, { SearchMultiSelect } from "../ui/SearchSelect";
 import { Fragment, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import ProjectCombobox from "../ui/ProjectCombobox";
@@ -770,9 +771,12 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
             </div>
             <div className="field-group">
               <span className="field-label">{p.tipoOrigem}</span>
-              <select className="select" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
-                {sourceTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <SearchSelect
+                options={sourceTypeOptions.map((o) => ({ value: o.value, label: o.label }))}
+                value={sourceType}
+                onChange={(v) => { const val = String(v); setSourceType(val); }}
+                clearable={false}
+              />
             </div>
           </div>
           <div className="field-group" style={{ marginBottom: 14 }}>
@@ -870,31 +874,39 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, padding: 12, background: "var(--surface-2, #f7f7f8)", borderRadius: 8 }}>
                               <div className="field-group">
                                 <span className="field-label">{p.familia}</span>
-                                <select className="select" value={editForm.suggested_cable_family} onChange={(e) => setEditForm({ ...editForm, suggested_cable_family: e.target.value ? Number(e.target.value) : "" })}>
-                                  <option value="">—</option>
-                                  {refs.cableFamilies.map((f) => <option key={f.id} value={f.id}>{f.code} — {f.name}</option>)}
-                                </select>
+                                <SearchSelect
+                                  options={(refs.cableFamilies.map((f) => ({ value: f.id, label: f.code, sublabel: f.name })))}
+                                  value={editForm.suggested_cable_family}
+                                  onChange={(v) => { const val = v === "" ? "" : Number(v); setEditForm({ ...editForm, suggested_cable_family: val }); }}
+                                  placeholder="—"
+                                />
                               </div>
                               <div className="field-group">
                                 <span className="field-label">{p.spec}</span>
-                                <select className="select" value={editForm.suggested_cable_spec} onChange={(e) => setEditForm({ ...editForm, suggested_cable_spec: e.target.value ? Number(e.target.value) : "" })}>
-                                  <option value="">—</option>
-                                  {refs.cableSpecs.map((s) => <option key={s.id} value={s.id}>{s.code}</option>)}
-                                </select>
+                                <SearchSelect
+                                  options={(refs.cableSpecs.map((s) => ({ value: s.id, label: s.code })))}
+                                  value={editForm.suggested_cable_spec}
+                                  onChange={(v) => { const val = v === "" ? "" : Number(v); setEditForm({ ...editForm, suggested_cable_spec: val }); }}
+                                  placeholder="—"
+                                />
                               </div>
                               <div className="field-group">
                                 <span className="field-label">{p.rede}</span>
-                                <select className="select" value={editForm.suggested_network} onChange={(e) => setEditForm({ ...editForm, suggested_network: e.target.value ? Number(e.target.value) : "" })}>
-                                  <option value="">—</option>
-                                  {refs.networks.map((n) => <option key={n.id} value={n.id}>{n.code}</option>)}
-                                </select>
+                                <SearchSelect
+                                  options={(refs.networks.map((n) => ({ value: n.id, label: n.code, sublabel: n.name })))}
+                                  value={editForm.suggested_network}
+                                  onChange={(v) => { const val = v === "" ? "" : Number(v); setEditForm({ ...editForm, suggested_network: val }); }}
+                                  placeholder="—"
+                                />
                               </div>
                               <div className="field-group">
                                 <span className="field-label">{p.ws}</span>
-                                <select className="select" value={editForm.suggested_workstream} onChange={(e) => setEditForm({ ...editForm, suggested_workstream: e.target.value ? Number(e.target.value) : "" })}>
-                                  <option value="">—</option>
-                                  {refs.workstreams.map((w) => <option key={w.id} value={w.id}>{w.code}</option>)}
-                                </select>
+                                <SearchSelect
+                                  options={(refs.workstreams.map((w) => ({ value: w.id, label: w.code, sublabel: w.name })))}
+                                  value={editForm.suggested_workstream}
+                                  onChange={(v) => { const val = v === "" ? "" : Number(v); setEditForm({ ...editForm, suggested_workstream: val }); }}
+                                  placeholder="—"
+                                />
                               </div>
                               <div className="field-group">
                                 <span className="field-label">{p.quantidade}</span>
@@ -906,19 +918,21 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
                               </div>
                               <div className="field-group">
                                 <span className="field-label">{p.meio}</span>
-                                <select className="select" value={editForm.medium} onChange={(e) => setEditForm({ ...editForm, medium: e.target.value })}>
-                                  <option value="">—</option>
-                                  <option value="FIBER">FIBER</option>
-                                  <option value="COPPER">COPPER</option>
-                                </select>
+                                <SearchSelect
+                                  options={(["FIBER", "COPPER"].map((v) => ({ value: v, label: v })))}
+                                  value={editForm.medium}
+                                  onChange={(v) => { const val = String(v); setEditForm({ ...editForm, medium: val }); }}
+                                  placeholder="—"
+                                />
                               </div>
                               <div className="field-group">
                                 <span className="field-label">{p.preTerminado}</span>
-                                <select className="select" value={editForm.preterminated} onChange={(e) => setEditForm({ ...editForm, preterminated: e.target.value })}>
-                                  <option value="">{p.naoInformado}</option>
-                                  <option value="true">{p.sim}</option>
-                                  <option value="false">{p.nao}</option>
-                                </select>
+                                <SearchSelect
+                                  options={([{ value: "true", label: p.sim }, { value: "false", label: p.nao }])}
+                                  value={editForm.preterminated}
+                                  onChange={(v) => { const val = String(v); setEditForm({ ...editForm, preterminated: val }); }}
+                                  placeholder={p.naoInformado}
+                                />
                               </div>
                               <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                                 <button className="btn btn-primary btn-sm" onClick={() => saveEdit(item)}>{p.salvar}</button>
@@ -1110,9 +1124,11 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
               <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 10, alignItems: "flex-end" }}>
                 <div className="field-group">
                   <span className="field-label">{p.tecnicos}</span>
-                  <select className="select" multiple value={assignCollaboratorIds.map(String)} onChange={(e) => setAssignCollaboratorIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}>
-                    {collaborators.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <SearchMultiSelect
+                    options={collaborators.map((c) => ({ value: c.id, label: c.name }))}
+                    value={assignCollaboratorIds}
+                    onChange={(next) => { const val = next.map(Number); setAssignCollaboratorIds(val); }}
+                  />
                 </div>
                 <div className="field-group">
                   <span className="field-label">{p.prazo}</span>
@@ -1120,10 +1136,12 @@ export default function SowWizardPanel({ refs }: { refs: ReferenceData }) {
                 </div>
                 <div className="field-group">
                   <span className="field-label">{p.prioridade}</span>
-                  <select className="select" value={assignPriority} onChange={(e) => setAssignPriority(e.target.value)}>
-                    <option value="">{p.naoAlterar}</option>
-                    {priorityOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  <SearchSelect
+                    options={priorityOptions.map((o) => ({ value: o.value, label: o.label }))}
+                    value={assignPriority}
+                    onChange={(v) => { const val = String(v); setAssignPriority(val); }}
+                    placeholder={p.naoAlterar}
+                  />
                 </div>
                 <button className="btn btn-primary btn-sm" onClick={handleAssign} disabled={assigning}>
                   <Icon name="person_add" style={{ fontSize: 14 }} />

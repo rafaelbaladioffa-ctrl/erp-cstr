@@ -6064,3 +6064,24 @@ button.sp-card:hover {
 .sp-dropdown-list { max-height: 320px; overflow-y: auto; }
 .sp-dropdown-hint { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 12px 6px; font-size: 11.5px; color: var(--text-faint); border-top: 1px solid var(--border); margin-top: 4px; }
 .sp-dropdown-clear { border: none; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--orange); cursor: pointer; white-space: nowrap; }
+
+/* Lista com busca (SearchSelect / SearchMultiSelect) — padrão de lista do sistema */
+.ss-root { position: relative; }
+.ss-field { position: relative; display: flex; }
+.ss-input { width: 100%; padding-right: 30px; }
+.ss-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: none; font-size: 18px; line-height: 1; color: var(--text-faint); cursor: pointer; padding: 0 2px; }
+.ss-clear:hover { color: var(--red); }
+.ss-list { position: absolute; z-index: 1100; left: 0; right: 0; top: calc(100% + 4px); max-height: 300px; overflow-y: auto; background: var(--white); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-lift); }
+.ss-option { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.ss-option:last-child { border-bottom: none; }
+.ss-option.active { background: var(--orange-soft); }
+.ss-option.disabled { opacity: 0.5; cursor: not-allowed; }
+.ss-option input { margin-top: 3px; accent-color: var(--orange); }
+.ss-option-label { font-size: 13.5px; color: var(--text); }
+.ss-option-sub { font-size: 12px; color: var(--text-muted); }
+.ss-empty { padding: 12px; font-size: 13px; color: var(--text-muted); }
+.ss-multi-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 38px; height: auto; padding: 4px 8px; cursor: text; }
+.ss-multi-field.open { border-color: var(--orange); }
+.ss-chip { display: inline-flex; align-items: center; gap: 2px; background: var(--orange-soft); color: var(--orange); border-radius: 12px; padding: 2px 4px 2px 10px; font-size: 12.5px; font-weight: 600; }
+.ss-chip button { border: none; background: none; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
+.ss-multi-input { flex: 1; min-width: 120px; border: none; outline: none; background: transparent; font: inherit; color: var(--text); padding: 4px 0; }

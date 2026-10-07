@@ -1,3 +1,4 @@
+import { SearchMultiSelect } from "../components/ui/SearchSelect";
 import MultiSelectFilter from "../components/ui/MultiSelectFilter";
 import { useEffect, useState } from "react";
 import { collaboratorsApi, projectsApi, projectUpdatesApi, usersApi } from "../api/resources";
@@ -486,23 +487,15 @@ function ProjectUpdateEditor({
   return (
     <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
       <label className="form-label">{p.technicians}</label>
-      <select
-        multiple
+      <SearchMultiSelect
         disabled={!canEdit}
-        className="input"
-        value={update.collaborators.map((c) => String(c.id))}
-        onChange={(e) => {
-          const ids = Array.from(e.target.selectedOptions).map((o) => Number(o.value));
+        options={collaborators.map((c) => ({ value: c.id, label: c.name }))}
+        value={update.collaborators.map((c) => c.id)}
+        onChange={(next) => {
+          const ids = next.map(Number);
           save({ collaborators: collaborators.filter((c) => ids.includes(c.id)) });
         }}
-        style={{ height: 100 }}
-      >
-        {collaborators.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
+      />
 
       <label className="form-label">{p.completionPercent}</label>
       <input
@@ -586,19 +579,11 @@ function ProjectUpdateEditor({
               </p>
 
               <label className="form-label">{p.systemUsers}</label>
-              <select
-                multiple
-                className="input"
-                value={extraUserIds.map(String)}
-                onChange={(e) => setExtraUserIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
-                style={{ height: 90 }}
-              >
-                {userOptions.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} — {u.email}
-                  </option>
-                ))}
-              </select>
+              <SearchMultiSelect
+                options={userOptions.map((u) => ({ value: u.id, label: u.name, sublabel: u.email }))}
+                value={extraUserIds}
+                onChange={(next) => setExtraUserIds(next.map(Number))}
+              />
 
               <label className="form-label">{p.extraEmails}</label>
               <textarea

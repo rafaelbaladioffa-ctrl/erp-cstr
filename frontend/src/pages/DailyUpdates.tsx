@@ -1,3 +1,5 @@
+import { SearchMultiSelect } from "../components/ui/SearchSelect";
+import ProjectCombobox from "../components/ui/ProjectCombobox";
 import { useEffect, useState } from "react";
 import { collaboratorsApi, dailyUpdatesApi, projectsApi } from "../api/resources";
 import type { Collaborator, DailyUpdate, Project } from "../api/types";
@@ -356,18 +358,12 @@ export default function DailyUpdates() {
               </div>
 
               <label className="form-label">{p.project}</label>
-              <select
-                className="input"
+              <ProjectCombobox
+                projects={projects}
                 value={row.projectId}
-                onChange={(e) => updateAllocationRow(index, { projectId: Number(e.target.value) })}
-              >
-                <option value="">{p.selectProject}</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.code} — {p.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(id) => updateAllocationRow(index, { projectId: id })}
+                showAllToggle={false}
+              />
 
               <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
                 <div className="field-group" style={{ flex: 1, minWidth: 140 }}>
@@ -396,21 +392,11 @@ export default function DailyUpdates() {
               )}
 
               <label className="form-label" style={{ marginTop: 10 }}>{p.technicians}</label>
-              <select
-                multiple
-                className="input"
-                value={row.collaboratorIds.map(String)}
-                onChange={(e) =>
-                  updateAllocationRow(index, { collaboratorIds: Array.from(e.target.selectedOptions).map((o) => Number(o.value)) })
-                }
-                style={{ height: 200 }}
-              >
-                {collaborators.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              <SearchMultiSelect
+                options={collaborators.map((c) => ({ value: c.id, label: c.name }))}
+                value={row.collaboratorIds}
+                onChange={(next) => updateAllocationRow(index, { collaboratorIds: next.map(Number) })}
+              />
             </div>
           ))}
 

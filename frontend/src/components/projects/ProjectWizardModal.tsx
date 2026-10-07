@@ -1,3 +1,4 @@
+import SearchSelect from "../ui/SearchSelect";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { projectsApi, registryApi } from "../../api/resources";
@@ -243,10 +244,13 @@ function SelectField({ label, required, error, value, onChange, options, placeho
 }) {
   return (
     <Field label={label} required={required} error={error}>
-      <select className="select" value={value} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")}>
-        <option value="">{placeholder}</option>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
+      <SearchSelect
+        options={options}
+        value={value}
+        onChange={(v) => onChange(v === "" ? "" : Number(v))}
+        placeholder={placeholder}
+        clearable={!required}
+      />
     </Field>
   );
 }
@@ -493,9 +497,12 @@ export default function ProjectWizardModal({ onClose, onSaved }: { onClose: () =
                   placeholder={p.selecione}
                 />
                 <Field label={p.statusInicial} error={errFirst("status")}>
-                  <select className="select" value={values.status} onChange={(e) => set("status", e.target.value)}>
-                    {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  <SearchSelect
+                    options={statusOptions}
+                    value={values.status}
+                    onChange={(v) => set("status", String(v))}
+                    clearable={false}
+                  />
                 </Field>
                 <Field label={p.qtdLinks} error={errFirst("link_count")}>
                   <input className="input" type="number" min={0} value={values.link_count} onChange={(e) => set("link_count", e.target.value ? Number(e.target.value) : "")} />
