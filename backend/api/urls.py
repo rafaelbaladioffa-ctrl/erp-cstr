@@ -8,6 +8,7 @@ from .adjustments import (
     AdjustmentHistoryView,
     AdjustmentTasksView,
     ExecutionAdjustmentView,
+    ExecutionRemovalView,
     StatusEventsAdjustmentView,
     StatusWindowAdjustmentView,
 )
@@ -93,6 +94,7 @@ urlpatterns = [
     path("operations/adjustments/", AdjustmentHistoryView.as_view(), name="operations-adjustments"),
     path("operations/adjustments/tasks/", AdjustmentTasksView.as_view(), name="operations-adjustments-tasks"),
     path("operations/adjustments/execution/", ExecutionAdjustmentView.as_view(), name="operations-adjustments-execution"),
+    path("operations/adjustments/execution/remove/", ExecutionRemovalView.as_view(), name="operations-adjustments-execution-remove"),
     path("operations/adjustments/status-events/", StatusEventsAdjustmentView.as_view(), name="operations-adjustments-status-events"),
     path("operations/adjustments/status-window/", StatusWindowAdjustmentView.as_view(), name="operations-adjustments-status-window"),
     path("push/vapid-public-key/", views.VapidPublicKeyView.as_view(), name="vapid-public-key"),

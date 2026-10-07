@@ -5,6 +5,7 @@ import Modal from "../ui/Modal";
 
 // Ferramenta interna do administrador (só PT): o backend também restringe a superusuário.
 const STATUS_OPTIONS = [
+  "not_started",
   "available",
   "in_progress",
   "lunch",
@@ -17,6 +18,7 @@ const STATUS_OPTIONS = [
   "awaiting_release",
   "off_duty",
 ];
+const statusLabel = (s: string) => (s === "not_started" ? "Sem registro (barra apagada)" : presenceLabel(s, "pt-BR"));
 const TASK_STATUS_LABEL: Record<string, string> = {
   not_started: "pendente",
   in_progress: "em andamento",
@@ -33,7 +35,7 @@ const hhmm = (iso: string) => new Date(new Date(iso).getTime() - 3 * 3600 * 1000
 type Tab = "execution" | "status";
 type Pause = { start: string; end: string };
 /** Linha editável da lista de status do dia. origIso/origTime identificam um registro já gravado e não alterado. */
-type StatusRow = { key: number; status: string; time: string; origIso?: string; origTime?: string; adjusted?: boolean };
+type StatusRow = { key: number; status: string; time: string; origIso?: string; origTime?: string; origStatus?: string; adjusted?: boolean };
 
 export default function TimelineAdjustModal({
   collaboratorId,
@@ -56,6 +58,7 @@ export default function TimelineAdjustModal({
   const [pauses, setPauses] = useState<Pause[]>([]);
   const [rows, setRows] = useState<StatusRow[]>([]);
   const [rowsLoaded, setRowsLoaded] = useState(false);
+  const [deletedIsos, setDeletedIsos] = useState<string[]>([]);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -66,7 +69,7 @@ export default function TimelineAdjustModal({
       .statusEvents(collaboratorId, date)
       .then((events) =>
         setRows(
-          events.map((e, i) => ({ key: i, status: e.status, time: hhmm(e.changed_at), origIso: e.changed_at, origTime: hhmm(e.changed_at), adjusted: e.adjusted }))
+          events.map((e, i) => ({ key: i, status: e.status, time: hhmm(e.changed_at), origIso: e.changed_at, origTime: hhmm(e.changed_at), origStatus: e.status, adjusted: e.adjusted }))
         )
       )
       .catch(() => setRows([]))
@@ -82,6 +85,31 @@ export default function TimelineAdjustModal({
 
   function updateRow(key: number, patch: Partial<StatusRow>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  function removeRow(r: StatusRow) {
+    // Excluir um registro já gravado apaga a barra dele (o status anterior não passa a valer por cima).
+    if (r.origIso && r.origStatus !== "not_started") setDeletedIsos((prev) => [...prev, r.origIso as string]);
+    setRows((prev) => prev.filter((x) => x.key !== r.key));
+  }
+
+  const selectedTask = tasks.find((t) => t.task_id === taskId);
+  const canRemoveExecution = tab === "execution" && !!selectedTask?.assignment_start && reason.trim().length >= 3 && !saving;
+
+  async function removeExecution() {
+    if (!selectedTask || !confirm(`Excluir o apontamento de ${collaboratorName} em "${selectedTask.name}"? A barra e as horas dessa execução serão apagadas.`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      await adjustmentsApi.removeExecution({ collaborator_id: collaboratorId, task_id: selectedTask.task_id, reason: reason.trim() });
+      onSaved();
+      onClose();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+      setError(detail || "Não foi possível excluir o apontamento.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function addRow() {
@@ -111,6 +139,7 @@ export default function TimelineAdjustModal({
             // registro não alterado segue exatamente como está (preserva segundos e a marca de original)
             changed_at: r.origIso && r.time === r.origTime ? r.origIso : toIso(date, r.time),
           })),
+          deleted: deletedIsos,
           reason: reason.trim(),
         });
       }
@@ -142,7 +171,7 @@ export default function TimelineAdjustModal({
       <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>
         {tab === "execution"
           ? "Grava a execução como se o próprio técnico tivesse iniciado e concluído: as horas valem como reais. Substitui o apontamento dele nessa tarefa."
-          : "Status registrados no dia, em ordem. Altere o horário ou o tipo, exclua um registro errado ou adicione um novo; cada status vale até o horário do próximo."}
+          : "Status registrados no dia, em ordem. Altere o horário ou o tipo, adicione um novo ou exclua um registro errado: ao excluir, a barra dele some da timeline. Cada status vale até o horário do próximo."}
       </p>
 
       {tab === "execution" && (
@@ -212,12 +241,12 @@ export default function TimelineAdjustModal({
                 <select className="select" value={r.status} onChange={(e) => updateRow(r.key, { status: e.target.value })}>
                   {STATUS_OPTIONS.map((s) => (
                     <option key={s} value={s}>
-                      {presenceLabel(s, "pt-BR")}
+                      {statusLabel(s)}
                     </option>
                   ))}
                 </select>
               </label>
-              <button type="button" className="btn btn-outline btn-sm" style={{ color: "var(--red)" }} onClick={() => setRows((prev) => prev.filter((x) => x.key !== r.key))}>
+              <button type="button" className="btn btn-outline btn-sm" style={{ color: "var(--red)" }} onClick={() => removeRow(r)}>
                 Excluir
               </button>
             </div>
@@ -235,6 +264,11 @@ export default function TimelineAdjustModal({
 
       {error && <p style={{ color: "var(--red)", fontSize: 13, marginBottom: 10 }}>{error}</p>}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+        {canRemoveExecution && (
+          <button className="btn btn-outline" style={{ color: "var(--red)", marginRight: "auto" }} onClick={removeExecution}>
+            Excluir apontamento desta tarefa
+          </button>
+        )}
         <button className="btn btn-outline" onClick={onClose}>
           Cancelar
         </button>

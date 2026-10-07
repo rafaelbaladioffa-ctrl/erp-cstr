@@ -124,11 +124,21 @@ def notify_task_completed(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender=ProjectTaskAssignment)
-@receiver(post_delete, sender=ProjectTaskAssignment)
 def release_presence_when_assignment_changes(sender, instance, **kwargs):
-    """Despacho alterado ou removido (desalocar, devolver ao pool, excluir a
-    tarefa, trocar responsáveis, ajuste do admin): se era o último em andamento
+    """Despacho alterado (pausar, concluir, ajuste do admin): se era o último em andamento
     do técnico, o status dele sai de "Em Execução" (ver dispatch.services)."""
     from dispatch.services import release_stuck_execution
 
+    release_stuck_execution(instance.collaborator_id)
+
+
+@receiver(post_delete, sender=ProjectTaskAssignment)
+def erase_presence_when_assignment_removed(sender, instance, **kwargs):
+    """Despacho removido (desalocar, devolver ao pool, excluir a tarefa, trocar responsáveis):
+    o "Em Execução" que só existia por causa dele sai da timeline e das horas — senão ficava
+    uma barra laranja sem tarefa. Depois, se não sobrou nada em andamento, libera o status."""
+    from dispatch.adjustments import erase_assignment_presence
+    from dispatch.services import release_stuck_execution
+
+    erase_assignment_presence(instance)
     release_stuck_execution(instance.collaborator_id)

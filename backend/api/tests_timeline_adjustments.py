@@ -291,3 +291,122 @@ class TimelineAdjustmentTests(TestCase):
         tech = next(t for t in data["technicians"] if t["id"] == self.tech.pk)
         self.assertTrue(tech["blocks"][0]["adjusted"])
         self.assertTrue(any(e["adjusted"] for e in tech["status_events"]))
+
+
+class ErasedBarsTests(TestCase):
+    """Excluir um status ou uma tarefa apaga a barra (e as horas) da timeline."""
+
+    # Reaproveita só o cenário e os auxiliares da classe acima (sem reexecutar os testes dela).
+    setUp = TimelineAdjustmentTests.setUp
+    at = TimelineAdjustmentTests.at
+    iso = TimelineAdjustmentTests.iso
+    add_event = TimelineAdjustmentTests.add_event
+    hours_by_status = TimelineAdjustmentTests.hours_by_status
+    post = TimelineAdjustmentTests.post
+
+    def make_execution(self, task, start_h, end_h):
+        response = self.post(
+            "execution",
+            {"collaborator_id": self.tech.pk, "task_id": task.pk, "start": self.iso(start_h), "end": self.iso(end_h), "reason": "Apontamento de teste"},
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def second_task(self):
+        return ProjectTask.objects.create(project=self.project, custom_name="Segunda tarefa", order=2)
+
+    def test_removing_the_task_from_the_technician_erases_the_execution_bar_and_hours(self):
+        self.add_event(P.STATUS_AVAILABLE, 8)
+        self.add_event(P.STATUS_OFF_DUTY, 17)
+        self.make_execution(self.task, 9, 11)
+        self.assertEqual(self.hours_by_status()[P.STATUS_IN_PROGRESS], 2.0)
+
+        response = self.client_admin.post(f"/api/project-tasks/{self.task.pk}/undispatch/", {}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn(P.STATUS_IN_PROGRESS, self.hours_by_status())
+        statuses = list(TechnicianStatusEvent.objects.filter(collaborator=self.tech).order_by("changed_at").values_list("status", flat=True))
+        self.assertNotIn(P.STATUS_IN_PROGRESS, statuses)
+
+    def test_removing_one_of_two_overlapping_tasks_keeps_the_other_ones_time(self):
+        other = self.second_task()
+        self.add_event(P.STATUS_AVAILABLE, 8)
+        self.add_event(P.STATUS_OFF_DUTY, 17)
+        self.make_execution(self.task, 9, 11)
+        self.make_execution(other, 10, 12)  # 10–11 em paralelo; presença em execução 9–12 = 3h
+
+        self.client_admin.post(f"/api/project-tasks/{self.task.pk}/undispatch/", {}, format="json")
+
+        self.assertEqual(self.hours_by_status()[P.STATUS_IN_PROGRESS], 2.0)  # só 10–12 da tarefa que ficou
+
+    def test_remove_execution_endpoint_resets_the_record_and_erases_the_bar(self):
+        self.add_event(P.STATUS_AVAILABLE, 8)
+        self.add_event(P.STATUS_OFF_DUTY, 17)
+        self.make_execution(self.task, 9, 11)
+
+        response = self.post("execution/remove", {"collaborator_id": self.tech.pk, "task_id": self.task.pk, "reason": "Lançado por engano"})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        assignment = ProjectTaskAssignment.objects.get(project_task=self.task, collaborator=self.tech)
+        self.assertEqual(assignment.status, ProjectTask.STATUS_NOT_STARTED)  # continua despachada, pendente
+        self.assertIsNone(assignment.assignment_start)
+        self.assertIsNone(assignment.actual_hours)
+        self.assertFalse(assignment.is_adjusted)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, ProjectTask.STATUS_NOT_STARTED)
+        self.assertNotIn(P.STATUS_IN_PROGRESS, self.hours_by_status())
+        log = TimelineAdjustment.objects.latest("created_at")
+        self.assertEqual(log.reason, "Lançado por engano")
+        self.assertTrue(log.after["removed"])
+
+    def test_remove_execution_needs_admin_a_reason_and_an_existing_record(self):
+        payload = {"collaborator_id": self.tech.pk, "task_id": self.task.pk, "reason": "motivo ok"}
+        self.assertEqual(self.post("execution/remove", payload, client=self.client_user).status_code, 403)
+        self.assertEqual(self.post("execution/remove", payload).status_code, 400)  # sem apontamento
+        self.make_execution(self.task, 9, 10)
+        self.assertEqual(self.post("execution/remove", {**payload, "reason": " "}).status_code, 400)
+
+    def test_deleting_a_status_in_the_editor_blanks_its_bar_instead_of_extending_the_previous(self):
+        self.add_event(P.STATUS_AVAILABLE, 8)
+        in_progress = self.add_event(P.STATUS_IN_PROGRESS, 9)
+        self.add_event(P.STATUS_OFF_DUTY, 17)
+
+        response = self.client_admin.post(
+            "/api/operations/adjustments/status-events/",
+            {
+                "collaborator_id": self.tech.pk, "date": str(self.day), "reason": "Status errado",
+                "events": [{"status": P.STATUS_AVAILABLE, "changed_at": self.iso(8)}, {"status": P.STATUS_OFF_DUTY, "changed_at": self.iso(17)}],
+                "deleted": [in_progress.changed_at.isoformat()],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        durations = self.hours_by_status()
+        self.assertEqual(durations[P.STATUS_AVAILABLE], 1.0)  # só 8–9: o trecho 9–17 ficou em branco
+        self.assertNotIn(P.STATUS_IN_PROGRESS, durations)
+        marker = TechnicianStatusEvent.objects.get(collaborator=self.tech, changed_at=self.at(9))
+        self.assertEqual(marker.status, P.STATUS_NOT_STARTED)
+
+    def test_editing_a_status_time_does_not_blank_anything(self):
+        self.add_event(P.STATUS_AVAILABLE, 8)
+        self.add_event(P.STATUS_LUNCH, 11)
+        self.add_event(P.STATUS_OFF_DUTY, 17)
+
+        response = self.client_admin.post(
+            "/api/operations/adjustments/status-events/",
+            {
+                "collaborator_id": self.tech.pk, "date": str(self.day), "reason": "Almoço foi às 12",
+                "events": [
+                    {"status": P.STATUS_AVAILABLE, "changed_at": self.iso(8)},
+                    {"status": P.STATUS_LUNCH, "changed_at": self.iso(12)},
+                    {"status": P.STATUS_OFF_DUTY, "changed_at": self.iso(17)},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        durations = self.hours_by_status()
+        self.assertEqual(durations[P.STATUS_AVAILABLE], 4.0)
+        self.assertEqual(durations[P.STATUS_LUNCH], 5.0)
+        self.assertFalse(TechnicianStatusEvent.objects.filter(collaborator=self.tech, status=P.STATUS_NOT_STARTED).exists())

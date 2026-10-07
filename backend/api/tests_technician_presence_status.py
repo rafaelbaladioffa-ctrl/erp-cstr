@@ -116,7 +116,8 @@ class TechnicianPresenceStatusTests(TestCase):
         self.assertEqual(self._undispatch(self.task2, self.tech_a).status_code, 200)
 
         self.assertEqual(self._presence(self.tech_a), P.STATUS_AVAILABLE)
-        self.assertEqual(self._events(self.tech_a), [P.STATUS_IN_PROGRESS, P.STATUS_AVAILABLE])
+        # a execução que só existia por causa da tarefa removida é apagada do histórico (sem barra fantasma)
+        self.assertEqual(self._events(self.tech_a), [P.STATUS_NOT_STARTED, P.STATUS_AVAILABLE])
 
     def test_undispatch_without_ids_releases_every_technician_of_the_task(self):
         self._start(self.client_a, self.task1)

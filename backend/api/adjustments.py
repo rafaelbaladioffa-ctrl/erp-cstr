@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.models import Collaborator
-from dispatch.adjustments import AdjustmentError, adjust_status_window, register_execution, replace_status_events
+from dispatch.adjustments import AdjustmentError, adjust_status_window, register_execution, remove_execution, replace_status_events
 from dispatch.models import TechnicianStatusEvent, TimelineAdjustment
 from projects.models import ProjectTask, ProjectTaskAssignment
 
@@ -66,6 +66,23 @@ class ExecutionAdjustmentView(APIView):
         return Response({"id": adjustment.pk, "detail": "Execução ajustada."})
 
 
+class ExecutionRemovalView(APIView):
+    """POST: exclui o apontamento do técnico numa tarefa (volta a pendente) e apaga a barra.
+    Body: collaborator_id, task_id, reason."""
+
+    permission_classes = [IsSuperUser]
+
+    def post(self, request):
+        data = request.data
+        collaborator = get_object_or_404(Collaborator, pk=data.get("collaborator_id"))
+        task = get_object_or_404(ProjectTask, pk=data.get("task_id"))
+        try:
+            adjustment = remove_execution(user=request.user, collaborator=collaborator, task=task, reason=data.get("reason"))
+        except AdjustmentError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({"id": adjustment.pk, "detail": "Apontamento excluído."})
+
+
 class StatusWindowAdjustmentView(APIView):
     """POST: define o status num trecho do dia (ex.: sair do almoço esquecido).
     Body: collaborator_id, start, end, status, reason."""
@@ -112,8 +129,10 @@ class StatusEventsAdjustmentView(APIView):
             return Response({"detail": "Data inválida."}, status=400)
         try:
             events = [(item.get("status"), _parse_dt(item.get("changed_at"), "Horário")) for item in (data.get("events") or [])]
+            deleted_at = [_parse_dt(value, "Horário excluído") for value in (data.get("deleted") or [])]
             adjustment = replace_status_events(
-                user=request.user, collaborator=collaborator, day=day, events=events, reason=data.get("reason")
+                user=request.user, collaborator=collaborator, day=day, events=events, reason=data.get("reason"),
+                deleted_at=deleted_at,
             )
         except AdjustmentError as exc:
             return Response({"detail": str(exc)}, status=400)

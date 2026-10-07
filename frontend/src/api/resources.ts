@@ -614,8 +614,12 @@ export const adjustmentsApi = {
     collaborator_id: number;
     date: string;
     events: { status: string; changed_at: string }[];
+    /** Horários originais dos registros excluídos: a barra some (não é o status anterior que se estende). */
+    deleted?: string[];
     reason: string;
   }) => apiClient.post("/operations/adjustments/status-events/", payload).then((r) => r.data),
+  removeExecution: (payload: { collaborator_id: number; task_id: number; reason: string }) =>
+    apiClient.post("/operations/adjustments/execution/remove/", payload).then((r) => r.data),
   statusWindow: (payload: { collaborator_id: number; start: string; end: string; status: string; reason: string }) =>
     apiClient.post("/operations/adjustments/status-window/", payload).then((r) => r.data),
 };
