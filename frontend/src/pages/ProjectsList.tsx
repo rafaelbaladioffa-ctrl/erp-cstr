@@ -759,9 +759,11 @@ export default function ProjectsList() {
                         }}
                         onClick={() => setSelectedProject(isSelected ? null : pr)}
                       >
-                        <td>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{pr.name}</div>
-                          {pr.po && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>PO: {pr.po}</div>}
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <Link to={`/projetos/${pr.id}`} className="project-cell-link" title={lp.open}>
+                            <div className="project-cell-name">{pr.name}</div>
+                            {pr.po && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>PO: {pr.po}</div>}
+                          </Link>
                         </td>
                         <td>
                           <div style={{ fontSize: 13, color: "var(--text)" }}>{pr.client_name || "—"}</div>
