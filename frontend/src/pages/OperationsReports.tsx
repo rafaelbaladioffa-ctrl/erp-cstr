@@ -247,6 +247,12 @@ const TEXT = {
     prodPatching: "Patching (conexões)",
     prodLinks: "Links certificados",
     csvProducao: "producao-por-tecnico",
+    exportarDados: "Exportar dados",
+    csvDados: "dados-execucoes",
+    dadosCols: ["Técnico", "Data", "Projeto", "Tarefa", "Código da atividade", "Atividade", "Família", "Unidade", "Quantidade da tarefa", "Horas do técnico (h)", "Horas da tarefa (HH)", "Quantidade creditada", "Taxa por hora", "Situação", "Motivo do descarte"],
+    dadosIncluida: "Incluída",
+    dadosDescartada: "Descartada",
+    exImplausivel: "Valor absurdo (descartado)",
     semProducao: "Sem produção física no período.",
     cardStatusHoras: "Horas por status",
     totalLabel: "Total",
@@ -487,6 +493,12 @@ const TEXT = {
     prodPatching: "Patching (connections)",
     prodLinks: "Links certified",
     csvProducao: "production-by-technician",
+    exportarDados: "Export data",
+    csvDados: "execution-data",
+    dadosCols: ["Technician", "Date", "Project", "Task", "Activity code", "Activity", "Family", "Unit", "Task quantity", "Technician hours (h)", "Task hours (MH)", "Credited quantity", "Rate per hour", "Status", "Discard reason"],
+    dadosIncluida: "Included",
+    dadosDescartada: "Discarded",
+    exImplausivel: "Absurd value (discarded)",
     semProducao: "No physical output in the period.",
     cardStatusHoras: "Hours by status",
     totalLabel: "Total",
@@ -720,6 +732,12 @@ const TEXT = {
     prodPatching: "Patching (conexiones)",
     prodLinks: "Enlaces certificados",
     csvProducao: "produccion-por-tecnico",
+    exportarDados: "Exportar datos",
+    csvDados: "datos-ejecuciones",
+    dadosCols: ["Técnico", "Fecha", "Proyecto", "Tarea", "Código de la actividad", "Actividad", "Familia", "Unidad", "Cantidad de la tarea", "Horas del técnico (h)", "Horas de la tarea (HH)", "Cantidad acreditada", "Tasa por hora", "Situación", "Motivo del descarte"],
+    dadosIncluida: "Incluida",
+    dadosDescartada: "Descartada",
+    exImplausivel: "Valor absurdo (descartado)",
     semProducao: "Sin producción física en el período.",
     cardStatusHoras: "Horas por estado",
     totalLabel: "Total",
@@ -2228,6 +2246,29 @@ export default function OperationsReportsPage() {
     );
   }
 
+  function exportExecutionData() {
+    const [thTec, thData, thProj, thTarefa, thCod, thAtiv, thFam, thUn, thQtd, thHTec, thHTarefa, thCred, thTaxa, thSit, thMotivo] = p.dadosCols;
+    const header: CsvCell[] = [thTec, thData, thProj, thTarefa, thCod, thAtiv, thFam, thUn, thQtd, thHTec, thHTarefa, thCred, thTaxa, thSit, thMotivo];
+    const rows: CsvCell[][] = (data?.execution_rows ?? []).map((r) => [
+      r.technician,
+      r.date,
+      r.project,
+      r.task,
+      r.activity_code,
+      r.activity,
+      r.cable_family,
+      r.unit,
+      r.task_quantity,
+      r.technician_hours,
+      r.task_hours,
+      r.credited_quantity,
+      r.rate_per_hour,
+      r.included ? p.dadosIncluida : p.dadosDescartada,
+      r.discard_reason,
+    ]);
+    downloadCsv(`${p.csvDados}_${csvSuffix}.csv`, [header, ...rows], locale);
+  }
+
   function exportProduction() {
     const cols = productionColumns();
     const header: CsvCell[] = [p.thTecnico, ...cols.flatMap((c) => [c.label, `${c.label} (${c.rate})`])];
@@ -2278,6 +2319,10 @@ export default function OperationsReportsPage() {
             <div className="ops-card-title">{p.cardProducao}</div>
             <div className="ops-card-hint">{p.hintProducao}</div>
           </div>
+          <button type="button" className="btn btn-outline btn-sm" onClick={exportExecutionData} disabled={!(data?.execution_rows?.length)}>
+            <Icon name="dataset" style={{ fontSize: 16 }} />
+            {p.exportarDados}
+          </button>
           <button type="button" className="btn btn-outline btn-sm" onClick={exportProduction} disabled={!anyProduction}>
             <Icon name="download" style={{ fontSize: 16 }} />
             {p.exportarCsv}
@@ -2408,7 +2453,7 @@ export default function OperationsReportsPage() {
   }
 
   function renderActivityRow(a: ReportsActivityProductivity, idx: number) {
-    const excludedTotal = a.excluded.untracked + a.excluded.partial_or_blocked + a.excluded.no_quantity;
+    const excludedTotal = a.excluded.untracked + a.excluded.partial_or_blocked + a.excluded.no_quantity + (a.excluded.implausible ?? 0);
     const u = a.unit ? unitLabel(a.unit) : "";
     const perUnit = u ? `/${u}` : "";
     const exclusionTip = (
@@ -2419,6 +2464,7 @@ export default function OperationsReportsPage() {
         {a.excluded.untracked > 0 && <div className="rpt-tip-indent"><span>{p.exSemApontamento}</span><strong>{a.excluded.untracked}</strong></div>}
         {a.excluded.partial_or_blocked > 0 && <div className="rpt-tip-indent"><span>{p.exParcialBloqueada}</span><strong>{a.excluded.partial_or_blocked}</strong></div>}
         {a.excluded.no_quantity > 0 && <div className="rpt-tip-indent"><span>{p.exSemQuantidade}</span><strong>{a.excluded.no_quantity}</strong></div>}
+        {(a.excluded.implausible ?? 0) > 0 && <div className="rpt-tip-indent"><span>{p.exImplausivel}</span><strong>{a.excluded.implausible}</strong></div>}
         {a.total_quantity > 0 && (
           <div><span>{p.quantidadeTotal}</span><strong>{nf(a.total_quantity, a.total_quantity % 1 === 0 ? 0 : 1)} {u}</strong></div>
         )}
@@ -2550,6 +2596,10 @@ export default function OperationsReportsPage() {
               <input type="checkbox" checked={actOnlySufficient} onChange={(e) => setActOnlySufficient(e.target.checked)} />
               {p.soAmostraSuficiente}
             </label>
+            <button type="button" className="btn btn-outline btn-sm" onClick={exportExecutionData} disabled={!(data?.execution_rows?.length)}>
+              <Icon name="dataset" style={{ fontSize: 16 }} />
+              {p.exportarDados}
+            </button>
             <button type="button" className="btn btn-outline btn-sm" onClick={exportActivities} disabled={activityRows.length === 0}>
               <Icon name="download" style={{ fontSize: 16 }} />
               {p.exportarCsv}

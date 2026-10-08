@@ -6815,6 +6815,34 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(row["quantity"], 10.0)
         self.assertEqual(row["labels"], 80.0)
 
+    def test_absurd_rates_are_discarded_but_kept_in_the_export_data(self):
+        self.setup_catalog()
+        self.activity = Activity.objects.get(code="CAB-LABEL")
+        CableFamily.objects.filter(pk=self.family.pk).update(connector_a="LC", connector_b="LC", fiber_count=8)
+        # 10 cabos em 2 h (5/h): realista.
+        ok = self.make_generated(10)
+        self.make_task(self.at(8), self.at(10), 2, [(self.tech_a, self.at(8), self.at(10), 2)], generated=ok)
+        # 93 cabos apontados em 3 min (1.860/h): apontamento em lote, absurdo.
+        absurd = self.make_generated(93)
+        self.make_task(
+            self.at(11), self.at(11, 3), 0.05, [(self.tech_a, self.at(11), self.at(11, 3), 0.05)], generated=absurd
+        )
+        data = self.get()
+        row = self.tech_row(data, self.tech_a)["production"]["CAB-LABEL"]
+        self.assertEqual(row["quantity"], 10.0)  # o lote não entra
+        self.assertEqual(row["hours"], 2.0)
+        self.assertEqual(data["production_discarded_count"], 1)
+        rows = data["execution_rows"]
+        self.assertEqual(len(rows), 2)
+        discarded = [r for r in rows if not r["included"]]
+        self.assertEqual(len(discarded), 1)
+        self.assertEqual(discarded[0]["task_quantity"], 93.0)
+        self.assertIn("Valor absurdo", discarded[0]["discard_reason"])
+        self.assertEqual(discarded[0]["technician"], self.tech_a.person.name)
+        included = [r for r in rows if r["included"]]
+        self.assertEqual(included[0]["credited_quantity"], 10.0)
+        self.assertEqual(included[0]["rate_per_hour"], 5.0)
+
     def test_internal_idle_limit_is_30_minutes_per_day(self):
         P = self.Presence
         self.check_in(self.tech_a, [

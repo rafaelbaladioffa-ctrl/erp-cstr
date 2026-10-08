@@ -65,6 +65,33 @@ STATUS_CATEGORIES = (
 )
 METER_UNITS = {"m", "M", "METER", "METERS", "METRO", "METROS", "MT", "MTS"}
 
+# Valores absurdos: execução cuja taxa (quantidade ÷ horas apontadas) passa do que é fisicamente
+# possível, quase sempre apontamento em lote (tudo colado/lançado e apontado de uma vez, em segundos).
+# Esses registros ficam fora da produção por técnico e da base de estimativa, mas continuam no
+# "Exportar dados" marcados como descartados. Unidades por hora de trabalho (HH); atividades que não
+# estão aqui e não são em metros não têm limite.
+MAX_PLAUSIBLE_RATE_PER_HOUR = {
+    "CAB-LABEL": 120,  # cabos etiquetados (~30 s por cabo)
+    "CAB-RUN": 10,  # cabos lançados
+    "CAB-CUT": 30,  # cabos cortados
+    "CAB-CRIMP": 30,  # conectores crimpados
+    "MAT-SEP": 30,  # itens separados
+    "CERTIFY": 20,  # links certificados
+}
+MAX_PLAUSIBLE_METERS_PER_HOUR = 300  # atividades medidas em metros
+
+
+def plausible_rate_limit(activity_code, unit):
+    if (unit or "").strip() in METER_UNITS:
+        return MAX_PLAUSIBLE_METERS_PER_HOUR
+    return MAX_PLAUSIBLE_RATE_PER_HOUR.get(activity_code)
+
+
+def is_implausible_rate(activity_code, unit, quantity, hours):
+    """True quando quantidade ÷ horas passa do limite da atividade (sem horas ou sem limite: False)."""
+    limit = plausible_rate_limit(activity_code, unit)
+    return bool(limit and hours and hours > 0 and quantity / hours > limit)
+
 
 def utilization_band(pct):
     """Faixas de utilização (RN-08). Acima de 100% é dado suspeito, não sobrecarga."""
@@ -196,6 +223,78 @@ def _distribution(values):
     }
 
 
+def _execution_rows(tasks):
+    """Dados por trás de produção e estimativa: uma linha por técnico em cada tarefa fechada do
+    período, com taxa, situação (incluída/descartada) e motivo. Alimenta o "Exportar dados"."""
+    rows = []
+    for task in tasks:
+        generated = task.generated_task
+        assignments = list(task.assignments.all())
+        has_assignment_hours = any(a.actual_hours is not None for a in assignments)
+        if has_assignment_hours:
+            task_hours = sum(float(a.actual_hours) for a in assignments if a.actual_hours is not None)
+        elif task.has_real_time_tracking:
+            task_hours = task.worked_hours * len(assignments)
+        else:
+            task_hours = 0.0
+
+        quantity = None
+        unit = ""
+        activity_code = activity_name = family_name = ""
+        if generated is None:
+            reason = "Sem catálogo (atividade não identificada)"
+        else:
+            activity_code = generated.activity.code
+            activity_name = generated.activity.name
+            unit = _activity_unit(generated)
+            family = generated.scope_item.cable_family
+            family_name = family.name if family else ""
+            quantity = _activity_quantity(task, generated)
+            limit = plausible_rate_limit(activity_code, unit)
+            if task.completion_outcome not in ("", ProjectTask.COMPLETION_OUTCOME_COMPLETED):
+                reason = "Concluída parcial ou bloqueada"
+            elif not task.has_real_time_tracking or task_hours <= 0:
+                reason = "Sem apontamento de horas"
+            elif not quantity:
+                reason = "Sem quantidade"
+            elif is_implausible_rate(activity_code, unit, quantity, task_hours):
+                reason = f"Valor absurdo: {quantity / task_hours:.1f} por hora, acima do limite de {limit} por hora"
+            else:
+                reason = ""
+        rate = round(quantity / task_hours, 2) if quantity and task_hours > 0 else None
+        credited_total = sum(float(a.actual_hours or 0) for a in assignments if a.status == ProjectTask.STATUS_COMPLETED)
+        credited_count = sum(1 for a in assignments if a.status == ProjectTask.STATUS_COMPLETED)
+        for a in assignments:
+            hours = float(a.actual_hours) if a.actual_hours is not None else None
+            credited = a.status == ProjectTask.STATUS_COMPLETED
+            if quantity and credited:
+                share = (hours or 0) / credited_total if credited_total > 0 else 1 / credited_count
+            else:
+                share = None
+            ended = a.assignment_end or task.actual_end
+            rows.append(
+                {
+                    "collaborator_id": a.collaborator_id,
+                    "technician": a.collaborator.person.name,
+                    "date": _local_date(ended).isoformat() if ended else "",
+                    "project": task.project.name,
+                    "task": str(task),
+                    "activity_code": activity_code,
+                    "activity": activity_name,
+                    "cable_family": family_name,
+                    "unit": unit,
+                    "task_quantity": round(quantity, 2) if quantity else None,
+                    "technician_hours": round(hours, 4) if hours is not None else None,
+                    "task_hours": round(task_hours, 4),
+                    "credited_quantity": round(quantity * share, 2) if share is not None else None,
+                    "rate_per_hour": rate,
+                    "included": reason == "",
+                    "discard_reason": reason,
+                }
+            )
+    return rows
+
+
 def parse_site_ids(value):
     """Filtro de site da Central de Operações: None/""/"all" = todos; um id ("12"), vários
     separados por vírgula ("12,15") ou uma lista. Devolve lista de ids ou None (sem filtro)."""
@@ -315,7 +414,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                 "family": family,
                 "unit": _activity_unit(generated),
                 "executions_total": 0,
-                "excluded": {"untracked": 0, "partial_or_blocked": 0, "no_quantity": 0},
+                "excluded": {"untracked": 0, "partial_or_blocked": 0, "no_quantity": 0, "implausible": 0},
                 "man_hours": [],
                 "durations": [],
                 "crews": [],
@@ -336,6 +435,9 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         if not quantity:
             group["excluded"]["no_quantity"] += 1
             continue
+        if is_implausible_rate(generated.activity.code, group["unit"], quantity, task_man_hours):
+            group["excluded"]["implausible"] += 1
+            continue
         group["man_hours"].append(task_man_hours)
         group["durations"].append(task.worked_hours)
         group["crews"].append(crew)
@@ -353,6 +455,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     # às horas de cada um (RN-04); sem horas apontadas, divide igualmente.
     production_by_tech = {}
     production_activities = {}
+    production_discarded = 0
     for task in tasks:
         generated = task.generated_task
         if generated is None or task.completion_outcome not in ("", ProjectTask.COMPLETION_OUTCOME_COMPLETED):
@@ -366,6 +469,9 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         hours_of = [float(a.actual_hours) if a.actual_hours is not None else 0.0 for a in credited]
         total_hours = sum(hours_of)
         unit = _activity_unit(generated)
+        if is_implausible_rate(generated.activity.code, unit, quantity, total_hours):
+            production_discarded += 1
+            continue
         length_m = generated.scope_item.length_m
         family = generated.scope_item.cable_family
         is_utp = bool(family and "UTP" in f"{family.name} {family.code}".upper())
@@ -391,10 +497,13 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                 row["meters_utp"] += total_meters * share
             row["hours"] += hours
 
+    execution_rows = _execution_rows(tasks)
+
     # Supervisor só enxerga os colaboradores sob a sua gestão.
     allowed_ids = managed_collaborator_ids(user)
     if allowed_ids is not None:
         tech = {k: v for k, v in tech.items() if k in allowed_ids}
+        execution_rows = [r for r in execution_rows if r["collaborator_id"] in allowed_ids]
 
     # --- Técnicos do período: quem concluiu tarefa OU teve check-in -------
     presence_qs = TechnicianDailyPresence.objects.filter(
@@ -670,5 +779,7 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
         "unproductive_by_reason": unproductive_by_reason,
         "status_categories": [{"status": s, "category": c} for s, c in STATUS_CATEGORIES],
         "production_activities": sorted(production_activities.values(), key=lambda a: a["code"]),
+        "production_discarded_count": production_discarded,
+        "execution_rows": execution_rows,
         "log_entries": log_entries,
     }

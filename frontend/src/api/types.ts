@@ -1053,6 +1053,25 @@ export interface ReportsDistribution {
   cv_pct: number | null;
 }
 
+export interface ReportsExecutionRow {
+  collaborator_id: number;
+  technician: string;
+  date: string;
+  project: string;
+  task: string;
+  activity_code: string;
+  activity: string;
+  cable_family: string;
+  unit: string;
+  task_quantity: number | null;
+  technician_hours: number | null;
+  task_hours: number;
+  credited_quantity: number | null;
+  rate_per_hour: number | null;
+  included: boolean;
+  discard_reason: string;
+}
+
 export interface ReportsActivityProductivity {
   activity_code: string;
   activity_name: string;
@@ -1061,7 +1080,7 @@ export interface ReportsActivityProductivity {
   unit: string;
   executions_total: number;
   executions_used: number;
-  excluded: { untracked: number; partial_or_blocked: number; no_quantity: number };
+  excluded: { untracked: number; partial_or_blocked: number; no_quantity: number; implausible?: number };
   sufficient_sample: boolean;
   median_man_hours: number | null;
   median_duration_hours: number | null;
@@ -1118,6 +1137,8 @@ export interface OperationsReports {
   unproductive_by_reason: ReportsUnproductiveReason[];
   /** Status contabilizados no card "Horas por status", na ordem de exibição, com a classificação. */
   production_activities: { code: string; name: string; unit: string }[];
+  production_discarded_count?: number;
+  execution_rows?: ReportsExecutionRow[];
   status_categories: { status: string; category: "productive" | "unproductive" | "neutral" }[];
   log_entries: ReportsLogEntry[];
 }
