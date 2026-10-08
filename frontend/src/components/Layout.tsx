@@ -34,6 +34,10 @@ function buildNavGroups(t: Translations): { title: string; items: NavItem[] }[] 
       ],
     },
     {
+      title: t.nav.indicadores,
+      items: [{ to: "/indicadores/tendencias", label: t.nav.tendencias, icon: "show_chart", permission: PERMS.viewOperationsBoard }],
+    },
+    {
       title: t.nav.projeto,
       items: [
         { to: "/projetos", label: t.nav.projetosAtivos, icon: "folder", permission: PERMS.viewProject },
@@ -73,6 +77,7 @@ function currentBreadcrumb(pathname: string, search: string, t: Translations) {
     "/operacao-do-dia": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.operacaoDoDia },
     "/timeline-operacional": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.timelineOperacional },
     "/relatorios-indicadores": { area: t.nav.centralOperacoes, areaHref: "/operacao-do-dia", page: t.nav.relatoriosIndicadores },
+    "/indicadores/tendencias": { area: t.nav.indicadores, areaHref: "/indicadores/tendencias", page: t.nav.tendencias },
     "/dashboard": { area: t.nav.sistema, areaHref: "/dashboard", page: t.nav.dashboard },
     "/atualizacoes-diarias": { area: t.nav.atualizacoes, areaHref: "/atualizacoes-diarias", page: t.nav.atualizacoesDiarias },
     "/atualizacoes-projeto": { area: t.nav.atualizacoes, areaHref: "/atualizacoes-diarias", page: t.nav.atualizacoesProjetos },

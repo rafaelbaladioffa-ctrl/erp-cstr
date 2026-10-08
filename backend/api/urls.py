@@ -19,6 +19,7 @@ from .operations import (
     OperationsReportsView,
     OperationsTimelineView,
 )
+from .indicators import IndicatorsTrendsView
 from .sites_panel import SitesPanelView
 
 router = DefaultRouter()
@@ -104,6 +105,7 @@ urlpatterns = [
         OperationsManagementReportView.as_view(),
         name="operations-management-report",
     ),
+    path("indicators/trends/", IndicatorsTrendsView.as_view(), name="indicators-trends"),
     path("operations/adjustments/", AdjustmentHistoryView.as_view(), name="operations-adjustments"),
     path("operations/adjustments/tasks/", AdjustmentTasksView.as_view(), name="operations-adjustments-tasks"),
     path("operations/adjustments/execution/", ExecutionAdjustmentView.as_view(), name="operations-adjustments-execution"),

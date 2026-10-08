@@ -7,6 +7,8 @@ const esES: Translations = {
     operacaoDoDia: "Operación del Día",
     timelineOperacional: "Línea de Tiempo Operacional",
     relatoriosIndicadores: "Reportes e Indicadores",
+    indicadores: "Indicadores",
+    tendencias: "Tendencias",
     projeto: "Proyecto",
     projetosAtivos: "Proyectos Activos",
     historicoProjestos: "Historial de Proyectos",

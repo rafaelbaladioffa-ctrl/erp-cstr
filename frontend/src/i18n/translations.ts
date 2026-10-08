@@ -6,6 +6,8 @@ export interface Translations {
     operacaoDoDia: string;
     timelineOperacional: string;
     relatoriosIndicadores: string;
+    indicadores: string;
+    tendencias: string;
     projeto: string;
     projetosAtivos: string;
     historicoProjestos: string;

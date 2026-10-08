@@ -8,6 +8,7 @@ import { TabsProvider } from "./context/TabsContext";
 import { useI18n } from "./i18n";
 import AuditLog from "./pages/AuditLog";
 import BotWhatsApp from "./pages/BotWhatsApp";
+import IndicatorsTrends from "./pages/IndicatorsTrends";
 import ResetPassword from "./pages/ResetPassword";
 import CadastrosPage from "./pages/cadastros/CadastrosPage";
 import Dashboard from "./pages/Dashboard";
@@ -99,6 +100,14 @@ export default function App() {
             element={
               <RequirePermission permission={PERMS.viewOperationsBoard}>
                 <ManagementReportPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/indicadores/tendencias"
+            element={
+              <RequirePermission permission={PERMS.viewOperationsBoard}>
+                <IndicatorsTrends />
               </RequirePermission>
             }
           />

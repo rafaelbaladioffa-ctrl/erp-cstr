@@ -7,6 +7,8 @@ const ptBR: Translations = {
     operacaoDoDia: "Operação do Dia",
     timelineOperacional: "Timeline Operacional",
     relatoriosIndicadores: "Relatórios e Indicadores",
+    indicadores: "Indicadores",
+    tendencias: "Tendências",
     projeto: "Projeto",
     projetosAtivos: "Projetos Ativos",
     historicoProjestos: "Histórico de Projetos",

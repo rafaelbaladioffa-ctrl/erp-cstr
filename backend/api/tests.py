@@ -7179,3 +7179,71 @@ class ProjectHourEntryTests(TestCase):
         detail = self.api.get(f"/api/projects/{self.project.pk}/").data
         self.assertEqual((detail["worked_hours"], detail["real_man_hours"]), (0, 0))
         self.assertEqual(self.api.get(f"/api/projects/{self.project.pk}/hours-by-collaborator/").data, [])
+
+
+class IndicatorsTrendsTests(TestCase):
+    """Indicadores > Tendências: mesmas definições do relatório gerencial, com filtros
+    de site, cliente e regional (combinados em E)."""
+
+    at = OperationsReportsV2Tests.at
+    check_in = OperationsReportsV2Tests.check_in
+
+    def setUp(self):
+        OperationsReportsV2Tests.setUp(self)
+        from core.models import Region
+
+        self.client_a = Client.objects.create(company=self.company, legal_name="Cliente Tend A")
+        self.client_b = Client.objects.create(company=self.company, legal_name="Cliente Tend B")
+        self.region_1 = Region.objects.create(name="Sudeste", code="TND-SE")
+        self.region_2 = Region.objects.create(name="Sul", code="TND-S")
+        self.site_a = Site.objects.create(client=self.client_a, name="Site A", region=self.region_1)
+        self.site_b = Site.objects.create(client=self.client_b, name="Site B", region=self.region_2)
+        self.tech_a.sites.add(self.site_a)
+        self.tech_b.sites.add(self.site_b)
+        P = self.Presence
+        for tech in (self.tech_a, self.tech_b):
+            self.check_in(tech, [
+                (P.STATUS_AVAILABLE, self.at(8)),
+                (P.STATUS_IN_PROGRESS, self.at(9)),
+                (P.STATUS_OFF_DUTY, self.at(12)),
+            ])
+
+    def trends(self, **params):
+        query = {"date_from": str(self.day), "date_to": str(self.day), "group": "day"}
+        query.update(params)
+        response = self.client_api.get("/api/indicators/trends/", query)
+        self.assertEqual(response.status_code, 200, getattr(response, "data", None))
+        return response.json()
+
+    def test_totals_without_filter_cover_everyone(self):
+        data = self.trends()
+        self.assertEqual(len(data["points"]), 1)
+        self.assertEqual(data["totals"]["hours_execution"], 6.0)
+        self.assertEqual(data["totals"]["hours_unproductive"], 2.0)
+
+    def test_filter_by_site_client_and_region(self):
+        for params in ({"site": self.site_a.pk}, {"client": self.client_a.pk}, {"region": self.region_1.pk}):
+            data = self.trends(**params)
+            self.assertEqual(data["totals"]["hours_execution"], 3.0, params)
+            self.assertEqual(data["totals"]["hours_unproductive"], 1.0, params)
+
+    def test_filters_combine_with_and(self):
+        data = self.trends(client=self.client_a.pk, region=self.region_2.pk)
+        self.assertEqual(data["totals"], {"hours_execution": 0.0, "hours_unproductive": 0.0, "tasks_executed": 0})
+        self.assertEqual(len(data["points"]), 1)
+
+    def test_multiple_values_are_accepted(self):
+        data = self.trends(site=f"{self.site_a.pk},{self.site_b.pk}")
+        self.assertEqual(data["totals"]["hours_execution"], 6.0)
+
+    def test_invalid_period_is_rejected(self):
+        response = self.client_api.get("/api/indicators/trends/", {"date_from": str(self.day), "date_to": str(self.day - timedelta(days=1))})
+        self.assertEqual(response.status_code, 400)
+        response = self.client_api.get("/api/indicators/trends/", {"date_from": "2020-01-01", "date_to": "2022-01-01"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_requires_operations_permission(self):
+        plain = User.objects.create_user(username="tend_plain", email="tp@example.com", password="x")
+        api = APIClient()
+        api.force_authenticate(user=plain)
+        self.assertEqual(api.get("/api/indicators/trends/").status_code, 403)

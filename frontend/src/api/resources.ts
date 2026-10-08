@@ -21,6 +21,7 @@ import type {
   Network,
   Notification,
   OperationsBoard,
+  IndicatorsTrends,
   ManagementGroup,
   ManagementReport,
   OperationsReports,
@@ -272,7 +273,7 @@ export const auditLogApi = {
 
 export const regionsApi = {
   list: (params?: Record<string, string>) =>
-    apiClient.get<Paginated<Region>>("/regions/", { params }).then((r) => r.data),
+    apiClient.get<Paginated<Region>>("/regions/", { params: { page_size: "200", ...params } }).then((r) => r.data),
 };
 
 export const sitesMapApi = {
@@ -446,7 +447,7 @@ export const dashboardApi = {
 };
 
 export const clientsApi = {
-  list: () => apiClient.get<Paginated<Client>>("/clients/").then((r) => r.data),
+  list: () => apiClient.get<Paginated<Client>>("/clients/", { params: { page_size: "500" } }).then((r) => r.data),
 };
 
 export const sitesApi = {
@@ -562,6 +563,22 @@ export const operationsApi = {
     apiClient
       .get<ManagementReport>("/operations/reports/management/", {
         params: { site: String(siteId), date_from: dateFrom, date_to: dateTo, ...(group ? { group } : {}) },
+      })
+      .then((r) => r.data),
+};
+
+export const indicatorsApi = {
+  trends: (params: { dateFrom: string; dateTo: string; group?: ManagementGroup; site?: string; client?: string; region?: string }) =>
+    apiClient
+      .get<IndicatorsTrends>("/indicators/trends/", {
+        params: {
+          date_from: params.dateFrom,
+          date_to: params.dateTo,
+          ...(params.group ? { group: params.group } : {}),
+          ...(params.site ? { site: params.site } : {}),
+          ...(params.client ? { client: params.client } : {}),
+          ...(params.region ? { region: params.region } : {}),
+        },
       })
       .then((r) => r.data),
 };

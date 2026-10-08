@@ -7,6 +7,8 @@ const enUS: Translations = {
     operacaoDoDia: "Daily Operations",
     timelineOperacional: "Operational Timeline",
     relatoriosIndicadores: "Reports & Indicators",
+    indicadores: "Indicators",
+    tendencias: "Trends",
     projeto: "Project",
     projetosAtivos: "Active Projects",
     historicoProjestos: "Project History",

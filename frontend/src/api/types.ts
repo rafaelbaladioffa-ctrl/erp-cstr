@@ -1570,6 +1570,20 @@ export interface BotGroup {
 
 export type ManagementGroup = "day" | "week" | "month";
 
+export interface TrendPoint {
+  start: string;
+  hours_execution: number;
+  hours_unproductive: number;
+  tasks_executed: number;
+}
+
+export interface IndicatorsTrends {
+  period: { date_from: string; date_to: string; days: number; group: ManagementGroup };
+  points: TrendPoint[];
+  totals: { hours_execution: number; hours_unproductive: number; tasks_executed: number };
+  max_period_days: number;
+}
+
 export interface ManagementSummary {
   utilization_pct: number | null;
   utilization_band: UtilizationBand | null;
