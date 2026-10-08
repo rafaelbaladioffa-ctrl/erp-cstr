@@ -6614,3 +6614,4 @@ button.sp-card:hover {
 .tnd-heat-cell.warn, .tnd-heat-swatch.warn { background: color-mix(in srgb, var(--warning, #d97706) 45%, transparent); }
 .tnd-heat-cell.ok, .tnd-heat-swatch.ok { background: color-mix(in srgb, var(--success, #16a34a) 45%, transparent); }
 .tnd-heat-cell.suspect, .tnd-heat-swatch.suspect { background: color-mix(in srgb, var(--tnd-4) 50%, transparent); }
+.tnd-section-title { margin: 0 0 10px; font-size: 16px; font-weight: 800; color: var(--text); }

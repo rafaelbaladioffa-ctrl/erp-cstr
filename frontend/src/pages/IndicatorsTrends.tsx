@@ -365,44 +365,26 @@ function useRemote<T>(enabled: boolean, key: string, load: () => Promise<T>) {
   return { data: fresh ? state.data : null, error: fresh ? state.error : null, loading: enabled && !fresh };
 }
 
-export default function IndicatorsTrendsPage() {
-  const { locale } = useI18n();
-  const p = usePageText(TEXT);
-  const [range, setRange] = useState<DateRange>(() => ({ start: brazilDaysAgoIso(29), end: brazilTodayIso() }));
-  const [group, setGroup] = useState<"auto" | ManagementGroup>("auto");
-  const [sites, setSites] = useState<Site[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [regions, setRegions] = useState<Region[]>([]);
-  const [siteSel, setSiteSel] = useState<string[]>([]);
-  const [clientSel, setClientSel] = useState<string[]>([]);
-  const [regionSel, setRegionSel] = useState<string[]>([]);
+interface SectionProps {
+  segment: Segment;
+  query: TrendQuery;
+  baseKey: string;
+  range: DateRange;
+  p: Text;
+  locale: string;
+}
+
+/** Bloco de gráficos de um segmento (Operação, Produção, Comparativos ou Qualidade), com seus próprios subgráficos. */
+function TrendSection({ segment, query, baseKey: sharedKey, range, p, locale }: SectionProps) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [table, setTable] = useState(false);
-  const [viewId, setViewId] = useState<ViewId>("overview");
+  const [viewId, setViewId] = useState<ViewId>(() => VIEWS.find((x) => x.segment === segment)!.id);
   const [dimension, setDimension] = useState<Exclude<TrendDimension, "technician">>("site");
   const [measure, setMeasure] = useState<Measure>("hours_execution");
   const [activityCode, setActivityCode] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
-  const segment = VIEWS.find((x) => x.id === viewId)?.segment ?? "operation";
-
-  useEffect(() => {
-    sitesApi.list().then((r) => setSites(r.results)).catch(() => undefined);
-    clientsApi.list().then((r) => setClients(r.results)).catch(() => undefined);
-    regionsApi.list().then((r) => setRegions(r.results)).catch(() => undefined);
-  }, []);
-
-  const filters = `${siteSel.join(",")}|${clientSel.join(",")}|${regionSel.join(",")}`;
-  const query: TrendQuery = {
-    dateFrom: range.start,
-    dateTo: range.end,
-    group: group === "auto" ? undefined : group,
-    site: siteSel.join(","),
-    client: clientSel.join(","),
-    region: regionSel.join(","),
-  };
-  const baseKey = `${range.start}|${range.end}|${group}|${filters}|${reloadKey}`;
-
+  const baseKey = `${sharedKey}|${reloadKey}`;
   const needsTrends = ["overview", "utilization", "unproductive", "manhours", "previous"].includes(viewId);
   const needsProduction = ["flow", "backlog", "planning", "estimate", "productivity", "quality", "incomplete"].includes(viewId);
   const needsBreakdown = viewId === "by" || viewId === "heatmap";
@@ -425,8 +407,6 @@ export default function IndicatorsTrendsPage() {
   const remotes = needsTrends ? (viewId === "previous" ? [trends, previous] : [trends]) : needsProduction ? [production] : [breakdown];
   const loading = remotes.some((r) => r.loading);
   const error = remotes.find((r) => r.error !== null)?.error ?? null;
-
-  const activePreset = PERIOD_PRESETS.find((d) => range.end === brazilTodayIso() && range.start === brazilDaysAgoIso(d - 1));
 
   const activities = production.data?.activities ?? [];
   const activity = activities.find((a) => a.code === activityCode) ?? activities[0];
@@ -569,10 +549,6 @@ export default function IndicatorsTrendsPage() {
   const heatmapHasData = !!breakdown.data && breakdown.data.groups.length > 0;
   const isHeatmap = viewId === "heatmap";
 
-  function changeRange(next: DateRange | null) {
-    setRange(next ?? { start: brazilDaysAgoIso(29), end: brazilTodayIso() });
-  }
-
   function toggleSeries(id: string) {
     if (!model) return;
     setHidden((prev) => {
@@ -592,102 +568,23 @@ export default function IndicatorsTrendsPage() {
   const viewsOfSegment = VIEWS.filter((x) => x.segment === segment);
 
   return (
-    <div className="tnd-page">
-      <PageHeader
-        eyebrow={p.eyebrow}
-        title={p.title}
-        subtitle={p.subtitle}
-        actions={
-          <div className="ops-toolbar rpt-header-tools">
-            <MultiSelectFilter
-              label={p.site}
-              options={sites.map((x) => ({ value: String(x.id), label: x.name || x.code }))}
-              selected={siteSel}
-              onChange={setSiteSel}
-              allLabel={p.todosSites}
-            />
-            <MultiSelectFilter
-              label={p.cliente}
-              options={clients.map((c) => ({ value: String(c.id), label: c.name }))}
-              selected={clientSel}
-              onChange={setClientSel}
-              allLabel={p.todosClientes}
-            />
-            <MultiSelectFilter
-              label={p.regional}
-              options={regions.map((r) => ({ value: String(r.id), label: r.name, hint: r.country_display }))}
-              selected={regionSel}
-              onChange={setRegionSel}
-              allLabel={p.todasRegionais}
-            />
-          </div>
-        }
-      />
-
-      <div className="rpt-period-bar">
-        <DateRangeCalendar value={range} onChange={changeRange} maxDays={MAX_PERIOD_DAYS} emitPartial={false} />
-        <div className="rpt-presets" role="group" aria-label={p.periodo}>
-          {PERIOD_PRESETS.map((d) => (
-            <button
-              key={d}
-              type="button"
-              className={`rpt-preset${activePreset === d ? " active" : ""}`}
-              aria-pressed={activePreset === d}
-              onClick={() => changeRange({ start: brazilDaysAgoIso(d - 1), end: brazilTodayIso() })}
-            >
-              {p.preset(d)}
-            </button>
-          ))}
-        </div>
-        <div className="rpt-presets" role="group" aria-label={p.agrupar}>
-          {(["auto", "day", "week", "month"] as const).map((g) => (
-            <button
-              key={g}
-              type="button"
-              className={`rpt-preset${group === g ? " active" : ""}`}
-              aria-pressed={group === g}
-              onClick={() => setGroup(g)}
-            >
-              {g === "auto" ? p.auto : p[g]}
-            </button>
-          ))}
-        </div>
-        <span className="mgr-hint">
-          {days} {p.dias}
-        </span>
-      </div>
-
-      {error !== null && !loading && (
-        <div className="rpt-notice rpt-notice--error rpt-notice--block" role="alert">
-          <Icon name="error" style={{ fontSize: 18 }} />
-          <div className="rpt-notice-body">
-            <strong>{p.erro}</strong>
-            {error && <span>{error}</span>}
-          </div>
-          <div className="rpt-notice-actions">
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => setReloadKey((k) => k + 1)}>
-              <Icon name="refresh" style={{ fontSize: 16 }} />
-              {p.tentarNovamente}
-            </button>
-          </div>
-        </div>
-      )}
-
       <section className="tnd-card" aria-busy={loading}>
-        <div className="tnd-segments rpt-presets" role="tablist" aria-label={p.title}>
-          {SEGMENTS.map((sg) => (
-            <button
-              key={sg}
-              type="button"
-              role="tab"
-              aria-selected={segment === sg}
-              className={`rpt-preset${segment === sg ? " active" : ""}`}
-              onClick={() => selectView(VIEWS.find((x) => x.segment === sg)!.id)}
-            >
-              {p.segments[sg]}
-            </button>
-          ))}
-        </div>
+        <h2 className="tnd-section-title">{p.segments[segment]}</h2>
+        {error !== null && !loading && (
+          <div className="rpt-notice rpt-notice--error rpt-notice--block" role="alert">
+            <Icon name="error" style={{ fontSize: 18 }} />
+            <div className="rpt-notice-body">
+              <strong>{p.erro}</strong>
+              {error && <span>{error}</span>}
+            </div>
+            <div className="rpt-notice-actions">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setReloadKey((k) => k + 1)}>
+                <Icon name="refresh" style={{ fontSize: 16 }} />
+                {p.tentarNovamente}
+              </button>
+            </div>
+          </div>
+        )}
         <div className="tnd-views" role="group" aria-label={p.segments[segment]}>
           {viewsOfSegment.map((vw) => (
             <button
@@ -824,6 +721,111 @@ export default function IndicatorsTrendsPage() {
         )}
         <p className="tnd-note">{p.notes[viewId]}</p>
       </section>
+  );
+}
+
+export default function IndicatorsTrendsPage() {
+  const { locale } = useI18n();
+  const p = usePageText(TEXT);
+  const [range, setRange] = useState<DateRange>(() => ({ start: brazilDaysAgoIso(29), end: brazilTodayIso() }));
+  const [group, setGroup] = useState<"auto" | ManagementGroup>("auto");
+  const [sites, setSites] = useState<Site[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [siteSel, setSiteSel] = useState<string[]>([]);
+  const [clientSel, setClientSel] = useState<string[]>([]);
+  const [regionSel, setRegionSel] = useState<string[]>([]);
+
+  useEffect(() => {
+    sitesApi.list().then((r) => setSites(r.results)).catch(() => undefined);
+    clientsApi.list().then((r) => setClients(r.results)).catch(() => undefined);
+    regionsApi.list().then((r) => setRegions(r.results)).catch(() => undefined);
+  }, []);
+
+  const query: TrendQuery = {
+    dateFrom: range.start,
+    dateTo: range.end,
+    group: group === "auto" ? undefined : group,
+    site: siteSel.join(","),
+    client: clientSel.join(","),
+    region: regionSel.join(","),
+  };
+  const baseKey = `${range.start}|${range.end}|${group}|${siteSel.join(",")}|${clientSel.join(",")}|${regionSel.join(",")}`;
+  const activePreset = PERIOD_PRESETS.find((d) => range.end === brazilTodayIso() && range.start === brazilDaysAgoIso(d - 1));
+
+  function changeRange(next: DateRange | null) {
+    setRange(next ?? { start: brazilDaysAgoIso(29), end: brazilTodayIso() });
+  }
+
+  return (
+    <div className="tnd-page">
+      <PageHeader
+        eyebrow={p.eyebrow}
+        title={p.title}
+        subtitle={p.subtitle}
+        actions={
+          <div className="ops-toolbar rpt-header-tools">
+            <MultiSelectFilter
+              label={p.site}
+              options={sites.map((x) => ({ value: String(x.id), label: x.name || x.code }))}
+              selected={siteSel}
+              onChange={setSiteSel}
+              allLabel={p.todosSites}
+            />
+            <MultiSelectFilter
+              label={p.cliente}
+              options={clients.map((c) => ({ value: String(c.id), label: c.name }))}
+              selected={clientSel}
+              onChange={setClientSel}
+              allLabel={p.todosClientes}
+            />
+            <MultiSelectFilter
+              label={p.regional}
+              options={regions.map((r) => ({ value: String(r.id), label: r.name, hint: r.country_display }))}
+              selected={regionSel}
+              onChange={setRegionSel}
+              allLabel={p.todasRegionais}
+            />
+          </div>
+        }
+      />
+
+      <div className="rpt-period-bar">
+        <DateRangeCalendar value={range} onChange={changeRange} maxDays={MAX_PERIOD_DAYS} emitPartial={false} />
+        <div className="rpt-presets" role="group" aria-label={p.periodo}>
+          {PERIOD_PRESETS.map((d) => (
+            <button
+              key={d}
+              type="button"
+              className={`rpt-preset${activePreset === d ? " active" : ""}`}
+              aria-pressed={activePreset === d}
+              onClick={() => changeRange({ start: brazilDaysAgoIso(d - 1), end: brazilTodayIso() })}
+            >
+              {p.preset(d)}
+            </button>
+          ))}
+        </div>
+        <div className="rpt-presets" role="group" aria-label={p.agrupar}>
+          {(["auto", "day", "week", "month"] as const).map((g) => (
+            <button
+              key={g}
+              type="button"
+              className={`rpt-preset${group === g ? " active" : ""}`}
+              aria-pressed={group === g}
+              onClick={() => setGroup(g)}
+            >
+              {g === "auto" ? p.auto : p[g]}
+            </button>
+          ))}
+        </div>
+        <span className="mgr-hint">
+          {daysInclusive(range.start, range.end)} {p.dias}
+        </span>
+      </div>
+
+      {SEGMENTS.map((sg) => (
+        <TrendSection key={sg} segment={sg} query={query} baseKey={baseKey} range={range} p={p} locale={locale} />
+      ))}
     </div>
   );
 }
