@@ -252,6 +252,13 @@ export default function TimelineOperacional() {
       })
   );
   const trackHeight = (count: number) => (count <= 1 ? 44 : 10 + count * 30);
+  // A coluna de nomes e a de barras têm a mesma altura por técnico; os botões abaixo do nome
+  // (expandir simultâneas / ajustar) precisam de linhas extras, senão vazam sobre o técnico de baixo.
+  const isAdmin = !!user?.is_superuser;
+  const rowHeight = (count: number, collapsible: boolean) => {
+    const buttons = (collapsible ? 1 : 0) + (isAdmin ? 1 : 0);
+    return Math.max(trackHeight(count), 44 + buttons * 24);
+  };
   const barTop = (index: number, _count: number) => 6 + index * 30;
   const barHeight = (_count: number) => 22;
 
@@ -374,7 +381,7 @@ export default function TimelineOperacional() {
             <div className="tl-labels">
               <div className="tl-ruler" />
               {techRows.map(({ tech, laneCount, doneCount, hiddenCount, collapsible, expanded }, rowIdx) => (
-                <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
+                <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: rowHeight(laneCount, collapsible) }}>
                   <div className="tl-row-label">
                     <div className="tl-avatar">{initials(tech.name)}</div>
                     <div style={{ minWidth: 0 }}>
@@ -428,10 +435,10 @@ export default function TimelineOperacional() {
                 )}
               </div>
 
-              {techRows.map(({ tech, lanedSegments, laneCount }, rowIdx) => {
+              {techRows.map(({ tech, lanedSegments, laneCount, collapsible }, rowIdx) => {
                 if (lanedSegments.length === 0) {
                   return (
-                    <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(0) }}>
+                    <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: rowHeight(laneCount, collapsible) }}>
                       <div className="tl-row-track">
                         <div className="tl-idle-note">{p.noActivity}</div>
                       </div>
@@ -439,7 +446,7 @@ export default function TimelineOperacional() {
                   );
                 }
                 return (
-                  <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: trackHeight(laneCount) }}>
+                  <div key={tech.id} className={`tl-row ${pairRowClass(techRows, rowIdx)}`} style={{ height: rowHeight(laneCount, collapsible) }}>
                     <div className="tl-row-track">
                       {lanedSegments.map(({ segment, lane }, idx) => {
                         const left = pct(segment.start, base);
