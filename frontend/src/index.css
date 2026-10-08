@@ -6573,17 +6573,17 @@ button.sp-card:hover {
 .tnd-toggle { margin-left: auto; }
 .tnd-views { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 .tnd-ref { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 5 4; }
-.tnd-ref-label { fill: var(--text-muted); font-size: 11px; }
+.tnd-ref-label { fill: var(--text-muted); font-size: 8.5px; }
 .tnd-bar { stroke: var(--white); stroke-width: 1; }
 .tnd-hover-band { fill: var(--text-faint); opacity: 0.12; }
 .tnd-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-.tnd-chart-wrap { position: relative; }
+.tnd-chart-wrap { position: relative; max-width: 1200px; }
 .tnd-svg { width: 100%; height: auto; display: block; }
 .tnd-grid { stroke: var(--border); stroke-width: 1; }
-.tnd-axis { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.tnd-axis { fill: var(--text-muted); font-size: 8.5px; font-variant-numeric: tabular-nums; }
 .tnd-cross { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3; }
 .tnd-dot { stroke: var(--white); stroke-width: 1.5; }
-.tnd-endlabel { fill: var(--text); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tnd-endlabel { fill: var(--text); font-size: 9.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tnd-tip { position: absolute; top: 8px; transform: translateX(-50%); background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-lift); padding: 8px 10px; font-size: 12px; pointer-events: none; min-width: 190px; color: var(--text); }
 .tnd-tip-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .tnd-tip-row b { margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; }
