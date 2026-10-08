@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { clientsApi, indicatorsApi, regionsApi, sitesApi, type Client, type Site } from "../api/resources";
-import type { IndicatorsTrends, ManagementGroup, Region } from "../api/types";
+import type { IndicatorsTrends, ManagementGroup, Region, TrendPoint } from "../api/types";
 import DateRangeCalendar, { type DateRange } from "../components/ui/DateRangeCalendar";
 import Icon from "../components/ui/Icon";
 import MultiSelectFilter from "../components/ui/MultiSelectFilter";
@@ -14,13 +14,39 @@ import { brazilDaysAgoIso, brazilTodayIso, daysInclusive, formatIsoDate } from "
 const MAX_PERIOD_DAYS = 366;
 const PERIOD_PRESETS = [7, 30, 90, 365] as const;
 
-type SeriesKey = "hours_execution" | "hours_unproductive" | "tasks_executed";
-const SERIES: SeriesKey[] = ["hours_execution", "hours_unproductive", "tasks_executed"];
+type SeriesKey =
+  | "hours_execution"
+  | "hours_unproductive"
+  | "tasks_executed"
+  | "utilization_pct"
+  | "hours_external_block"
+  | "hours_internal_idle"
+  | "man_hours";
 const SERIES_VAR: Record<SeriesKey, string> = {
   hours_execution: "var(--tnd-1)",
   hours_unproductive: "var(--tnd-2)",
   tasks_executed: "var(--tnd-3)",
+  utilization_pct: "var(--tnd-1)",
+  hours_external_block: "var(--tnd-2)",
+  hours_internal_idle: "var(--tnd-1)",
+  man_hours: "var(--tnd-4)",
 };
+
+type ViewId = "overview" | "utilization" | "unproductive" | "manhours";
+interface ViewDef {
+  id: ViewId;
+  kind: "line" | "stack";
+  series: SeriesKey[];
+  /** Linha de referência (valor no eixo). */
+  ref?: number;
+  minMax?: number;
+}
+const VIEWS: ViewDef[] = [
+  { id: "overview", kind: "line", series: ["hours_execution", "hours_unproductive", "tasks_executed"] },
+  { id: "utilization", kind: "line", series: ["utilization_pct"], ref: 70, minMax: 100 },
+  { id: "unproductive", kind: "stack", series: ["hours_external_block", "hours_internal_idle"] },
+  { id: "manhours", kind: "line", series: ["man_hours", "hours_execution"] },
+];
 
 const W = 960;
 const H = 340;
@@ -45,6 +71,8 @@ type Text = {
   dias: string;
   series: Record<SeriesKey, string>;
   unit: Record<SeriesKey, string>;
+  views: Record<ViewId, string>;
+  metaRef: string;
   graficoLabel: string;
   verTabela: string;
   verGrafico: string;
@@ -58,7 +86,15 @@ type Text = {
   nota: string;
 };
 
-const UNIT: Record<SeriesKey, string> = { hours_execution: "h", hours_unproductive: "h", tasks_executed: "" };
+const UNIT: Record<SeriesKey, string> = {
+  hours_execution: "h",
+  hours_unproductive: "h",
+  tasks_executed: "",
+  utilization_pct: "%",
+  hours_external_block: "h",
+  hours_internal_idle: "h",
+  man_hours: "h",
+};
 
 const TEXT: Record<"pt-BR" | "en-US" | "es-ES", Text> = {
   "pt-BR": {
@@ -82,8 +118,14 @@ const TEXT: Record<"pt-BR" | "en-US" | "es-ES", Text> = {
       hours_execution: "Horas em execução",
       hours_unproductive: "Horas improdutivas",
       tasks_executed: "Tarefas executadas",
+      utilization_pct: "Utilização da jornada",
+      hours_external_block: "Bloqueio externo",
+      hours_internal_idle: "Ocioso interno",
+      man_hours: "Homem-hora (HH)",
     },
     unit: UNIT,
+    views: { overview: "Visão geral", utilization: "Utilização da jornada", unproductive: "Improdutivo por causa", manhours: "Homem-hora (HH)" },
+    metaRef: "referência 70%",
     graficoLabel: "Gráfico de tendência",
     verTabela: "Ver tabela",
     verGrafico: "Ver gráfico",
@@ -117,8 +159,14 @@ const TEXT: Record<"pt-BR" | "en-US" | "es-ES", Text> = {
       hours_execution: "Execution hours",
       hours_unproductive: "Unproductive hours",
       tasks_executed: "Tasks executed",
+      utilization_pct: "Workday utilization",
+      hours_external_block: "External block",
+      hours_internal_idle: "Internal idle",
+      man_hours: "Man-hours (MH)",
     },
     unit: UNIT,
+    views: { overview: "Overview", utilization: "Workday utilization", unproductive: "Unproductive by cause", manhours: "Man-hours (MH)" },
+    metaRef: "reference 70%",
     graficoLabel: "Trend chart",
     verTabela: "View table",
     verGrafico: "View chart",
@@ -152,8 +200,14 @@ const TEXT: Record<"pt-BR" | "en-US" | "es-ES", Text> = {
       hours_execution: "Horas en ejecución",
       hours_unproductive: "Horas improductivas",
       tasks_executed: "Tareas ejecutadas",
+      utilization_pct: "Utilización de la jornada",
+      hours_external_block: "Bloqueo externo",
+      hours_internal_idle: "Ocioso interno",
+      man_hours: "Hombre-hora (HH)",
     },
     unit: UNIT,
+    views: { overview: "Visión general", utilization: "Utilización de la jornada", unproductive: "Improductivo por causa", manhours: "Hombre-hora (HH)" },
+    metaRef: "referencia 70%",
     graficoLabel: "Gráfico de tendencia",
     verTabela: "Ver tabla",
     verGrafico: "Ver gráfico",
@@ -180,14 +234,32 @@ function fmt(n: number, locale: string): string {
   return n.toLocaleString(locale, { maximumFractionDigits: 1 });
 }
 
-function TrendChart({ data, hidden, locale, p }: { data: IndicatorsTrends; hidden: Set<SeriesKey>; locale: string; p: Text }) {
+function TrendChart({
+  data,
+  view,
+  hidden,
+  locale,
+  p,
+}: {
+  data: IndicatorsTrends;
+  view: ViewDef;
+  hidden: Set<SeriesKey>;
+  locale: string;
+  p: Text;
+}) {
   const [hover, setHover] = useState<number | null>(null);
   const points = data.points;
-  const visible = SERIES.filter((k) => !hidden.has(k));
-  const max = niceMax(Math.max(0, ...visible.flatMap((k) => points.map((pt) => pt[k]))));
+  const visible = view.series.filter((k) => !hidden.has(k));
+  const stacked = view.kind === "stack";
+  const val = (pt: TrendPoint, k: SeriesKey) => pt[k] ?? 0;
+  const top = stacked
+    ? Math.max(0, ...points.map((pt) => visible.reduce((acc, k) => acc + val(pt, k), 0)))
+    : Math.max(0, ...visible.flatMap((k) => points.map((pt) => val(pt, k))));
+  const max = niceMax(Math.max(top, view.minMax ?? 0, view.ref ?? 0));
   const innerW = W - M.l - M.r;
   const innerH = H - M.t - M.b;
-  const x = (i: number) => M.l + (points.length <= 1 ? innerW / 2 : (i / (points.length - 1)) * innerW);
+  const slot = innerW / Math.max(points.length, 1);
+  const x = (i: number) => (stacked || points.length <= 1 ? M.l + slot * i + slot / 2 : M.l + (i / (points.length - 1)) * innerW);
   const y = (v: number) => M.t + innerH - (v / max) * innerH;
   const ticks = [0, 1, 2, 3, 4].map((i) => (max / 4) * i);
   const group = data.period.group;
@@ -196,28 +268,54 @@ function TrendChart({ data, hidden, locale, p }: { data: IndicatorsTrends; hidde
       ? formatIsoDate(iso, locale, { month: "short", year: "2-digit" })
       : formatIsoDate(iso, locale, { day: "2-digit", month: "2-digit" });
   const step = Math.max(1, Math.ceil(points.length / 12));
+  const unit = p.unit[view.series[0]];
 
   function onMove(e: React.MouseEvent<SVGRectElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     const px = ((e.clientX - rect.left) / rect.width) * innerW;
-    const idx = points.length <= 1 ? 0 : Math.round((px / innerW) * (points.length - 1));
+    const idx = stacked ? Math.floor(px / slot) : points.length <= 1 ? 0 : Math.round((px / innerW) * (points.length - 1));
     setHover(Math.max(0, Math.min(points.length - 1, idx)));
+  }
+
+  // Linhas: pontos sem valor (ex.: sem jornada no dia) interrompem a linha.
+  function segments(k: SeriesKey) {
+    const out: string[] = [];
+    let cur: string[] = [];
+    points.forEach((pt, i) => {
+      const v = pt[k];
+      if (v === null || v === undefined) {
+        if (cur.length) out.push(cur.join(" "));
+        cur = [];
+      } else cur.push(`${x(i)},${y(v)}`);
+    });
+    if (cur.length) out.push(cur.join(" "));
+    return out;
   }
 
   const hp = hover !== null ? points[hover] : null;
   const tipLeft = hover !== null ? (x(hover) / W) * 100 : 0;
+  const barW = Math.max(2, Math.min(40, slot * 0.7));
 
   return (
     <div className="tnd-chart-wrap">
-      <svg viewBox={`0 0 ${W} ${H}`} className="tnd-svg" role="img" aria-label={p.graficoLabel}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="tnd-svg" role="img" aria-label={p.views[view.id]}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={M.l} x2={W - M.r} y1={y(t)} y2={y(t)} className="tnd-grid" />
             <text x={M.l - 8} y={y(t) + 4} textAnchor="end" className="tnd-axis">
               {fmt(t, locale)}
+              {t === max ? unit : ""}
             </text>
           </g>
         ))}
+        {view.ref !== undefined && (
+          <g>
+            <line x1={M.l} x2={W - M.r} y1={y(view.ref)} y2={y(view.ref)} className="tnd-ref" />
+            <text x={W - M.r - 4} y={y(view.ref) - 5} textAnchor="end" className="tnd-ref-label">
+              {p.metaRef}
+            </text>
+          </g>
+        )}
         {points.map((pt, i) =>
           i % step === 0 ? (
             <text key={pt.start} x={x(i)} y={H - 10} textAnchor="middle" className="tnd-axis">
@@ -225,28 +323,44 @@ function TrendChart({ data, hidden, locale, p }: { data: IndicatorsTrends; hidde
             </text>
           ) : null,
         )}
-        {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={M.t} y2={M.t + innerH} className="tnd-cross" />}
-        {visible.map((k) => (
-          <g key={k}>
-            <polyline
-              fill="none"
-              stroke={SERIES_VAR[k]}
-              strokeWidth={2}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              points={points.map((pt, i) => `${x(i)},${y(pt[k])}`).join(" ")}
-            />
-            {points.length <= 45 &&
-              points.map((pt, i) => (
-                <circle key={pt.start} cx={x(i)} cy={y(pt[k])} r={hover === i ? 4.5 : 2.5} fill={SERIES_VAR[k]} className="tnd-dot" />
+        {hover !== null && !stacked && <line x1={x(hover)} x2={x(hover)} y1={M.t} y2={M.t + innerH} className="tnd-cross" />}
+        {hover !== null && stacked && <rect x={M.l + slot * hover} y={M.t} width={slot} height={innerH} className="tnd-hover-band" />}
+        {stacked &&
+          points.map((pt, i) => {
+            let acc = 0;
+            return (
+              <g key={pt.start}>
+                {visible.map((k) => {
+                  const y0 = y(acc);
+                  acc += val(pt, k);
+                  const h = y0 - y(acc);
+                  return h > 0 ? (
+                    <rect key={k} x={x(i) - barW / 2} y={y(acc)} width={barW} height={h} fill={SERIES_VAR[k]} className="tnd-bar" />
+                  ) : null;
+                })}
+              </g>
+            );
+          })}
+        {!stacked &&
+          visible.map((k) => (
+            <g key={k}>
+              {segments(k).map((pts, i) => (
+                <polyline key={i} fill="none" stroke={SERIES_VAR[k]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" points={pts} />
               ))}
-            {points.length > 0 && (
-              <text x={W - M.r - 4} y={y(points[points.length - 1][k]) - 8} textAnchor="end" className="tnd-endlabel">
-                {fmt(points[points.length - 1][k], locale)}
-              </text>
-            )}
-          </g>
-        ))}
+              {points.length <= 45 &&
+                points.map((pt, i) =>
+                  pt[k] === null ? null : (
+                    <circle key={pt.start} cx={x(i)} cy={y(val(pt, k))} r={hover === i ? 4.5 : 2.5} fill={SERIES_VAR[k]} className="tnd-dot" />
+                  ),
+                )}
+              {points.length > 0 && points[points.length - 1][k] !== null && (
+                <text x={W - M.r - 4} y={y(val(points[points.length - 1], k)) - 8} textAnchor="end" className="tnd-endlabel">
+                  {fmt(val(points[points.length - 1], k), locale)}
+                  {p.unit[k]}
+                </text>
+              )}
+            </g>
+          ))}
         <rect x={M.l} y={M.t} width={innerW} height={innerH} fill="transparent" onMouseMove={onMove} onMouseLeave={() => setHover(null)} />
       </svg>
       {hp && (
@@ -256,10 +370,7 @@ function TrendChart({ data, hidden, locale, p }: { data: IndicatorsTrends; hidde
             <div key={k} className="tnd-tip-row">
               <span className="tnd-swatch" style={{ background: SERIES_VAR[k] }} />
               <span>{p.series[k]}</span>
-              <b>
-                {fmt(hp[k], locale)}
-                {p.unit[k]}
-              </b>
+              <b>{hp[k] === null ? "—" : `${fmt(val(hp, k), locale)}${p.unit[k]}`}</b>
             </div>
           ))}
         </div>
@@ -281,6 +392,8 @@ export default function IndicatorsTrendsPage() {
   const [regionSel, setRegionSel] = useState<string[]>([]);
   const [hidden, setHidden] = useState<Set<SeriesKey>>(new Set());
   const [table, setTable] = useState(false);
+  const [viewId, setViewId] = useState<ViewId>("overview");
+  const view = VIEWS.find((v) => v.id === viewId) ?? VIEWS[0];
   const [data, setData] = useState<IndicatorsTrends | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -325,7 +438,9 @@ export default function IndicatorsTrendsPage() {
 
   const activePreset = PERIOD_PRESETS.find((d) => range.end === brazilTodayIso() && range.start === brazilDaysAgoIso(d - 1));
   const hasData = useMemo(
-    () => !!data && data.points.some((pt) => pt.hours_execution || pt.hours_unproductive || pt.tasks_executed),
+    () =>
+      !!data &&
+      data.points.some((pt) => pt.hours_execution || pt.hours_unproductive || pt.tasks_executed || pt.man_hours || pt.journey_hours),
     [data],
   );
 
@@ -337,7 +452,7 @@ export default function IndicatorsTrendsPage() {
     setHidden((prev) => {
       const next = new Set(prev);
       if (next.has(k)) next.delete(k);
-      else if (next.size < SERIES.length - 1) next.add(k);
+      else if (view.series.filter((x) => !next.has(x)).length > 1) next.add(k);
       return next;
     });
   }
@@ -425,8 +540,24 @@ export default function IndicatorsTrendsPage() {
       )}
 
       <section className="tnd-card" aria-busy={loading}>
-        <div className="tnd-legend" role="group" aria-label={p.title}>
-          {SERIES.map((k) => (
+        <div className="tnd-views rpt-presets" role="group" aria-label={p.title}>
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              className={`rpt-preset${viewId === v.id ? " active" : ""}`}
+              aria-pressed={viewId === v.id}
+              onClick={() => {
+                setViewId(v.id);
+                setHidden(new Set());
+              }}
+            >
+              {p.views[v.id]}
+            </button>
+          ))}
+        </div>
+        <div className="tnd-legend" role="group" aria-label={p.views[view.id]}>
+          {view.series.map((k) => (
             <button
               key={k}
               type="button"
@@ -438,8 +569,7 @@ export default function IndicatorsTrendsPage() {
               <span className="tnd-swatch" style={{ background: SERIES_VAR[k] }} />
               <span className="tnd-legend-name">{p.series[k]}</span>
               <b className="tnd-legend-total">
-                {data ? fmt(data.totals[k], locale) : "—"}
-                {p.unit[k]}
+                {data && data.totals[k] !== null ? `${fmt(data.totals[k] as number, locale)}${p.unit[k]}` : "—"}
               </b>
             </button>
           ))}
@@ -452,7 +582,7 @@ export default function IndicatorsTrendsPage() {
         {loading && !data && <p className="mgr-status" role="status">{p.carregando}</p>}
         {data && !hasData && !loading && <p className="mgr-status">{p.vazio}</p>}
 
-        {data && hasData && !table && <TrendChart data={data} hidden={hidden} locale={locale} p={p} />}
+        {data && hasData && !table && <TrendChart data={data} view={view} hidden={hidden} locale={locale} p={p} />}
 
         {data && hasData && table && (
           <div className="tnd-table-wrap">
@@ -460,7 +590,7 @@ export default function IndicatorsTrendsPage() {
               <thead>
                 <tr>
                   <th>{p.periodo}</th>
-                  {SERIES.map((k) => (
+                  {view.series.map((k) => (
                     <th key={k} className="num">{p.series[k]}</th>
                   ))}
                 </tr>
@@ -469,8 +599,8 @@ export default function IndicatorsTrendsPage() {
                 {data.points.map((pt) => (
                   <tr key={pt.start}>
                     <td>{formatIsoDate(pt.start, locale, { day: "2-digit", month: "2-digit", year: "numeric" })}</td>
-                    {SERIES.map((k) => (
-                      <td key={k} className="num">{fmt(pt[k], locale)}</td>
+                    {view.series.map((k) => (
+                      <td key={k} className="num">{pt[k] === null ? "—" : fmt(pt[k] as number, locale)}</td>
                     ))}
                   </tr>
                 ))}
@@ -478,8 +608,8 @@ export default function IndicatorsTrendsPage() {
               <tfoot>
                 <tr>
                   <th>{p.total}</th>
-                  {SERIES.map((k) => (
-                    <th key={k} className="num">{fmt(data.totals[k], locale)}</th>
+                  {view.series.map((k) => (
+                    <th key={k} className="num">{data.totals[k] === null ? "—" : fmt(data.totals[k] as number, locale)}</th>
                   ))}
                 </tr>
               </tfoot>

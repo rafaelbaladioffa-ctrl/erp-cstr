@@ -2,6 +2,7 @@
 
 Série no tempo (dia/semana/mês) de três medidas:
 - horas em execução (produtivas: execução + apoio a outro técnico);
+- utilização (% da jornada), improdutivo por causa e homem-hora (HH) por período;
 - horas improdutivas (disponível sem tarefa + bloqueio externo);
 - tarefas executadas (conclusões no período, por técnico).
 
@@ -23,7 +24,7 @@ from rest_framework.views import APIView
 
 from core.models import Site
 
-from .management_report import GROUPS, _bucket_starts, _collect, _series, auto_group
+from .management_report import GROUPS, _bucket_starts, _pct, _collect, _series, auto_group
 from .operations import HasOperationsBoardPermission
 from .reports import parse_site_ids
 
@@ -51,7 +52,7 @@ def build_trends(*, user, date_from, date_to, group, site_ids):
     starts = _bucket_starts(date_from, date_to, group)
     if site_ids is not None and not site_ids:
         series = [
-            {"start": s.isoformat(), "productive_hours": 0.0, "external_block_hours": 0.0, "internal_idle_hours": 0.0, "completed_count": 0}
+            {"start": s.isoformat(), "productive_hours": 0.0, "external_block_hours": 0.0, "internal_idle_hours": 0.0, "completed_count": 0, "journey_hours": 0.0, "man_hours": 0.0, "utilization_pct": None}
             for s in starts
         ]
     else:
@@ -64,13 +65,25 @@ def build_trends(*, user, date_from, date_to, group, site_ids):
             "hours_execution": round(p["productive_hours"], 2),
             "hours_unproductive": round(p["external_block_hours"] + p["internal_idle_hours"], 2),
             "tasks_executed": p["completed_count"],
+            "hours_external_block": round(p["external_block_hours"], 2),
+            "hours_internal_idle": round(p["internal_idle_hours"], 2),
+            "journey_hours": round(p["journey_hours"], 2),
+            "man_hours": round(p["man_hours"], 2),
+            "utilization_pct": p["utilization_pct"],
         }
         for p in series
     ]
+    journey = sum(p["journey_hours"] for p in points)
+    execution = sum(p["hours_execution"] for p in points)
     totals = {
-        "hours_execution": round(sum(p["hours_execution"] for p in points), 2),
+        "hours_execution": round(execution, 2),
         "hours_unproductive": round(sum(p["hours_unproductive"] for p in points), 2),
         "tasks_executed": sum(p["tasks_executed"] for p in points),
+        "hours_external_block": round(sum(p["hours_external_block"] for p in points), 2),
+        "hours_internal_idle": round(sum(p["hours_internal_idle"] for p in points), 2),
+        "journey_hours": round(journey, 2),
+        "man_hours": round(sum(p["man_hours"] for p in points), 2),
+        "utilization_pct": _pct(execution, journey),
     }
     return {
         "period": {

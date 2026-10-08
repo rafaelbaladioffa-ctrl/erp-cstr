@@ -7220,6 +7220,12 @@ class IndicatorsTrendsTests(TestCase):
         self.assertEqual(len(data["points"]), 1)
         self.assertEqual(data["totals"]["hours_execution"], 6.0)
         self.assertEqual(data["totals"]["hours_unproductive"], 2.0)
+        point = data["points"][0]
+        self.assertEqual(point["hours_internal_idle"], 2.0)
+        self.assertEqual(point["hours_external_block"], 0.0)
+        self.assertEqual(point["journey_hours"], 16.0)
+        self.assertEqual(data["totals"]["utilization_pct"], 38)
+        self.assertIn("man_hours", point)
 
     def test_filter_by_site_client_and_region(self):
         for params in ({"site": self.site_a.pk}, {"client": self.client_a.pk}, {"region": self.region_1.pk}):

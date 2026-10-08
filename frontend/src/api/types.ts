@@ -1575,12 +1575,17 @@ export interface TrendPoint {
   hours_execution: number;
   hours_unproductive: number;
   tasks_executed: number;
+  hours_external_block: number;
+  hours_internal_idle: number;
+  journey_hours: number;
+  man_hours: number;
+  utilization_pct: number | null;
 }
 
 export interface IndicatorsTrends {
   period: { date_from: string; date_to: string; days: number; group: ManagementGroup };
   points: TrendPoint[];
-  totals: { hours_execution: number; hours_unproductive: number; tasks_executed: number };
+  totals: Omit<TrendPoint, "start">;
   max_period_days: number;
 }
 

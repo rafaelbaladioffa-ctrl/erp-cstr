@@ -6562,8 +6562,8 @@ button.sp-card:hover {
 .project-cell-link:hover .project-cell-name { color: var(--orange); text-decoration: underline; }
 
 /* Indicadores > Tendências */
-:root { --tnd-1: #2a78d6; --tnd-2: #eb6834; --tnd-3: #1baf7a; }
-[data-theme="dark"] { --tnd-1: #3987e5; --tnd-2: #d95926; --tnd-3: #199e70; }
+:root { --tnd-1: #2a78d6; --tnd-2: #eb6834; --tnd-3: #1baf7a; --tnd-4: #8a5cd6; }
+[data-theme="dark"] { --tnd-1: #3987e5; --tnd-2: #d95926; --tnd-3: #199e70; --tnd-4: #9b72e6; }
 .tnd-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-card); padding: 16px; margin-top: 12px; }
 .tnd-legend { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .tnd-legend-item { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
@@ -6571,6 +6571,11 @@ button.sp-card:hover {
 .tnd-legend-item.off .tnd-legend-name { text-decoration: line-through; }
 .tnd-legend-total { font-variant-numeric: tabular-nums; }
 .tnd-toggle { margin-left: auto; }
+.tnd-views { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.tnd-ref { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 5 4; }
+.tnd-ref-label { fill: var(--text-muted); font-size: 11px; }
+.tnd-bar { stroke: var(--white); stroke-width: 1; }
+.tnd-hover-band { fill: var(--text-faint); opacity: 0.12; }
 .tnd-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
 .tnd-chart-wrap { position: relative; }
 .tnd-svg { width: 100%; height: auto; display: block; }
