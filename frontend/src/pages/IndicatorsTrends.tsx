@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { clientsApi, indicatorsApi, regionsApi, sitesApi, type Client, type Site } from "../api/resources";
 import type { IndicatorsTrends, ManagementGroup, Region, TrendPoint } from "../api/types";
 import DateRangeCalendar, { type DateRange } from "../components/ui/DateRangeCalendar";
@@ -248,6 +248,18 @@ function TrendChart({
   p: Text;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  // Largura real do gráfico: o SVG é desenhado em pixels reais, para o texto manter o tamanho em qualquer tela.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(960);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const update = () => setW(Math.max(320, Math.round(el.clientWidth)));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const points = data.points;
   const visible = view.series.filter((k) => !hidden.has(k));
   const stacked = view.kind === "stack";
@@ -297,7 +309,7 @@ function TrendChart({
   const barW = Math.max(2, Math.min(40, slot * 0.7));
 
   return (
-    <div className="tnd-chart-wrap">
+    <div className="tnd-chart-wrap" ref={wrapRef}>
       <svg viewBox={`0 0 ${W} ${H}`} className="tnd-svg" role="img" aria-label={p.views[view.id]}>
         {ticks.map((t) => (
           <g key={t}>
