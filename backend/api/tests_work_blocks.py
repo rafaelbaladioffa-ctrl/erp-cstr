@@ -88,7 +88,10 @@ class WorkBlockTests(TestCase):
             code=activity_code, name=activity_code, category="INSTALLATION", default_unit="CABLE"
         )
         template, _ = TaskTemplate.objects.get_or_create(code="TST-BLK-TPL", defaults={"name": "Template", "category": "TEST"})
-        step, _ = TaskTemplateStep.objects.get_or_create(task_template=template, activity=activity, defaults={"step_order": 10})
+        step, _ = TaskTemplateStep.objects.get_or_create(
+            task_template=template, activity=activity,
+            defaults={"step_order": 10 + TaskTemplateStep.objects.filter(task_template=template).count()},
+        )
         item = ScopeItem.objects.create(
             raw_text=f"item {ProjectTask.objects.count()}", item_type="CABLE", cable_family=cable_family, quantity=quantity, length_m=length_m
         )
