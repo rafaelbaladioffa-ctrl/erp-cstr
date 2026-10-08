@@ -7001,7 +7001,7 @@ class OperationsReportsV2Tests(TestCase):
         data = self.get()
         row = data["activity_productivity"][0]
         self.assertEqual(row["executions_total"], 2)
-        self.assertEqual(row["excluded"], {"untracked": 1, "partial_or_blocked": 1, "no_quantity": 0})
+        self.assertEqual(row["excluded"], {"untracked": 1, "partial_or_blocked": 1, "no_quantity": 0, "implausible": 0})
         self.assertEqual(data["activity_excluded_no_catalog"], 1)
 
     # --- Qualidade do dado, validações e log -----------------------------
