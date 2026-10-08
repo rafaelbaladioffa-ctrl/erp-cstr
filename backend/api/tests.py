@@ -7255,3 +7255,55 @@ class IndicatorsTrendsTests(TestCase):
         api = APIClient()
         api.force_authenticate(user=plain)
         self.assertEqual(api.get("/api/indicators/trends/").status_code, 403)
+
+    # --- Comparativos, fluxo de tarefas, qualidade ---------------------------------
+
+    def test_breakdown_by_dimension(self):
+        for dimension, expected in (("site", {"Site A", "Site B"}), ("client", {"Cliente Tend A", "Cliente Tend B"}), ("region", {"Sudeste", "Sul"})):
+            response = self.client_api.get(
+                "/api/indicators/trends/breakdown/",
+                {"date_from": str(self.day), "date_to": str(self.day), "group": "day", "dimension": dimension},
+            )
+            self.assertEqual(response.status_code, 200, response.content)
+            labels = {g["label"] for g in response.json()["groups"]}
+            self.assertEqual(labels, expected)
+        technicians = self.client_api.get(
+            "/api/indicators/trends/breakdown/",
+            {"date_from": str(self.day), "date_to": str(self.day), "dimension": "technician"},
+        ).json()["groups"]
+        self.assertEqual({g["label"] for g in technicians}, {"Técnico A", "Técnico B"})
+
+    def test_breakdown_respects_filters_and_validates_dimension(self):
+        data = self.client_api.get(
+            "/api/indicators/trends/breakdown/",
+            {"date_from": str(self.day), "date_to": str(self.day), "dimension": "site", "client": self.client_a.pk},
+        ).json()
+        self.assertEqual([g["label"] for g in data["groups"]], ["Site A"])
+        self.assertEqual(self.client_api.get("/api/indicators/trends/breakdown/", {"dimension": "x"}).status_code, 400)
+
+    def test_production_flow_quality_and_filters(self):
+        project = Project.objects.create(company=self.company, name="Projeto Tend", site=self.site_a)
+        done = ProjectTask.objects.create(
+            project=project, custom_name="Concluída", order=1, status=ProjectTask.STATUS_COMPLETED,
+            actual_start=self.at(9), actual_end=self.at(11), actual_hours=Decimal("2"), estimated_hours=Decimal("3"),
+            planned_end=self.at(11),
+        )
+        ProjectTaskAssignment.objects.create(
+            project_task=done, collaborator=self.tech_a, status=ProjectTask.STATUS_COMPLETED,
+            assignment_start=self.at(9), assignment_end=self.at(11), actual_hours=Decimal("2"),
+        )
+        ProjectTask.objects.create(project=project, custom_name="Aberta", order=2)
+        query = {"date_from": str(self.day), "date_to": str(self.day), "group": "day"}
+        data = self.client_api.get("/api/indicators/trends/production/", query).json()
+        flow = data["flow"][0]
+        self.assertEqual(flow["tasks_completed"], 1)
+        self.assertEqual(flow["tasks_planned"], 1)
+        self.assertEqual((flow["hours_estimated"], flow["hours_real"]), (3.0, 2.0))
+        self.assertGreaterEqual(flow["backlog"], 1)
+        self.assertEqual(data["quality"][0]["assignments"], 1)
+        # Presenças sem Fim de Expediente contam como dia incompleto; aqui ambos terminaram em Fim de Expediente.
+        self.assertEqual(data["quality"][0]["incomplete_days"], 0)
+        other = self.client_api.get("/api/indicators/trends/production/", {**query, "site": self.site_b.pk}).json()
+        self.assertEqual(other["flow"][0]["tasks_completed"], 0)
+        none = self.client_api.get("/api/indicators/trends/production/", {**query, "client": self.client_a.pk, "region": self.region_2.pk}).json()
+        self.assertEqual(none["flow"][0]["tasks_completed"], 0)
