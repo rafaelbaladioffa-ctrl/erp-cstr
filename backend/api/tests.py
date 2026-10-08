@@ -7235,7 +7235,9 @@ class IndicatorsTrendsTests(TestCase):
 
     def test_filters_combine_with_and(self):
         data = self.trends(client=self.client_a.pk, region=self.region_2.pk)
-        self.assertEqual(data["totals"], {"hours_execution": 0.0, "hours_unproductive": 0.0, "tasks_executed": 0})
+        totals = data["totals"]
+        self.assertEqual((totals["hours_execution"], totals["hours_unproductive"], totals["tasks_executed"]), (0.0, 0.0, 0))
+        self.assertIsNone(totals["utilization_pct"])
         self.assertEqual(len(data["points"]), 1)
 
     def test_multiple_values_are_accepted(self):
