@@ -6633,3 +6633,8 @@ button.sp-card:hover {
 
 .tnd-controls .rpt-preset { padding: 2px 8px; font-size: 12px; }
 .tnd-legend-item { font-size: 12px; }
+.tnd-card.away { display: none; }
+.tnd-card.expanded { grid-column: 1 / -1; grid-row: 1 / -1; }
+.tnd-expand { margin-left: auto; order: 99; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; }
+.tnd-expand:hover { color: var(--text); background: var(--bg); }
+@media (max-width: 1099px) { .tnd-expand { display: none; } }

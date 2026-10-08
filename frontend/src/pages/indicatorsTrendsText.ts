@@ -43,6 +43,8 @@ export type Text = {
   tentarNovamente: string;
   vazio: string;
   ocultar: string;
+  expandir: string;
+  recolher: string;
 };
 
 export const TEXT: Record<"pt-BR" | "en-US" | "es-ES", Text> = {
@@ -134,6 +136,8 @@ export const TEXT: Record<"pt-BR" | "en-US" | "es-ES", Text> = {
     tentarNovamente: "Tentar novamente",
     vazio: "Sem dados para os filtros e o período escolhidos.",
     ocultar: "Clique para ocultar/mostrar a série",
+    expandir: "Expandir para a tela inteira",
+    recolher: "Voltar ao painel com os 4 gráficos",
   },
   "en-US": {
     eyebrow: "Indicators",
@@ -223,6 +227,8 @@ export const TEXT: Record<"pt-BR" | "en-US" | "es-ES", Text> = {
     tentarNovamente: "Try again",
     vazio: "No data for the chosen filters and period.",
     ocultar: "Click to hide/show the series",
+    expandir: "Expand to full screen",
+    recolher: "Back to the 4-chart panel",
   },
   "es-ES": {
     eyebrow: "Indicadores",
@@ -312,5 +318,7 @@ export const TEXT: Record<"pt-BR" | "en-US" | "es-ES", Text> = {
     tentarNovamente: "Reintentar",
     vazio: "Sin datos para los filtros y el período elegidos.",
     ocultar: "Clic para ocultar/mostrar la serie",
+    expandir: "Expandir a pantalla completa",
+    recolher: "Volver al panel con los 4 gráficos",
   },
 };

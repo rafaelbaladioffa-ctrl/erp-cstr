@@ -376,10 +376,13 @@ interface SectionProps {
   range: DateRange;
   p: Text;
   locale: string;
+  expanded: boolean;
+  hidden: boolean;
+  onToggleExpand: () => void;
 }
 
 /** Bloco de gráficos de um segmento (Operação, Produção, Comparativos ou Qualidade), com seus próprios subgráficos. */
-function TrendSection({ segment, query, baseKey: sharedKey, range, p, locale }: SectionProps) {
+function TrendSection({ segment, query, baseKey: sharedKey, range, p, locale, expanded, hidden: collapsedAway, onToggleExpand }: SectionProps) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [table, setTable] = useState(false);
   const [viewId, setViewId] = useState<ViewId>(() => VIEWS.find((x) => x.segment === segment)!.id);
@@ -572,9 +575,19 @@ function TrendSection({ segment, query, baseKey: sharedKey, range, p, locale }: 
   const viewsOfSegment = VIEWS.filter((x) => x.segment === segment);
 
   return (
-      <section className="tnd-card" aria-busy={loading}>
+      <section className={`tnd-card${expanded ? " expanded" : ""}${collapsedAway ? " away" : ""}`} aria-busy={loading}>
         <div className="tnd-head">
           <h2 className="tnd-section-title">{p.segments[segment]}</h2>
+          <button
+            type="button"
+            className="tnd-expand"
+            onClick={onToggleExpand}
+            title={expanded ? p.recolher : p.expandir}
+            aria-label={expanded ? p.recolher : p.expandir}
+            aria-pressed={expanded}
+          >
+            <Icon name={expanded ? "close_fullscreen" : "open_in_full"} style={{ fontSize: 18 }} />
+          </button>
           <span className="tnd-info" title={p.notes[viewId]} aria-label={p.notes[viewId]} tabIndex={0}>
             <Icon name="info" style={{ fontSize: 16 }} />
           </span>
@@ -766,6 +779,13 @@ export default function IndicatorsTrendsPage() {
   }
 
   // A página ocupa exatamente a altura da tela (2 blocos em cima e 2 embaixo, sem rolagem).
+  const [expandedSeg, setExpandedSeg] = useState<Segment | null>(null);
+  useEffect(() => {
+    if (!expandedSeg) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setExpandedSeg(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expandedSeg]);
   const pageRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const fit = () => {
@@ -851,7 +871,18 @@ export default function IndicatorsTrendsPage() {
 
       <div className="tnd-grid2">
         {SEGMENTS.map((sg) => (
-          <TrendSection key={sg} segment={sg} query={query} baseKey={baseKey} range={range} p={p} locale={locale} />
+          <TrendSection
+            key={sg}
+            segment={sg}
+            query={query}
+            baseKey={baseKey}
+            range={range}
+            p={p}
+            locale={locale}
+            expanded={expandedSeg === sg}
+            hidden={expandedSeg !== null && expandedSeg !== sg}
+            onToggleExpand={() => setExpandedSeg((cur) => (cur === sg ? null : sg))}
+          />
         ))}
       </div>
     </div>
