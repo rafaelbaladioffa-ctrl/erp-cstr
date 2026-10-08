@@ -79,6 +79,60 @@ class WorkBlockTests(TestCase):
         a.refresh_from_db()
         self.assertEqual(a.status, ProjectTask.STATUS_COMPLETED)
 
+    def make_generated_task(self, activity_code, cable_family, quantity, length_m=None):
+        from master_data.models import (
+            Activity, GeneratedTask, ScopeItem, TaskTemplate, TaskTemplateStep,
+        )
+
+        activity = Activity.objects.filter(code=activity_code).first() or Activity.objects.create(
+            code=activity_code, name=activity_code, category="INSTALLATION", default_unit="CABLE"
+        )
+        template, _ = TaskTemplate.objects.get_or_create(code="TST-BLK-TPL", defaults={"name": "Template", "category": "TEST"})
+        step, _ = TaskTemplateStep.objects.get_or_create(task_template=template, activity=activity, defaults={"step_order": 10})
+        item = ScopeItem.objects.create(
+            raw_text=f"item {ProjectTask.objects.count()}", item_type="CABLE", cable_family=cable_family, quantity=quantity, length_m=length_m
+        )
+        generated = GeneratedTask.objects.create(
+            scope_item=item, task_template=template, task_template_step=step, activity=activity, step_order=10,
+            name=f"{activity_code} {quantity}", quantity=Decimal(quantity), unit="CABLE",
+        )
+        task = ProjectTask.objects.create(
+            project=self.project, custom_name=generated.name, order=ProjectTask.objects.count() + 1, generated_task=generated,
+        )
+        ProjectTaskAssignment.objects.create(project_task=task, collaborator=self.tech)
+        return task
+
+    def test_block_with_two_activity_types_is_refused(self):
+        from master_data.models import CableFamily
+
+        family = CableFamily.objects.create(code="TST-BLK-F", name="Família teste", medium="COPPER", connector_a="RJ45", connector_b="RJ45")
+        labels = self.make_generated_task("CAB-LABEL", family, 4)
+        crimp = self.make_generated_task("CAB-CRIMP", family, 4)
+
+        response = self.block([labels, crimp], (8, 0), (10, 0))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("mistura tipos de atividade", response.data["detail"])
+        self.assertEqual(self.assignment(labels).status, ProjectTask.STATUS_NOT_STARTED)
+        # cada tipo no seu horário funciona
+        self.assertEqual(self.block([labels], (8, 0), (9, 0)).status_code, 200)
+        self.assertEqual(self.block([crimp], (9, 0), (10, 0)).status_code, 200)
+        self.assertEqual(float(self.assignment(labels).actual_hours), 1.0)
+        self.assertEqual(float(self.assignment(crimp).actual_hours), 1.0)
+
+    def test_same_activity_time_follows_the_real_effort_in_labels(self):
+        from master_data.models import CableFamily
+
+        utp = CableFamily.objects.create(code="TST-BLK-UTP", name="UTP teste", medium="COPPER", connector_a="RJ45", connector_b="RJ45")
+        fiber = CableFamily.objects.create(code="TST-BLK-36F", name="36F teste", medium="FIBER", connector_a="LC", connector_b="LC", fiber_count=36)
+        small = self.make_generated_task("CAB-LABEL", utp, 1)    # 1 cabo × 2 labels = 2
+        big = self.make_generated_task("CAB-LABEL", fiber, 1)    # 1 cabo × 36 labels = 36
+
+        self.block([small, big], (8, 0), (11, 48))  # 228 min: 2/38 e 36/38 do tempo
+
+        self.assertEqual(round(float(self.assignment(small).actual_hours), 2), 0.2)
+        self.assertEqual(round(float(self.assignment(big).actual_hours), 2), 3.6)
+
     def test_estimated_hours_are_the_preferred_weight_then_equal_split(self):
         x, y = self.make_task("X", 10, estimated=1), self.make_task("Y", 10, estimated=3)
         self.block([x, y], (8, 0), (12, 0))

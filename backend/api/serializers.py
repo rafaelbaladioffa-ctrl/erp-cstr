@@ -1682,6 +1682,7 @@ class ProjectTaskSerializer(ClientScopedRelationsMixin, serializers.ModelSeriali
     )
     task_template_code = serializers.CharField(source="generated_task.task_template.code", read_only=True, default=None)
     activity_code = serializers.CharField(source="generated_task.activity.code", read_only=True, default=None)
+    activity_name = serializers.CharField(source="generated_task.activity.name", read_only=True, default=None)
     path_code = serializers.SerializerMethodField()
     expansion_key = serializers.CharField(source="generated_task.expansion_key", read_only=True, default=None)
     step_order = serializers.IntegerField(source="generated_task.step_order", read_only=True, default=None)
@@ -1728,6 +1729,7 @@ class ProjectTaskSerializer(ClientScopedRelationsMixin, serializers.ModelSeriali
             "sow_import_code",
             "task_template_code",
             "activity_code",
+            "activity_name",
             "path_code",
             "expansion_key",
             "step_order",

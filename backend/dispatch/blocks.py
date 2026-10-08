@@ -35,12 +35,32 @@ class BlockError(AdjustmentError):
     """Regra do bloco violada; a mensagem é mostrada ao técnico."""
 
 
+def _work_units(task):
+    """Esforço da tarefa na unidade da atividade: labels (cabos × labels por cabo) em "Aplicar labels";
+    metros (cabos × comprimento) quando o item tem comprimento; senão a quantidade planejada."""
+    from api.reports import LABEL_ACTIVITY_CODE, _activity_quantity, labels_per_cable
+
+    generated = task.generated_task
+    if generated is None:
+        return 0.0
+    quantity = _activity_quantity(task, generated) or 0.0
+    if generated.activity.code == LABEL_ACTIVITY_CODE:
+        return quantity * labels_per_cable(generated.scope_item.cable_family)
+    length_m = generated.scope_item.length_m
+    if length_m and float(length_m) > 0:
+        return quantity * float(length_m)
+    return quantity
+
+
 def _weight_basis(tasks):
-    """Peso de cada tarefa na repartição do tempo: horas estimadas, se todas têm; senão a
-    quantidade planejada, se todas têm; senão igual."""
+    """Peso de cada tarefa na repartição do tempo: horas estimadas, se todas têm; senão o esforço
+    na unidade da atividade (labels, metros), se todas têm; senão a quantidade planejada; senão igual."""
     estimated = [float(t.estimated_hours or 0) for t in tasks]
     if all(value > 0 for value in estimated):
         return estimated
+    units = [_work_units(t) for t in tasks]
+    if all(value > 0 for value in units):
+        return units
     quantities = []
     for task in tasks:
         generated = task.generated_task
@@ -114,6 +134,15 @@ def register_work_block(*, collaborator, entries, start, end):
     tasks = [entry["task"] for entry in entries]
     if len({t.pk for t in tasks}) != len(tasks):
         raise BlockError("Há tarefas repetidas no bloco.")
+    # Um tipo de atividade por bloco: o técnico informa o horário de cada tipo, então o tempo por
+    # tipo (e a taxa por hora) fica exato em vez de ser repartido por aproximação entre tipos.
+    activities = {}
+    for task in tasks:
+        generated = task.generated_task
+        activities[generated.activity_id if generated else None] = generated.activity.name if generated else "Sem atividade do catálogo"
+    if len(activities) > 1:
+        names = " e ".join(sorted(activities.values()))
+        raise BlockError(f"O bloco mistura tipos de atividade ({names}). Registre um bloco para cada tipo, com o horário de cada um.")
     assignments = {
         a.project_task_id: a
         for a in ProjectTaskAssignment.objects.select_for_update().filter(collaborator=collaborator, project_task__in=tasks)

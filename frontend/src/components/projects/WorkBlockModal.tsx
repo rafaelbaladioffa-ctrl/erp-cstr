@@ -19,6 +19,8 @@ const TEXT = {
     cancel: "Cancelar",
     error: "Não foi possível registrar o bloco.",
     hint: "Marque \"Concluí\" nas que terminou; as demais continuam abertas e o próximo bloco segue de onde parou.",
+    oneType: "Um bloco por tipo de atividade: se fez mais de um tipo, registre um bloco para cada, com o horário de cada um.",
+    otherType: "Outro tipo de atividade — registre em outro bloco",
   },
   "en-US": {
     title: "Log a work block",
@@ -34,6 +36,8 @@ const TEXT = {
     cancel: "Cancel",
     error: "Could not log the block.",
     hint: "Tick \"Finished\" on the ones you completed; the others stay open and the next block continues from there.",
+    oneType: "One block per activity type: if you did more than one type, log a block for each, with its own time.",
+    otherType: "Different activity type — log it in another block",
   },
   "es-ES": {
     title: "Registrar bloque de trabajo",
@@ -49,6 +53,8 @@ const TEXT = {
     cancel: "Cancelar",
     error: "No se pudo registrar el bloque.",
     hint: "Marque \"Terminé\" en las que concluyó; las demás siguen abiertas y el próximo bloque continúa desde ahí.",
+    oneType: "Un bloque por tipo de actividad: si hizo más de un tipo, registre un bloque para cada uno, con su horario.",
+    otherType: "Otro tipo de actividad — regístrelo en otro bloque",
   },
 } as const;
 
@@ -108,6 +114,9 @@ export default function WorkBlockModal({
   }, []);
 
   const chosen = useMemo(() => tasks.filter((task) => selected[task.id]), [tasks, selected]);
+  // Tipo de atividade já escolhido: as tarefas de outro tipo ficam bloqueadas neste bloco.
+  const activeType = chosen.length > 0 ? (chosen[0].activity_code ?? "") : null;
+  const typeOf = (task: ProjectTask) => task.activity_code ?? "";
   const minutes = start && end ? minutesBetween(start, end) : 0;
   const canSave = chosen.length > 0 && minutes > 0 && !saving;
 
@@ -156,10 +165,17 @@ export default function WorkBlockModal({
             <input
               type="checkbox"
               checked={!!selected[task.id]}
+              disabled={activeType !== null && typeOf(task) !== activeType}
               onChange={(e) => setSelected((prev) => ({ ...prev, [task.id]: e.target.checked }))}
               aria-label={task.task_name}
             />
-            <span style={{ flex: 1, minWidth: 0 }}>{task.task_name}</span>
+            <span
+              style={{ flex: 1, minWidth: 0, opacity: activeType !== null && typeOf(task) !== activeType ? 0.45 : 1 }}
+              title={activeType !== null && typeOf(task) !== activeType ? t.otherType : undefined}
+            >
+              {task.task_name}
+              {task.activity_name && <span style={{ color: "var(--text-muted)" }}> · {task.activity_name}</span>}
+            </span>
             {selected[task.id] && (
               <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
                 <input
@@ -173,6 +189,7 @@ export default function WorkBlockModal({
           </div>
         ))}
       </div>
+      <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>{t.oneType}</p>
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>{t.hint}</p>
 
       {chosen.length > 0 && minutes > 0 && (

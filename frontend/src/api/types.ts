@@ -837,6 +837,7 @@ export interface ProjectTask {
   sow_import_code: string | null;
   task_template_code: string | null;
   activity_code: string | null;
+  activity_name?: string | null;
   path_code: string | null;
   expansion_key: string | null;
   step_order: number | null;
