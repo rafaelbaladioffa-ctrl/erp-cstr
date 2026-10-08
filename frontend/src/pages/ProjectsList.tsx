@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FilterTh, useColumnFilters } from "../components/ui/ColumnFilter";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { projectsApi } from "../api/resources";
 import type { Project } from "../api/types";
 import ProjectFormModal from "../components/projects/ProjectFormModal";
@@ -423,7 +423,6 @@ function KanbanView({
 // ── Main component ───────────────────────────────────────────────────────────
 export default function ProjectsList() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const { openTab } = useTabs();
   const lp = usePageText(TEXT);
   const { locale } = useI18n();
@@ -432,8 +431,8 @@ export default function ProjectsList() {
 
   function handleOpenProjectTab(p: Project) {
     const path = `/projetos/${p.id}`;
+    // abre a guia e permanece na tela atual
     openTab({ id: path, label: p.name || p.code || `Projeto ${p.id}`, path, icon: "folder" });
-    navigate(path);
   }
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);

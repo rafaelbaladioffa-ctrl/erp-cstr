@@ -528,8 +528,8 @@ export default function Layout() {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
+                            // abre a guia e permanece na tela atual
                             openTab({ id: item.to, label: item.label, path: item.to, icon: item.icon });
-                            navigate(item.to);
                           }}
                         >
                           <Icon name="add" style={{ fontSize: 13 }} />
