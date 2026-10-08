@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -305,6 +306,26 @@ class ProjectTests(TestCase):
         self.assertEqual(project_task.planned_end, timezone.make_aware(datetime(2026, 8, 17, 17, 45)))
         self.assertEqual(str(project_task.estimated_hours), "8.50")
 
+    def test_overview_does_not_count_planned_dates_as_worked_hours(self):
+        admin_user = User.objects.create_superuser(username="no_hours_admin", email="no_hours@example.com", password="test-password")
+        company = Company.objects.create(legal_name="CONSULTIMER BRASIL LTDA")
+        project = Project.objects.create(company=company, name="Projeto sem apontamento")
+        ProjectTask.objects.create(
+            project=project,
+            task=Task.objects.create(name="Concluída sem apontamento"),
+            order=1,
+            status=ProjectTask.STATUS_COMPLETED,
+            planned_start=timezone.make_aware(datetime(2026, 8, 17, 8, 30)),
+            planned_end=timezone.make_aware(datetime(2026, 8, 17, 17, 45)),
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(f"/admin/projects/project/{project.pk}/overview/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "9h15min")  # as datas planejadas não viram horas trabalhadas
+        self.assertContains(response, "Horas Trabalhadas")
+
     def test_overview_calculates_worked_hours_from_completed_tasks(self):
         admin_user = User.objects.create_superuser(
             username="hours_admin",
@@ -322,6 +343,10 @@ class ProjectTests(TestCase):
             status=ProjectTask.STATUS_COMPLETED,
             planned_start=timezone.make_aware(datetime(2026, 8, 17, 8, 30)),
             planned_end=timezone.make_aware(datetime(2026, 8, 17, 17, 45)),
+            # Só apontamento real vale como hora trabalhada (o planejado nunca é fallback).
+            actual_start=timezone.make_aware(datetime(2026, 8, 17, 8, 30)),
+            actual_end=timezone.make_aware(datetime(2026, 8, 17, 17, 45)),
+            actual_hours=Decimal("9.25"),
         )
         collaborators = [
             make_collaborator(company, f"Responsável {number}")
