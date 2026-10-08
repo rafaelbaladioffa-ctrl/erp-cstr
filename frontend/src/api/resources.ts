@@ -22,6 +22,9 @@ import type {
   Notification,
   OperationsBoard,
   IndicatorsTrends,
+  TrendBreakdown,
+  TrendDimension,
+  TrendProduction,
   ManagementGroup,
   ManagementReport,
   OperationsReports,
@@ -581,6 +584,35 @@ export const indicatorsApi = {
         },
       })
       .then((r) => r.data),
+};
+
+export interface TrendQuery {
+  dateFrom: string;
+  dateTo: string;
+  group?: ManagementGroup;
+  site?: string;
+  client?: string;
+  region?: string;
+}
+
+function trendParams(q: TrendQuery) {
+  return {
+    date_from: q.dateFrom,
+    date_to: q.dateTo,
+    ...(q.group ? { group: q.group } : {}),
+    ...(q.site ? { site: q.site } : {}),
+    ...(q.client ? { client: q.client } : {}),
+    ...(q.region ? { region: q.region } : {}),
+  };
+}
+
+export const indicatorsExtraApi = {
+  breakdown: (q: TrendQuery, dimension: TrendDimension) =>
+    apiClient
+      .get<TrendBreakdown>("/indicators/trends/breakdown/", { params: { ...trendParams(q), dimension } })
+      .then((r) => r.data),
+  production: (q: TrendQuery) =>
+    apiClient.get<TrendProduction>("/indicators/trends/production/", { params: trendParams(q) }).then((r) => r.data),
 };
 
 export const botMessagesApi = {

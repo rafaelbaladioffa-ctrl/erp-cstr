@@ -1582,6 +1582,57 @@ export interface TrendPoint {
   utilization_pct: number | null;
 }
 
+export type TrendDimension = "site" | "client" | "region" | "technician";
+
+export interface TrendBreakdownGroup {
+  label: string;
+  other: boolean;
+  totals: Omit<TrendPoint, "start">;
+  points: TrendPoint[];
+}
+
+export interface TrendBreakdown {
+  period: { date_from: string; date_to: string; days: number; group: ManagementGroup };
+  dimension: TrendDimension;
+  starts: string[];
+  groups: TrendBreakdownGroup[];
+}
+
+export interface TrendFlowPoint {
+  start: string;
+  tasks_created: number;
+  tasks_completed: number;
+  tasks_planned: number;
+  backlog: number;
+  hours_estimated: number;
+  hours_real: number;
+}
+
+export interface TrendActivity {
+  code: string;
+  name: string;
+  unit: string;
+  executions: number;
+  rate: number | null;
+  points: (number | null)[];
+}
+
+export interface TrendQualityPoint {
+  start: string;
+  assignments: number;
+  no_hours: number;
+  batch: number;
+  suspect_pct: number | null;
+  incomplete_days: number;
+}
+
+export interface TrendProduction {
+  period: { date_from: string; date_to: string; days: number; group: ManagementGroup };
+  flow: TrendFlowPoint[];
+  activities: TrendActivity[];
+  quality: TrendQualityPoint[];
+}
+
 export interface IndicatorsTrends {
   period: { date_from: string; date_to: string; days: number; group: ManagementGroup };
   points: TrendPoint[];
