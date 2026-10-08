@@ -1010,6 +1010,15 @@ export interface ReportsToday {
   technicians_over_idle_limit: number;
 }
 
+export interface ReportsTechnicianQuality {
+  assignments: number;
+  no_hours: number;
+  batch: number;
+  absurd: number;
+  suspect_pct: number | null;
+  hh_to_execution: number | null;
+}
+
 export interface ReportsTechnician {
   id: number;
   name: string;
@@ -1022,6 +1031,9 @@ export interface ReportsTechnician {
   /** @deprecated v1 — usar productive_hours. */
   worked_hours?: number;
   man_hours: number;
+  man_hours_gross?: number;
+  overlap_hours?: number;
+  quality?: ReportsTechnicianQuality;
   journey_hours: number;
   utilization_pct: number | null;
   utilization_band: UtilizationBand | null;

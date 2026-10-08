@@ -254,6 +254,17 @@ const TEXT = {
     dadosDescartada: "Descartada",
     exImplausivel: "Valor absurdo (descartado)",
     semProducao: "Sem produção física no período.",
+    cardQualidade: "Qualidade do apontamento",
+    hintQualidade: "Mostra por que o HH de um técnico pode estar errado. Em lote = tarefa apontada com menos de 1 min. Valor absurdo = taxa por hora acima do limite da atividade. Sobreposição = tempo de tarefas feitas ao mesmo tempo, que o HH conta uma vez só. HH ÷ execução bem acima de 1 indica apontamento longo demais ou sobreposto.",
+    qConcluidas: "Concluídas",
+    qSemApont: "Sem apontamento",
+    qLote: "Em lote",
+    qAbsurdo: "Valor absurdo",
+    qSobreposicao: "Sobreposição",
+    qHHExec: "HH ÷ execução",
+    qSuspeito: "Suspeito",
+    qSemDados: "Sem tarefas concluídas no período.",
+    csvQualidade: "qualidade-apontamento",
     cardStatusHoras: "Horas por status",
     totalLabel: "Total",
     hintStatusHoras: "Tempo em cada status de presença, por técnico, no período. Produtivo = execução e apoio; improdutivo = disponível sem tarefa e bloqueio externo; neutro = intervalos do técnico, que não entram na conta.",
@@ -500,6 +511,17 @@ const TEXT = {
     dadosDescartada: "Discarded",
     exImplausivel: "Absurd value (discarded)",
     semProducao: "No physical output in the period.",
+    cardQualidade: "Time-logging quality",
+    hintQualidade: "Shows why a technician's MH may be wrong. Batch = task logged with under 1 min. Absurd value = hourly rate above the activity limit. Overlap = time of tasks done at the same time, which MH counts only once. MH ÷ in-progress well above 1 points to logging that is too long or overlapping.",
+    qConcluidas: "Completed",
+    qSemApont: "No time logged",
+    qLote: "Batch",
+    qAbsurdo: "Absurd value",
+    qSobreposicao: "Overlap",
+    qHHExec: "MH ÷ in progress",
+    qSuspeito: "Suspect",
+    qSemDados: "No completed tasks in the period.",
+    csvQualidade: "logging-quality",
     cardStatusHoras: "Hours by status",
     totalLabel: "Total",
     hintStatusHoras: "Time in each presence status, per technician, in the period. Productive = execution and support; non-productive = available without a task and external blocks; neutral = the technician's breaks, which are not counted.",
@@ -739,6 +761,17 @@ const TEXT = {
     dadosDescartada: "Descartada",
     exImplausivel: "Valor absurdo (descartado)",
     semProducao: "Sin producción física en el período.",
+    cardQualidade: "Calidad del registro",
+    hintQualidade: "Muestra por qué el HH de un técnico puede estar errado. En lote = tarea registrada con menos de 1 min. Valor absurdo = tasa por hora sobre el límite de la actividad. Superposición = tiempo de tareas hechas a la vez, que el HH cuenta una sola vez. HH ÷ ejecución muy por encima de 1 indica registro demasiado largo o superpuesto.",
+    qConcluidas: "Concluidas",
+    qSemApont: "Sin registro",
+    qLote: "En lote",
+    qAbsurdo: "Valor absurdo",
+    qSobreposicao: "Superposición",
+    qHHExec: "HH ÷ ejecución",
+    qSuspeito: "Sospechoso",
+    qSemDados: "Sin tareas concluidas en el período.",
+    csvQualidade: "calidad-registro",
     cardStatusHoras: "Horas por estado",
     totalLabel: "Total",
     hintStatusHoras: "Tiempo en cada estado de presencia, por técnico, en el período. Productivo = ejecución y apoyo; improductivo = disponible sin tarea y bloqueo externo; neutro = pausas del técnico, que no se cuentan.",
@@ -2307,6 +2340,91 @@ export default function OperationsReportsPage() {
     }));
   }
 
+  function qualityRows() {
+    return sortedTechsAll().filter((t) => (t.quality?.assignments ?? 0) > 0);
+  }
+
+  function exportQuality() {
+    const header: CsvCell[] = [p.thTecnico, p.qConcluidas, p.qSemApont, p.qLote, p.qAbsurdo, p.qSobreposicao, p.qHHExec, p.qSuspeito];
+    const rows: CsvCell[][] = qualityRows().map((t) => [
+      t.name,
+      t.quality?.assignments ?? 0,
+      t.quality?.no_hours ?? 0,
+      t.quality?.batch ?? 0,
+      t.quality?.absurd ?? 0,
+      t.overlap_hours ?? 0,
+      t.quality?.hh_to_execution ?? null,
+      t.quality?.suspect_pct ?? null,
+    ]);
+    downloadCsv(`${p.csvQualidade}_${csvSuffix}.csv`, [header, ...rows], locale);
+  }
+
+  function renderQuality() {
+    if (!stats) return null;
+    const rows = qualityRows();
+    return (
+      <div className="ops-pool-card rpt-card">
+        <div className="ops-card-head rpt-card-head-wrap">
+          <div>
+            <div className="ops-card-title">{p.cardQualidade}</div>
+            <div className="ops-card-hint">{p.hintQualidade}</div>
+          </div>
+          <button type="button" className="btn btn-outline btn-sm" onClick={exportQuality} disabled={rows.length === 0}>
+            <Icon name="download" style={{ fontSize: 16 }} />
+            {p.exportarCsv}
+          </button>
+        </div>
+        {rows.length === 0 ? (
+          <div className="table-empty rpt-empty-block">{p.qSemDados}</div>
+        ) : (
+          <div className="table-wrap rpt-scroll">
+            <table className="table rpt-table-dense">
+              <thead>
+                <tr>
+                  <th className="rpt-sticky-col">{p.thTecnico}</th>
+                  <th className="rpt-num">{p.qConcluidas}</th>
+                  <th className="rpt-num">{p.qSemApont}</th>
+                  <th className="rpt-num">{p.qLote}</th>
+                  <th className="rpt-num">{p.qAbsurdo}</th>
+                  <th className="rpt-num">{p.qSobreposicao}</th>
+                  <th className="rpt-num">{p.qHHExec}</th>
+                  <th className="rpt-num">{p.qSuspeito}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((t) => {
+                  const q = t.quality!;
+                  const ratioHigh = q.hh_to_execution !== null && q.hh_to_execution > 1.5;
+                  const suspect = q.suspect_pct ?? 0;
+                  const suspectColor = suspect >= 30 ? "var(--red)" : suspect >= 10 ? "var(--amber)" : "var(--green)";
+                  const dash = <span className="rpt-cell-muted">—</span>;
+                  return (
+                    <tr key={t.id}>
+                      <td className="rpt-sticky-col">
+                        <div className="rpt-strong">{t.name}</div>
+                      </td>
+                      <td className="rpt-num">{q.assignments}</td>
+                      <td className="rpt-num">{q.no_hours > 0 ? q.no_hours : dash}</td>
+                      <td className="rpt-num">{q.batch > 0 ? q.batch : dash}</td>
+                      <td className="rpt-num">{q.absurd > 0 ? q.absurd : dash}</td>
+                      <td className="rpt-num">{(t.overlap_hours ?? 0) > 0 ? formatDuration(t.overlap_hours ?? 0) : dash}</td>
+                      <td className="rpt-num" style={ratioHigh ? { color: "var(--red)", fontWeight: 600 } : undefined}>
+                        {q.hh_to_execution !== null ? `${nf(q.hh_to_execution, 1)}×` : dash}
+                      </td>
+                      <td className="rpt-num" style={{ color: suspectColor, fontWeight: 600 }}>
+                        {q.suspect_pct !== null ? `${nf(q.suspect_pct, 0)}%` : dash}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function renderProduction() {
     if (!stats) return null;
     const cols = productionColumns();
@@ -2751,6 +2869,7 @@ export default function OperationsReportsPage() {
             {renderTechTable()}
             {renderStatusHours()}
             {renderProduction()}
+            {renderQuality()}
             {renderUnproductive()}
             {renderActivities()}
           </>

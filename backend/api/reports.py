@@ -79,6 +79,7 @@ MAX_PLAUSIBLE_RATE_PER_HOUR = {
     "CERTIFY": 20,  # links certificados
 }
 MAX_PLAUSIBLE_METERS_PER_HOUR = 300  # atividades medidas em metros
+BATCH_MAX_HOURS = 1 / 60  # apontamento de menos de 1 min: tarefa colada/lançada em lote
 
 
 def plausible_rate_limit(activity_code, unit):
@@ -295,6 +296,39 @@ def _execution_rows(tasks):
     return rows
 
 
+def _quality(entry, overlap, absurd, man_hours, productive_hours):
+    """Qualidade do apontamento de um técnico: o que torna o HH dele suspeito."""
+    total = entry["completed_count"]
+    suspect = entry["untracked_count"] + entry["batch_count"] + absurd
+    return {
+        "assignments": total,
+        "no_hours": entry["untracked_count"],
+        "batch": entry["batch_count"],
+        "absurd": absurd,
+        "suspect_pct": _pct(min(suspect, total), total),
+        # HH acima do tempo em execução indica sobreposição ou apontamento longo demais.
+        "hh_to_execution": round(man_hours / productive_hours, 2) if productive_hours > 0 else None,
+    }
+
+
+def _overlap_hours(entry):
+    """Horas do técnico que se repetem entre tarefas executadas ao mesmo tempo: soma dos intervalos
+    de cada tarefa menos a união deles. O HH conta esse tempo uma vez só (o técnico é uma pessoa)."""
+    intervals = sorted(entry["intervals"])
+    union = 0.0
+    current_start = current_end = None
+    for start, end in intervals:
+        if current_end is not None and start <= current_end:
+            current_end = max(current_end, end)
+            continue
+        if current_end is not None:
+            union += (current_end - current_start).total_seconds()
+        current_start, current_end = start, end
+    if current_end is not None:
+        union += (current_end - current_start).total_seconds()
+    return max(0.0, entry["interval_hours"] - union / 3600)
+
+
 def parse_site_ids(value):
     """Filtro de site da Central de Operações: None/""/"all" = todos; um id ("12"), vários
     separados por vírgula ("12,15") ou uma lista. Devolve lista de ids ou None (sem filtro)."""
@@ -369,7 +403,15 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     def tech_entry(collaborator):
         return tech.setdefault(
             collaborator.id,
-            {"collaborator": collaborator, "man_hours": 0.0, "completed_count": 0, "untracked_count": 0},
+            {
+                "collaborator": collaborator,
+                "man_hours": 0.0,
+                "completed_count": 0,
+                "untracked_count": 0,
+                "batch_count": 0,
+                "intervals": [],  # [(início, fim)] de execução de cada tarefa concluída (sobreposição)
+                "interval_hours": 0.0,
+            },
         )
 
     for assignment in completed_assignments:
@@ -388,6 +430,14 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
             continue
         tracked_completed += 1
         entry["man_hours"] += hours
+        if 0 < hours < BATCH_MAX_HOURS:
+            entry["batch_count"] += 1
+        # Só entram na checagem de sobreposição os apontamentos cujo tempo vem dos intervalos reais
+        # (horas ajustadas pelo admin ou históricas não têm janela confiável).
+        intervals = assignment.working_intervals() if assignment.actual_hours is not None else []
+        if intervals:
+            entry["intervals"].extend(intervals)
+            entry["interval_hours"] += sum((end - start).total_seconds() for start, end in intervals) / 3600
         if hours > 0:
             key = (assignment.collaborator_id, _local_date(assignment.assignment_end))
             assignment_hours_by_day[key] = assignment_hours_by_day.get(key, 0.0) + hours
@@ -559,9 +609,17 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                 hours, TechnicianDailyPresence.STANDARD_WORKDAY_HOURS
             )
 
+    absurd_by_tech = {}
+    for r in execution_rows:
+        if r["discard_reason"].startswith("Valor absurdo"):
+            absurd_by_tech[r["collaborator_id"]] = absurd_by_tech.get(r["collaborator_id"], 0) + 1
+
     technicians = []
     for collaborator_id, entry in tech.items():
         collaborator = entry["collaborator"]
+        overlap = _overlap_hours(entry)
+        man_hours_raw = entry["man_hours"]
+        man_hours_net = max(0.0, man_hours_raw - overlap)
         journey = days_worked.get(collaborator_id, 0) * TechnicianDailyPresence.STANDARD_WORKDAY_HOURS
         productive_hours = round(productive.get(collaborator_id, 0.0), 2)
         utilization = _pct(productive_hours, journey)
@@ -576,7 +634,12 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
                 "site_name": ", ".join(s.name for s in collaborator.sites.all()) or "—",
                 "productive_hours": productive_hours,
                 "worked_hours": productive_hours,  # compatibilidade com o frontend v1
-                "man_hours": round(entry["man_hours"], 2),
+                "man_hours": round(man_hours_net, 2),
+                "man_hours_gross": round(man_hours_raw, 2),
+                "overlap_hours": round(overlap, 2),
+                "quality": _quality(
+                    entry, overlap, absurd_by_tech.get(collaborator_id, 0), man_hours_net, productive_hours
+                ),
                 "journey_hours": round(journey, 2),
                 "utilization_pct": utilization,
                 "utilization_band": utilization_band(utilization),

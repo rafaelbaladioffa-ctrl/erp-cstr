@@ -6860,6 +6860,29 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(management["kpis"]["current"]["man_hours"], 2.0)
         self.assertEqual(management["kpis"]["current"]["completed_count"], 1)
 
+    def test_hh_counts_overlapping_time_of_the_same_technician_once(self):
+        self.make_task(self.at(8), self.at(10), 2, [(self.tech_a, self.at(8), self.at(10), 2)])
+        self.make_task(self.at(9), self.at(11), 2, [(self.tech_a, self.at(9), self.at(11), 2)])
+        # Outro técnico trabalhando junto na mesma janela não é sobreposição: cada um é uma pessoa.
+        self.make_task(self.at(8), self.at(10), 2, [(self.tech_b, self.at(8), self.at(10), 2)])
+        data = self.get()
+        row_a = self.tech_row(data, self.tech_a)
+        self.assertEqual(row_a["man_hours_gross"], 4.0)
+        self.assertEqual(row_a["overlap_hours"], 1.0)
+        self.assertEqual(row_a["man_hours"], 3.0)
+        self.assertEqual(self.tech_row(data, self.tech_b)["man_hours"], 2.0)
+        self.assertEqual(data["stats"]["man_hours_total"], 5.0)
+
+    def test_quality_counts_batch_and_untracked_assignments(self):
+        self.make_task(self.at(8), self.at(10), 2, [(self.tech_a, self.at(8), self.at(10), 2)])
+        # 36 s apontados: tarefa colada/lançada em lote.
+        self.make_task(self.at(11), self.at(11, 1), 0.01, [(self.tech_a, self.at(11), self.at(11, 1), 0.01)])
+        quality = self.tech_row(self.get(), self.tech_a)["quality"]
+        self.assertEqual(quality["assignments"], 2)
+        self.assertEqual(quality["batch"], 1)
+        self.assertEqual(quality["no_hours"], 0)
+        self.assertEqual(quality["suspect_pct"], 50)
+
     def test_internal_idle_limit_is_30_minutes_per_day(self):
         P = self.Presence
         self.check_in(self.tech_a, [
