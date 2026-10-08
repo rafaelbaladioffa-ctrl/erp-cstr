@@ -7292,7 +7292,8 @@ class IndicatorsTrendsTests(TestCase):
             project_task=done, collaborator=self.tech_a, status=ProjectTask.STATUS_COMPLETED,
             assignment_start=self.at(9), assignment_end=self.at(11), actual_hours=Decimal("2"),
         )
-        ProjectTask.objects.create(project=project, custom_name="Aberta", order=2)
+        open_task = ProjectTask.objects.create(project=project, custom_name="Aberta", order=2)
+        ProjectTask.objects.filter(pk__in=[done.pk, open_task.pk]).update(created_at=self.at(8, day=self.day - timedelta(days=1)))
         query = {"date_from": str(self.day), "date_to": str(self.day), "group": "day"}
         data = self.client_api.get("/api/indicators/trends/production/", query).json()
         flow = data["flow"][0]

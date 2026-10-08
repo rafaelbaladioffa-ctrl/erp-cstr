@@ -143,7 +143,7 @@ def _dimension_label(collaborator, dimension):
     if dimension == "site":
         return site.name or site.code or f"Site {site.pk}"
     if dimension == "client":
-        return site.client.name if site.client_id else "Sem cliente"
+        return str(site.client) if site.client_id else "Sem cliente"
     return site.region.name if site.region_id else "Sem regional"
 
 
