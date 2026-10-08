@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   clientsApi,
   indicatorsApi,
@@ -80,7 +80,7 @@ const MEASURE_UNIT: Record<Measure, string> = {
 const DIMENSIONS: Exclude<TrendDimension, "technician">[] = ["site", "client", "region"];
 
 const W_MIN = 320;
-const H = 340;
+const H_MIN = 160;
 const M = { l: 52, r: 56, t: 16, b: 34 };
 
 interface ChartSeries {
@@ -124,10 +124,14 @@ function TrendChart({ model, hidden, locale }: { model: ChartModel; hidden: Set<
   const [hover, setHover] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(960);
+  const [H, setH] = useState(300);
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const update = () => setW(Math.max(W_MIN, Math.round(el.clientWidth)));
+    const update = () => {
+      setW(Math.max(W_MIN, Math.round(el.clientWidth)));
+      setH(Math.max(H_MIN, Math.round(el.clientHeight)));
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -190,7 +194,7 @@ function TrendChart({ model, hidden, locale }: { model: ChartModel; hidden: Set<
 
   return (
     <div className="tnd-chart-wrap" ref={wrapRef}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="tnd-svg" role="img" aria-label={model.title}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="tnd-svg" role="img" aria-label={model.title}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={M.l} x2={W - M.r} y1={y(t)} y2={y(t)} className="tnd-grid" />
@@ -569,7 +573,25 @@ function TrendSection({ segment, query, baseKey: sharedKey, range, p, locale }: 
 
   return (
       <section className="tnd-card" aria-busy={loading}>
-        <h2 className="tnd-section-title">{p.segments[segment]}</h2>
+        <div className="tnd-head">
+          <h2 className="tnd-section-title">{p.segments[segment]}</h2>
+          <span className="tnd-info" title={p.notes[viewId]} aria-label={p.notes[viewId]} tabIndex={0}>
+            <Icon name="info" style={{ fontSize: 16 }} />
+          </span>
+          <div className="tnd-views" role="group" aria-label={p.segments[segment]}>
+            {viewsOfSegment.map((vw) => (
+              <button
+                key={vw.id}
+                type="button"
+                className={`tnd-view${viewId === vw.id ? " active" : ""}`}
+                aria-pressed={viewId === vw.id}
+                onClick={() => selectView(vw.id)}
+              >
+                {p.views[vw.id]}
+              </button>
+            ))}
+          </div>
+        </div>
         {error !== null && !loading && (
           <div className="rpt-notice rpt-notice--error rpt-notice--block" role="alert">
             <Icon name="error" style={{ fontSize: 18 }} />
@@ -585,19 +607,6 @@ function TrendSection({ segment, query, baseKey: sharedKey, range, p, locale }: 
             </div>
           </div>
         )}
-        <div className="tnd-views" role="group" aria-label={p.segments[segment]}>
-          {viewsOfSegment.map((vw) => (
-            <button
-              key={vw.id}
-              type="button"
-              className={`tnd-view${viewId === vw.id ? " active" : ""}`}
-              aria-pressed={viewId === vw.id}
-              onClick={() => selectView(vw.id)}
-            >
-              {p.views[vw.id]}
-            </button>
-          ))}
-        </div>
 
         {(viewId === "by" || viewId === "previous") && (
           <div className="tnd-controls">
@@ -719,7 +728,6 @@ function TrendSection({ segment, query, baseKey: sharedKey, range, p, locale }: 
             </table>
           </div>
         )}
-        <p className="tnd-note">{p.notes[viewId]}</p>
       </section>
   );
 }
@@ -757,8 +765,26 @@ export default function IndicatorsTrendsPage() {
     setRange(next ?? { start: brazilDaysAgoIso(29), end: brazilTodayIso() });
   }
 
+  // A página ocupa exatamente a altura da tela (2 blocos em cima e 2 embaixo, sem rolagem).
+  const pageRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = pageRef.current;
+      if (!el) return;
+      if (window.innerWidth < 1100) {
+        el.style.height = "";
+        return;
+      }
+      const top = el.getBoundingClientRect().top;
+      el.style.height = `${Math.max(620, window.innerHeight - top - 12)}px`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+
   return (
-    <div className="tnd-page">
+    <div className="tnd-page" ref={pageRef}>
       <PageHeader
         eyebrow={p.eyebrow}
         title={p.title}
@@ -823,9 +849,11 @@ export default function IndicatorsTrendsPage() {
         </span>
       </div>
 
-      {SEGMENTS.map((sg) => (
-        <TrendSection key={sg} segment={sg} query={query} baseKey={baseKey} range={range} p={p} locale={locale} />
-      ))}
+      <div className="tnd-grid2">
+        {SEGMENTS.map((sg) => (
+          <TrendSection key={sg} segment={sg} query={query} baseKey={baseKey} range={range} p={p} locale={locale} />
+        ))}
+      </div>
     </div>
   );
 }
