@@ -322,7 +322,10 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     # mesmo que a tarefa só feche depois). Ajuste do admin, sem fim registrado
     # pelo técnico, não entra nos indicadores de técnico.
     completed_qs = ProjectTaskAssignment.objects.filter(
-        status=ProjectTask.STATUS_COMPLETED, assignment_end__date__gte=date_from, assignment_end__date__lte=date_to
+        status=ProjectTask.STATUS_COMPLETED,
+        assignment_end__date__gte=date_from,
+        assignment_end__date__lte=date_to,
+        project_task__exclude_from_reports=False,
     ).select_related("collaborator__person", "project_task__project")
     if project_ids is not None:
         completed_qs = completed_qs.filter(project_task__project_id__in=project_ids)
@@ -335,7 +338,10 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
     # estimativa por atividade (RN-16..21), uma execução completa por tarefa.
     tasks_qs = (
         ProjectTask.objects.filter(
-            status=ProjectTask.STATUS_COMPLETED, actual_end__date__gte=date_from, actual_end__date__lte=date_to
+            status=ProjectTask.STATUS_COMPLETED,
+            actual_end__date__gte=date_from,
+            actual_end__date__lte=date_to,
+            exclude_from_reports=False,
         )
         .select_related(
             "project",
@@ -720,7 +726,10 @@ def build_operations_reports(*, site_id, date_from, date_to, log_entries_fn, use
 
     month_start = today.replace(day=1)
     completed_month_qs = ProjectTaskAssignment.objects.filter(
-        status=ProjectTask.STATUS_COMPLETED, assignment_end__date__gte=month_start, assignment_end__date__lte=today
+        status=ProjectTask.STATUS_COMPLETED,
+        assignment_end__date__gte=month_start,
+        assignment_end__date__lte=today,
+        project_task__exclude_from_reports=False,
     )
     if project_ids is not None:
         completed_month_qs = completed_month_qs.filter(project_task__project_id__in=project_ids)

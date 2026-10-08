@@ -308,6 +308,14 @@ class ProjectTask(TimestampedModel):
         "resultado da finalização", max_length=20, choices=COMPLETION_OUTCOME_CHOICES, blank=True
     )
     quantity_done = models.CharField("quantidade executada", max_length=100, blank=True)
+    exclude_from_reports = models.BooleanField(
+        "ignorar nos relatórios",
+        default=False,
+        help_text=(
+            "Tarefa de teste ou com apontamento errado (ex.: em lote): não entra em Relatórios e Indicadores "
+            "(HH, produção por técnico, estimativa por atividade e relatório gerencial). Nada é apagado."
+        ),
+    )
 
     class Meta:
         verbose_name = "Tarefa do Projeto"

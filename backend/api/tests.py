@@ -6843,6 +6843,23 @@ class OperationsReportsV2Tests(TestCase):
         self.assertEqual(included[0]["credited_quantity"], 10.0)
         self.assertEqual(included[0]["rate_per_hour"], 5.0)
 
+    def test_tasks_marked_to_ignore_are_left_out_of_every_report(self):
+        self.setup_catalog()
+        kept = self.make_generated(10, length_m=Decimal(50))
+        self.make_task(self.at(8), self.at(10), 2, [(self.tech_a, self.at(8), self.at(10), 2)], generated=kept)
+        ignored = self.make_generated(10, length_m=Decimal(50))
+        task = self.make_task(self.at(11), self.at(13), 2, [(self.tech_a, self.at(11), self.at(13), 2)], generated=ignored)
+        ProjectTask.objects.filter(pk=task.pk).update(exclude_from_reports=True)
+        data = self.get()
+        row = self.tech_row(data, self.tech_a)
+        self.assertEqual(row["man_hours"], 2.0)
+        self.assertEqual(row["completed_count"], 1)
+        self.assertEqual(row["production"]["TST-RPT-RUN"]["quantity"], 10.0)
+        self.assertEqual(len(data["execution_rows"]), 1)
+        management = self.get_management()
+        self.assertEqual(management["kpis"]["current"]["man_hours"], 2.0)
+        self.assertEqual(management["kpis"]["current"]["completed_count"], 1)
+
     def test_internal_idle_limit_is_30_minutes_per_day(self):
         P = self.Presence
         self.check_in(self.tech_a, [

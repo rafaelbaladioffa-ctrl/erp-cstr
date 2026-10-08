@@ -109,7 +109,10 @@ def _collect(site_id, date_from, date_to, user, now):
     site_ids = parse_site_ids(site_id)
     # Conclusões por técnico (cada um conclui a própria parte), como em build_operations_reports.
     completed_qs = ProjectTaskAssignment.objects.filter(
-        status=ProjectTask.STATUS_COMPLETED, assignment_end__date__gte=date_from, assignment_end__date__lte=date_to
+        status=ProjectTask.STATUS_COMPLETED,
+        assignment_end__date__gte=date_from,
+        assignment_end__date__lte=date_to,
+        project_task__exclude_from_reports=False,
     ).select_related("collaborator__person", "project_task")
     if project_ids is not None:
         completed_qs = completed_qs.filter(project_task__project_id__in=project_ids)
